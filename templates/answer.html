@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+<title>{{ question }} - qiki.info</title>
+<meta charset="utf-8">
+<!--suppress JSUnresolvedLibraryURL -->
+<script src="//ajax.googleapis.com/ajax/libs/jquery/{{ JQUERY_VERSION }}/jquery.min.js"></script>
+<!--suppress JSUnresolvedLibraryURL -->
+<script src="//ajax.googleapis.com/ajax/libs/jqueryui/{{ JQUERYUI_VERSION }}/jquery-ui.min.js"></script>
+<script src="{{ url_for('static', filename='qoolbar.js') }}"></script>
+<link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='qoolbar.css') }}" />
+<script src="{{ url_for('static', filename='jquery.hotkeys.js') }}"></script>
+{# OR:  https://raw.githubusercontent.com/jeresig/jquery.hotkeys/master/jquery.hotkeys.js #}
+<script src="//cdn.jsdelivr.net/jquery.cookie/1.4.1/jquery.cookie.js"></script>
+<script>
+var AJAX_URL = '{{ AJAX_URL }}';
+qoolbar.ajax_url(AJAX_URL);
+$(document).ready(function() {
+    qoolbar.i_am('{{ me_idn }}');
+    $('#status').text("Loading qoolbar...");
+    qoolbar.html('#qoolbar', function() {
+        $('#status').text("Decorating words...");
+        qoolbar.bling('.word');
+        $('#status').text("");
+    });
+    qoolbar.target('.word');   // Each of these elements must have a data-idn attribute.
+    $('#answer-button').on('click', function() {
+        qoolbar.post('answer', {
+            question: '{{ question }}',
+            answer: $('#answer').val()
+        }, function(response) {
+            if (response.is_valid) {
+                // alert('yay\n' + response.message);
+                window.location.reload(true);
+            } else {
+                alert('boo\n' + response.message);
+            }
+        })
+    })
+});
+</script>
+<link rel="shortcut icon" href="{{ url_for('static', filename='favicon.ico') }}">
+</head>
+<body>
+<p>
+    Here is a page for '{{ question }}'
+</p>
+<label for="answer">Your thoughts?</label>
+<input id='answer' type='text'>
+<input id='answer-button' type='button' value='Comment'>
+{% if len_questions <= 1 and len_answers == 0 %}
+    You're the first to visit here!
+{% else %}
+    You're seeing view {{ len_questions }} of this page.
+    {% if len_answers == 0 %}
+        No one has commented here.
+    {% else %}
+        There are {{ len_answers }} comments:
+        <ul>
+            {% for answer in answers %}
+                <li class="word" data-idn="{{ answer.idn }}" data-jbo="{{ answer.jbo_json }}">{{ answer.txt }}</li>
+            {% endfor %}
+        </ul>
+    {% endif %}
+{% endif %}
+
+<div id="qoolbar"></div>
+<div id="status"></div>
+
+</body>
+</html>

@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+<title>qiki.info</title>
+<meta charset="utf-8">
+<!--suppress JSUnresolvedLibraryURL -->
+<script src="//ajax.googleapis.com/ajax/libs/jquery/{{ JQUERY_VERSION }}/jquery.min.js"></script>
+<script src="{{ url_for('static', filename='qoolbar.js') }}"></script>
+<script src="{{ url_for('static', filename='jquery.hotkeys.js') }}"></script>
+{# OR:  https://raw.githubusercontent.com/jeresig/jquery.hotkeys/master/jquery.hotkeys.js #}
+<script src="//cdn.jsdelivr.net/jquery.cookie/1.4.1/jquery.cookie.js"></script>
+<script>
+$(document).ready(function() {
+});
+</script>
+<link rel="shortcut icon" href="{{ url_for('static', filename='favicon.ico') }}">
+</head>
+<body>
+<p>
+    Hello Whirled!
+</p>
+<ol>
+    {% for report in reports %}
+        <li value="{{ report.i }}">
+            {{ report.s }}-{{ report.v }}{{ report.xn | safe }}-{{ report.o }}
+            {% if report.t != '' %}
+                ''{{ report.t }}''
+            {% endif %}
+        </li>
+    {% endfor %}
+</ol>
+</body>
+</html>
