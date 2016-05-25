@@ -13,8 +13,8 @@ import secure.credentials
 
 
 AJAX_URL = '/meta/ajax'
-JQUERY_VERSION = '2.1.4'   # https://developers.google.com/speed/libraries/?hl=fr#jquery
-JQUERYUI_VERSION = '1.11.4'   # https://developers.google.com/speed/libraries/?hl=fr#jquery-ui
+JQUERY_VERSION = '2.1.4'   # https://developers.google.com/speed/libraries/#jquery
+JQUERYUI_VERSION = '1.11.4'   # https://developers.google.com/speed/libraries/#jquery-ui
 config_names = ('AJAX_URL', 'JQUERY_VERSION', 'JQUERYUI_VERSION')
 config_dict = {name: globals()[name] for name in config_names}
 
@@ -40,7 +40,7 @@ path = lex.noun(u'path')
 question = lex.verb(u'question')
 browse = lex.verb(u'browse')
 answer = lex.verb(u'answer')
-me = lex.define(u'agent', u'user')
+me = lex.define(u'agent', u'user')  # TODO:  Authentication
 qoolbar = qiki.QoolbarSimple(lex)
 
 
@@ -158,16 +158,35 @@ def ajax():
         return valid_response('verbs', list(qoolbar.get_verb_dicts()))
     elif action == u'sentence':
         form = flask.request.form
-        obj = lex[qiki.Number(form['obj_idn'])]
-        vrb = lex[form['vrb_txt']]
-        txt = form['txt']
-        num_add = form.get('num_add', None)
-        num = form.get('num', None)
+        try:
+            obj_idn = form['obj_idn']
+        except KeyError:
+            return invalid_response(u"Missing obj")
+        try:
+            vrb_txt = form['vrb_txt']
+        except KeyError:
+            try:
+                vrb_idn = form['vrb_idn']
+            except KeyError:
+                return invalid_response(u"Missing vrb_txt and vrb_idn")
+            else:
+                vrb = lex[qiki.Number(vrb_idn)]
+        else:
+            vrb = lex[vrb_txt]
+        try:
+            txt = form['txt']
+        except KeyError:
+            return invalid_response(u"Missing txt")
+        obj = lex[qiki.Number(obj_idn)]
+        num_add_str = form.get('num_add', None)
+        num_add = None if num_add_str is None else qiki.Number(int(num_add_str))
+        num_str = form.get('num', None)
+        num = None if num_str is None else qiki.Number(int(num_str))
         new_jbo = me.says(
             vrb=vrb,
             obj=obj,
             num=num,
-            num_add=qiki.Number(int(num_add)),
+            num_add=num_add,
             txt=txt,
         )
         return valid_response('jbo', json_from_jbo([new_jbo]))
