@@ -1,3 +1,4 @@
+authomatic
 flask
 mysql-connector-python
 six

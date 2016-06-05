@@ -6,6 +6,10 @@ import json
 import logging
 import sys
 
+import authomatic
+import authomatic.adapters
+import authomatic.core
+import authomatic.providers.oauth2
 import flask   # , send_from_directory
 
 import qiki
@@ -34,14 +38,35 @@ app = flask.Flask(
     static_url_path='/meta/static',
     static_folder='../qiki-javascript/'
 )
+app.secret_key = secure.credentials.flask_secret_key
 
-lex = qiki.LexMySQL(**secure.credentials.for_fliki_database)
+lex = qiki.LexMySQL(**secure.credentials.for_fliki_lex_database)
 path = lex.noun(u'path')
 question = lex.verb(u'question')
 browse = lex.verb(u'browse')
 answer = lex.verb(u'answer')
 me = lex.define(u'agent', u'user')  # TODO:  Authentication
 qoolbar = qiki.QoolbarSimple(lex)
+
+GOOGLE_PROVIDER = b'google'
+# noinspection SpellCheckingInspection
+autho = authomatic.Authomatic(
+    {
+        GOOGLE_PROVIDER: {
+            b'class_': authomatic.providers.oauth2.Google,
+            b'consumer_key': secure.credentials.google_client_id,
+            b'consumer_secret': secure.credentials.google_client_secret,
+            b'scope': authomatic.providers.oauth2.Google.user_info_scope + [b'https://gdata.youtube.com'],
+            b'id': 42,   # See exception in core.py Credentials.serialize() ~line 810:
+            # "To serialize credentials you need to specify a"
+            # "unique integer under the "id" key in the config"
+            # "for each provider!"
+            # This happened when calling login_result.user.to_dict()
+        }
+    }, secure.credentials.authomatic_secret_key,
+    # logger=logger,   # Gets pretty verbose.
+)
+STALE_LOGIN_ERROR = 'Unable to retrieve stored state!'
 
 
 def referrer(request):
@@ -50,6 +75,110 @@ def referrer(request):
         return qiki.Text(u'')
     else:
         return qiki.Text.decode_if_you_must(this_referrer)
+
+
+@app.route(u'/meta/play', methods=('GET', 'POST'))
+def play():
+    response = flask.make_response(" Play ")
+    login_result = autho.login(
+        authomatic.adapters.WerkzeugAdapter(flask.request, response),
+        GOOGLE_PROVIDER,
+        # The following don't help persist the logged-in condition,
+        # they just rejigger the ad hoc session supporting the banter with the provider.
+        # session=flask.session,
+        # session_saver=lambda: app.save_session(flask.session, response),
+    )
+    print(repr(login_result))
+    if login_result:
+        if hasattr(login_result, 'error') and login_result.error is not None:
+            print("Login error:", str(login_result.error))
+            url_has_question_mark_parameters = flask.request.path != flask.request.full_path
+            is_stale = str(login_result.error) == STALE_LOGIN_ERROR
+            if is_stale and url_has_question_mark_parameters:
+                print(
+                    "Redirect from {from_}\n"
+                    "           to {to_}".format(
+                        from_=flask.escape(flask.request.full_path),
+                        to_=flask.escape(flask.request.path),
+                    )
+                )
+                return flask.redirect(flask.request.path)  # Hopefully not a redirect loop.
+            else:
+                print("Whoops")
+                response.set_data("Whoops")
+        else:
+            if hasattr(login_result, 'user') and login_result.user is not None:
+                user = login_result.user
+                # print("\tuser before update", repr(user))
+                # print("\tuser data before update", repr(user.data))
+                # user_data_before_update = json.dumps(user.data, indent=4)
+                user.update()
+                # print("\tuser  after update", repr(user))
+                # print("\tuser data  after update", repr(user.data))
+                response.set_data(
+                    """
+                        <p>
+                            Hello
+                            <img src='{url}'>
+                            {name} of {provider}.
+                            Your id is {id}.
+                        </p>
+
+                        <!-- pre>{user_dictionary}</pre -->
+                        <!-- pre>{provider_dictionary}</pre -->
+                        <!-- pre>{config_dictionary}</pre -->
+                    """.format(
+                        name=user.name,
+                        provider=login_result.provider.name,
+                        url=user.picture,
+                        id=qiki.Number(user.id).qstring(),
+                        user_dictionary=json.dumps(user.to_dict(), indent=4),
+                        # user_dictionary=user_data_before_update,
+                        provider_dictionary=json.dumps(login_result.provider.to_dict(), indent=4),
+                        config_dictionary="\n".join(config_generator(app.config)),
+                    )
+                )
+            else:
+                print("No user!")
+            if login_result.provider:
+                print("Provider:", repr(login_result.provider))
+
+                # if login_result.provider.User:
+                #     print(repr(login_result.provider.User))
+                # else:
+                #     print("no provider.User")
+
+                # This didn't work
+                # user = authomatic.core.User(login_result.provider)
+                # user.update()
+                # print("\tuser ", repr(user))
+                # print("\tname ", str(user.name))
+                # print("\temail ", str(user.email))
+                # print("\tpicture ", str(user.picture))
+            else:
+                print("No provider!")
+    else:
+        print("No result, login must be in process...")
+
+    return response
+
+
+def config_generator(config):
+
+    return {"%s = %s" % (str(k), repr(v)) for k, v in config.iteritems()}
+
+    # return {
+    #     "{k} = {v}".format(
+    #         k=str(k),
+    #         v=repr(v)
+    #     ) for k, v in config.iteritems()
+    # }
+
+    # for k, v in config.iteritems():
+    #     yield "{k} = {v}".format(
+    #         k=str(k),
+    #         v=repr(v)
+    #     )
 
 
 @app.route(u'/meta/hello', methods=('GET', 'HEAD'))
