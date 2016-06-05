@@ -33,12 +33,12 @@ logger.addHandler(ch)
 # THANKS:  Log to stdout, http://stackoverflow.com/a/14058475/673991
 # logger.debug("Hi ho")
 
-app = flask.Flask(
+flask_app_global = flask.Flask(
     __name__,
     static_url_path='/meta/static',
     static_folder='../qiki-javascript/'
 )
-app.secret_key = secure.credentials.flask_secret_key
+flask_app_global.secret_key = secure.credentials.flask_secret_key
 
 lex = qiki.LexMySQL(**secure.credentials.for_fliki_lex_database)
 path = lex.noun(u'path')
@@ -49,8 +49,7 @@ me = lex.define(u'agent', u'user')  # TODO:  Authentication
 qoolbar = qiki.QoolbarSimple(lex)
 
 GOOGLE_PROVIDER = b'google'
-# noinspection SpellCheckingInspection
-autho = authomatic.Authomatic(
+authomatic_global = authomatic.Authomatic(
     {
         GOOGLE_PROVIDER: {
             b'class_': authomatic.providers.oauth2.Google,
@@ -77,16 +76,16 @@ def referrer(request):
         return qiki.Text.decode_if_you_must(this_referrer)
 
 
-@app.route(u'/meta/play', methods=('GET', 'POST'))
+@flask_app_global.route(u'/meta/play', methods=('GET', 'POST'))
 def play():
     response = flask.make_response(" Play ")
-    login_result = autho.login(
+    login_result = authomatic_global.login(
         authomatic.adapters.WerkzeugAdapter(flask.request, response),
         GOOGLE_PROVIDER,
         # The following don't help persist the logged-in condition,
         # they just rejigger the ad hoc session supporting the banter with the provider.
         # session=flask.session,
-        # session_saver=lambda: app.save_session(flask.session, response),
+        # session_saver=lambda: flask_app_global.save_session(flask.session, response),
     )
     print(repr(login_result))
     if login_result:
@@ -135,9 +134,10 @@ def play():
                         user_dictionary=json.dumps(user.to_dict(), indent=4),
                         # user_dictionary=user_data_before_update,
                         provider_dictionary=json.dumps(login_result.provider.to_dict(), indent=4),
-                        config_dictionary="\n".join(config_generator(app.config)),
+                        config_dictionary="\n".join(config_generator(flask_app_global.config)),
                     )
                 )
+                # HACK:  Remove all this radioactive information -- HTML comments are not hid enough.
             else:
                 print("No user!")
             if login_result.provider:
@@ -181,7 +181,7 @@ def config_generator(config):
     #     )
 
 
-@app.route(u'/meta/hello', methods=('GET', 'HEAD'))
+@flask_app_global.route(u'/meta/hello', methods=('GET', 'HEAD'))
 def hello_world():
     this_path = flask.request.url
     path_word = lex.define(path, this_path)
@@ -215,7 +215,7 @@ def hello_world():
 
 
 # To make another static directory...
-# @app.route('/static/<path:path>')
+# @flask_app_global.route('/static/<path:path>')
 # def send_static(path):
 #     pass
     # print("Hello again.")
@@ -225,7 +225,7 @@ def hello_world():
     # THANKS:  Static file response, http://stackoverflow.com/a/20648053/673991
 
 
-@app.route(u'/<path:url_suffix>', methods=('GET', 'HEAD'))
+@flask_app_global.route(u'/<path:url_suffix>', methods=('GET', 'HEAD'))
 def send_qiki(url_suffix):
     this_path = lex.define(path, qiki.Text.decode_if_you_must(url_suffix))
     me(question)[this_path] = 1, referrer(flask.request)
@@ -271,7 +271,7 @@ def native_num(num):
         return float(num)
 
 
-@app.route(AJAX_URL, methods=('POST',))
+@flask_app_global.route(AJAX_URL, methods=('POST',))
 def ajax():
     action = flask.request.form['action']
     if action == u'answer':
@@ -374,7 +374,7 @@ def invalid_response(error_message):
 
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    flask_app_global.run(debug=True)
 
 
 # TODO:  CSRF Protection
