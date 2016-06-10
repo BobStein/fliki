@@ -18,7 +18,7 @@ import flask   # , send_from_directory
 import flask_login
 # import flask.ext.login -- ExtDeprecationWarning: Importing flask.ext.login is deprecated, use flask_login instead.
 # SEE:  http://flask.pocoo.org/docs/0.11/extensiondev/#ext-import-transition
-import six
+# noinspection PyUnresolvedReferences
 import six.moves.urllib as urllib
 
 import qiki
@@ -84,49 +84,77 @@ iconify_word = lex.noun(u'iconify')
 name_word = lex.noun(u'name')
 
 
-class MyUser(flask_login.UserMixin, qiki.Listing):
+class GoogleFlaskUser(flask_login.UserMixin):
+    """Flask_login model for a Google user."""
+    def __init__(self, google_user_id):
+        self.id = google_user_id
 
-    def lookup(self, index, callback):
-        # HACK:  Validate!!
+
+class GoogleQikiUser(qiki.Listing):
+
+    def __init__(self, google_user_id_string):
+        google_user_id = qiki.Number(google_user_id_string)
+        super(GoogleQikiUser, self).__init__(google_user_id)
+
+    def lookup(self, google_user_id, callback):
+        """Qiki model for a Google user.
+        :param google_user_id:  a qiki.Number for the google user-id
+        :param callback:   Listing callback, takes txt and num parameters.
+        """
+        # Obstacle to combining with GoogleFlaskUser:
         namings = self.meta_word.lex.find_words(sbj=self.meta_word.lex, vrb=name_word, obj=self.idn)
         try:
             latest_naming = namings[0]
         except IndexError:
             the_name = u"(unknown {})".format(self.idn)
-            # raise RuntimeError("HACK")
         else:
             the_name = latest_naming.txt
-        print("find sbj", self.meta_word.lex, "vrb", name_word, "obj", self.idn, "==>", repr(namings), "-", the_name)
+        print(
+            "lookup",
+            "sbj", self.meta_word.lex,
+            "vrb", name_word,
+            "obj", self.idn,
+            "==>", the_name,
+            "<~~", repr(namings),
+        )
         callback(the_name, qiki.Number(1))
 
-    def get_id(self):
-        return self.idn.qstring()
+    # def get_id(self):
+    #     return self.index
+    #
+    # def get_name(self):
+    #     return self.txt
+    #
+    # def get_provider_user_id(self):
+    #     return six.text_type(int(self.idn.get_suffix(qiki.Number.Suffix.TYPE_LISTING).payload_number()))
 
-    def get_name(self):
-        return self.txt
 
-    def get_provider_user_id(self):
-        return six.text_type(int(self.idn.get_suffix(qiki.Number.Suffix.TYPE_LISTING).payload_number()))
+# TODO:  Combine class GoogleUser(flask_login.UserMixin, qiki.Listing)
+# But this causes JSON errors because json can't encode qiki.Number.
+# But there are so many layers to the serialization for sessions there's probably a way.
+# Never found a clue of a way to to that in qiki.Number only.
+# Had to be fudged in the json.dumps() caller(s).  Yuck.
 
 
 listing = lex.noun(u'listing')
 # qiki.Listing.install(listing)   # Silly to do this, right?
-my_user = lex.define(listing, u'my user')
-MyUser.install(my_user)
+google_user = lex.define(listing, u'google user')
+GoogleQikiUser.install(google_user)
 
 
 @login_manager.user_loader
-def user_loader(id_):
-    print("user_loader", repr(id_))
+def user_loader(google_user_id_string):
+    print("user_loader", google_user_id_string)
     try:
-        user = MyUser(qiki.Number(id_))   # id_ is not the user's Listing index
-        # user = lex[id_]   # id_ is the Listing idn
-        print("\ttype", type(user).__name__)
+        qiki_user = GoogleQikiUser(qiki.Number(google_user_id_string))
     except qiki.Listing.NotFound:
+        print("\t", "QIKI LISTING NOT FOUND")
         return None
     else:
-        # user.id = id_
-        return user
+        print("\t", "idn", qiki_user.idn.qstring())
+        flask_user = GoogleFlaskUser(google_user_id_string)
+        # HACK:  Validate with google!!
+        return flask_user
 
 
 def referrer(request):
@@ -139,9 +167,10 @@ def referrer(request):
 
 @flask_app.route(u'/meta/play', methods=('GET', 'POST'))
 def play():
-    user = flask_login.current_user
+    flask_user = flask_login.current_user
     # print("Current user", type(user).__name__)   # Always LocalProxy
-    if user.is_authenticated:
+    if flask_user.is_authenticated:
+        qiki_user = GoogleQikiUser(flask_user.get_id())
         log_link = """
             <a href='{logout_url}'>
                 logout
@@ -151,9 +180,9 @@ def play():
             (provider's id {provider_user_id})
         """.format(
             logout_url=flask.url_for('logout'),
-            user_id=user.get_id(),
-            user_name=user.get_name(),
-            provider_user_id=user.get_provider_user_id(),
+            user_id=qiki_user.idn.qstring(),
+            user_name=qiki_user.txt,
+            provider_user_id=qiki_user.index,
         )
     else:
         log_link = """
@@ -197,6 +226,8 @@ def login():
             #   "error" : "invalid_grant",
             #   "error_description" : "Invalid code."
             # }.
+            # e.g. after a partial login crashes, trying to resume with a URL such as:
+            # http://localhost.visibone.com:5000/meta/login?state=f45ad ... 4OKQ#
             #
             url_has_question_mark_parameters = flask.request.path != flask.request.full_path
             is_stale = str(login_result.error) == STALE_LOGIN_ERROR
@@ -216,7 +247,8 @@ def login():
             if hasattr(login_result, 'user') and login_result.user is not None:
                 # user = login_result.user
                 login_result.user.update()
-                user = MyUser(qiki.Number(login_result.user.id))
+                flask_user = GoogleFlaskUser(login_result.user.id)
+                qiki_user = GoogleQikiUser(login_result.user.id)
                 # user.authomatic_user = login_result.user
                 # print("\tuser before update", repr(user))
                 # print("\tuser data before update", repr(user.data))
@@ -228,14 +260,14 @@ def login():
                 picture_dict = urllib.parse.parse_qs(picture_parts.query)
                 # THANKS:  For parsing URL query by name, http://stackoverflow.com/a/21584580/673991
                 picture_size_string = picture_dict.get('sz', ['0'])[0]
-                avatar_width = qiki.Number(picture_size_string)
+                avatar_width = qiki.Number(picture_size_string)   # width?  height?  size??
                 avatar_url = login_result.user.picture
                 display_name = login_result.user.name
-                print("Logging in", user.index, user.idn)
-                lex[lex](iconify_word, use_already=True)[user.idn] = avatar_width, avatar_url
-                lex[lex](name_word, use_already=True)[user.idn] = display_name
+                print("Logging in", qiki_user.index, qiki_user.idn.qstring())
+                lex[lex](iconify_word, use_already=True)[qiki_user.idn] = avatar_width, avatar_url
+                lex[lex](name_word, use_already=True)[qiki_user.idn] = display_name
                 # print("Picture size", picture_size_string)
-                flask_login.login_user(user)
+                flask_login.login_user(flask_user)
                 return flask.redirect(flask.url_for('play'))
 
                 # response.set_data(
@@ -314,12 +346,23 @@ def hello_world():
     words = lex.find_words()
     logger.info("Lex has " + str(len(words)) + " words.")
     reports = []
+
+    def safe_txt(w):
+        try:
+            return w.txt
+        except qiki.Word.NotAWord:
+            return "[nonword {}]".format(w.idn.qstring())
+
     for word in words:
         reports.append(dict(
             i=int(word.idn),
-            s=word.sbj.txt,
-            v=word.vrb.txt,
-            o=word.obj.txt,
+            idn_qstring=word.idn.qstring(),
+            s=safe_txt(word.sbj),
+            v=safe_txt(word.vrb),
+            o=safe_txt(word.obj),
+            s_idn=word.sbj.idn,
+            v_idn=word.vrb.idn,
+            o_idn=word.obj.idn,
             t=word.txt,
             # n=word.num,
             xn="" if word.num == 1 else "&times;" + render_num(word.num)
