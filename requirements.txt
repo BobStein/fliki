@@ -1,4 +1,5 @@
 authomatic
 flask
+flask-login
 mysql-connector-python
 six

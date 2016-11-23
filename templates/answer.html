@@ -22,7 +22,12 @@
         There are {{ len_answers }} comments:
         <ul>
             {% for answer in answers %}
-                <li class="word" data-idn="{{ answer.idn }}" data-jbo="{{ answer.jbo_json }}">{{ answer.txt }}</li>
+                <li class="word" data-idn="{{ answer.idn }}" data-jbo="{{ answer.jbo_json }}">
+                    {{ answer.author | safe }}
+                    <span title="idn {{ answer.idn}} = {{ answer.idn | int }}">
+                        {{ answer.txt }}
+                    </span>
+                </li>
             {% endfor %}
         </ul>
     {% endif %}
@@ -30,6 +35,7 @@
 
 <div id="qoolbar"></div>
 <div id="status"></div>
+<div id="logging">{{ log_html | safe }}</div>
 
 <!--suppress JSUnresolvedLibraryURL -->
 <script src="//ajax.googleapis.com/ajax/libs/jquery/{{ JQUERY_VERSION }}/jquery.min.js"></script>

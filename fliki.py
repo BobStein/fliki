@@ -54,7 +54,12 @@ path = lex.noun(u'path')
 question = lex.verb(u'question')
 browse = lex.verb(u'browse')
 answer = lex.verb(u'answer')
+
+iconify_word = lex.noun(u'iconify')
+name_word = lex.noun(u'name')
+
 me = lex.define(u'agent', u'user')  # TODO:  Authentication
+me(iconify_word)[me] = u'http://tool.qiki.info/icon/ghost.png'
 qoolbar = qiki.QoolbarSimple(lex)
 
 GOOGLE_PROVIDER = b'google'
@@ -80,10 +85,6 @@ login_manager = flask_login.LoginManager()
 login_manager.init_app(flask_app)
 
 
-iconify_word = lex.noun(u'iconify')
-name_word = lex.noun(u'name')
-
-
 class GoogleFlaskUser(flask_login.UserMixin):
     """Flask_login model for a Google user."""
     def __init__(self, google_user_id):
@@ -91,7 +92,6 @@ class GoogleFlaskUser(flask_login.UserMixin):
 
 
 class GoogleQikiUser(qiki.Listing):
-
     def __init__(self, google_user_id_string):
         google_user_id = qiki.Number(google_user_id_string)
         super(GoogleQikiUser, self).__init__(google_user_id)
@@ -101,7 +101,6 @@ class GoogleQikiUser(qiki.Listing):
         :param google_user_id:  a qiki.Number for the google user-id
         :param callback:   Listing callback, takes txt and num parameters.
         """
-        # Obstacle to combining with GoogleFlaskUser:
         namings = self.meta_word.lex.find_words(sbj=self.meta_word.lex, vrb=name_word, obj=self.idn)
         try:
             latest_naming = namings[0]
@@ -129,32 +128,86 @@ class GoogleQikiUser(qiki.Listing):
     #     return six.text_type(int(self.idn.get_suffix(qiki.Number.Suffix.TYPE_LISTING).payload_number()))
 
 
-# TODO:  Combine class GoogleUser(flask_login.UserMixin, qiki.Listing)
+class AnonymousQikiUser(qiki.Listing):
+    def lookup(self, ip_address_idn, callback):
+        callback("anonymous " + lex[ip_address_idn].txt, qiki.Number(1))
+
+
+# TODO:  Combine classes GoogleUser(flask_login.UserMixin, qiki.Listing)
 # But this causes JSON errors because json can't encode qiki.Number.
 # But there are so many layers to the serialization for sessions there's probably a way.
-# Never found a clue of a way to to that in qiki.Number only.
-# Had to be fudged in the json.dumps() caller(s).  Yuck.
+# Never found a way to to that in qiki.Number only, darn.
+# All the methods have to be fudged in the json.dumps() caller(s).  Yuck.
+# SEE:  http://stackoverflow.com/questions/3768895/how-to-make-a-class-json-serializable
 
 
 listing = lex.noun(u'listing')
 # qiki.Listing.install(listing)   # Silly to do this, right?
 google_user = lex.define(listing, u'google user')
 GoogleQikiUser.install(google_user)
+anonymous_user = lex.define(listing, u'anonymous')
+AnonymousQikiUser.install(anonymous_user)
+lex.noun(u'IP address')
+
+
+def my_login():
+    # XXX:  Objectify
+    flask_user = flask_login.current_user
+    assert isinstance(flask_user, flask_login.LocalProxy)
+    if flask_user.is_authenticated:
+        qiki_user = GoogleQikiUser(flask_user.get_id())
+    elif flask_user.is_anonymous:
+        print(repr(flask_user), flask.request.remote_addr)
+        anonymous_identifier = lex.define(u'IP address', txt=qiki.Text.decode_if_you_must(flask.request.remote_addr))
+        qiki_user = AnonymousQikiUser(anonymous_identifier.idn)   # (flask.request.remote_addr)
+    else:
+        qiki_user = None
+        logger.fatal("User is neither authenticated nor anonymous.")
+    print("User is", repr(flask_user))
+    print("User is", str(qiki_user))
+    return flask_user, qiki_user
+
+
+def log_link(flask_user, qiki_user):
+    # noinspection PyUnresolvedReferences
+    qiki_user_txt = qiki_user.txt
+    if flask_user.is_authenticated:
+        return (
+            "<a href='{logout_link}'>"
+            "logout"
+            "</a>"
+            " "
+            "{display_name}"
+        ).format(
+            display_name=qiki_user_txt,
+            logout_link=flask.url_for('logout'),
+        )
+    elif flask_user.is_anonymous:
+        return (
+            "<a href='{login_link}' title='{login_title}'>"
+            "login"
+            "</a>"
+        ).format(
+            login_title="You are " + qiki_user_txt,
+            login_link=flask.url_for('login'),
+        )
+    else:
+        return "neither auth nor anon???"
 
 
 @login_manager.user_loader
 def user_loader(google_user_id_string):
     print("user_loader", google_user_id_string)
     try:
-        qiki_user = GoogleQikiUser(qiki.Number(google_user_id_string))
+        new_qiki_user = GoogleQikiUser(qiki.Number(google_user_id_string))
     except qiki.Listing.NotFound:
         print("\t", "QIKI LISTING NOT FOUND")
         return None
     else:
-        print("\t", "idn", qiki_user.idn.qstring())
-        flask_user = GoogleFlaskUser(google_user_id_string)
+        print("\t", "idn", new_qiki_user.idn.qstring())
+        new_flask_user = GoogleFlaskUser(google_user_id_string)
         # HACK:  Validate with google!!
-        return flask_user
+        return new_flask_user
 
 
 def referrer(request):
@@ -167,33 +220,39 @@ def referrer(request):
 
 @flask_app.route(u'/meta/play', methods=('GET', 'POST'))
 def play():
-    flask_user = flask_login.current_user
-    # print("Current user", type(user).__name__)   # Always LocalProxy
+    flask_user, qiki_user = my_login()
+    # noinspection PyUnresolvedReferences
+    qiki_user_txt = qiki_user.txt
     if flask_user.is_authenticated:
-        qiki_user = GoogleQikiUser(flask_user.get_id())
-        log_link = """
-            <a href='{logout_url}'>
-                logout
-            </a>
+        some_html = """
+            <a href='{logout_url}'>logout</a>
             as {user_name}
             (local id {user_id})
             (provider's id {provider_user_id})
         """.format(
             logout_url=flask.url_for('logout'),
             user_id=qiki_user.idn.qstring(),
-            user_name=qiki_user.txt,
+            user_name=qiki_user_txt,
             provider_user_id=qiki_user.index,
         )
     else:
-        log_link = """
-            <a href='{login_url}'>login</a>
+        some_html = """
+            <a href='{login_url}'>login
+                from {where}</a>
         """.format(
-            login_url=flask.url_for('login')
+            login_url=flask.url_for('login'),
+            where=qiki_user_txt,
         )
     return """
-        {log_link}
+        <p>
+            {some_html}
+        </p>
+        <p>
+            {log_link}
+        </p>
     """.format(
-        log_link=log_link,
+        some_html=some_html,
+        log_link=log_link(flask_user, qiki_user)
     )
 
 
@@ -318,9 +377,9 @@ def login():
     return response
 
 
-def config_generator(config):
-
-    return {"%s = %s" % (str(k), repr(v)) for k, v in config.iteritems()}
+# def config_generator(config):
+#
+#     return {"%s = %s" % (str(k), repr(v)) for k, v in config.iteritems()}
 
     # return {
     #     "{k} = {v}".format(
@@ -351,7 +410,9 @@ def hello_world():
         try:
             return w.txt
         except qiki.Word.NotAWord:
-            return "[nonword {}]".format(w.idn.qstring())
+            return "[non-word {}]".format(w.idn.qstring())
+        except qiki.Listing.NotAListing:
+            return "[non-listing {}]".format(w.idn.qstring())
 
     for word in words:
         reports.append(dict(
@@ -396,11 +457,25 @@ def hello_world():
 
 @flask_app.route(u'/<path:url_suffix>', methods=('GET', 'HEAD'))
 def answer_qiki(url_suffix):
+    flask_user, qiki_user = my_login()
+    log_html = log_link(flask_user, qiki_user)
     this_path = lex.define(path, qiki.Text.decode_if_you_must(url_suffix))
-    me(question)[this_path] = 1, referrer(flask.request)
+    qiki_user(question)[this_path] = 1, referrer(flask.request)
     answers = lex.find_words(vrb=answer, obj=this_path, jbo_vrb=qoolbar.get_verbs(), idn_order='DESC', jbo_order='ASC')
     for a in answers:
         a.jbo_json = json_from_jbo(a.jbo)
+        pictures = lex.find_words(vrb=iconify_word, obj=a.sbj)
+        picture = pictures[0] if len(pictures) >= 1 else None
+        names = lex.find_words(vrb=name_word, obj=a.sbj)
+        name = names[0] if len(names) >= 1 else a.sbj.txt
+        if picture is not None:
+            author_img = "<img src='{url}' title='{name}'>".format(url=picture.txt, name=name)
+        elif name:
+            author_img = "({name})".format(name=name)
+        else:
+            author_img = ""
+
+        a.author = author_img
     questions = lex.find_words(vrb=question, obj=this_path)
     return flask.render_template(
         'answer.html',
@@ -408,7 +483,8 @@ def answer_qiki(url_suffix):
         answers=answers,
         len_answers=len(answers),
         len_questions=len(questions),
-        me_idn=me.idn,
+        me_idn=qiki_user.idn,
+        log_html=log_html,
         **config_dict
     )
 
@@ -443,12 +519,13 @@ def native_num(num):
 
 @flask_app.route(AJAX_URL, methods=('POST',))
 def ajax():
+    flask_user, qiki_user = my_login()
     action = flask.request.form['action']
     if action == u'answer':
         question_path = flask.request.form['question']
         answer_txt = flask.request.form['answer']
         question_word = lex.define(path, question_path)
-        me(answer)[question_word] = 1, answer_txt
+        qiki_user(answer)[question_word] = 1, answer_txt
         return valid_response('message', u"Question {q} answer {a}".format(
             q=question_path,
             a=answer_txt,
@@ -481,7 +558,7 @@ def ajax():
         num_add = None if num_add_str is None else qiki.Number(int(num_add_str))
         num_str = form.get('num', None)
         num = None if num_str is None else qiki.Number(int(num_str))
-        new_jbo = me.says(
+        new_jbo = qiki_user.says(
             vrb=vrb,
             obj=obj,
             num=num,
