@@ -1,5 +1,7 @@
 """
-fliki is a qiki implemented in Flask and Python
+fliki is a qiki implemented in Flask and Python.
+
+Authentication courtesy of flask-login and authomatic.
 """
 
 from __future__ import absolute_import
@@ -20,25 +22,26 @@ import flask_login
 # SEE:  http://flask.pocoo.org/docs/0.11/extensiondev/#ext-import-transition
 # noinspection PyUnresolvedReferences
 import six.moves.urllib as urllib
+import werkzeug.local
 
 import qiki
 import secure.credentials
 
 
 AJAX_URL = '/meta/ajax'
-JQUERY_VERSION = '2.1.4'   # https://developers.google.com/speed/libraries/#jquery
-JQUERYUI_VERSION = '1.11.4'   # https://developers.google.com/speed/libraries/#jquery-ui
+JQUERY_VERSION = '3.3.1'   # https://developers.google.com/speed/libraries/#jquery
+JQUERYUI_VERSION = '1.12.1'   # https://developers.google.com/speed/libraries/#jquery-ui
 config_names = ('AJAX_URL', 'JQUERY_VERSION', 'JQUERYUI_VERSION')
-config_dict = {name: globals()[name] for name in config_names}
+config_dict = {name: globals()[name.encode('ascii')] for name in config_names}
 
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
-ch = logging.StreamHandler(sys.stdout)
-ch.setLevel(logging.DEBUG)
+log_handler = logging.StreamHandler(sys.stdout)
+log_handler.setLevel(logging.DEBUG)
 formatter = logging.Formatter('%(asc' 'time)s - %(name)s - %(level''name)s - %(message)s')
-ch.setFormatter(formatter)
-logger.addHandler(ch)
+log_handler.setFormatter(formatter)
+logger.addHandler(log_handler)
 # THANKS:  Log to stdout, http://stackoverflow.com/a/14058475/673991
 # logger.debug("Hi ho")
 
@@ -50,16 +53,16 @@ flask_app = flask.Flask(
 flask_app.secret_key = secure.credentials.flask_secret_key
 
 lex = qiki.LexMySQL(**secure.credentials.for_fliki_lex_database)
-path = lex.noun(u'path')
-question = lex.verb(u'question')
-browse = lex.verb(u'browse')
-answer = lex.verb(u'answer')
+path = lex.noun('path')
+question = lex.verb('question')
+browse = lex.verb('browse')
+answer = lex.verb('answer')
 
-iconify_word = lex.noun(u'iconify')
-name_word = lex.noun(u'name')
+iconify_word = lex.noun('iconify')
+name_word = lex.noun('name')
 
-me = lex.define(u'agent', u'user')  # TODO:  Authentication
-me(iconify_word)[me] = u'http://tool.qiki.info/icon/ghost.png'
+me = lex.define('agent', 'user')  # TODO:  Authentication
+me(iconify_word)[me] = 'http://tool.qiki.info/icon/ghost.png'
 qoolbar = qiki.QoolbarSimple(lex)
 
 GOOGLE_PROVIDER = b'google'
@@ -76,7 +79,8 @@ authomatic_global = authomatic.Authomatic(
             # "for each provider!"
             # This happened when calling login_result.user.to_dict()
         }
-    }, secure.credentials.authomatic_secret_key,
+    },
+    secure.credentials.authomatic_secret_key,
     # logger=logger,   # Gets pretty verbose.
 )
 STALE_LOGIN_ERROR = 'Unable to retrieve stored state!'
@@ -92,31 +96,41 @@ class GoogleFlaskUser(flask_login.UserMixin):
 
 
 class GoogleQikiUser(qiki.Listing):
-    def __init__(self, google_user_id_string):
-        google_user_id = qiki.Number(google_user_id_string)
-        super(GoogleQikiUser, self).__init__(google_user_id)
+    # def __init__(self, google_user_id_string):
+    #     google_user_id = qiki.Number(google_user_id_string)
+    #     super(GoogleQikiUser, self).__init__(google_user_id)
 
-    def lookup(self, google_user_id, callback):
-        """Qiki model for a Google user.
-        :param google_user_id:  a qiki.Number for the google user-id
-        :param callback:   Listing callback, takes txt and num parameters.
+    def lookup(self, google_user_id):
         """
-        namings = self.meta_word.lex.find_words(sbj=self.meta_word.lex, vrb=name_word, obj=self.idn)
+        Qiki model for a Google user.
+        :param google_user_id:  a qiki.Number for the google user-id
+        """
+        idn = self.composite_idn(google_user_id)
+        namings = self.meta_word.lex.find_words(
+            sbj=self.meta_word.lex['lex'],
+            vrb=name_word,
+            obj=idn
+        )
         try:
             latest_naming = namings[0]
         except IndexError:
-            the_name = u"(unknown {})".format(self.idn)
+            the_name = "(unknown {})".format(idn)
         else:
             the_name = latest_naming.txt
-        print(
-            "lookup",
-            "sbj", self.meta_word.lex,
-            "vrb", name_word,
-            "obj", self.idn,
-            "==>", the_name,
-            "<~~", repr(namings),
-        )
-        callback(the_name, qiki.Number(1))
+        # print(
+        #     "lookup",
+        #     "sbj", self.meta_word.lex['lex'],
+        #     "vrb", name_word,
+        #     "obj", idn,
+        #     "==>", the_name,
+        #     "<~~", repr(namings),
+        # )
+        # EXAMPLE:  lookup
+        # sbj lex
+        # vrb name
+        # obj 0q82_A7__8A059E058E6A6308C8B0_1D0B00
+        # ==> Bob Stein <~~ [Word(299)]
+        return the_name, qiki.Number(1)
 
     # def get_id(self):
     #     return self.index
@@ -129,8 +143,8 @@ class GoogleQikiUser(qiki.Listing):
 
 
 class AnonymousQikiUser(qiki.Listing):
-    def lookup(self, ip_address_idn, callback):
-        callback("anonymous " + lex[ip_address_idn].txt, qiki.Number(1))
+    def lookup(self, ip_address_idn):
+        return "anonymous " + lex[ip_address_idn].txt, qiki.Number(1)
 
 
 # TODO:  Combine classes GoogleUser(flask_login.UserMixin, qiki.Listing)
@@ -141,25 +155,30 @@ class AnonymousQikiUser(qiki.Listing):
 # SEE:  http://stackoverflow.com/questions/3768895/how-to-make-a-class-json-serializable
 
 
-listing = lex.noun(u'listing')
+listing = lex.noun('listing')
 # qiki.Listing.install(listing)   # Silly to do this, right?
-google_user = lex.define(listing, u'google user')
-GoogleQikiUser.install(google_user)
-anonymous_user = lex.define(listing, u'anonymous')
-AnonymousQikiUser.install(anonymous_user)
-lex.noun(u'IP address')
+
+google_user = lex.define(listing, 'google user')
+# GoogleQikiUser.install(google_user)
+google_qiki_user = GoogleQikiUser(meta_word=google_user)
+
+anonymous_user = lex.define(listing, 'anonymous')
+# AnonymousQikiUser.install(anonymous_user)
+anonymous_qiki_user = AnonymousQikiUser(meta_word=anonymous_user)
+
+ip_address = lex.noun('IP address')
 
 
 def my_login():
     # XXX:  Objectify
     flask_user = flask_login.current_user
-    assert isinstance(flask_user, flask_login.LocalProxy)
+    assert isinstance(flask_user, werkzeug.local.LocalProxy)   # was flask_login.LocalProxy
     if flask_user.is_authenticated:
-        qiki_user = GoogleQikiUser(flask_user.get_id())
+        qiki_user = google_qiki_user[flask_user.get_id()]
     elif flask_user.is_anonymous:
         print(repr(flask_user), flask.request.remote_addr)
-        anonymous_identifier = lex.define(u'IP address', txt=qiki.Text.decode_if_you_must(flask.request.remote_addr))
-        qiki_user = AnonymousQikiUser(anonymous_identifier.idn)   # (flask.request.remote_addr)
+        anonymous_identifier = lex.define(ip_address, txt=qiki.Text.decode_if_you_must(flask.request.remote_addr))
+        qiki_user = anonymous_qiki_user[anonymous_identifier.idn]   # (flask.request.remote_addr)
     else:
         qiki_user = None
         logger.fatal("User is neither authenticated nor anonymous.")
@@ -199,7 +218,7 @@ def log_link(flask_user, qiki_user):
 def user_loader(google_user_id_string):
     print("user_loader", google_user_id_string)
     try:
-        new_qiki_user = GoogleQikiUser(qiki.Number(google_user_id_string))
+        new_qiki_user = google_qiki_user[qiki.Number(google_user_id_string)]
     except qiki.Listing.NotFound:
         print("\t", "QIKI LISTING NOT FOUND")
         return None
@@ -213,12 +232,12 @@ def user_loader(google_user_id_string):
 def referrer(request):
     this_referrer = request.referrer
     if this_referrer is None:
-        return qiki.Text(u'')
+        return qiki.Text('')
     else:
         return qiki.Text.decode_if_you_must(this_referrer)
 
 
-@flask_app.route(u'/meta/play', methods=('GET', 'POST'))
+@flask_app.route('/meta/play', methods=('GET', 'POST'))
 def play():
     flask_user, qiki_user = my_login()
     # noinspection PyUnresolvedReferences
@@ -256,14 +275,14 @@ def play():
     )
 
 
-@flask_app.route(u'/meta/logout', methods=('GET', 'POST'))
+@flask_app.route('/meta/logout', methods=('GET', 'POST'))
 @flask_login.login_required
 def logout():
     flask_login.logout_user()
     return flask.redirect(flask.url_for('play'))
 
 
-@flask_app.route(u'/meta/login', methods=('GET', 'POST'))
+@flask_app.route('/meta/login', methods=('GET', 'POST'))
 def login():
     response = flask.make_response(" Play ")
     login_result = authomatic_global.login(
@@ -307,13 +326,13 @@ def login():
                 # user = login_result.user
                 login_result.user.update()
                 flask_user = GoogleFlaskUser(login_result.user.id)
-                qiki_user = GoogleQikiUser(login_result.user.id)
+                qiki_user = google_qiki_user[login_result.user.id]
                 # user.authomatic_user = login_result.user
-                # print("\tuser before update", repr(user))
-                # print("\tuser data before update", repr(user.data))
+                # print("\t" "user before update", repr(user))
+                # print("\t" "user data before update", repr(user.data))
                 # user_data_before_update = json.dumps(user.data, indent=4)
-                # print("\tuser  after update", repr(user))
-                # print("\tuser data  after update", repr(user.data))
+                # print("\t" "user  after update", repr(user))
+                # print("\t" "user data  after update", repr(user.data))
                 # user.id = login_result.user.id
                 picture_parts = urllib.parse.urlsplit(login_result.user.picture)
                 picture_dict = urllib.parse.parse_qs(picture_parts.query)
@@ -323,8 +342,8 @@ def login():
                 avatar_url = login_result.user.picture
                 display_name = login_result.user.name
                 print("Logging in", qiki_user.index, qiki_user.idn.qstring())
-                lex[lex](iconify_word, use_already=True)[qiki_user.idn] = avatar_width, avatar_url
-                lex[lex](name_word, use_already=True)[qiki_user.idn] = display_name
+                lex['lex'](iconify_word, use_already=True)[qiki_user.idn] = avatar_width, avatar_url
+                lex['lex'](name_word, use_already=True)[qiki_user.idn] = display_name
                 # print("Picture size", picture_size_string)
                 flask_login.login_user(flask_user)
                 return flask.redirect(flask.url_for('play'))
@@ -366,9 +385,9 @@ def login():
                 # This didn't work
                 # user = authomatic.core.User(login_result.provider)
                 # user.update()
-                # print("\tuser ", repr(user))
-                # print("\temail ", str(user.email))
-                # print("\tpicture ", str(user.picture))
+                # print("\t" "user ", repr(user))
+                # print("\t" "email ", str(user.email))
+                # print("\t" "picture ", str(user.picture))
             else:
                 print("No provider!")
     # else:
@@ -395,12 +414,12 @@ def login():
     #     )
 
 
-@flask_app.route(u'/meta/all words', methods=('GET', 'HEAD'))
+@flask_app.route('/meta/all words', methods=('GET', 'HEAD'))
 def hello_world():
-    this_path = flask.request.url
-    path_word = lex.define(path, this_path)
-    # me(browse)[path_word] = 1, flask.request.referrer
-    me(browse)[path_word] = 1, referrer(flask.request)
+    the_path = flask.request.url
+    word_for_the_path = lex.define(path, the_path)
+    # me(browse)[word_for_the_path] = 1, flask.request.referrer
+    me(browse)[word_for_the_path] = 1, referrer(flask.request)
 
     words = lex.find_words()
     logger.info("Lex has " + str(len(words)) + " words.")
@@ -437,10 +456,10 @@ def hello_world():
     print("rendered")
     return response
 
-    # u"""<p>Hello Worldly world!</p>
+    # """<p>Hello Worldly world!</p>
     # {reports}
     # """.format(
-    #     reports=u"\n".join(reports),
+    #     reports="\n".join(reports),
     # )
 
 
@@ -455,13 +474,23 @@ def hello_world():
     # THANKS:  Static file response, http://stackoverflow.com/a/20648053/673991
 
 
-@flask_app.route(u'/<path:url_suffix>', methods=('GET', 'HEAD'))
+@flask_app.route('/<path:url_suffix>', methods=('GET', 'HEAD'))
+# TODO:  Study HEAD, http://stackoverflow.com/q/22443245/673991
 def answer_qiki(url_suffix):
     flask_user, qiki_user = my_login()
     log_html = log_link(flask_user, qiki_user)
-    this_path = lex.define(path, qiki.Text.decode_if_you_must(url_suffix))
-    qiki_user(question)[this_path] = 1, referrer(flask.request)
-    answers = lex.find_words(vrb=answer, obj=this_path, jbo_vrb=qoolbar.get_verbs(), idn_order='DESC', jbo_order='ASC')
+    word_for_path = lex.define(path, qiki.Text.decode_if_you_must(url_suffix))
+    # TODO:  lex.define(path, url_suffix)
+    qiki_user(question)[word_for_path] = 1, referrer(flask.request)
+    answers = lex.find_words(
+        vrb=answer,
+        obj=word_for_path,
+        jbo_vrb=qoolbar.get_verbs(),
+        idn_ascending=False,
+        jbo_ascending=True,
+    )
+    # TODO:  Alternatives to find_words()?
+    # answers = lex.find(vrb=answer, obj=word_for_path,
     for a in answers:
         a.jbo_json = json_from_jbo(a.jbo)
         pictures = lex.find_words(vrb=iconify_word, obj=a.sbj)
@@ -476,7 +505,7 @@ def answer_qiki(url_suffix):
             author_img = ""
 
         a.author = author_img
-    questions = lex.find_words(vrb=question, obj=this_path)
+    questions = lex.find_words(vrb=question, obj=word_for_path)
     return flask.render_template(
         'answer.html',
         question=url_suffix,
@@ -521,30 +550,30 @@ def native_num(num):
 def ajax():
     flask_user, qiki_user = my_login()
     action = flask.request.form['action']
-    if action == u'answer':
+    if action == 'answer':
         question_path = flask.request.form['question']
         answer_txt = flask.request.form['answer']
         question_word = lex.define(path, question_path)
         qiki_user(answer)[question_word] = 1, answer_txt
-        return valid_response('message', u"Question {q} answer {a}".format(
+        return valid_response('message', "Question {q} answer {a}".format(
             q=question_path,
             a=answer_txt,
         ))
-    elif action == u'qoolbar_list':
+    elif action == 'qoolbar_list':
         return valid_response('verbs', list(qoolbar.get_verb_dicts()))
-    elif action == u'sentence':
+    elif action == 'sentence':
         form = flask.request.form
         try:
             obj_idn = form['obj_idn']
         except KeyError:
-            return invalid_response(u"Missing obj")
+            return invalid_response("Missing obj")
         try:
             vrb_txt = form['vrb_txt']
         except KeyError:
             try:
                 vrb_idn = form['vrb_idn']
             except KeyError:
-                return invalid_response(u"Missing vrb_txt and vrb_idn")
+                return invalid_response("Missing vrb_txt and vrb_idn")
             else:
                 vrb = lex[qiki.Number(vrb_idn)]
         else:
@@ -552,22 +581,34 @@ def ajax():
         try:
             txt = form['txt']
         except KeyError:
-            return invalid_response(u"Missing txt")
+            return invalid_response("Missing txt")
         obj = lex[qiki.Number(obj_idn)]
         num_add_str = form.get('num_add', None)
         num_add = None if num_add_str is None else qiki.Number(int(num_add_str))
         num_str = form.get('num', None)
         num = None if num_str is None else qiki.Number(int(num_str))
-        new_jbo = qiki_user.says(
+        # new_jbo = qiki_user.says(
+        #     vrb=vrb,
+        #     obj=obj,
+        #     num=num,
+        #     num_add=num_add,
+        #     txt=txt,
+        # )
+
+        new_jbo = lex.create_word(
+            sbj=qiki_user,
             vrb=vrb,
             obj=obj,
             num=num,
             num_add=num_add,
             txt=txt,
         )
+
+        # new_jbo = qiki_user(vrb, num=num, num_add=num_add, txt=txt)[obj]
+
         return valid_response('jbo', json_from_jbo([new_jbo]))
         # error_message = (
-        #     u"Got " + ",".join(
+        #     "Got " + ",".join(
         #         [
         #             str(key) + "=" + str(value)
         #             for key, value in flask.request.form.iteritems()
@@ -577,7 +618,7 @@ def ajax():
         # logger.debug(error_message)
         # return invalid_response(error_message)
     else:
-        return invalid_response(u"Unknown action " + action)
+        return invalid_response("Unknown action " + action)
     # logger.info("Action " + action)
 
 
