@@ -26,6 +26,7 @@ import werkzeug.local
 
 import qiki
 import secure.credentials
+import to_be_released.web_html as web_html
 
 
 AJAX_URL = '/meta/ajax'
@@ -62,7 +63,7 @@ iconify_word = lex.noun('iconify')
 name_word = lex.noun('name')
 
 me = lex.define('agent', 'user')  # TODO:  Authentication
-me(iconify_word)[me] = 'http://tool.qiki.info/icon/ghost.png'
+me(iconify_word, use_already=True)[me] = 'http://tool.qiki.info/icon/ghost.png'
 qoolbar = qiki.QoolbarSimple(lex)
 
 GOOGLE_PROVIDER = b'google'
@@ -414,6 +415,92 @@ def login():
     #     )
 
 
+@flask_app.route('/meta/all', methods=('GET', 'HEAD'))
+def meta_all():
+
+    with web_html.WebHTML('html') as html:
+        html(lang='en')
+        with html.head as head:
+            head.title("All in the lex")
+            head.meta(charset='utf-8')
+            head.jquery(JQUERY_VERSION)
+            head.js('//ajax.googleapis.com/ajax/libs/jqueryui/{}/jquery-ui.min.js'.format(JQUERYUI_VERSION))
+            head.js(flask.url_for('static', filename='qoolbar.js'))
+            head.js(flask.url_for('static', filename='jquery.hotkeys.js'))
+            head.js('//cdn.jsdelivr.net/jquery.cookie/1.4.1/jquery.cookie.js')
+            head.link(rel='shortcut icon', href=flask.url_for('static', filename='favicon.ico'))
+            head.style('''
+                .word img {
+                    width: 1em;
+                    height: 1em;
+                }
+            \n''')
+        words = lex.find_words()
+
+        all_subjects = {word.sbj for word in words}
+
+        def latest_iconifier_or_none(s):
+            iconifiers = lex.find_words(obj=s, jbo_vrb=iconify_word)
+            try:
+                return iconifiers[0]
+            except IndexError:
+                return None
+
+        subject_icons_nones = {s: latest_iconifier_or_none(s) for s in all_subjects}
+        subject_icons = {s: i for s, i in subject_icons_nones.items() if i is not None}
+
+        def show_txt(element, w, **kwargs):
+            span = element.span(**kwargs)
+            w_txt = safe_txt(w)
+            if w in subject_icons:
+                span.img(src=subject_icons[w].txt, title=w_txt)
+            else:
+                span(w_txt)
+            return span
+
+        with html.body as body:
+            body.p("Hello Whorled!")
+            with body.ol as ol:
+                for word in words:
+                    with ol.li(value=str(int(word.idn)), title="idn " + word.idn.qstring()) as li:
+                        show_txt(li, word.sbj, class_='word sbj')
+                        li.span(": ")
+                        show_txt(li, word.vrb, class_='word vrb')
+                        li.span(" ")
+                        show_txt(li, word.obj, class_='word obj')
+                        if word.txt != '':
+                            li.span(" ")
+                            li.span("''{}''".format(word.txt), class_='word txt')
+                        li.span(" ")
+                        show_whn(li, word.whn, class_='word whn')
+
+            body.p(repr(subject_icons))
+
+    return "<!doctype html>" + str(html)
+
+
+def show_whn(element, whn, **kwargs):
+
+    def div(n, d):
+        return str((n + d//2) // d)
+
+    seconds_ago = int(lex.now() - whn)
+    if seconds_ago <=                   120:
+        ago = str(seconds_ago)               + "s"
+    elif seconds_ago <=              120*60:
+        ago = div(seconds_ago,           60) + "m"
+    elif seconds_ago <=            48*60*60:
+        ago = div(seconds_ago,        60*60) + "h"
+    elif seconds_ago <=         90*24*60*60:
+        ago = div(seconds_ago,     24*60*60) + "d"
+    elif seconds_ago <=      24*30*24*60*60:
+        ago = div(seconds_ago,  30*24*60*60) + "M"
+    else:
+        ago = div(seconds_ago, 365*24*60*60) + "Y"
+
+    return element.span(ago, **kwargs)
+
+
 @flask_app.route('/meta/all words', methods=('GET', 'HEAD'))
 def hello_world():
     the_path = flask.request.url
@@ -424,14 +511,6 @@ def hello_world():
     words = lex.find_words()
     logger.info("Lex has " + str(len(words)) + " words.")
     reports = []
-
-    def safe_txt(w):
-        try:
-            return w.txt
-        except qiki.Word.NotAWord:
-            return "[non-word {}]".format(w.idn.qstring())
-        except qiki.Listing.NotAListing:
-            return "[non-listing {}]".format(w.idn.qstring())
 
     for word in words:
         reports.append(dict(
@@ -461,6 +540,15 @@ def hello_world():
     # """.format(
     #     reports="\n".join(reports),
     # )
+
+
+def safe_txt(w):
+    try:
+        return w.txt
+    except qiki.Word.NotAWord:
+        return "[non-word {}]".format(w.idn.qstring())
+    except qiki.Listing.NotAListing:
+        return "[non-listing {}]".format(w.idn.qstring())
 
 
 # To make another static directory...
