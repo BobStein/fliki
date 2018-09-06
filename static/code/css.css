@@ -1,0 +1,32 @@
+/* css.css */
+
+.word img {
+    width: 1em;
+    height: 1em;
+}
+
+.whn {
+    height: 1.0em;
+    width: 1.0em;
+    padding: 0 0.25em 0 0.2em;
+    border: 0.05em solid #888888;
+    color: #888888;
+    font-family: "Arial Narrow", sans-serif;
+    font-size: 0.7em;
+    background: white;
+    text-align: center;
+
+    margin-left: 0.25em;
+}
+.whn.seconds,
+.whn.minutes,
+.whn.hours {
+    border-radius: 0.5em;
+    border-bottom-width: 0.2em;  /* like a clock face */
+}
+
+.whn.days,
+.whn.months,
+.whn.years {
+    border-top-width: 0.2em;   /* like a day calendar page */
+}

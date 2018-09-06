@@ -29,13 +29,13 @@ $(document).ready(function() {
                 --><span title="word sbj {{ report.s_idn }}"><!--
                     -->{{ report.s }}<!--
                 --></span><!--
-                -->-<!--
+                --> - <!--
                 --><span title="word vrb {{ report.v_idn }}"><!--
                     -->{{ report.v }}{{ report.xn | safe }}<!--
                 --></span><!--
-                -->-<!--
+                --> - <!--
                 --><span title="word obj {{ report.o_idn }}"><!--
-                    -->{{ report.o }}
+                    -->{{ report.o }}<!--
                 --></span>
                 {% if report.t != '' %}
                     ''{{ report.t }}''

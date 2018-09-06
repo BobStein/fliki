@@ -11,6 +11,7 @@ from __future__ import unicode_literals
 import json
 import logging
 import sys
+import time
 
 import authomatic
 import authomatic.adapters
@@ -18,8 +19,7 @@ import authomatic.core
 import authomatic.providers.oauth2
 import flask   # , send_from_directory
 import flask_login
-# import flask.ext.login -- ExtDeprecationWarning: Importing flask.ext.login is deprecated, use flask_login instead.
-# SEE:  http://flask.pocoo.org/docs/0.11/extensiondev/#ext-import-transition
+import six
 # noinspection PyUnresolvedReferences
 import six.moves.urllib as urllib
 import werkzeug.local
@@ -44,12 +44,11 @@ formatter = logging.Formatter('%(asc' 'time)s - %(name)s - %(level''name)s - %(m
 log_handler.setFormatter(formatter)
 logger.addHandler(log_handler)
 # THANKS:  Log to stdout, http://stackoverflow.com/a/14058475/673991
-# logger.debug("Hi ho")
 
 flask_app = flask.Flask(
     __name__,
     static_url_path='/meta/static',
-    static_folder='../qiki-javascript/'
+    static_folder='static'
 )
 flask_app.secret_key = secure.credentials.flask_secret_key
 
@@ -74,15 +73,15 @@ authomatic_global = authomatic.Authomatic(
             b'consumer_key': secure.credentials.google_client_id,
             b'consumer_secret': secure.credentials.google_client_secret,
             b'scope': authomatic.providers.oauth2.Google.user_info_scope + [b'https://gdata.youtube.com'],
-            b'id': 42,   # See exception in core.py Credentials.serialize() ~line 810:
-            # "To serialize credentials you need to specify a"
-            # "unique integer under the "id" key in the config"
-            # "for each provider!"
-            # This happened when calling login_result.user.to_dict()
+            b'id': 42,
+            # NOTE:  See exception in core.py Credentials.serialize() ~line 810:
+            #            "To serialize credentials you need to specify a"
+            #            "unique integer under the "id" key in the config"
+            #            "for each provider!"
+            #        This happened when calling login_result.user.to_dict()
         }
     },
     secure.credentials.authomatic_secret_key,
-    # logger=logger,   # Gets pretty verbose.
 )
 STALE_LOGIN_ERROR = 'Unable to retrieve stored state!'
 
@@ -97,16 +96,16 @@ class GoogleFlaskUser(flask_login.UserMixin):
 
 
 class GoogleQikiUser(qiki.Listing):
-    # def __init__(self, google_user_id_string):
-    #     google_user_id = qiki.Number(google_user_id_string)
-    #     super(GoogleQikiUser, self).__init__(google_user_id)
 
     def lookup(self, google_user_id):
         """
         Qiki model for a Google user.
+
         :param google_user_id:  a qiki.Number for the google user-id
         """
         idn = self.composite_idn(google_user_id)
+        # EXAMPLE:  0q82_A7__8A059E058E6A6308C8B0_1D0B00
+
         namings = self.meta_word.lex.find_words(
             sbj=self.meta_word.lex['lex'],
             vrb=name_word,
@@ -118,29 +117,7 @@ class GoogleQikiUser(qiki.Listing):
             the_name = "(unknown {})".format(idn)
         else:
             the_name = latest_naming.txt
-        # print(
-        #     "lookup",
-        #     "sbj", self.meta_word.lex['lex'],
-        #     "vrb", name_word,
-        #     "obj", idn,
-        #     "==>", the_name,
-        #     "<~~", repr(namings),
-        # )
-        # EXAMPLE:  lookup
-        # sbj lex
-        # vrb name
-        # obj 0q82_A7__8A059E058E6A6308C8B0_1D0B00
-        # ==> Bob Stein <~~ [Word(299)]
         return the_name, qiki.Number(1)
-
-    # def get_id(self):
-    #     return self.index
-    #
-    # def get_name(self):
-    #     return self.txt
-    #
-    # def get_provider_user_id(self):
-    #     return six.text_type(int(self.idn.get_suffix(qiki.Number.Suffix.TYPE_LISTING).payload_number()))
 
 
 class AnonymousQikiUser(qiki.Listing):
@@ -148,23 +125,20 @@ class AnonymousQikiUser(qiki.Listing):
         return "anonymous " + lex[ip_address_idn].txt, qiki.Number(1)
 
 
-# TODO:  Combine classes GoogleUser(flask_login.UserMixin, qiki.Listing)
-# But this causes JSON errors because json can't encode qiki.Number.
-# But there are so many layers to the serialization for sessions there's probably a way.
-# Never found a way to to that in qiki.Number only, darn.
-# All the methods have to be fudged in the json.dumps() caller(s).  Yuck.
+# TODO:  Combine classes, e.g. GoogleUser(flask_login.UserMixin, qiki.Listing)
+#        But this causes JSON errors because json can't encode qiki.Number.
+#        But there are so many layers to the serialization for sessions there's probably a way.
+#        Never found a way to do that in qiki.Number only, darn.
+#        All the methods have to be fudged in the json.dumps() caller(s).  Yuck.
 # SEE:  http://stackoverflow.com/questions/3768895/how-to-make-a-class-json-serializable
 
 
 listing = lex.noun('listing')
-# qiki.Listing.install(listing)   # Silly to do this, right?
 
 google_user = lex.define(listing, 'google user')
-# GoogleQikiUser.install(google_user)
 google_qiki_user = GoogleQikiUser(meta_word=google_user)
 
 anonymous_user = lex.define(listing, 'anonymous')
-# AnonymousQikiUser.install(anonymous_user)
 anonymous_qiki_user = AnonymousQikiUser(meta_word=anonymous_user)
 
 ip_address = lex.noun('IP address')
@@ -238,44 +212,6 @@ def referrer(request):
         return qiki.Text.decode_if_you_must(this_referrer)
 
 
-@flask_app.route('/meta/play', methods=('GET', 'POST'))
-def play():
-    flask_user, qiki_user = my_login()
-    # noinspection PyUnresolvedReferences
-    qiki_user_txt = qiki_user.txt
-    if flask_user.is_authenticated:
-        some_html = """
-            <a href='{logout_url}'>logout</a>
-            as {user_name}
-            (local id {user_id})
-            (provider's id {provider_user_id})
-        """.format(
-            logout_url=flask.url_for('logout'),
-            user_id=qiki_user.idn.qstring(),
-            user_name=qiki_user_txt,
-            provider_user_id=qiki_user.index,
-        )
-    else:
-        some_html = """
-            <a href='{login_url}'>login
-                from {where}</a>
-        """.format(
-            login_url=flask.url_for('login'),
-            where=qiki_user_txt,
-        )
-    return """
-        <p>
-            {some_html}
-        </p>
-        <p>
-            {log_link}
-        </p>
-    """.format(
-        some_html=some_html,
-        log_link=log_link(flask_user, qiki_user)
-    )
-
-
 @flask_app.route('/meta/logout', methods=('GET', 'POST'))
 @flask_login.login_required
 def logout():
@@ -289,25 +225,24 @@ def login():
     login_result = authomatic_global.login(
         authomatic.adapters.WerkzeugAdapter(flask.request, response),
         GOOGLE_PROVIDER,
-        # The following don't help persist the logged-in condition, duh,
-        # they just rejigger the brief, ad hoc session supporting the banter with the provider.
-        # session=flask.session,
-        # session_saver=lambda: flask_app.save_session(flask.session, response),
+        # NOTE:  The following don't help persist the logged-in condition, duh,
+        #        they just rejigger the brief, ad hoc session supporting the banter with the provider:
+        #            session=flask.session,
+        #            session_saver=lambda: flask_app.save_session(flask.session, response),
     )
     # print(repr(login_result))
     if login_result:
         if hasattr(login_result, 'error') and login_result.error is not None:
             print("Login error:", str(login_result.error))
-            # Example login_result.error:
-            #
-            # Failed to obtain OAuth 2.0 access token from https://accounts.google.com/o/oauth2/token!
-            # HTTP status: 400, message: {
-            #   "error" : "invalid_grant",
-            #   "error_description" : "Invalid code."
-            # }.
+            # EXAMPLE:
+            #     Failed to obtain OAuth 2.0 access token from https://accounts.google.com/o/oauth2/token!
+            #     HTTP status: 400, message: {
+            #       "error" : "invalid_grant",
+            #       "error_description" : "Invalid code."
+            #     }.
             # e.g. after a partial login crashes, trying to resume with a URL such as:
             # http://localhost.visibone.com:5000/meta/login?state=f45ad ... 4OKQ#
-            #
+
             url_has_question_mark_parameters = flask.request.path != flask.request.full_path
             is_stale = str(login_result.error) == STALE_LOGIN_ERROR
             if is_stale and url_has_question_mark_parameters:
@@ -324,20 +259,12 @@ def login():
                 response.set_data("Whoops")
         else:
             if hasattr(login_result, 'user') and login_result.user is not None:
-                # user = login_result.user
                 login_result.user.update()
                 flask_user = GoogleFlaskUser(login_result.user.id)
                 qiki_user = google_qiki_user[login_result.user.id]
-                # user.authomatic_user = login_result.user
-                # print("\t" "user before update", repr(user))
-                # print("\t" "user data before update", repr(user.data))
-                # user_data_before_update = json.dumps(user.data, indent=4)
-                # print("\t" "user  after update", repr(user))
-                # print("\t" "user data  after update", repr(user.data))
-                # user.id = login_result.user.id
                 picture_parts = urllib.parse.urlsplit(login_result.user.picture)
                 picture_dict = urllib.parse.parse_qs(picture_parts.query)
-                # THANKS:  For parsing URL query by name, http://stackoverflow.com/a/21584580/673991
+                # THANKS:  Parse URL query, http://stackoverflow.com/a/21584580/673991
                 picture_size_string = picture_dict.get('sz', ['0'])[0]
                 avatar_width = qiki.Number(picture_size_string)   # width?  height?  size??
                 avatar_url = login_result.user.picture
@@ -345,74 +272,20 @@ def login():
                 print("Logging in", qiki_user.index, qiki_user.idn.qstring())
                 lex['lex'](iconify_word, use_already=True)[qiki_user.idn] = avatar_width, avatar_url
                 lex['lex'](name_word, use_already=True)[qiki_user.idn] = display_name
-                # print("Picture size", picture_size_string)
                 flask_login.login_user(flask_user)
                 return flask.redirect(flask.url_for('play'))
-
-                # response.set_data(
-                #     """
-                #         <p>
-                #             Hello
-                #             <img src='{url}'>
-                #             {name} of {provider}.
-                #             Your id is {id}.
-                #         </p>
-                #
-                #         <!-- pre>{user_dictionary}</pre -->
-                #         <!-- pre>{provider_dictionary}</pre -->
-                #         <!-- pre>{config_dictionary}</pre -->
-                #     """.format(
-                #         name=user.name,
-                #         provider=login_result.provider.name,
-                #         url=user.picture,
-                #         id=qiki.Number(user.id).qstring(),
-                #         user_dictionary=json.dumps(user.to_dict(), indent=4),
-                #         # user_dictionary=user_data_before_update,
-                #         provider_dictionary=json.dumps(login_result.provider.to_dict(), indent=4),
-                #         config_dictionary="\n".join(config_generator(flask_app.config)),
-                #     )
-                # )
-                # HACK:  Remove all this radioactive information -- HTML comments are not hid enough.
             else:
                 print("No user!")
             if login_result.provider:
                 print("Provider:", repr(login_result.provider))
 
-                # if login_result.provider.User:
-                #     print(repr(login_result.provider.User))
-                # else:
-                #     print("no provider.User")
-
-                # This didn't work
-                # user = authomatic.core.User(login_result.provider)
-                # user.update()
-                # print("\t" "user ", repr(user))
-                # print("\t" "email ", str(user.email))
-                # print("\t" "picture ", str(user.picture))
-            else:
-                print("No provider!")
-    # else:
-    #     print("login processing...")
-
     return response
 
 
-# def config_generator(config):
-#
-#     return {"%s = %s" % (str(k), repr(v)) for k, v in config.iteritems()}
-
-    # return {
-    #     "{k} = {v}".format(
-    #         k=str(k),
-    #         v=repr(v)
-    #     ) for k, v in config.iteritems()
-    # }
-
-    # for k, v in config.iteritems():
-    #     yield "{k} = {v}".format(
-    #         k=str(k),
-    #         v=repr(v)
-    #     )
+@flask_app.route('/module/qiki-javascript/<path:filename>')
+def module_qiki_javascript(filename):
+    return flask.send_from_directory('../qiki-javascript', filename)
+    # THANKS:  Static file response, http://stackoverflow.com/a/20648053/673991
 
 
 @flask_app.route('/meta/all', methods=('GET', 'HEAD'))
@@ -425,16 +298,14 @@ def meta_all():
             head.meta(charset='utf-8')
             head.jquery(JQUERY_VERSION)
             head.js('//ajax.googleapis.com/ajax/libs/jqueryui/{}/jquery-ui.min.js'.format(JQUERYUI_VERSION))
-            head.js(flask.url_for('static', filename='qoolbar.js'))
-            head.js(flask.url_for('static', filename='jquery.hotkeys.js'))
+            head.js(flask.url_for('module_qiki_javascript', filename='qoolbar.js'))
+            head.js(flask.url_for('module_qiki_javascript', filename='jquery.hotkeys.js'))
             head.js('//cdn.jsdelivr.net/jquery.cookie/1.4.1/jquery.cookie.js')
-            head.link(rel='shortcut icon', href=flask.url_for('static', filename='favicon.ico'))
-            head.style('''
-                .word img {
-                    width: 1em;
-                    height: 1em;
-                }
-            \n''')
+            head.link(
+                rel='shortcut icon',
+                href=flask.url_for('module_qiki_javascript', filename='favicon.ico')
+            )
+            head.css(flask.url_for('static', filename='code/css.css'))
         words = lex.find_words()
 
         all_subjects = {word.sbj for word in words}
@@ -449,34 +320,45 @@ def meta_all():
         subject_icons_nones = {s: latest_iconifier_or_none(s) for s in all_subjects}
         subject_icons = {s: i for s, i in subject_icons_nones.items() if i is not None}
 
-        def show_txt(element, w, **kwargs):
-            span = element.span(**kwargs)
-            w_txt = safe_txt(w)
-            if w in subject_icons:
-                span.img(src=subject_icons[w].txt, title=w_txt)
-            else:
-                span(w_txt)
-            return span
+        def show_sub_word(element, w, **kwargs):
+            with element.span(**kwargs) as span_sub_word:
+                w_txt = safe_txt(w)
+                if w in subject_icons:
+                    span_sub_word.img(src=subject_icons[w].txt, title=w_txt)
+                else:
+                    span_sub_word(w_txt)
+                return span_sub_word
 
         with html.body as body:
             body.p("Hello Whorled!")
             with body.ol as ol:
                 for word in words:
                     with ol.li(value=str(int(word.idn)), title="idn " + word.idn.qstring()) as li:
-                        show_txt(li, word.sbj, class_='word sbj')
+                        show_sub_word(li, word.sbj, class_='word sbj')
                         li.span(": ")
-                        show_txt(li, word.vrb, class_='word vrb')
+                        show_sub_word(li, word.vrb, class_='word vrb')
                         li.span(" ")
-                        show_txt(li, word.obj, class_='word obj')
+                        show_sub_word(li, word.obj, class_='word obj')
+                        if word.num != qiki.Number(1):
+                            with li.span(class_='word num') as span:
+                                span.text(" ")
+                                span.raw_text("&times;")
+                                span.text(render_num(word.num))
                         if word.txt != '':
-                            li.span(" ")
-                            li.span("''{}''".format(word.txt), class_='word txt')
+                            with li.span(class_='word txt') as span:
+                                span.text(" ")
+                                span.raw_text("&ldquo;")
+                                span.text(word.txt)
+                                span.raw_text("&rdquo;")
                         li.span(" ")
                         show_whn(li, word.whn, class_='word whn')
 
             body.p(repr(subject_icons))
 
-    return "<!doctype html>" + str(html)
+    return html.doctype_plus_html()
+
+
+SECONDS_PER_WEEK = 7*24*60*60
 
 
 def show_whn(element, whn, **kwargs):
@@ -484,29 +366,53 @@ def show_whn(element, whn, **kwargs):
     def div(n, d):
         return str((n + d//2) // d)
 
+    def fdiv(n, d):
+        return "{:.1f}".format(n/d)
+
+    class_ = kwargs.pop(b'class_', '')
     seconds_ago = int(lex.now() - whn)
     if seconds_ago <=                   120:
-        ago = str(seconds_ago)               + "s"
+        ago_short = str(seconds_ago)               + "s"
+        ago_long  = str(seconds_ago)               + " seconds ago"
+        additional_class = 'seconds'
     elif seconds_ago <=              120*60:
-        ago = div(seconds_ago,           60) + "m"
+        ago_short = div(seconds_ago,           60) + "m"
+        ago_long = fdiv(seconds_ago,           60) + " minutes ago"
+        additional_class = 'minutes'
     elif seconds_ago <=            48*60*60:
-        ago = div(seconds_ago,        60*60) + "h"
+        ago_short = div(seconds_ago,        60*60) + "h"
+        ago_long = fdiv(seconds_ago,        60*60) + " hours ago"
+        additional_class = 'hours'
     elif seconds_ago <=         90*24*60*60:
-        ago = div(seconds_ago,     24*60*60) + "d"
+        ago_short = div(seconds_ago,     24*60*60) + "d"
+        ago_long = fdiv(seconds_ago,     24*60*60) + " days ago"
+        additional_class = 'days'
     elif seconds_ago <=      24*30*24*60*60:
-        ago = div(seconds_ago,  30*24*60*60) + "M"
+        ago_short = div(seconds_ago,  30*24*60*60) + "M"
+        ago_long = fdiv(seconds_ago,  30*24*60*60) + " months ago"
+        additional_class = 'months'
     else:
-        ago = div(seconds_ago, 365*24*60*60) + "Y"
+        ago_short = div(seconds_ago, 365*24*60*60) + "Y"
+        ago_long = fdiv(seconds_ago, 365*24*60*60) + " years ago"
+        additional_class = 'years'
 
-    return element.span(ago, **kwargs)
+    class_ += ' ' + additional_class
+    time_of_it = time.localtime(int(whn))
+    time_date = time.strftime(b"%H:%M:%S %d-%b-%Y", time_of_it)
+    # TODO:  show day of week if within a week
+    if seconds_ago <= SECONDS_PER_WEEK:
+        time_date += time.strftime(b", %a", time_of_it)
+    title = "{ago_long}: {time_date}".format(ago_long=ago_long, time_date=time_date)
+    return element.span(ago_short, title=title, class_=class_, **kwargs)
 
 
-@flask_app.route('/meta/all words', methods=('GET', 'HEAD'))
+@flask_app.route('/meta/all words', methods=('GET', 'HEAD'))   # obsolete
 def hello_world():
-    the_path = flask.request.url
-    word_for_the_path = lex.define(path, the_path)
-    # me(browse)[word_for_the_path] = 1, flask.request.referrer
-    me(browse)[word_for_the_path] = 1, referrer(flask.request)
+    # NOTE:  The following logs itself, but that gets to be annoying:
+    #            the_path = flask.request.url
+    #            word_for_the_path = lex.define(path, the_path)
+    #            me(browse)[word_for_the_path] = 1, referrer(flask.request)
+    #        Or is it the viewing code's responsibility to filter out tactical cruft?
 
     words = lex.find_words()
     logger.info("Lex has " + str(len(words)) + " words.")
@@ -535,12 +441,6 @@ def hello_world():
     print("rendered")
     return response
 
-    # """<p>Hello Worldly world!</p>
-    # {reports}
-    # """.format(
-    #     reports="\n".join(reports),
-    # )
-
 
 def safe_txt(w):
     try:
@@ -551,23 +451,15 @@ def safe_txt(w):
         return "[non-listing {}]".format(w.idn.qstring())
 
 
-# To make another static directory...
-# @flask_app.route('/static/<path:path>')
-# def send_static(path):
-#     pass
-    # print("Hello again.")
-    # print(path, file=sys.stderr)
-    # logger.info("Static " + path)
-    # # return send_from_directory('static', path)
-    # THANKS:  Static file response, http://stackoverflow.com/a/20648053/673991
-
-
 @flask_app.route('/<path:url_suffix>', methods=('GET', 'HEAD'))
 # TODO:  Study HEAD, http://stackoverflow.com/q/22443245/673991
 def answer_qiki(url_suffix):
     flask_user, qiki_user = my_login()
     log_html = log_link(flask_user, qiki_user)
     word_for_path = lex.define(path, qiki.Text.decode_if_you_must(url_suffix))
+    if str(word_for_path) == 'favicon.ico':
+        return module_qiki_javascript(filename=six.text_type(word_for_path))
+        # SEE:  favicon.ico in root, https://realfavicongenerator.net/faq#why_icons_in_root
     # TODO:  lex.define(path, url_suffix)
     qiki_user(question)[word_for_path] = 1, referrer(flask.request)
     answers = lex.find_words(
@@ -578,7 +470,7 @@ def answer_qiki(url_suffix):
         jbo_ascending=True,
     )
     # TODO:  Alternatives to find_words()?
-    # answers = lex.find(vrb=answer, obj=word_for_path,
+    #        answers = lex.find(vrb=answer, obj=word_for_path,
     for a in answers:
         a.jbo_json = json_from_jbo(a.jbo)
         pictures = lex.find_words(vrb=iconify_word, obj=a.sbj)
@@ -613,7 +505,9 @@ def json_from_jbo(jbo):
             idn=word.idn.qstring(),
             sbj=word.sbj.idn.qstring(),
             vrb=word.vrb.idn.qstring(),
-            # obj=word.obj.idn.qstring(),   # Not needed; jbo.obj is itself; a.jbo[i].obj == a
+            # NOTE:  The following line is not needed...
+            #            obj=word.obj.idn.qstring(),
+            #        ...because jbo.obj is itself; a.jbo[i].obj == a
             num=native_num(word.num),
             txt=word.txt
         ))
@@ -675,14 +569,6 @@ def ajax():
         num_add = None if num_add_str is None else qiki.Number(int(num_add_str))
         num_str = form.get('num', None)
         num = None if num_str is None else qiki.Number(int(num_str))
-        # new_jbo = qiki_user.says(
-        #     vrb=vrb,
-        #     obj=obj,
-        #     num=num,
-        #     num_add=num_add,
-        #     txt=txt,
-        # )
-
         new_jbo = lex.create_word(
             sbj=qiki_user,
             vrb=vrb,
@@ -691,23 +577,9 @@ def ajax():
             num_add=num_add,
             txt=txt,
         )
-
-        # new_jbo = qiki_user(vrb, num=num, num_add=num_add, txt=txt)[obj]
-
         return valid_response('jbo', json_from_jbo([new_jbo]))
-        # error_message = (
-        #     "Got " + ",".join(
-        #         [
-        #             str(key) + "=" + str(value)
-        #             for key, value in flask.request.form.iteritems()
-        #         ]
-        #     )
-        # )
-        # logger.debug(error_message)
-        # return invalid_response(error_message)
     else:
         return invalid_response("Unknown action " + action)
-    # logger.info("Action " + action)
 
 
 def valid_response(name, value):
@@ -715,38 +587,13 @@ def valid_response(name, value):
         ('is_valid', True),
         (name, value)
     ]))
-    # response_dict = dict(
-    #     is_valid=True,
-    # )
-    # response_dict[name] = value
-    # return json.dumps(response_dict)
 
 
 def invalid_response(error_message):
-    return json.dumps(dict([
-        ('is_valid', False),
-        ('error_message', error_message)
-    ]))
-    # return json.dumps(dict(
-    #     is_valid=False,
-    #     error_message=error_message,
-    # ))
-
-
-# def unicode_from_str(s):
-#     """
-#     Converts native string to unicode.
-#
-#     Python 2:  Assume str is utf-8, decode to unicode type.
-#     Python 3:  Pass native unicode through.
-#
-#     Should be in six.py.
-#     :param s:  str
-#     """
-#     if six.PY2:
-#         return s.decode('utf-8')
-#     else:
-#         return s
+    return json.dumps(dict(
+        is_valid=False,
+        error_message=error_message,
+    ))
 
 
 if __name__ == '__main__':
