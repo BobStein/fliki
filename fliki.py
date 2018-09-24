@@ -10,6 +10,8 @@ from __future__ import print_function
 from __future__ import unicode_literals
 import json
 import logging
+import os
+import re
 import sys
 import time
 
@@ -163,7 +165,13 @@ def my_login():
 
 
 def log_link(flask_user, qiki_user):
-    # noinspection PyUnresolvedReferences
+    """
+    Log in or out link.
+
+    :param flask_user:
+    :param qiki_user:
+    :return:
+    """
     qiki_user_txt = qiki_user.txt
     if flask_user.is_authenticated:
         return (
@@ -283,53 +291,125 @@ def login():
 
 
 @flask_app.route('/module/qiki-javascript/<path:filename>')
-def module_qiki_javascript(filename):
-    return flask.send_from_directory('../qiki-javascript', filename)
-    # THANKS:  Static file response, http://stackoverflow.com/a/20648053/673991
+def qiki_javascript(filename):
+    return flask.send_file(os_path_qiki_javascript(filename))
+
+
+SCRIPT_DIRECTORY = os.path.dirname(os.path.realpath(__file__))   # e.g. '/var/www/flask'
+
+
+def os_path_static(relative_url):
+    return os.path.join(SCRIPT_DIRECTORY, flask_app.static_folder, relative_url)
+
+
+def os_path_qiki_javascript(relative_url):
+    return os.path.join(SCRIPT_DIRECTORY, '..', 'qiki-javascript', relative_url)
+    # NOTE:  Assume the fliki and qiki-javascript repos are in sibling directories.
+
+
+class Parse(object):
+
+    def __init__(self, original_string):
+        self.remains = original_string
+
+    def remove_prefix(self, prefix):
+        if self.remains.startswith(prefix):
+            self.remains = self.remains[len(prefix) : ]
+            return True
+        return False
+
+    def remove_re(self, pattern):
+        if re.search(pattern, self.remains):
+            self.remains = re.sub(pattern, '', self.remains)
+            return True
+        return False
+
+    def __str__(self):
+        return self.remains
+
+
+class FlikiHTML(web_html.WebHTML):
+    """Custom HTML for the fliki project."""
+
+    def __init__(self, name=None, **kwargs):
+        super(FlikiHTML, self).__init__(name, **kwargs)
+        if name == 'html':
+            self(lang='en')
+
+    def header(self, title):
+        with self.head() as head:
+            head.title(title)
+            head.meta(charset='utf-8')
+            head.link(
+                rel='shortcut icon',
+                href=flask.url_for('qiki_javascript', filename='favicon.ico')
+            )
+            head.css_stamped(flask.url_for('static', filename='code/css.css'))
+            return head
+
+    def footer(self):
+        self.jquery(JQUERY_VERSION)
+        self.js('//ajax.googleapis.com/ajax/libs/jqueryui/{}/jquery-ui.min.js'.format(JQUERYUI_VERSION))
+        self.js('//cdn.jsdelivr.net/jquery.cookie/1.4.1/jquery.cookie.js')
+        self.js_stamped(flask.url_for('qiki_javascript', filename='jquery.hotkeys.js'))
+        self.js_stamped(flask.url_for('qiki_javascript', filename='qoolbar.js'))
+
+    @classmethod
+    def os_path_from_url(cls, url):
+        static_prefix = flask.url_for('static', filename='')
+        qiki_javascript_prefix = flask.url_for('qiki_javascript', filename='')
+
+        url_parse = Parse(url)
+        if url_parse.remove_prefix(static_prefix):
+            return os_path_static(url_parse.remains)
+        elif url_parse.remove_prefix(qiki_javascript_prefix):
+            return os_path_qiki_javascript(url_parse.remains)
+        else:
+            raise RuntimeError("Unrecognized url " + url)
+        #
+        # if url.startswith(static_prefix):
+        #     return os_path_static(url[len(static_prefix) : ])
+        # elif url.startswith(qiki_javascript_prefix):
+        #     return os_path_qiki_javascript(url[len(qiki_javascript_prefix) : ])
+        # else:
+        #     raise RuntimeError("Unrecognized url " + url)
+
+
+@flask_app.template_filter('cache_bust')
+def cache_bust(s):
+    return FlikiHTML.url_stamp(s)
 
 
 @flask_app.route('/meta/all', methods=('GET', 'HEAD'))
 def meta_all():
 
-    with web_html.WebHTML('html') as html:
-        html(lang='en')
-        with html.head as head:
-            head.title("All in the lex")
-            head.meta(charset='utf-8')
-            head.jquery(JQUERY_VERSION)
-            head.js('//ajax.googleapis.com/ajax/libs/jqueryui/{}/jquery-ui.min.js'.format(JQUERYUI_VERSION))
-            head.js(flask.url_for('module_qiki_javascript', filename='qoolbar.js'))
-            head.js(flask.url_for('module_qiki_javascript', filename='jquery.hotkeys.js'))
-            head.js('//cdn.jsdelivr.net/jquery.cookie/1.4.1/jquery.cookie.js')
-            head.link(
-                rel='shortcut icon',
-                href=flask.url_for('module_qiki_javascript', filename='favicon.ico')
-            )
-            head.css(flask.url_for('static', filename='code/css.css'))
-        words = lex.find_words()
+    with FlikiHTML('html') as html:
+        html.header("Lex all")
 
-        all_subjects = {word.sbj for word in words}
+        with html.body() as body:
 
-        def latest_iconifier_or_none(s):
-            iconifiers = lex.find_words(obj=s, jbo_vrb=iconify_word)
-            try:
-                return iconifiers[0]
-            except IndexError:
-                return None
+            words = lex.find_words()
+            all_subjects = {word.sbj for word in words}
 
-        subject_icons_nones = {s: latest_iconifier_or_none(s) for s in all_subjects}
-        subject_icons = {s: i for s, i in subject_icons_nones.items() if i is not None}
+            def latest_iconifier_or_none(s):
+                iconifiers = lex.find_words(obj=s, jbo_vrb=iconify_word)
+                try:
+                    return iconifiers[0]
+                except IndexError:
+                    return None
 
-        def show_sub_word(element, w, **kwargs):
-            with element.span(**kwargs) as span_sub_word:
-                w_txt = safe_txt(w)
-                if w in subject_icons:
-                    span_sub_word.img(src=subject_icons[w].txt, title=w_txt)
-                else:
-                    span_sub_word(w_txt)
-                return span_sub_word
+            subject_icons_nones = {s: latest_iconifier_or_none(s) for s in all_subjects}
+            subject_icons = {s: i for s, i in subject_icons_nones.items() if i is not None}
 
-        with html.body as body:
+            def show_sub_word(element, w, **kwargs):
+                with element.span(**kwargs) as span_sub_word:
+                    w_txt = safe_txt(w)
+                    if w in subject_icons:
+                        span_sub_word.img(src=subject_icons[w].txt, title=w_txt)
+                    else:
+                        span_sub_word(w_txt)
+                    return span_sub_word
+
             body.p("Hello Whorled!")
             with body.ol as ol:
                 for word in words:
@@ -354,6 +434,8 @@ def meta_all():
                         show_whn(li, word.whn, class_='word whn')
 
             body.p(repr(subject_icons))
+
+            body.footer()
 
     return html.doctype_plus_html()
 
@@ -406,8 +488,8 @@ def show_whn(element, whn, **kwargs):
     return element.span(ago_short, title=title, class_=class_, **kwargs)
 
 
-@flask_app.route('/meta/all words', methods=('GET', 'HEAD'))   # obsolete
-def hello_world():
+@flask_app.route('/meta/all words', methods=('GET', 'HEAD'))   # the older, simpler way
+def meta_all_words():
     # NOTE:  The following logs itself, but that gets to be annoying:
     #            the_path = flask.request.url
     #            word_for_the_path = lex.define(path, the_path)
@@ -457,10 +539,10 @@ def answer_qiki(url_suffix):
     flask_user, qiki_user = my_login()
     log_html = log_link(flask_user, qiki_user)
     word_for_path = lex.define(path, qiki.Text.decode_if_you_must(url_suffix))
+    # DONE:  lex.define(path, url_suffix)
     if str(word_for_path) == 'favicon.ico':
-        return module_qiki_javascript(filename=six.text_type(word_for_path))
+        return qiki_javascript(filename=six.text_type(word_for_path))
         # SEE:  favicon.ico in root, https://realfavicongenerator.net/faq#why_icons_in_root
-    # TODO:  lex.define(path, url_suffix)
     qiki_user(question)[word_for_path] = 1, referrer(flask.request)
     answers = lex.find_words(
         vrb=answer,
@@ -478,7 +560,7 @@ def answer_qiki(url_suffix):
         names = lex.find_words(vrb=name_word, obj=a.sbj)
         name = names[0] if len(names) >= 1 else a.sbj.txt
         if picture is not None:
-            author_img = "<img src='{url}' title='{name}'>".format(url=picture.txt, name=name)
+            author_img = "<img src='{url}' title='{name}' class='answer-author'>".format(url=picture.txt, name=name)
         elif name:
             author_img = "({name})".format(name=name)
         else:
@@ -486,6 +568,9 @@ def answer_qiki(url_suffix):
 
         a.author = author_img
     questions = lex.find_words(vrb=question, obj=word_for_path)
+    render_question = youtube_render(url_suffix)
+    if render_question is None:
+        render_question = "Here is a page for '{}'".format(flask.escape(url_suffix))
     return flask.render_template(
         'answer.html',
         question=url_suffix,
@@ -494,8 +579,31 @@ def answer_qiki(url_suffix):
         len_questions=len(questions),
         me_idn=qiki_user.idn,
         log_html=log_html,
+        render_question=render_question,
         **config_dict
     )
+
+
+def youtube_render(url_suffix):
+    found = re.search(r'^youtube/([a-zA-Z0-9_-]{11})$', url_suffix)
+    # THANKS:  YouTube video id, https://stackoverflow.com/a/4084332/673991
+    # SEE:  v3 API, https://stackoverflow.com/a/31742587/673991
+    if found:
+        video_id = found.group(1)
+        iframe = web_html.WebHTML('iframe')
+        iframe(
+            width='480',
+            height='270',
+            src='https://www.youtube.com/embed/{video_id}'.format(video_id=video_id),
+            frameborder='0',
+            allow='autoplay; encrypted-media',
+            allowfullscreen='allowfullscreen',
+        )
+        # TODO:  Does this `allow` do anything?
+        # SEE:  https://developer.mozilla.org/en-US/docs/Web/HTTP/Feature_Policy#Browser_compatibility
+        return six.text_type(iframe)
+    else:
+        return None
 
 
 def json_from_jbo(jbo):

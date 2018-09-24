@@ -27,7 +27,11 @@
 .whn.seconds,
 .whn.minutes,
 .whn.hours {
-    border-radius: 0.5em;
+  -webkit-border-radius: 0.5em;
+     -moz-border-radius: 0.5em;   /*noinspection CssUnknownProperty*/
+       -o-border-radius: 0.5em;
+          border-radius: 0.5em;
+
     border-bottom-width: 0.2em;  /* like a clock face */
 }
 
