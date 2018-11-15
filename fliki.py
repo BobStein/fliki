@@ -67,6 +67,7 @@ me = lex.define('agent', 'user')  # TODO:  Authentication
 me(iconify_word, use_already=True)[me] = 'http://tool.qiki.info/icon/ghost.png'
 qoolbar = qiki.QoolbarSimple(lex)
 
+
 GOOGLE_PROVIDER = b'google'
 authomatic_global = authomatic.Authomatic(
     {
