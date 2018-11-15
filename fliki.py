@@ -93,6 +93,7 @@ login_manager.init_app(flask_app)
 
 class GoogleFlaskUser(flask_login.UserMixin):
     """Flask_login model for a Google user."""
+
     def __init__(self, google_user_id):
         self.id = google_user_id
 
@@ -686,6 +687,27 @@ def ajax():
             txt=txt,
         )
         return valid_response('jbo', json_from_jbo([new_jbo]))
+    elif action == 'new_verb':
+        form = flask.request.form
+        try:
+            new_verb_name = form['name']
+        except KeyError:
+            return invalid_response("Missing name")
+        new_verb = lex.create_word(
+            sbj=qiki_user,
+            vrb=lex['define'],
+            obj=lex['verb'],
+            txt=new_verb_name,
+            use_already=True,
+        )
+        lex.create_word(
+            sbj=qiki_user,
+            vrb=lex['qool'],
+            obj=new_verb,
+            use_already=True,
+        )
+        return valid_response('idn', new_verb.idn.qstring())
+
     else:
         return invalid_response("Unknown action " + action)
 
