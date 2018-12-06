@@ -1,6 +1,7 @@
 authomatic
 flask
 flask-login
+gitpython
 mysql-connector-python-rf>=2.2.2
 six
 werkzeug

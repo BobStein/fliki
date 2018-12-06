@@ -21,6 +21,7 @@ import authomatic.core
 import authomatic.providers.oauth2
 import flask   # , send_from_directory
 import flask_login
+import git
 import six
 # noinspection PyUnresolvedReferences
 import six.moves.urllib as urllib
@@ -36,7 +37,9 @@ JQUERY_VERSION = '3.3.1'   # https://developers.google.com/speed/libraries/#jque
 JQUERYUI_VERSION = '1.12.1'   # https://developers.google.com/speed/libraries/#jquery-ui
 config_names = ('AJAX_URL', 'JQUERY_VERSION', 'JQUERYUI_VERSION')
 config_dict = {name: globals()[name.encode('ascii')] for name in config_names}
-
+SCRIPT_DIRECTORY = os.path.dirname(os.path.realpath(__file__))   # e.g. '/var/www/flask'
+GIT_SHA = git.Repo(SCRIPT_DIRECTORY).head.object.hexsha
+GIT_SHA_10 = GIT_SHA[ : 10]
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -152,6 +155,10 @@ def my_login():
     # XXX:  Objectify
     flask_user = flask_login.current_user
     assert isinstance(flask_user, werkzeug.local.LocalProxy)   # was flask_login.LocalProxy
+
+    # print("User is", repr(flask_user))
+    # EXAMPLE:  <flask_login.mixins.AnonymousUserMixin object at 0x0000000003B99F98>
+
     if flask_user.is_authenticated:
         qiki_user = google_qiki_user[flask_user.get_id()]
     elif flask_user.is_anonymous:
@@ -161,20 +168,49 @@ def my_login():
     else:
         qiki_user = None
         logger.fatal("User is neither authenticated nor anonymous.")
-    print("User is", repr(flask_user))
-    print("User is", str(qiki_user))
+
+    try:
+        detail = "idn " + qiki_user.idn.qstring()
+    except AttributeError:
+        detail = ""
+    print("User is", str(qiki_user), detail)
+    # EXAMPLE:  User is anonymous 127.0.0.1
     return flask_user, qiki_user
 
 
-def log_link(flask_user, qiki_user):
+def log_link(flask_user, qiki_user, then_url):
     """
     Log in or out link.
 
     :param flask_user:
     :param qiki_user:
+    :param then_url: e.g. the URL of some page displaying the login link.
     :return:
     """
     qiki_user_txt = qiki_user.txt
+
+    set_then_url(then_url)
+    # NOTE:  The timing of this is weird.
+    #
+    #        Here we are presumably generating a login link for some page.
+    #        We're remembering the URL of that page in order to "return" to that page.
+    #        That is, we expect to use that page-URL some time after
+    #        the login-link is clicked and the login is completed.
+    #
+    #        Will this really be the right URL to "return" to after login?
+    #        It just smacks of a global variable that could get stale or something.
+    #        Like what if that user generated some SECOND page on some SECOND browser
+    #        window?  Then went back to the FIRST page and clicked login.
+    #        Then the first browser window would go to the second page.
+    #
+    #        Might it be better to record that page-URL WHEN the login-link is clicked.
+    #        But how to do that?  Can't futz with the URL itself, that breaks login.
+    #        Maybe some ajax request, just before the link is followed.
+    #
+    #        Or maybe go ahead and add then_url to the query string but strip it off
+    #        (by cloning the Request object -- request.args is immutable)
+    #        before passing it to Authomatic.login().
+
     if flask_user.is_authenticated:
         return (
             "<a href='{logout_link}'>"
@@ -194,6 +230,10 @@ def log_link(flask_user, qiki_user):
         ).format(
             login_title="You are " + qiki_user_txt,
             login_link=flask.url_for('login'),
+            # login_link=flask.url_for('login', next=then_url),
+            # login_link=flask.url_for('login', then_url=then_url),
+            # NOTE:  Adding a parameter to the query string makes Authomatic.login()
+            #        return None.
         )
     else:
         return "neither auth nor anon???"
@@ -201,17 +241,21 @@ def log_link(flask_user, qiki_user):
 
 @login_manager.user_loader
 def user_loader(google_user_id_string):
-    print("user_loader", google_user_id_string)
-    try:
-        new_qiki_user = google_qiki_user[qiki.Number(google_user_id_string)]
-    except qiki.Listing.NotFound:
-        print("\t", "QIKI LISTING NOT FOUND")
-        return None
-    else:
-        print("\t", "idn", new_qiki_user.idn.qstring())
-        new_flask_user = GoogleFlaskUser(google_user_id_string)
-        # HACK:  Validate with google!!
-        return new_flask_user
+    # print("user_loader", google_user_id_string)
+    # EXAMPLE:  user_loader 103620384189003122864
+
+    # try:
+    #     new_qiki_user = google_qiki_user[qiki.Number(google_user_id_string)]
+    # except qiki.Listing.NotFound:
+    #     print("\t", "QIKI LISTING NOT FOUND")
+    #     return None
+    # else:
+    #     # print("user idn", new_qiki_user.idn.qstring())
+    #     # EXAMPLE:  idn 0q82_A7__8A059E058E6A6308C8B0_1D0B00
+
+    new_flask_user = GoogleFlaskUser(google_user_id_string)
+    # HACK:  Validate with google!!
+    return new_flask_user
 
 
 def referrer(request):
@@ -226,11 +270,25 @@ def referrer(request):
 @flask_login.login_required
 def logout():
     flask_login.logout_user()
-    return flask.redirect(flask.url_for('play'))
+    return flask.redirect(get_then_url())
+
+
+def get_then_url():
+    """Get next URL from session variable.  Default to home."""
+    then_url_default = flask.url_for('home')
+    then_url = flask.session.get('then_url', then_url_default)
+    print("get_then_url", then_url)
+    return then_url
+
+
+def set_then_url(then_url):
+    print("set_then_url", then_url)
+    flask.session['then_url'] = then_url
 
 
 @flask_app.route('/meta/login', methods=('GET', 'POST'))
 def login():
+    print("route login", flask.request.url)
     response = flask.make_response(" Play ")
     login_result = authomatic_global.login(
         authomatic.adapters.WerkzeugAdapter(flask.request, response),
@@ -283,11 +341,18 @@ def login():
                 lex['lex'](iconify_word, use_already=True)[qiki_user.idn] = avatar_width, avatar_url
                 lex['lex'](name_word, use_already=True)[qiki_user.idn] = display_name
                 flask_login.login_user(flask_user)
-                return flask.redirect(flask.url_for('play'))
+                # return flask.redirect(flask.url_for('play'))
+                # then_url = flask.request.args.get('then_url', flask.url_for('home'))
+                # then_url = flask.session.get('then_url', flask.url_for('home'))
+                # print("Referrer", flask.request.referrer)   # None
+                return flask.redirect(get_then_url())
             else:
                 print("No user!")
             if login_result.provider:
                 print("Provider:", repr(login_result.provider))
+    else:
+        print("not logged in", repr(login_result))
+        # EXAMPLE:  None when extra parameter is on the query string.
 
     return response
 
@@ -535,11 +600,17 @@ def safe_txt(w):
         return "[non-listing {}]".format(w.idn.qstring())
 
 
+@flask_app.route('/', methods=('GET', 'HEAD'))
+def home():
+    return "(Latest content goes here)"
+
+
 @flask_app.route('/<path:url_suffix>', methods=('GET', 'HEAD'))
 # TODO:  Study HEAD, http://stackoverflow.com/q/22443245/673991
 def answer_qiki(url_suffix):
+    print("route answer", url_suffix)
     flask_user, qiki_user = my_login()
-    log_html = log_link(flask_user, qiki_user)
+    log_html = log_link(flask_user, qiki_user, then_url=flask.request.path)
     word_for_path = lex.define(path, qiki.Text.decode_if_you_must(url_suffix))
     # DONE:  lex.define(path, url_suffix)
     if str(word_for_path) == 'favicon.ico':
@@ -640,6 +711,7 @@ def native_num(num):
 
 @flask_app.route(AJAX_URL, methods=('POST',))
 def ajax():
+    print("route ajax")
     flask_user, qiki_user = my_login()
     action = flask.request.form['action']
     if action == 'answer':
@@ -728,6 +800,16 @@ def invalid_response(error_message):
 
 
 if __name__ == '__main__':
+    print(
+        "Fliki, "
+        "git {git_sha_10}, "
+        "Python {python_version}, "
+        "Flask {flask_version}".format(
+            git_sha_10=GIT_SHA_10,
+            python_version=".".join(str(x) for x in sys.version_info),
+            flask_version=flask.__version__,
+        )
+    )
     flask_app.run(debug=True)
 
 
