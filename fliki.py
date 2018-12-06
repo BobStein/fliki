@@ -277,12 +277,10 @@ def get_then_url():
     """Get next URL from session variable.  Default to home."""
     then_url_default = flask.url_for('home')
     then_url = flask.session.get('then_url', then_url_default)
-    print("get_then_url", then_url)
     return then_url
 
 
 def set_then_url(then_url):
-    print("set_then_url", then_url)
     flask.session['then_url'] = then_url
 
 
@@ -346,6 +344,7 @@ def login():
                 # then_url = flask.session.get('then_url', flask.url_for('home'))
                 # print("Referrer", flask.request.referrer)   # None
                 return flask.redirect(get_then_url())
+                # TODO:  Why does Chrome put a # on the end of this URL?
             else:
                 print("No user!")
             if login_result.provider:
