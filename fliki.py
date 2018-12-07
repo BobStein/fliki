@@ -174,7 +174,8 @@ def my_login():
     except AttributeError:
         detail = ""
     print("User is", str(qiki_user), detail)
-    # EXAMPLE:  User is anonymous 127.0.0.1
+    # EXAMPLE:  User is anonymous 127.0.0.1 idn 0q82_A8__82AB_1D0300
+    # EXAMPLE:  User is Bob Stein idn 0q82_A7__8A059E058E6A6308C8B0_1D0B00
     return flask_user, qiki_user
 
 
@@ -190,7 +191,7 @@ def log_link(flask_user, qiki_user, then_url):
     qiki_user_txt = qiki_user.txt
 
     set_then_url(then_url)
-    # NOTE:  The timing of this is weird.
+    # NOTE:  The timing of setting this URL is weird.
     #
     #        Here we are presumably generating a login link for some page.
     #        We're remembering the URL of that page in order to "return" to that page.
@@ -199,9 +200,10 @@ def log_link(flask_user, qiki_user, then_url):
     #
     #        Will this really be the right URL to "return" to after login?
     #        It just smacks of a global variable that could get stale or something.
+    #
     #        Like what if that user generated some SECOND page on some SECOND browser
     #        window?  Then went back to the FIRST page and clicked login.
-    #        Then the first browser window would go to the second page.
+    #        Then the first browser window would go to the second page after logging in.
     #
     #        Might it be better to record that page-URL WHEN the login-link is clicked.
     #        But how to do that?  Can't futz with the URL itself, that breaks login.
@@ -330,7 +332,7 @@ def login():
                 qiki_user = google_qiki_user[login_result.user.id]
                 picture_parts = urllib.parse.urlsplit(login_result.user.picture)
                 picture_dict = urllib.parse.parse_qs(picture_parts.query)
-                # THANKS:  Parse URL query, http://stackoverflow.com/a/21584580/673991
+                # THANKS:  Parse URL query-string, http://stackoverflow.com/a/21584580/673991
                 picture_size_string = picture_dict.get('sz', ['0'])[0]
                 avatar_width = qiki.Number(picture_size_string)   # width?  height?  size??
                 avatar_url = login_result.user.picture
@@ -344,24 +346,36 @@ def login():
                 # then_url = flask.session.get('then_url', flask.url_for('home'))
                 # print("Referrer", flask.request.referrer)   # None
                 return flask.redirect(get_then_url())
-                # TODO:  Why does Chrome put a # on the end of this URL?
+                # TODO:  Why does Chrome put a # on the end of this URL (empty fragment)?
+                # SEE:  Fragment on redirect, https://stackoverflow.com/q/2286402/673991
+                # SEE:  Fragment of resource, https://stackoverflow.com/a/5283528/673991
             else:
                 print("No user!")
             if login_result.provider:
                 print("Provider:", repr(login_result.provider))
     else:
         print("not logged in", repr(login_result))
-        # EXAMPLE:  None when extra parameter is on the query string.
+        # EXAMPLE:  None (e.g. with extraneous variable on request query, e.g. ?then_url=...)
 
     return response
 
 
 @flask_app.route('/module/qiki-javascript/<path:filename>')
 def qiki_javascript(filename):
-    return flask.send_file(os_path_qiki_javascript(filename))
+    """
+    Make a pseudo-static directory out of the qiki-javascript repo.
 
-
-SCRIPT_DIRECTORY = os.path.dirname(os.path.realpath(__file__))   # e.g. '/var/www/flask'
+    Prevent penetrating into .idea, etc.
+    TODO:  Prevent nonexistent
+    """
+    only_file_name_no_slashes = r'^[\w.]+$'
+    if re.search(only_file_name_no_slashes, filename):
+        try:
+            return flask.send_file(os_path_qiki_javascript(filename))
+        except IOError:
+            flask.abort(404, "No such qiki-javascript file " + filename)
+    else:
+        flask.abort(404, "Not a file in qiki-javascript, " + filename)
 
 
 def os_path_static(relative_url):
