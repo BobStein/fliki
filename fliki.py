@@ -92,6 +92,7 @@ authomatic_global = authomatic.Authomatic(
 STALE_LOGIN_ERROR = 'Unable to retrieve stored state!'
 
 login_manager = flask_login.LoginManager()
+# noinspection PyTypeChecker
 login_manager.init_app(flask_app)
 
 
@@ -462,7 +463,7 @@ def cache_bust(s):
 
 @flask_app.route('/meta/all', methods=('GET', 'HEAD'))
 def meta_all():
-
+    # TODO:  verb filter checkboxes (show/hide each one, especially may want to hide "questions")
     with FlikiHTML('html') as html:
         html.header("Lex all")
 
@@ -484,10 +485,17 @@ def meta_all():
             def show_sub_word(element, w, **kwargs):
                 with element.span(**kwargs) as span_sub_word:
                     w_txt = safe_txt(w)
+                    w_idn = w.idn.qstring()
+                    if not w.idn.is_suffixed() and w.idn.is_whole():
+                        w_idn += " ({:d})".format(int(w.idn))
+                    w_idn_txt = "{idn}: {txt}".format(
+                        idn=w_idn,
+                        txt=w_txt,
+                    )
                     if w in subject_icons:
-                        span_sub_word.img(src=subject_icons[w].txt, title=w_txt)
+                        span_sub_word.img(src=subject_icons[w].txt, title=w_idn_txt)
                     else:
-                        span_sub_word(w_txt)
+                        span_sub_word(w_txt, title=w_idn)
                     return span_sub_word
 
             body.p("Hello Whorled!")
@@ -619,7 +627,8 @@ def home():
 
 
 @flask_app.route('/<path:url_suffix>', methods=('GET', 'HEAD'))
-# TODO:  Study HEAD, http://stackoverflow.com/q/22443245/673991
+# SEE:  Wildcard custom converter, https://stackoverflow.com/a/33296155/673991
+# TODO:  Study HEAD-to-GET mapping, http://stackoverflow.com/q/22443245/673991
 def answer_qiki(url_suffix):
     print("route answer", url_suffix)
     flask_user, qiki_user = my_login()
@@ -630,6 +639,9 @@ def answer_qiki(url_suffix):
         return qiki_javascript(filename=six.text_type(word_for_path))
         # SEE:  favicon.ico in root, https://realfavicongenerator.net/faq#why_icons_in_root
     qiki_user(question)[word_for_path] = 1, referrer(flask.request)
+
+    # print("ANSWER", *[repr(w.idn) + " " + w.txt + ", " for w in qoolbar.get_verbs()])
+    # EXAMPLE:  ANSWER Number('0q82_86') like,  Number('0q82_89') delete,  Number('0q83_01FC') laugh,
     answers = lex.find_words(
         vrb=answer,
         obj=word_for_path,
@@ -640,7 +652,16 @@ def answer_qiki(url_suffix):
     # TODO:  Alternatives to find_words()?
     #        answers = lex.find(vrb=answer, obj=word_for_path,
     for a in answers:
-        a.jbo_json = json_from_jbo(a.jbo)
+        a.jbo_json = json_from_words(a.jbo)
+        # print("Answer", repr(a), a.jbo_json)
+        # EXAMPLE:  Answer Word(102) [
+        #    {"sbj": "0q82_A7__8A059E058E6A6308C8B0_1D0B00", "vrb": "0q82_86", "txt": "", "num": 1, "idn": "0q82_CF"},
+        #    {"sbj": "0q82_A8__82AB_1D0300", "vrb": "0q82_86", "txt": "", "num": 1, "idn": "0q82_D8"},
+        #    {"sbj": "0q82_A8__82AB_1D0300", "vrb": "0q82_86", "txt": "", "num": 2, "idn": "0q83_0105"},
+        #    {"sbj": "0q82_A7__8A059E058E6A6308C8B0_1D0B00", "vrb": "0q82_86", "txt": "", "num": 2, "idn": "0q83_0135"},
+        #    {"sbj": "0q82_A7__8A059E058E6A6308C8B0_1D0B00", "vrb": "0q82_86", "txt": "", "num": 3, "idn": "0q83_017F"},
+        #    {"sbj": "0q82_A7__8A059E058E6A6308C8B0_1D0B00", "vrb": "0q82_86", "txt": "", "num": 1, "idn": "0q83_0180"}
+        # ]
         pictures = lex.find_words(vrb=iconify_word, obj=a.sbj)
         picture = pictures[0] if len(pictures) >= 1 else None
         names = lex.find_words(vrb=name_word, obj=a.sbj)
@@ -692,20 +713,21 @@ def youtube_render(url_suffix):
         return None
 
 
-def json_from_jbo(jbo):
-    jbo_list = []
-    for word in jbo:
-        jbo_list.append(dict(
+def json_from_words(words):
+    """Convert a Python list of words to a JavaScript (json) array of word-like objects."""
+    dicts = []
+    for word in words:
+        dicts.append(dict(
             idn=word.idn.qstring(),
             sbj=word.sbj.idn.qstring(),
             vrb=word.vrb.idn.qstring(),
-            # NOTE:  The following line is not needed...
+            # NOTE:  The following line is not needed when words come from jbo...
             #            obj=word.obj.idn.qstring(),
-            #        ...because jbo.obj is itself; a.jbo[i].obj == a
+            #        ...because word.obj is itself.  That is, a.jbo[i].obj == a
             num=native_num(word.num),
             txt=word.txt
         ))
-    return json.dumps(jbo_list)
+    return json.dumps(dicts)
 
 
 def render_num(num):
@@ -738,6 +760,12 @@ def ajax():
         ))
     elif action == 'qoolbar_list':
         return valid_response('verbs', list(qoolbar.get_verb_dicts()))
+        # EXAMPLE:
+        #     {"is_valid": true, "verbs": [
+        #         {"idn": "0q82_86",   "icon_url": "http://tool.qiki.info/icon/thumbsup_16.png", "name": "like"},
+        #         {"idn": "0q82_89",   "icon_url": "http://tool.qiki.info/icon/delete_16.png",   "name": "delete"},
+        #         {"idn": "0q83_01FC", "icon_url": null,                                         "name": "laugh"}
+        #     ]}
     elif action == 'sentence':
         form = flask.request.form
         try:
@@ -747,6 +775,7 @@ def ajax():
         try:
             vrb_txt = form['vrb_txt']
         except KeyError:
+            # TODO:  Should vrb_idn have priority over vrb_txt instead?
             try:
                 vrb_idn = form['vrb_idn']
             except KeyError:
@@ -764,7 +793,7 @@ def ajax():
         num_add = None if num_add_str is None else qiki.Number(int(num_add_str))
         num_str = form.get('num', None)
         num = None if num_str is None else qiki.Number(int(num_str))
-        new_jbo = lex.create_word(
+        new_word = lex.create_word(
             sbj=qiki_user,
             vrb=vrb,
             obj=obj,
@@ -772,7 +801,7 @@ def ajax():
             num_add=num_add,
             txt=txt,
         )
-        return valid_response('jbo', json_from_jbo([new_jbo]))
+        return valid_response('new_words', json_from_words([new_word]))
     elif action == 'new_verb':
         form = flask.request.form
         try:
