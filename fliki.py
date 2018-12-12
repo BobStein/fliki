@@ -289,7 +289,6 @@ def set_then_url(then_url):
 
 @flask_app.route('/meta/login', methods=('GET', 'POST'))
 def login():
-    print("route login", flask.request.url)
     response = flask.make_response(" Play ")
     login_result = authomatic_global.login(
         authomatic.adapters.WerkzeugAdapter(flask.request, response),
@@ -630,7 +629,6 @@ def home():
 # SEE:  Wildcard custom converter, https://stackoverflow.com/a/33296155/673991
 # TODO:  Study HEAD-to-GET mapping, http://stackoverflow.com/q/22443245/673991
 def answer_qiki(url_suffix):
-    print("route answer", url_suffix)
     flask_user, qiki_user = my_login()
     log_html = log_link(flask_user, qiki_user, then_url=flask.request.path)
     word_for_path = lex.define(path, qiki.Text.decode_if_you_must(url_suffix))
@@ -746,7 +744,6 @@ def native_num(num):
 
 @flask_app.route(AJAX_URL, methods=('POST',))
 def ajax():
-    print("route ajax")
     flask_user, qiki_user = my_login()
     action = flask.request.form['action']
     if action == 'answer':
