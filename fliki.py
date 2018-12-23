@@ -379,6 +379,11 @@ def qiki_javascript(filename):
 
 
 def os_path_static(relative_url):
+    """
+    Convert url to path, for static files.
+
+    assert '/var/www/static/foo.bar' == os_path_static('foo.bar')
+    """
     return os.path.join(SCRIPT_DIRECTORY, flask_app.static_folder, relative_url)
 
 
@@ -436,23 +441,13 @@ class FlikiHTML(web_html.WebHTML):
 
     @classmethod
     def os_path_from_url(cls, url):
-        static_prefix = flask.url_for('static', filename='')
-        qiki_javascript_prefix = flask.url_for('qiki_javascript', filename='')
-
         url_parse = Parse(url)
-        if url_parse.remove_prefix(static_prefix):
+        if url_parse.remove_prefix(flask.url_for('static', filename='')):
             return os_path_static(url_parse.remains)
-        elif url_parse.remove_prefix(qiki_javascript_prefix):
+        elif url_parse.remove_prefix(flask.url_for('qiki_javascript', filename='')):
             return os_path_qiki_javascript(url_parse.remains)
         else:
             raise RuntimeError("Unrecognized url " + url)
-        #
-        # if url.startswith(static_prefix):
-        #     return os_path_static(url[len(static_prefix) : ])
-        # elif url.startswith(qiki_javascript_prefix):
-        #     return os_path_qiki_javascript(url[len(qiki_javascript_prefix) : ])
-        # else:
-        #     raise RuntimeError("Unrecognized url " + url)
 
 
 @flask_app.template_filter('cache_bust')
@@ -787,18 +782,22 @@ def ajax():
             return invalid_response("Missing txt")
         obj = lex[qiki.Number(obj_idn)]
         num_add_str = form.get('num_add', None)
-        num_add = None if num_add_str is None else qiki.Number(int(num_add_str))
         num_str = form.get('num', None)
-        num = None if num_str is None else qiki.Number(int(num_str))
-        new_word = lex.create_word(
-            sbj=qiki_user,
-            vrb=vrb,
-            obj=obj,
-            num=num,
-            num_add=num_add,
-            txt=txt,
-        )
-        return valid_response('new_words', json_from_words([new_word]))
+        try:
+            num_add = None if num_add_str is None else qiki.Number(num_add_str)
+            num = None if num_str is None else qiki.Number(num_str)
+        except ValueError as e:
+            return invalid_response("num or num_add invalid: " + str(e))
+        else:
+            new_word = lex.create_word(
+                sbj=qiki_user,
+                vrb=vrb,
+                obj=obj,
+                num=num,
+                num_add=num_add,
+                txt=txt,
+            )
+            return valid_response('new_words', json_from_words([new_word]))
     elif action == 'new_verb':
         form = flask.request.form
         try:
