@@ -492,6 +492,25 @@ def meta_all():
                         span_sub_word(w_txt, title=w_idn)
                     return span_sub_word
 
+            MAX_TXT_LITERAL = 120
+            BEFORE_DOTS = 80
+            AFTER_DOTS = 20
+
+            def show_txt(element, txt):
+                element.raw_text("&ldquo;")
+                if len(txt) > MAX_TXT_LITERAL:
+                    before = txt[ : BEFORE_DOTS]
+                    after = txt[-AFTER_DOTS : ]
+                    n_more = len(txt) - BEFORE_DOTS - AFTER_DOTS
+                    element.text("{before}...({n_more} more characters)...{after}".format(
+                        before=before,
+                        n_more=n_more,
+                        after=after,
+                    ))
+                else:
+                    element.text(txt)
+                element.raw_text("&rdquo;")
+
             body.p("Hello Whorled!")
             with body.ol as ol:
                 for word in words:
@@ -509,9 +528,7 @@ def meta_all():
                         if word.txt != '':
                             with li.span(class_='word txt') as span:
                                 span.text(" ")
-                                span.raw_text("&ldquo;")
-                                span.text(word.txt)
-                                span.raw_text("&rdquo;")
+                                show_txt(span, word.txt)
                         li.span(" ")
                         show_whn(li, word.whn, class_='word whn')
 
@@ -760,10 +777,12 @@ def ajax():
         #     ]}
     elif action == 'sentence':
         form = flask.request.form
+
         try:
             obj_idn = form['obj_idn']
         except KeyError:
             return invalid_response("Missing obj")
+
         try:
             vrb_txt = form['vrb_txt']
         except KeyError:
@@ -776,10 +795,14 @@ def ajax():
                 vrb = lex[qiki.Number(vrb_idn)]
         else:
             vrb = lex[vrb_txt]
+
         try:
             txt = form['txt']
         except KeyError:
             return invalid_response("Missing txt")
+
+        use_already = form.get('use_already', False)
+
         obj = lex[qiki.Number(obj_idn)]
         num_add_str = form.get('num_add', None)
         num_str = form.get('num', None)
@@ -796,6 +819,7 @@ def ajax():
                 num=num,
                 num_add=num_add,
                 txt=txt,
+                use_already=use_already,
             )
             return valid_response('new_words', json_from_words([new_word]))
     elif action == 'new_verb':
