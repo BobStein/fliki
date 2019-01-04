@@ -40,6 +40,8 @@ config_dict = {name: globals()[name.encode('ascii')] for name in config_names}
 SCRIPT_DIRECTORY = os.path.dirname(os.path.realpath(__file__))   # e.g. '/var/www/flask'
 GIT_SHA = git.Repo(SCRIPT_DIRECTORY).head.object.hexsha
 GIT_SHA_10 = GIT_SHA[ : 10]
+NUM_QOOL_VERB_NEW = qiki.Number(1)
+NUM_QOOL_VERB_DELETE = qiki.Number(0)
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -129,8 +131,9 @@ class GoogleQikiUser(qiki.Listing):
 
 
 class AnonymousQikiUser(qiki.Listing):
+
     def lookup(self, ip_address_idn):
-        return "anonymous " + lex[ip_address_idn].txt, qiki.Number(1)
+        return lex[ip_address_idn].txt, qiki.Number(1)
 
 
 # TODO:  Combine classes, e.g. GoogleUser(flask_login.UserMixin, qiki.Listing)
@@ -171,12 +174,25 @@ def my_login():
         logger.fatal("User is neither authenticated nor anonymous.")
 
     try:
-        detail = "idn " + qiki_user.idn.qstring()
+        user_idn = "idn " + qiki_user.idn.qstring()
     except AttributeError:
-        detail = ""
-    print("User is", str(qiki_user), detail)
-    # EXAMPLE:  User is anonymous 127.0.0.1 idn 0q82_A8__82AB_1D0300
-    # EXAMPLE:  User is Bob Stein idn 0q82_A7__8A059E058E6A6308C8B0_1D0B00
+        user_idn = ""
+    print("User is", end=" ")
+    print(len(str(qiki_user)), end=" ")
+    print("chars,", end=" ")
+    print(str(qiki_user), end=" ")
+    print(user_idn, end=" ")
+    print(qiki_user.lex.__class__.__name__, end=" ")
+    print(qiki_user.lex.meta_word.txt, end=" ")
+    print(qiki_user.lex.meta_word.idn.qstring(), end=" ")
+    print()
+    # EXAMPLE:  User is 9 chars, Bob Stein idn 0q82_A7__8A059E058E6A6308C8B0_1D0B00 GoogleQikiUser google user 0q82_A7
+    # EXAMPLE:  User is 9 chars, 127.0.0.1 idn 0q82_A8__82AB_1D0300 AnonymousQikiUser anonymous 0q82_A8
+
+    # print("User is", str(qiki_user), user_idn)
+    # TODO:  Why did this line crash sometimes?
+    #        IOError: [Errno 22] Invalid argument
+    #        May have happened after closing PyCharm to update, leaving fliki running.
     return flask_user, qiki_user
 
 
@@ -430,6 +446,7 @@ class FlikiHTML(web_html.WebHTML):
                 href=flask.url_for('qiki_javascript', filename='favicon.ico')
             )
             head.css_stamped(flask.url_for('static', filename='code/css.css'))
+            head.css_stamped(flask.url_for('qiki_javascript', filename='qoolbar.css'))
             return head
 
     def footer(self):
@@ -461,7 +478,7 @@ def meta_all():
     with FlikiHTML('html') as html:
         html.header("Lex all")
 
-        with html.body() as body:
+        with html.body(class_='target-environment') as body:
 
             words = lex.find_words()
             all_subjects = {word.sbj for word in words}
@@ -476,61 +493,105 @@ def meta_all():
             subject_icons_nones = {s: latest_iconifier_or_none(s) for s in all_subjects}
             subject_icons = {s: i for s, i in subject_icons_nones.items() if i is not None}
 
-            def show_sub_word(element, w, **kwargs):
+            def word_identification(w):
+                w_idn = w.idn.qstring()
+                if not w.idn.is_suffixed() and w.idn.is_whole():
+                    w_idn += " ({:d})".format(int(w.idn))
+                w_idn += " " + w.lex.__class__.__name__
+                return w_idn
+
+            def word_identification_text(w):
+                return "{idn}: {txt}".format(
+                    idn=word_identification(w),
+                    txt=safe_txt(w),
+                )
+
+            def show_sub_word(element, w, title_prefix="", **kwargs):
                 with element.span(**kwargs) as span_sub_word:
                     w_txt = safe_txt(w)
-                    w_idn = w.idn.qstring()
-                    if not w.idn.is_suffixed() and w.idn.is_whole():
-                        w_idn += " ({:d})".format(int(w.idn))
-                    w_idn_txt = "{idn}: {txt}".format(
-                        idn=w_idn,
-                        txt=w_txt,
-                    )
                     if w in subject_icons:
-                        span_sub_word.img(src=subject_icons[w].txt, title=w_idn_txt)
+                        span_sub_word.img(
+                            src=subject_icons[w].txt,
+                            title=title_prefix + word_identification_text(w)
+                        )
+                        # NOTE:  w.__class__.__name__ == 'WordDerivedJustForThisListing'
                     else:
-                        span_sub_word(w_txt, title=w_idn)
+                        classes = ['named']
+                        if isinstance(w.lex, AnonymousQikiUser):
+                            classes.append('anonymous')
+                        elif isinstance(w.lex, qiki.Lex):
+                            classes.append('lex')
+                        with span_sub_word.span(classes=classes) as span_named:
+                            span_named(w_txt, title=title_prefix + word_identification(w))
                     return span_sub_word
 
             MAX_TXT_LITERAL = 120
             BEFORE_DOTS = 80
             AFTER_DOTS = 20
+            RIGHT_ARROW = u"\u2192"
 
-            def show_txt(element, txt):
-                element.raw_text("&ldquo;")
+            def compress_txt(txt):
                 if len(txt) > MAX_TXT_LITERAL:
                     before = txt[ : BEFORE_DOTS]
                     after = txt[-AFTER_DOTS : ]
                     n_more = len(txt) - BEFORE_DOTS - AFTER_DOTS
-                    element.text("{before}...({n_more} more characters)...{after}".format(
+                    return "{before}...({n_more} more characters)...{after}".format(
                         before=before,
                         n_more=n_more,
                         after=after,
-                    ))
+                    )
                 else:
-                    element.text(txt)
+                    return txt
+
+            def show_txt(element, txt):
+                element.raw_text("&ldquo;")
+                element.text(compress_txt(txt))
                 element.raw_text("&rdquo;")
+
+            def show_vrb_iconify(element, word, title_prefix=""):
+                show_sub_word(element, word.obj, class_='word obj', title_prefix=title_prefix)
+                with element.span(class_='word txt') as span_txt:
+                    span_txt.text(" ")
+                    span_txt.img(src=word.txt, title="txt = " + compress_txt(word.txt))
+
+            def show_vrb_question(element, word, title_prefix=""):
+                if word.txt == '':
+                    show_sub_word(element, word.obj, class_='word obj', title_prefix=title_prefix)
+                else:
+                    with element.a(
+                        href=word.txt,
+                        # title="obj = " + compress_txt(word.txt),
+                        target='_blank',
+                    ) as a:
+                        show_sub_word(a, word.obj, class_='word obj', title_prefix="obj = ")
 
             body.p("Hello Whorled!")
             with body.ol as ol:
                 for word in words:
-                    with ol.li(value=str(int(word.idn)), title="idn " + word.idn.qstring()) as li:
-                        show_sub_word(li, word.sbj, class_='word sbj')
-                        li.span(": ")
-                        show_sub_word(li, word.vrb, class_='word vrb')
+                    with ol.li(value=str(int(word.idn)), title="idn = " + word.idn.qstring()) as li:
+                        show_sub_word(li, word.sbj, class_='word sbj', title_prefix= "sbj = ")
+                        li.span("-")
+                        show_sub_word(li, word.vrb, class_='word vrb', title_prefix = "vrb = ")
+                        li.span("-")
+
+                        if word.vrb.txt == 'iconify':
+                            show_vrb_iconify(li, word, title_prefix = "obj = ")
+                        elif word.vrb.txt == 'question':
+                            show_vrb_question(li.span(), word, title_prefix = "obj = ")
+                        else:
+                            show_sub_word(li, word.obj, class_='word obj', title_prefix = "obj = ")
+                            if word.num != qiki.Number(1):
+                                with li.span(class_='word num', title="num = " + word.num.qstring()) as span:
+                                    span.text(" ")
+                                    span.raw_text("&times;")
+                                    span.text(render_num(word.num))
+                            if word.txt != '':
+                                with li.span(class_='word txt') as span:
+                                    span.text(" ")
+                                    show_txt(span, word.txt)
+
                         li.span(" ")
-                        show_sub_word(li, word.obj, class_='word obj')
-                        if word.num != qiki.Number(1):
-                            with li.span(class_='word num') as span:
-                                span.text(" ")
-                                span.raw_text("&times;")
-                                span.text(render_num(word.num))
-                        if word.txt != '':
-                            with li.span(class_='word txt') as span:
-                                span.text(" ")
-                                show_txt(span, word.txt)
-                        li.span(" ")
-                        show_whn(li, word.whn, class_='word whn')
+                        show_whn(li, word.whn, class_='word whn', title_prefix = "whn = ")
 
             body.p(repr(subject_icons))
 
@@ -539,10 +600,11 @@ def meta_all():
     return html.doctype_plus_html()
 
 
-SECONDS_PER_WEEK = 7*24*60*60
+SECONDS_PER_DAY = 24*60*60
+SECONDS_PER_WEEK = 7*SECONDS_PER_DAY
 
 
-def show_whn(element, whn, **kwargs):
+def show_whn(element, whn, title_prefix = "", **kwargs):
 
     def div(n, d):
         return str((n + d//2) // d)
@@ -551,7 +613,8 @@ def show_whn(element, whn, **kwargs):
         return "{:.1f}".format(n/d)
 
     class_ = kwargs.pop(b'class_', '')
-    seconds_ago = int(lex.now() - whn)
+    now = lex.now()
+    seconds_ago = int(now - whn)
     if seconds_ago <=                   120:
         ago_short = str(seconds_ago)               + "s"
         ago_long  = str(seconds_ago)               + " seconds ago"
@@ -578,12 +641,15 @@ def show_whn(element, whn, **kwargs):
         additional_class = 'years'
 
     class_ += ' ' + additional_class
+    seconds_since_midnight = int(now) % SECONDS_PER_DAY
+    # TODO:  Local time vs universal time?
     time_of_it = time.localtime(int(whn))
     time_date = time.strftime(b"%H:%M:%S %d-%b-%Y", time_of_it)
-    # TODO:  show day of week if within a week
-    if seconds_ago <= SECONDS_PER_WEEK:
+    if seconds_ago <= seconds_since_midnight:
+        time_date += ", today"
+    else:
         time_date += time.strftime(b", %a", time_of_it)
-    title = "{ago_long}: {time_date}".format(ago_long=ago_long, time_date=time_date)
+    title = title_prefix + "{ago_long}: {time_date}".format(ago_long=ago_long, time_date=time_date)
     return element.span(ago_short, title=title, class_=class_, **kwargs)
 
 
@@ -652,6 +718,14 @@ def answer_qiki(url_suffix):
 
     # print("ANSWER", *[repr(w.idn) + " " + w.txt + ", " for w in qoolbar.get_verbs()])
     # EXAMPLE:  ANSWER Number('0q82_86') like,  Number('0q82_89') delete,  Number('0q83_01FC') laugh,
+    question_words = lex.find_words(
+        idn=word_for_path.idn,
+        jbo_vrb=qoolbar.get_verbs(),
+        jbo_ascending=True,
+    )
+    assert len(question_words) == 1
+    question_word = question_words[0]
+    question_jbo_json = json_from_words(question_word.jbo)
     answers = lex.find_words(
         vrb=answer,
         obj=word_for_path,
@@ -691,6 +765,8 @@ def answer_qiki(url_suffix):
     return flask.render_template(
         'answer.html',
         question=url_suffix,
+        question_idn=word_for_path.idn.qstring(),
+        question_jbo_json=question_jbo_json,
         answers=answers,
         len_answers=len(answers),
         len_questions=len(questions),
@@ -768,7 +844,9 @@ def ajax():
             a=answer_txt,
         ))
     elif action == 'qoolbar_list':
-        return valid_response('verbs', list(qoolbar.get_verb_dicts()))
+        verbs = list(qoolbar.get_verb_dicts())
+        print("qoolbar", " ".join(v[b'name'] + " " + str(v[b'qool_num']) for v in verbs))
+        return valid_response('verbs', verbs)
         # EXAMPLE:
         #     {"is_valid": true, "verbs": [
         #         {"idn": "0q82_86",   "icon_url": "http://tool.qiki.info/icon/thumbsup_16.png", "name": "like"},
@@ -823,9 +901,8 @@ def ajax():
             )
             return valid_response('new_words', json_from_words([new_word]))
     elif action == 'new_verb':
-        form = flask.request.form
         try:
-            new_verb_name = form['name']
+            new_verb_name = flask.request.form['name']
         except KeyError:
             return invalid_response("Missing name")
         new_verb = lex.create_word(
@@ -839,9 +916,25 @@ def ajax():
             sbj=qiki_user,
             vrb=lex['qool'],
             obj=new_verb,
+            num=NUM_QOOL_VERB_NEW,
             use_already=True,
         )
         return valid_response('idn', new_verb.idn.qstring())
+
+    elif action == 'delete_verb':
+        try:
+            old_verb_idn = qiki.Number(flask.request.form['idn'])
+        except (KeyError, ValueError):
+            return invalid_response("Missing or malformed idn: " + flask.request.form.get('idn', "(missing)"))
+
+        lex.create_word(
+            sbj=qiki_user,
+            vrb=lex['qool'],
+            obj=old_verb_idn,
+            num=NUM_QOOL_VERB_DELETE,
+            use_already=True,
+        )
+        return valid_response('idn', old_verb_idn.qstring())
 
     else:
         return invalid_response("Unknown action " + action)

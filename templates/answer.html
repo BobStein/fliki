@@ -6,7 +6,7 @@
 <link rel="shortcut icon" href="{{ url_for('qiki_javascript', filename='favicon.ico') }}">
 </head>
 <body class="target-environment">
-<p>
+<p class="word" data-idn="{{ question_idn }}" data-jbo="{{ question_jbo_json }}">
     {{ render_question | safe }}
 </p>
 <label for="answer">Your thoughts?</label>
@@ -65,7 +65,6 @@ $(document).ready(function() {
             answer: $('#answer').val()
         }, function(response) {
             if (response.is_valid) {
-                // alert('yay\n' + response.message);
                 window.location.reload(true);
             } else {
                 alert('boo\n' + response.message);

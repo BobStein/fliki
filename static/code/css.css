@@ -5,6 +5,36 @@
     height: 1em;
 }
 
+.word.sbj .named.anonymous {
+    background-color: #FFDDDD;
+}
+
+.word.sbj .named.lex {
+    background-color: #DDFFDD;
+}
+
+.word.sbj .named {
+    border: 1px solid silver;
+    padding: 0 2px 2px 2px;
+    font: small-caption;
+    line-height: 12px;
+    display: inline-block;
+    background-color: white;
+}
+
+.word.vrb {
+    border: 1px solid silver;
+    padding: 0 2px 2px 2px;
+    font: small-caption;
+    line-height: 12px;
+    display: inline-block;
+    background-color: white;
+  -webkit-border-radius: 0.5em;
+     -moz-border-radius: 0.5em;   /*noinspection CssUnknownProperty*/
+       -o-border-radius: 0.5em;
+          border-radius: 0.5em;
+}
+
 .whn {
     height: 1.0em;
     width: 1.0em;
