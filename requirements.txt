@@ -2,6 +2,10 @@ authomatic
 flask
 flask-login
 gitpython
-mysql-connector-python-rf>=2.2.2
+mysql-connector-python>=8.0.16
 six
 werkzeug
+
+git+git://github.com/BobStein/qiki-javascript@master#egg=qiki-javascript
+git+git://github.com/BobStein/qiki-python@master#egg=qiki-python
+# THANKS:  github in requirements.txt, https://stackoverflow.com/a/35998253/673991
