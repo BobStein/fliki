@@ -5,7 +5,8 @@ gitpython
 mysql-connector-python>=8.0.16
 six
 werkzeug
+mooo
 
-git+git://github.com/BobStein/qiki-javascript@master#egg=qiki-javascript
-git+git://github.com/BobStein/qiki-python@master#egg=qiki-python
+git+git://github.com/BobStein/qiki-javascript.git#egg=qiki-javascript
+git+git://github.com/BobStein/qiki-python#egg=qiki-python
 # THANKS:  github in requirements.txt, https://stackoverflow.com/a/35998253/673991
