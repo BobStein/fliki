@@ -15,6 +15,7 @@ import re
 import sys
 import time
 
+print("Python version", ".".join(str(x) for x in sys.version_info))
 import authomatic
 import authomatic.adapters
 import authomatic.core
