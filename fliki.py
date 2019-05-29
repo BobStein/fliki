@@ -15,7 +15,11 @@ import re
 import sys
 import time
 
-print("Python version", ".".join(str(x) for x in sys.version_info))
+# print("Python version", ".".join(str(x) for x in sys.version_info))
+# EXAMPLE:  Python version 2.7.15.candidate.1
+
+print("sys.path", "\n".join(sys.path))
+
 import authomatic
 import authomatic.adapters
 import authomatic.core
