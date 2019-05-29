@@ -975,3 +975,6 @@ if __name__ == '__main__':
 
 # TODO:  CSRF Protection
 # SEE:  http://flask.pocoo.org/snippets/3/
+
+
+application = flask_app
