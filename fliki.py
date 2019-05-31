@@ -18,7 +18,16 @@ import time
 # print("Python version", ".".join(str(x) for x in sys.version_info))
 # EXAMPLE:  Python version 2.7.15.candidate.1
 
-print("sys.path", "\n".join(sys.path))
+# print("sys.path", "\n".join(sys.path))
+# EXAMPLE:
+#     /var/www/fun.unslumping.org/fliki   <-- SEE:  fun.unslumping.org-le-ssl.conf WSGIDaemonProcess
+#     /usr/lib/python2.7
+#     /usr/lib/python2.7/plat-x86_64-linux-gnu
+#     /usr/lib/python2.7/lib-tk
+#     /usr/lib/python2.7/lib-old
+#     /usr/lib/python2.7/lib-dynload
+#     /usr/local/lib/python2.7/dist-packages
+#     /usr/lib/python2.7/dist-packages
 
 import authomatic
 import authomatic.adapters
@@ -47,6 +56,7 @@ GIT_SHA = git.Repo(SCRIPT_DIRECTORY).head.object.hexsha
 GIT_SHA_10 = GIT_SHA[ : 10]
 NUM_QOOL_VERB_NEW = qiki.Number(1)
 NUM_QOOL_VERB_DELETE = qiki.Number(0)
+RIGHT_ARROW = u"\u2192"
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -477,6 +487,23 @@ def cache_bust(s):
     return FlikiHTML.url_stamp(s)
 
 
+@flask_app.route('/home', methods=('GET', 'HEAD'))
+def unslumping_home():
+    with FlikiHTML('html') as html:
+        html.header("Unslumping")
+
+        with html.body() as body:
+            with body.div(id='my_uns', class_='target-environment') as my_uns:
+                my_uns.textarea(id='entry_uns', placeholder="An inspiring quote or video")
+                my_uns.button(id='enter_uns').text("I find this inspiring")
+            with body.div(id='their_uns', class_='target-environment') as their_uns:
+                their_uns.p("(stuff other people find inspiring will appear here)")
+            body.js_stamped(flask.url_for('static', filename='code/unslump.js'))
+            body.footer()
+
+    return html.doctype_plus_html()
+
+# noinspection PyPep8Naming
 @flask_app.route('/meta/all', methods=('GET', 'HEAD'))
 def meta_all():
     # TODO:  verb filter checkboxes (show/hide each one, especially may want to hide "questions")
@@ -512,6 +539,7 @@ def meta_all():
                 )
 
             def show_sub_word(element, w, title_prefix="", **kwargs):
+                """Diagram a sbj, vrb, or obj."""
                 with element.span(**kwargs) as span_sub_word:
                     w_txt = safe_txt(w)
                     if w in subject_icons:
@@ -533,7 +561,6 @@ def meta_all():
             MAX_TXT_LITERAL = 120
             BEFORE_DOTS = 80
             AFTER_DOTS = 20
-            RIGHT_ARROW = u"\u2192"
 
             def compress_txt(txt):
                 if len(txt) > MAX_TXT_LITERAL:
@@ -598,7 +625,8 @@ def meta_all():
                         li.span(" ")
                         show_whn(li, word.whn, class_='word whn', title_prefix = "whn = ")
 
-            body.p(repr(subject_icons))
+            # body.p("Subject icons: " + repr(subject_icons))
+            # EXAMPLE:  {Word(21): Word(41), Word('user'): Word(12)}
 
             body.footer()
 
@@ -961,10 +989,11 @@ def invalid_response(error_message):
 
 if __name__ == '__main__':
     print(
-        "Fliki, "
+        "Fliki {yyyy_mmdd_hhmm_ss}, "
         "git {git_sha_10}, "
         "Python {python_version}, "
         "Flask {flask_version}".format(
+            yyyy_mmdd_hhmm_ss=qiki.TimeLex()[qiki.Number.NAN],
             git_sha_10=GIT_SHA_10,
             python_version=".".join(str(x) for x in sys.version_info),
             flask_version=flask.__version__,
