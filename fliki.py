@@ -489,17 +489,37 @@ def cache_bust(s):
 
 @flask_app.route('/home', methods=('GET', 'HEAD'))
 def unslumping_home():
+    flask_user, qiki_user = my_login()
+    log_html = log_link(flask_user, qiki_user, then_url=flask.request.path)
     with FlikiHTML('html') as html:
         html.header("Unslumping")
 
         with html.body() as body:
+            with body.div(id='logging') as div:
+                div.raw_text(log_html)
+
             with body.div(id='my_uns', class_='target-environment') as my_uns:
-                my_uns.textarea(id='entry_uns', placeholder="An inspiring quote or video")
-                my_uns.button(id='enter_uns').text("I find this inspiring")
+                my_uns.h2("Stuff you find inspiring")
+                my_uns.textarea(id='text_uns', placeholder="A quote or video")
+                my_uns.button(id='enter_uns').text("This helps unslump")
             with body.div(id='their_uns', class_='target-environment') as their_uns:
-                their_uns.p("(stuff other people find inspiring will appear here)")
+                their_uns.h2("Stuff others find inspiring")
+                their_uns.p("(stuff will appear here)")
             body.js_stamped(flask.url_for('static', filename='code/unslump.js'))
+
+            MONTY = dict(
+                me_idn=qiki_user.idn,
+                AJAX_URL=AJAX_URL,
+            )
             body.footer()
+            with body.script(newlines=True) as script:
+                script.raw_text('var MONTY = {};'.format(json.dumps(
+                    MONTY,
+                    sort_keys=True,
+                    indent=4,
+                    separators=(',', ': '),
+                )))
+                script.raw_text('js_for_unslumping(window, window.$, MONTY);')
 
     return html.doctype_plus_html()
 
@@ -740,6 +760,29 @@ def home():
 # SEE:  Wildcard custom converter, https://stackoverflow.com/a/33296155/673991
 # TODO:  Study HEAD-to-GET mapping, http://stackoverflow.com/q/22443245/673991
 def answer_qiki(url_suffix):
+    """
+    This is the wide open window, where qiki has an answer for everything.
+
+    Everything has a name.
+    Or a /context/name
+    Or a /context/context/name
+
+    Obviously the lex has a WORD for each of these answer-y pages
+    that has ever been "questioned" by virtue of being browsed to.
+
+    Maybe each such word gets its context by some other word. Maybe by pre-vrb:
+        vrb=define txt='youtube'
+        vrb=youtube txt='HttF5HVYtlQ'
+    Or by post-obj:
+        idn=x vrb=define obj=path txt='youtube/HttF5HVYtlQ'
+        vrb=context obj=x
+
+    :param url_suffix:  example "php/strlen"
+                        example "youtube/HttF5HVYtlQ"
+                        usually of the form context "/" name
+                                 but maybe context "/" context "/" name
+    :return:
+    """
     flask_user, qiki_user = my_login()
     log_html = log_link(flask_user, qiki_user, then_url=flask.request.path)
     word_for_path = lex.define(path, qiki.Text.decode_if_you_must(url_suffix))
