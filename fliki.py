@@ -48,8 +48,8 @@ import to_be_released.web_html as web_html
 
 AJAX_URL = '/meta/ajax'
 JQUERY_VERSION = '3.3.1'   # https://developers.google.com/speed/libraries/#jquery
-JQUERYUI_VERSION = '1.12.1'   # https://developers.google.com/speed/libraries/#jquery-ui
-config_names = ('AJAX_URL', 'JQUERY_VERSION', 'JQUERYUI_VERSION')
+# JQUERYUI_VERSION = '1.12.1'   # https://developers.google.com/speed/libraries/#jquery-ui
+config_names = ('AJAX_URL', 'JQUERY_VERSION')   # , 'JQUERYUI_VERSION')
 config_dict = {name: globals()[name.encode('ascii')] for name in config_names}
 SCRIPT_DIRECTORY = os.path.dirname(os.path.realpath(__file__))   # e.g. '/var/www/flask'
 GIT_SHA = git.Repo(SCRIPT_DIRECTORY).head.object.hexsha
@@ -466,7 +466,7 @@ class FlikiHTML(web_html.WebHTML):
 
     def footer(self):
         self.jquery(JQUERY_VERSION)
-        self.js('//ajax.googleapis.com/ajax/libs/jqueryui/{}/jquery-ui.min.js'.format(JQUERYUI_VERSION))
+        # self.js('//ajax.googleapis.com/ajax/libs/jqueryui/{}/jquery-ui.min.js'.format(JQUERYUI_VERSION))
         self.js('//cdn.jsdelivr.net/jquery.cookie/1.4.1/jquery.cookie.js')
         self.js_stamped(flask.url_for('qiki_javascript', filename='jquery.hotkeys.js'))
         self.js_stamped(flask.url_for('qiki_javascript', filename='qoolbar.js'))
@@ -525,6 +525,7 @@ def unslumping_home():
             monty = dict(
                 me_idn=qiki_user.idn.qstring(),
                 AJAX_URL=AJAX_URL,
+                lex_idn=lex[lex].idn.qstring(),
             )
             foot = body.footer()
             with foot.script(newlines=True) as script:
@@ -898,7 +899,7 @@ def json_from_words(words):
             idn=word.idn.qstring(),
             sbj=word.sbj.idn.qstring(),
             vrb=word.vrb.idn.qstring(),
-            # NOTE:  The following line is not needed when words come from jbo...
+            # NOTE:  The obj field is not needed when words come from jbo:
             #            obj=word.obj.idn.qstring(),
             #        ...because word.obj is itself.  That is, a.jbo[i].obj == a
             num=native_num(word.num),
