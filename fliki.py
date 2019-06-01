@@ -48,7 +48,7 @@ import to_be_released.web_html as web_html
 
 AJAX_URL = '/meta/ajax'
 JQUERY_VERSION = '3.3.1'   # https://developers.google.com/speed/libraries/#jquery
-# JQUERYUI_VERSION = '1.12.1'   # https://developers.google.com/speed/libraries/#jquery-ui
+JQUERYUI_VERSION = '1.12.1'   # https://developers.google.com/speed/libraries/#jquery-ui
 config_names = ('AJAX_URL', 'JQUERY_VERSION')   # , 'JQUERYUI_VERSION')
 config_dict = {name: globals()[name.encode('ascii')] for name in config_names}
 SCRIPT_DIRECTORY = os.path.dirname(os.path.realpath(__file__))   # e.g. '/var/www/flask'
@@ -466,7 +466,7 @@ class FlikiHTML(web_html.WebHTML):
 
     def footer(self):
         self.jquery(JQUERY_VERSION)
-        # self.js('//ajax.googleapis.com/ajax/libs/jqueryui/{}/jquery-ui.min.js'.format(JQUERYUI_VERSION))
+        self.js('//ajax.googleapis.com/ajax/libs/jqueryui/{}/jquery-ui.min.js'.format(JQUERYUI_VERSION))
         self.js('//cdn.jsdelivr.net/jquery.cookie/1.4.1/jquery.cookie.js')
         self.js_stamped(flask.url_for('qiki_javascript', filename='jquery.hotkeys.js'))
         self.js_stamped(flask.url_for('qiki_javascript', filename='qoolbar.js'))
