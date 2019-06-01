@@ -49,7 +49,7 @@ import to_be_released.web_html as web_html
 AJAX_URL = '/meta/ajax'
 JQUERY_VERSION = '3.3.1'   # https://developers.google.com/speed/libraries/#jquery
 JQUERYUI_VERSION = '1.12.1'   # https://developers.google.com/speed/libraries/#jquery-ui
-config_names = ('AJAX_URL', 'JQUERY_VERSION')   # , 'JQUERYUI_VERSION')
+config_names = ('AJAX_URL', 'JQUERY_VERSION', 'JQUERYUI_VERSION')
 config_dict = {name: globals()[name.encode('ascii')] for name in config_names}
 SCRIPT_DIRECTORY = os.path.dirname(os.path.realpath(__file__))   # e.g. '/var/www/flask'
 GIT_SHA = git.Repo(SCRIPT_DIRECTORY).head.object.hexsha
