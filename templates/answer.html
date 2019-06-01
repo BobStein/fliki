@@ -51,9 +51,9 @@ var AJAX_URL = '{{ AJAX_URL }}';
 qoolbar.ajax_url(AJAX_URL);
 $(document).ready(function() {
     qoolbar.i_am('{{ me_idn }}');
-    $('#status').text("Loading qoolbar...");
+    var $status =  $('#status');
+    $status.text("Loading qoolbar...");
     qoolbar.html('#my-qoolbar', function() {
-        var $status =  $('#status');
         $status.text("Decorating words...");
         qoolbar.bling('.word');
         $status.text("");

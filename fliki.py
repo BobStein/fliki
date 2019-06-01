@@ -470,6 +470,7 @@ class FlikiHTML(web_html.WebHTML):
         self.js('//cdn.jsdelivr.net/jquery.cookie/1.4.1/jquery.cookie.js')
         self.js_stamped(flask.url_for('qiki_javascript', filename='jquery.hotkeys.js'))
         self.js_stamped(flask.url_for('qiki_javascript', filename='qoolbar.js'))
+        return self
 
     @classmethod
     def os_path_from_url(cls, url):
@@ -492,29 +493,43 @@ def unslumping_home():
     flask_user, qiki_user = my_login()
     log_html = log_link(flask_user, qiki_user, then_url=flask.request.path)
     with FlikiHTML('html') as html:
-        html.header("Unslumping")
+        head = html.header("Unslumping")
+        head.css_stamped(flask.url_for('static', filename='code/css.css'))
 
         with html.body() as body:
             with body.div(id='logging') as div:
                 div.raw_text(log_html)
+            body.div(id='my-qoolbar')
+            body.div(id='status')
 
-            with body.div(id='my_uns', class_='target-environment') as my_uns:
-                my_uns.h2("Stuff you find inspiring")
-                my_uns.textarea(id='text_uns', placeholder="A quote or video")
-                my_uns.button(id='enter_uns').text("This helps unslump")
-            with body.div(id='their_uns', class_='target-environment') as their_uns:
-                their_uns.h2("Stuff others find inspiring")
-                their_uns.p("(stuff will appear here)")
+            with body.div(id='my_ump', class_='target-environment') as my_ump:
+                my_ump.h2("Stuff you find inspiring")
+                my_ump.textarea(id='text_ump', placeholder="A quote or video")
+                my_ump.button(id='enter_ump').text("This helps")
+            with body.div(id='their_ump', class_='target-environment') as their_ump:
+                their_ump.h2("Stuff others find inspiring")
+                anon_input = their_ump.input(
+                    id='show_anonymous',
+                )
+                anon_label = their_ump.label(
+                    for_='show_anonymous',
+                ).text("show anonymous contributions")
+                their_ump.div(id='their_contributions').text("(stuff will appear here)")
+                if flask_user.is_anonymous:
+                    anon_input(disabled='disabled')
+                    anon_label(title='Logged-in users can see anonymous contributions.')
+                else:
+                    anon_input(checked='checked')
             body.js_stamped(flask.url_for('static', filename='code/unslump.js'))
 
-            MONTY = dict(
+            monty = dict(
                 me_idn=qiki_user.idn.qstring(),
                 AJAX_URL=AJAX_URL,
             )
-            body.footer()
-            with body.script(newlines=True) as script:
-                script.raw_text('var MONTY = {};'.format(json.dumps(
-                    MONTY,
+            foot = body.footer()
+            with foot.script(newlines=True) as script:
+                script.raw_text('var MONTY = {json};'.format(json=json.dumps(
+                    monty,
                     sort_keys=True,
                     indent=4,
                     separators=(',', ': '),
