@@ -13,7 +13,7 @@ function js_for_unslumping(window, $, MONTY) {
             $status.text("");
         });
         $(document).on('click', '#enter_uns', function enter_uns_click() {
-            var text_uns = $('#text_uns').value();
+            var text_uns = $('#text_uns').val();
             console.debug("Enter unslump", text_uns);
         });
     });
