@@ -508,7 +508,7 @@ def unslumping_home():
             body.js_stamped(flask.url_for('static', filename='code/unslump.js'))
 
             MONTY = dict(
-                me_idn=qiki_user.idn,
+                me_idn=qiki_user.idn.qstring(),
                 AJAX_URL=AJAX_URL,
             )
             body.footer()
