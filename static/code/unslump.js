@@ -24,7 +24,6 @@ function js_for_unslumping(window, $, MONTY) {
         });
         $(document).on('click', '#enter_ump', function ump_click() {
             var text_ump = $('#text_ump').val();
-            console.debug("Enter unslump", text_ump);
             qoolbar.post(
                 'sentence',
                 {
@@ -33,8 +32,8 @@ function js_for_unslumping(window, $, MONTY) {
                     txt: text_ump
                 },
                 function ump_done(response) {
-                    var new_words = $.parseJSON(response.new_words);
-                    console.log("Ump", new_words.length, new_words[0].idn, new_words[0].txt);
+                    // var new_words = $.parseJSON(response.new_words);
+                    // console.log("Ump", new_words.length, new_words[0].idn, new_words[0].txt);
                 });
         });
     });

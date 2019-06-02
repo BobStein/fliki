@@ -964,7 +964,8 @@ def ajax():
             else:
                 vrb = lex[qiki.Number(vrb_idn)]
         else:
-            vrb = lex[vrb_txt]
+            # vrb = lex[vrb_txt]
+            vrb = lex.verb(vrb_txt)
 
         try:
             txt = form['txt']
