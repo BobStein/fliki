@@ -188,19 +188,19 @@ def my_login():
         qiki_user = None
         logger.fatal("User is neither authenticated nor anonymous.")
 
-    try:
-        user_idn = "idn " + qiki_user.idn.qstring()
-    except AttributeError:
-        user_idn = ""
-    print("User is", end=" ")
-    print(len(str(qiki_user)), end=" ")
-    print("chars,", end=" ")
-    print(str(qiki_user), end=" ")
-    print(user_idn, end=" ")
-    print(qiki_user.lex.__class__.__name__, end=" ")
-    print(qiki_user.lex.meta_word.txt, end=" ")
-    print(qiki_user.lex.meta_word.idn.qstring(), end=" ")
-    print()
+    # try:
+    #     user_idn = "idn " + qiki_user.idn.qstring()
+    # except AttributeError:
+    #     user_idn = ""
+    # print("User is", end=" ")
+    # print(len(str(qiki_user)), end=" ")
+    # print("chars,", end=" ")
+    # print(str(qiki_user), end=" ")
+    # print(user_idn, end=" ")
+    # print(qiki_user.lex.__class__.__name__, end=" ")
+    # print(qiki_user.lex.meta_word.txt, end=" ")
+    # print(qiki_user.lex.meta_word.idn.qstring(), end=" ")
+    # print()
     # EXAMPLE:  User is 9 chars, Bob Stein idn 0q82_A7__8A059E058E6A6308C8B0_1D0B00 GoogleQikiUser google user 0q82_A7
     # EXAMPLE:  User is 9 chars, 127.0.0.1 idn 0q82_A8__82AB_1D0300 AnonymousQikiUser anonymous 0q82_A8
 
@@ -208,6 +208,7 @@ def my_login():
     # TODO:  Why did this line crash sometimes?
     #        IOError: [Errno 22] Invalid argument
     #        May have happened after closing PyCharm to update, leaving fliki running.
+
     return flask_user, qiki_user
 
 
@@ -550,16 +551,48 @@ def meta_all():
 
             words = lex.find_words()
             all_subjects = {word.sbj for word in words}
+            # print("all_subjects", repr(all_subjects))
+            # print("all_subjects", ", ".join("{:it}".format(s) for s in all_subjects))
 
             def latest_iconifier_or_none(s):
-                iconifiers = lex.find_words(obj=s, jbo_vrb=iconify_word)
+                # iconifiers = lex.find_words(obj=s, jbo_vrb=iconify_word)
+                iconifiers = lex.find_words(obj=s, vrb=iconify_word)
+
+                # def repr_jbo(word):
+                #     try:
+                #         return "<-{}".format(repr(word.jbo))
+                #     except AttributeError:
+                #         return ""
+                #
+                # print("latest_iconifiers", repr(s), "[" + ", ".join(repr(i) + repr_jbo(i) for i in iconifiers) + "]")
+                print("latest_iconifiers", repr(s), "[" + ", ".join(repr(i) for i in iconifiers) + "]")
+
                 try:
-                    return iconifiers[0]
+                    return iconifiers[-1]
                 except IndexError:
                     return None
 
+            # lex.find_words(obj=lex[lex], vrb=iconify_word, debug=True)
+
             subject_icons_nones = {s: latest_iconifier_or_none(s) for s in all_subjects}
-            print("subject_icons_nones", repr(subject_icons_nones))
+            print("subject_icons_nones\n\t" + "\n\t".join("{o:it} {ho:x}: {i}".format(o=o, ho=hash(o), i=i) for o,i in subject_icons_nones.items()))
+            # EXAMPLE:  subject_icons_nones {
+            #     Word('lex'): Word(66),
+            #     Word(22): None,
+            #     Word(22): None,
+            #     Word(21): Word(41),
+            #     Word(22): None,
+            #     Word(22): None,
+            #     Word('user'): Word(12),
+            #     Word(22): None
+            # }
+            # EXAMPLE:  subject_icons_nones {
+            #     Word('lex'): Word(882),
+            #     Word(168): None,
+            #     Word('lex'): None,
+            #     Word('user'): Word(165),
+            #     Word(167): Word(176)
+            # }
             subject_icons = {s: i for s, i in subject_icons_nones.items() if i is not None}
 
             def word_identification(w):
