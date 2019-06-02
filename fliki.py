@@ -80,7 +80,7 @@ question = lex.verb('question')
 browse = lex.verb('browse')
 answer = lex.verb('answer')
 
-iconify_word = lex.noun('iconify')
+iconify_word = lex.verb('iconify')   # TODO:  Why in the world was this noun??   lex.noun('iconify')
 name_word = lex.noun('name')
 
 me = lex.define('agent', 'user')  # TODO:  Authentication
@@ -559,6 +559,7 @@ def meta_all():
                     return None
 
             subject_icons_nones = {s: latest_iconifier_or_none(s) for s in all_subjects}
+            print("subject_icons_nones", repr(subject_icons_nones))
             subject_icons = {s: i for s, i in subject_icons_nones.items() if i is not None}
 
             def word_identification(w):
@@ -966,6 +967,7 @@ def ajax():
         else:
             # vrb = lex[vrb_txt]
             vrb = lex.verb(vrb_txt)
+            # FIXME:  can we allow browser trash to define a verb?
 
         try:
             txt = form['txt']
