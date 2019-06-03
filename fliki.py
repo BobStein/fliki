@@ -7,7 +7,14 @@ Authentication courtesy of flask-login and authomatic.
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
-from __future__ import unicode_literals
+
+# from __future__ import unicode_literals <-- this doesn't work when WSGIScriptAlias mentions this .py file.
+# THANKS:  import locally (from .wsgi file named in WSGIScriptAlias) to make unicode_literals work
+#     https://stackoverflow.com/q/38149698/673991#comment63730322_38149698
+#     "If the script is compiled with flags = 0, the __future__ statements will be useless.
+#     Try using import to actually get your module. - o11c"
+#     (Still don't know what o11c meant by "flags = 0".)
+
 import json
 import logging
 import os
@@ -75,16 +82,16 @@ flask_app = flask.Flask(
 flask_app.secret_key = secure.credentials.flask_secret_key
 
 lex = qiki.LexMySQL(**secure.credentials.for_fliki_lex_database)
-path = lex.noun('path')
-question = lex.verb('question')
-browse = lex.verb('browse')
-answer = lex.verb('answer')
+path = lex.noun(u'path')
+question = lex.verb(u'question')
+browse = lex.verb(u'browse')
+answer = lex.verb(u'answer')
 
-iconify_word = lex.verb('iconify')   # TODO:  Why in the world was this noun??   lex.noun('iconify')
-name_word = lex.noun('name')
+iconify_word = lex.verb(u'iconify')   # TODO:  Why in the world was this noun??   lex.noun('iconify')
+name_word = lex.noun(u'name')
 
-me = lex.define('agent', 'user')  # TODO:  Authentication
-me(iconify_word, use_already=True)[me] = 'http://tool.qiki.info/icon/ghost.png'
+me = lex.define('agent', u'user')  # TODO:  Authentication
+me(iconify_word, use_already=True)[me] = u'http://tool.qiki.info/icon/ghost.png'
 qoolbar = qiki.QoolbarSimple(lex)
 
 
@@ -132,7 +139,7 @@ class GoogleQikiUser(qiki.Listing):
         # EXAMPLE:  0q82_A7__8A059E058E6A6308C8B0_1D0B00
 
         namings = self.meta_word.lex.find_words(
-            sbj=self.meta_word.lex['lex'],
+            sbj=self.meta_word.lex[self.meta_word.lex],
             vrb=name_word,
             obj=idn
         )
@@ -159,15 +166,15 @@ class AnonymousQikiUser(qiki.Listing):
 # SEE:  http://stackoverflow.com/questions/3768895/how-to-make-a-class-json-serializable
 
 
-listing = lex.noun('listing')
+listing = lex.noun(u'listing')
 
-google_user = lex.define(listing, 'google user')
+google_user = lex.define(listing, u'google user')
 google_qiki_user = GoogleQikiUser(meta_word=google_user)
 
-anonymous_user = lex.define(listing, 'anonymous')
+anonymous_user = lex.define(listing, u'anonymous')
 anonymous_qiki_user = AnonymousQikiUser(meta_word=anonymous_user)
 
-ip_address = lex.noun('IP address')
+ip_address = lex.noun(u'IP address')
 
 
 def my_login():
@@ -370,8 +377,8 @@ def login():
                 avatar_url = login_result.user.picture
                 display_name = login_result.user.name
                 print("Logging in", qiki_user.index, qiki_user.idn.qstring())
-                lex['lex'](iconify_word, use_already=True)[qiki_user.idn] = avatar_width, avatar_url
-                lex['lex'](name_word, use_already=True)[qiki_user.idn] = display_name
+                lex[lex](iconify_word, use_already=True)[qiki_user.idn] = avatar_width, avatar_url
+                lex[lex](name_word, use_already=True)[qiki_user.idn] = display_name
                 flask_login.login_user(flask_user)
                 # return flask.redirect(flask.url_for('play'))
                 # then_url = flask.request.args.get('then_url', flask.url_for('home'))
