@@ -70,3 +70,8 @@
 .whn.years {
     border-top-width: 0.2em;   /* like a day calendar page */
 }
+
+.referrer {
+    font-family: "Arial Narrow", sans-serif;
+    font-size: 0.7em;
+}

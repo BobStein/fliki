@@ -81,6 +81,12 @@ flask_app = flask.Flask(
 )
 flask_app.secret_key = secure.credentials.flask_secret_key
 
+
+@flask_app.before_first_request
+def flask_earliest_convenience():
+    version_report()
+
+
 lex = qiki.LexMySQL(**secure.credentials.for_fliki_lex_database)
 path = lex.noun(u'path')
 question = lex.verb(u'question')
@@ -210,6 +216,7 @@ def my_login():
     # print()
     # EXAMPLE:  User is 9 chars, Bob Stein idn 0q82_A7__8A059E058E6A6308C8B0_1D0B00 GoogleQikiUser google user 0q82_A7
     # EXAMPLE:  User is 9 chars, 127.0.0.1 idn 0q82_A8__82AB_1D0300 AnonymousQikiUser anonymous 0q82_A8
+    # EXAMPLE:  User is 12 chars, 173.20.2.109 idn 0q82_16__8218_1D0300 AnonymousQikiUser anonymous 0q82_16
 
     # print("User is", str(qiki_user), user_idn)
     # TODO:  Why did this line crash sometimes?
@@ -569,7 +576,7 @@ def meta_all():
 
             subject_icons_nones = {s: latest_iconifier_or_none(s) for s in all_subjects}
             subject_icons = {s: i for s, i in subject_icons_nones.items() if i is not None}
-            print("Subject icons", repr(subject_icons))
+            # print("Subject icons", repr(subject_icons))
             # EXAMPLE:  Subject icons {
             #     Word('user'): Word(338),
             #     Word(0q82_A7__8A059E058E6A6308C8B0_1D0B00): Word(864)
@@ -636,18 +643,40 @@ def meta_all():
                     span_txt.text(" ")
                     span_txt.img(src=word.txt, title="txt = " + compress_txt(word.txt))
 
+            def url_from_question(question_text):
+                if question == '':
+                    return None
+                else:
+                    return flask.url_for('answer_qiki', url_suffix=question_text, _external=True)
+                    # THANKS:  Absolute url, https://stackoverflow.com/q/12162634/673991#comment17401215_12162726
+
             def show_vrb_question(element, word, title_prefix=""):
-                if word.txt == '':
+                question_url = url_from_question(word.obj.txt)
+                if question_url is None:
                     show_sub_word(element, word.obj, class_='word obj', title_prefix=title_prefix)
                 else:
                     with element.a(
-                        href=word.txt,
-                        # title="obj = " + compress_txt(word.txt),
+                        href=question_url,
                         target='_blank',
                     ) as a:
-                        show_sub_word(a, word.obj, class_='word obj', title_prefix="obj = ")
+                        show_sub_word(a, word.obj, class_='word obj', title_prefix=title_prefix)
+
+                if word.txt != '':   # When vrb=question, txt is the referrer.
+                    if word.txt == flask.request.url:
+                        element.span(" (here)", class_='referrer', title="was referred from here")
+                    elif word.txt == question_url:
+                        element.span(" (self)", class_='referrer', title="was referred from itself")
+                    else:
+                        element.text(" ")
+                        with element.a(
+                            href=word.txt,
+                            title="referrer",
+                            target='_blank',
+                        ) as a:
+                            a.span("(ref)", class_='referrer')
 
             body.p("Hello Whorled!")
+            body.comment(["My URL is", flask.request.url])
             with body.ol as ol:
                 for word in words:
                     with ol.li(value=str(int(word.idn)), title="idn = " + word.idn.qstring()) as li:
@@ -948,14 +977,20 @@ def ajax():
         ))
     elif action == 'qoolbar_list':
         verbs = list(qoolbar.get_verb_dicts())
-        print("qoolbar - " + " ".join(v[b'name'] + " " + str(v[b'qool_num']) for v in verbs))
+
+        # print("qoolbar - " + " ".join(v[b'name'] + " " + str(v[b'qool_num']) for v in verbs))
+        # EXAMPLE:  qoolbar delete 1 like 1
+        # EXAMPLE:  qoolbar - like 1 delete 1 laugh 0 spam 1 laugh 1
+
         return valid_response('verbs', verbs)
+        # print(verbs) (I guess)
         # EXAMPLE:
         #     {"is_valid": true, "verbs": [
         #         {"idn": "0q82_86",   "icon_url": "http://tool.qiki.info/icon/thumbsup_16.png", "name": "like"},
         #         {"idn": "0q82_89",   "icon_url": "http://tool.qiki.info/icon/delete_16.png",   "name": "delete"},
         #         {"idn": "0q83_01FC", "icon_url": null,                                         "name": "laugh"}
         #     ]}
+
     elif action == 'sentence':
         form = flask.request.form
 
@@ -1059,18 +1094,23 @@ def invalid_response(error_message):
     ))
 
 
-if __name__ == '__main__':
+def version_report():
     print(
         "Fliki {yyyy_mmdd_hhmm_ss}, "
         "git {git_sha_10}, "
         "Python {python_version}, "
-        "Flask {flask_version}".format(
+        "Flask {flask_version}, "
+        "qiki {qiki_version}".format(
             yyyy_mmdd_hhmm_ss=qiki.TimeLex()[qiki.Number.NAN].txt,
             git_sha_10=GIT_SHA_10,
             python_version=".".join(str(x) for x in sys.version_info),
             flask_version=flask.__version__,
+            qiki_version=qiki.__version__,
         )
     )
+
+
+if __name__ == '__main__':
     flask_app.run(debug=True)
 
 
