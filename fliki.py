@@ -518,6 +518,7 @@ def unslumping_home():
                 their_ump.h2("Stuff others find inspiring")
                 anon_input = their_ump.input(
                     id='show_anonymous',
+                    type='checkbox',
                 )
                 anon_label = their_ump.label(
                     for_='show_anonymous',
@@ -558,49 +559,21 @@ def meta_all():
 
             words = lex.find_words()
             all_subjects = {word.sbj for word in words}
-            # print("all_subjects", repr(all_subjects))
-            # print("all_subjects", ", ".join("{:it}".format(s) for s in all_subjects))
 
             def latest_iconifier_or_none(s):
-                # iconifiers = lex.find_words(obj=s, jbo_vrb=iconify_word)
                 iconifiers = lex.find_words(obj=s, vrb=iconify_word)
-
-                # def repr_jbo(word):
-                #     try:
-                #         return "<-{}".format(repr(word.jbo))
-                #     except AttributeError:
-                #         return ""
-                #
-                # print("latest_iconifiers", repr(s), "[" + ", ".join(repr(i) + repr_jbo(i) for i in iconifiers) + "]")
-                print("latest_iconifiers", repr(s), "[" + ", ".join(repr(i) for i in iconifiers) + "]")
-
                 try:
                     return iconifiers[-1]
                 except IndexError:
                     return None
 
-            # lex.find_words(obj=lex[lex], vrb=iconify_word, debug=True)
-
             subject_icons_nones = {s: latest_iconifier_or_none(s) for s in all_subjects}
-            print("subject_icons_nones\n\t" + "\n\t".join("{o:it} {ho:x}: {i}".format(o=o, ho=hash(o), i=i) for o,i in subject_icons_nones.items()))
-            # EXAMPLE:  subject_icons_nones {
-            #     Word('lex'): Word(66),
-            #     Word(22): None,
-            #     Word(22): None,
-            #     Word(21): Word(41),
-            #     Word(22): None,
-            #     Word(22): None,
-            #     Word('user'): Word(12),
-            #     Word(22): None
-            # }
-            # EXAMPLE:  subject_icons_nones {
-            #     Word('lex'): Word(882),
-            #     Word(168): None,
-            #     Word('lex'): None,
-            #     Word('user'): Word(165),
-            #     Word(167): Word(176)
-            # }
             subject_icons = {s: i for s, i in subject_icons_nones.items() if i is not None}
+            print("Subject icons", repr(subject_icons))
+            # EXAMPLE:  Subject icons {
+            #     Word('user'): Word(338),
+            #     Word(0q82_A7__8A059E058E6A6308C8B0_1D0B00): Word(864)
+            # }
 
             def word_identification(w):
                 w_idn = w.idn.qstring()
@@ -618,7 +591,7 @@ def meta_all():
             def show_sub_word(element, w, title_prefix="", **kwargs):
                 """Diagram a sbj, vrb, or obj."""
                 with element.span(**kwargs) as span_sub_word:
-                    w_txt = safe_txt(w)
+                    w_txt = compress_txt(safe_txt(w))
                     if w in subject_icons:
                         span_sub_word.img(
                             src=subject_icons[w].txt,
@@ -701,9 +674,6 @@ def meta_all():
 
                         li.span(" ")
                         show_whn(li, word.whn, class_='word whn', title_prefix = "whn = ")
-
-            # body.p("Subject icons: " + repr(subject_icons))
-            # EXAMPLE:  {Word(21): Word(41), Word('user'): Word(12)}
 
             body.footer()
 
@@ -978,7 +948,7 @@ def ajax():
         ))
     elif action == 'qoolbar_list':
         verbs = list(qoolbar.get_verb_dicts())
-        print("qoolbar", " ".join(v[b'name'] + " " + str(v[b'qool_num']) for v in verbs))
+        print("qoolbar - " + " ".join(v[b'name'] + " " + str(v[b'qool_num']) for v in verbs))
         return valid_response('verbs', verbs)
         # EXAMPLE:
         #     {"is_valid": true, "verbs": [
@@ -1095,7 +1065,7 @@ if __name__ == '__main__':
         "git {git_sha_10}, "
         "Python {python_version}, "
         "Flask {flask_version}".format(
-            yyyy_mmdd_hhmm_ss=qiki.TimeLex()[qiki.Number.NAN],
+            yyyy_mmdd_hhmm_ss=qiki.TimeLex()[qiki.Number.NAN].txt,
             git_sha_10=GIT_SHA_10,
             python_version=".".join(str(x) for x in sys.version_info),
             flask_version=flask.__version__,
