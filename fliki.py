@@ -806,7 +806,7 @@ def meta_all():
                         extra_class = ''
                     else:
                         # _, delta_whn_description, delta_whn_class = whn_format(last_whn, word.whn)
-                        delta = DeltaTimeLex()[last_whn]('differ')[word.whn]
+                        delta = DeltaTimeLex()[last_whn](u'differ')[word.whn]
                         extra_class = ' delta-' + delta.units_long
                     with ol.li(
                         value=str(int(word.idn)),
@@ -948,7 +948,7 @@ class AgoLex(DeltaTimeLex):
         return does_exist
 
     def describe(self, t):
-        return self[t]('differ')[self._now]
+        return self[t](u'differ')[self._now]
 
 
 # SECONDS_PER_DAY = 24*60*60
