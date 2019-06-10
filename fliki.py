@@ -8,19 +8,20 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-# from __future__ import unicode_literals <-- this doesn't work when WSGIScriptAlias mentions this .py file.
+# from __future__ import unicode_literals
+# NOTE:  The above line doesn't work when WSGIScriptAlias mentions this .py file.
 # THANKS:  import locally (from .wsgi file named in WSGIScriptAlias) to make unicode_literals work
 #     https://stackoverflow.com/q/38149698/673991#comment63730322_38149698
 #     "If the script is compiled with flags = 0, the __future__ statements will be useless.
 #     Try using import to actually get your module. - o11c"
 #     (Still don't know what o11c meant by "flags = 0".)
+#     But from __future__ import print_function appears to work anyway!
 
 import json
 import logging
 import os
 import re
 import sys
-import time
 
 # print("Python version", ".".join(str(x) for x in sys.version_info))
 # EXAMPLE:  Python version 2.7.15.candidate.1
@@ -49,6 +50,7 @@ import six.moves.urllib as urllib
 import werkzeug.local
 
 import qiki
+from qiki.number import type_name
 import secure.credentials
 import to_be_released.web_html as web_html
 
@@ -57,13 +59,12 @@ AJAX_URL = '/meta/ajax'
 JQUERY_VERSION = '3.3.1'   # https://developers.google.com/speed/libraries/#jquery
 JQUERYUI_VERSION = '1.12.1'   # https://developers.google.com/speed/libraries/#jquery-ui
 config_names = ('AJAX_URL', 'JQUERY_VERSION', 'JQUERYUI_VERSION')
-config_dict = {name: globals()[name.encode('ascii')] for name in config_names}
+config_dict = {name: globals()[name] for name in config_names}
 SCRIPT_DIRECTORY = os.path.dirname(os.path.realpath(__file__))   # e.g. '/var/www/flask'
 GIT_SHA = git.Repo(SCRIPT_DIRECTORY).head.object.hexsha
 GIT_SHA_10 = GIT_SHA[ : 10]
 NUM_QOOL_VERB_NEW = qiki.Number(1)
 NUM_QOOL_VERB_DELETE = qiki.Number(0)
-RIGHT_ARROW = u"\u2192"
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -87,6 +88,11 @@ def flask_earliest_convenience():
     version_report()
 
 
+class MyUnicode(object):
+    RIGHT_ARROW = 0x2192
+    BLACK_RIGHT_POINTING_TRIANGLE = 0x25B6
+
+
 lex = qiki.LexMySQL(**secure.credentials.for_fliki_lex_database)
 path = lex.noun(u'path')
 question = lex.verb(u'question')
@@ -94,22 +100,23 @@ browse = lex.verb(u'browse')
 answer = lex.verb(u'answer')
 
 iconify_word = lex.verb(u'iconify')   # TODO:  Why in the world was this noun??   lex.noun('iconify')
-name_word = lex.noun(u'name')
+name_word = lex.noun(u'name')   # TODO:  ffs why isn't this a verb??
 
 me = lex.define('agent', u'user')  # TODO:  Authentication
 me(iconify_word, use_already=True)[me] = u'http://tool.qiki.info/icon/ghost.png'
 qoolbar = qiki.QoolbarSimple(lex)
 
 
-GOOGLE_PROVIDER = b'google'
+GOOGLE_PROVIDER = 'google'
 authomatic_global = authomatic.Authomatic(
     {
         GOOGLE_PROVIDER: {
-            b'class_': authomatic.providers.oauth2.Google,
-            b'consumer_key': secure.credentials.google_client_id,
-            b'consumer_secret': secure.credentials.google_client_secret,
-            b'scope': authomatic.providers.oauth2.Google.user_info_scope + [b'https://gdata.youtube.com'],
-            b'id': 42,
+            'class_': authomatic.providers.oauth2.Google,
+            'consumer_key': secure.credentials.google_client_id,
+            'consumer_secret': secure.credentials.google_client_secret,
+            'scope': authomatic.providers.oauth2.Google.user_info_scope + ['https://gdata.youtube.com'],
+            # SEE:  get a users's YouTube uploads, https://stackoverflow.com/a/21987075/673991
+            'id': 42,
             # NOTE:  See exception in core.py Credentials.serialize() ~line 810:
             #            "To serialize credentials you need to specify a"
             #            "unique integer under the "id" key in the config"
@@ -133,7 +140,7 @@ class GoogleFlaskUser(flask_login.UserMixin):
         self.id = google_user_id
 
 
-class GoogleQikiUser(qiki.Listing):
+class GoogleQikiListing(qiki.Listing):
 
     def lookup(self, google_user_id):
         """
@@ -158,7 +165,7 @@ class GoogleQikiUser(qiki.Listing):
         return the_name, qiki.Number(1)
 
 
-class AnonymousQikiUser(qiki.Listing):
+class AnonymousQikiListing(qiki.Listing):
 
     def lookup(self, ip_address_idn):
         return lex[ip_address_idn].txt, qiki.Number(1)
@@ -175,12 +182,16 @@ class AnonymousQikiUser(qiki.Listing):
 listing = lex.noun(u'listing')
 
 google_user = lex.define(listing, u'google user')
-google_qiki_user = GoogleQikiUser(meta_word=google_user)
+google_qiki_user = GoogleQikiListing(meta_word=google_user)
 
 anonymous_user = lex.define(listing, u'anonymous')
-anonymous_qiki_user = AnonymousQikiUser(meta_word=anonymous_user)
+anonymous_qiki_user = AnonymousQikiListing(meta_word=anonymous_user)
 
 ip_address = lex.noun(u'IP address')
+
+
+def is_qiki_user_anonymous(user_word):
+    return isinstance(user_word.lex, AnonymousQikiListing)
 
 
 def my_login():
@@ -188,15 +199,22 @@ def my_login():
     flask_user = flask_login.current_user
     assert isinstance(flask_user, werkzeug.local.LocalProxy)   # was flask_login.LocalProxy
 
-    # print("User is", repr(flask_user))
-    # EXAMPLE:  <flask_login.mixins.AnonymousUserMixin object at 0x0000000003B99F98>
-
     if flask_user.is_authenticated:
         qiki_user = google_qiki_user[flask_user.get_id()]
     elif flask_user.is_anonymous:
-        print(repr(flask_user), flask.request.remote_addr)
+        # print(repr(flask_user), flask.request.remote_addr)
+        # EXAMPLE:  <flask_login.mixins.AnonymousUserMixin object at 0x0000000004304D30> 127.0.0.1
+        # EXAMPLE:  <flask_login.mixins.AnonymousUserMixin object at 0x7fd3fc2fda50> 173.20.2.109
         anonymous_identifier = lex.define(ip_address, txt=qiki.Text.decode_if_you_must(flask.request.remote_addr))
         qiki_user = anonymous_qiki_user[anonymous_identifier.idn]   # (flask.request.remote_addr)
+        # FIXME:  This needs to use some random hash from a cookie in the idn too
+        #         (in addition to the IP address), so e.g.
+        #         anonymous users at the same IP address
+        #         won't see each others' contributions.
+        #         Anonymous users with no cookies could also be warned they won't
+        #         be able to see their own contributions.
+        #         Unless they sign up and "claim" them?  No can't allow them to claim them
+        #         either, that will have to be cookie based too. They'll be forever anonymous.
     else:
         qiki_user = None
         logger.fatal("User is neither authenticated nor anonymous.")
@@ -262,23 +280,23 @@ def log_link(flask_user, qiki_user, then_url):
 
     if flask_user.is_authenticated:
         return (
-            "<a href='{logout_link}'>"
-            "logout"
-            "</a>"
-            " "
-            "{display_name}"
+            u"<a href='{logout_link}'>"
+            u"logout"
+            u"</a>"
+            u" "
+            u"{display_name}"
         ).format(
             display_name=qiki_user_txt,
             logout_link=flask.url_for('logout'),
         )
     elif flask_user.is_anonymous:
         return (
-            "<a href='{login_link}' title='{login_title}'>"
-            "login"
-            "</a>"
+            u"<a href='{login_link}' title='{login_title}'>"
+            u"login"
+            u"</a>"
         ).format(
-            login_title="You are " + qiki_user_txt,
-            login_link=flask.url_for('login'),
+            login_title=u"You are " + qiki_user_txt,
+            login_link=flask.url_for(u'login'),
             # login_link=flask.url_for('login', next=then_url),
             # login_link=flask.url_for('login', then_url=then_url),
             # NOTE:  Adding a parameter to the query string makes Authomatic.login()
@@ -310,7 +328,7 @@ def user_loader(google_user_id_string):
 def referrer(request):
     this_referrer = request.referrer
     if this_referrer is None:
-        return qiki.Text('')
+        return qiki.Text(u'')
     else:
         return qiki.Text.decode_if_you_must(this_referrer)
 
@@ -384,6 +402,7 @@ def login():
                 avatar_url = login_result.user.picture
                 display_name = login_result.user.name
                 print("Logging in", qiki_user.index, qiki_user.idn.qstring())
+                # EXAMPLE:   Logging in 0q8A_059E058E6A6308C8B0 0q82_15__8A059E058E6A6308C8B0_1D0B00
                 lex[lex](iconify_word, use_already=True)[qiki_user.idn] = avatar_width, avatar_url
                 lex[lex](name_word, use_already=True)[qiki_user.idn] = display_name
                 flask_login.login_user(flask_user)
@@ -400,7 +419,8 @@ def login():
             if login_result.provider:
                 print("Provider:", repr(login_result.provider))
     else:
-        print("not logged in", repr(login_result))
+        pass
+        # print("not logged in", repr(login_result))
         # EXAMPLE:  None (e.g. with extraneous variable on request query, e.g. ?then_url=...)
 
     return response
@@ -509,7 +529,7 @@ def unslumping_home():
     log_html = log_link(flask_user, qiki_user, then_url=flask.request.path)
     with FlikiHTML('html') as html:
         head = html.header("Unslumping")
-        head.css_stamped(flask.url_for('static', filename='code/css.css'))
+        head.css_stamped(flask.url_for('static', filename='code/unslump.css'))
 
         with html.body() as body:
             with body.div(id='logging') as div:
@@ -519,8 +539,12 @@ def unslumping_home():
 
             with body.div(id='my_ump', class_='target-environment') as my_ump:
                 my_ump.h2("Stuff you find inspiring")
-                my_ump.textarea(id='text_ump', placeholder="A quote or video")
-                my_ump.button(id='enter_ump').text("This helps")
+                my_contributions = my_ump.div(id='their_contributions')
+                with my_contributions.div(id='box_ump', class_='container entry') as box_ump:
+                    box_ump.textarea(id='text_ump', placeholder="a quote or video")
+                    box_ump.br()
+                    box_ump.button(id='enter_ump').text("save")
+
             with body.div(id='their_ump', class_='target-environment') as their_ump:
                 their_ump.h2("Stuff others find inspiring")
                 anon_input = their_ump.input(
@@ -530,13 +554,83 @@ def unslumping_home():
                 anon_label = their_ump.label(
                     for_='show_anonymous',
                 ).text("show anonymous contributions")
-                their_ump.div(id='their_contributions').text("(stuff will appear here)")
+                their_contributions = their_ump.div(id='their_contributions')
                 if flask_user.is_anonymous:
                     anon_input(disabled='disabled')
                     anon_label(title='Logged-in users can see anonymous contributions.')
                 else:
-                    anon_input(checked='checked')
+                    pass
+                    # anon_input(checked='checked')
             body.js_stamped(flask.url_for('static', filename='code/unslump.js'))
+
+            unslumps = lex.find_words(vrb=lex['define'], txt='unslump')
+            uns_words = lex.find_words(
+                vrb=unslumps,
+                jbo_vrb=qoolbar.get_verbs(),
+                obj=lex[lex],
+                idn_ascending=False,
+                jbo_ascending=True,
+            )
+
+            # body.p("unslumps: {}".format(repr(unslumps)))
+            # EXAMPLE:  unslumps: [Word('unslump'), Word('unslump')]
+            # body.p("uns_words: {}".format(repr(uns_words)))
+            # EXAMPLE:  uns_words: [Word(956), Word(953), Word(947), Word(882)]
+
+            for uns_word in uns_words:
+                is_my_contribution = uns_word.sbj == qiki_user
+
+                # body.p("{me_or_they}({they_idn}, {they_lex_class}) unslumped by {uns_idn}: {uns_txt:.25s}...".format(
+                #     they_idn=uns_word.sbj.idn.qstring(),
+                #     they_lex_class=type_name(uns_word.sbj.lex),
+                #     me_or_they="me" if is_me else "they",
+                #     uns_idn=uns_word.idn,
+                #     uns_txt=str(uns_word.txt),
+                # ))
+                # EXAMPLE:
+                #     they(0q82_A7__8A05F9A0A1873A14BD1C_1D0B00, GoogleQikiListing)
+                #         unslumped by 0q83_03BC: It is interesting to cont...
+                #     me(0q82_A7__8A059E058E6A6308C8B0_1D0B00, GoogleQikiListing)
+                #         unslumped by 0q83_03B9: profound...
+                #     they(0q82_A8__82AB_1D0300, AnonymousQikiListing)
+                #         unslumped by 0q83_03B3: Life has loveliness to se...
+                #     me(0q82_A7__8A059E058E6A6308C8B0_1D0B00, GoogleQikiListing)
+                #         unslumped by 0q83_0372: pithy...
+
+                if is_my_contribution:
+                    my_contributions.char_name("nbsp")
+                    my_contributions.text(" ")
+                    with my_contributions.div(class_='container word') as container:
+                        container.div(class_='contribution mine').text(str(uns_word.txt))
+                else:
+                    is_me_anon = is_qiki_user_anonymous(qiki_user)
+                    is_they_anon = is_qiki_user_anonymous(uns_word.sbj)
+                    if is_me_anon and is_they_anon:
+                        # NOTE:  Don't even expose anonymous contributions to OTHER
+                        #        anonymous users' browsers.
+                        #        (But anons should see their own contributions)
+                        container = None
+                    else:
+                        their_contributions.text(" ")
+
+                        container_classes = ['container', 'word']
+                        if is_they_anon:
+                            container_classes += ['anonymous']
+
+                        with their_contributions.div(classes=container_classes) as container:
+                            short_d, long_d = short_long_description(uns_word.sbj)
+                            with container.div(classes=['contribution', 'thine']) as contribution:
+                                contribution.text(str(uns_word.txt))
+                            with container.div(class_='caption', title=long_d) as contribution_caption:
+                                contribution_caption.text(short_d)
+
+                if container is not None:
+                    container(
+                        **({
+                            'data-idn': uns_word.idn.qstring(),
+                            'data-jbo': json_from_words(uns_word.jbo),
+                        })
+                    )
 
             monty = dict(
                 me_idn=qiki_user.idn.qstring(),
@@ -554,6 +648,30 @@ def unslumping_home():
                 script.raw_text('js_for_unslumping(window, window.$, MONTY);')
 
     return html.doctype_plus_html()
+
+
+def short_long_description(user_word):
+    # namings = lex.find_words(obj=user_word, vrb=name_word)
+    try:
+        # user_naming_txt = namings[-1].txt
+        user_naming_txt = user_word.txt
+    except (IndexError, AttributeError):
+        user_naming_txt = "(unknown contributor)"
+
+    short_description = user_naming_txt
+
+    if isinstance(user_word.lex, AnonymousQikiListing):
+        long_description = "Anonymous user {ip_address}".format(ip_address=user_naming_txt)
+    elif isinstance(user_word.lex, GoogleQikiListing):
+        long_description = "Google user {googly_name}".format(googly_name=user_naming_txt)
+    else:
+        long_description = "User lex class {lex_class} user {user_txt}".format(
+            lex_class=type_name(user_word.lex),
+            user_txt=user_naming_txt
+        )
+
+    return short_description, long_description
+
 
 # noinspection PyPep8Naming
 @flask_app.route('/meta/all', methods=('GET', 'HEAD'))
@@ -607,7 +725,7 @@ def meta_all():
                         # NOTE:  w.__class__.__name__ == 'WordDerivedJustForThisListing'
                     else:
                         classes = ['named']
-                        if isinstance(w.lex, AnonymousQikiUser):
+                        if isinstance(w.lex, AnonymousQikiListing):
                             classes.append('anonymous')
                         elif isinstance(w.lex, qiki.Lex):
                             classes.append('lex')
@@ -633,9 +751,9 @@ def meta_all():
                     return txt
 
             def show_txt(element, txt):
-                element.raw_text("&ldquo;")
+                element.char_name('ldquo')
                 element.text(compress_txt(txt))
-                element.raw_text("&rdquo;")
+                element.char_name('rdquo')
 
             def show_vrb_iconify(element, word, title_prefix=""):
                 show_sub_word(element, word.obj, class_='word obj', title_prefix=title_prefix)
@@ -678,8 +796,32 @@ def meta_all():
             body.p("Hello Whorled!")
             body.comment(["My URL is", flask.request.url])
             with body.ol as ol:
+                last_whn = None
+                first_word = True
+                ago_lex = AgoLex()
                 for word in words:
-                    with ol.li(value=str(int(word.idn)), title="idn = " + word.idn.qstring()) as li:
+                    if first_word:
+                        first_word = False
+                        delta = None
+                        extra_class = ''
+                    else:
+                        # _, delta_whn_description, delta_whn_class = whn_format(last_whn, word.whn)
+                        delta = DeltaTimeLex()[last_whn]('differ')[word.whn]
+                        extra_class = ' delta-' + delta.units_long
+                    with ol.li(
+                        value=str(int(word.idn)),
+                        title="idn = " + word.idn.qstring(),
+                        class_='word-description' + extra_class,
+                    ) as li:
+                        if delta is not None:
+                            units_class = delta.units_long
+                            if 0.0 < delta.num < 1.0:
+                                units_class = 'subsec'
+                            with li.span(class_='delta-triangle ' + units_class) as triangle:
+                                triangle(title=delta.description_long)
+                                triangle.char_code(MyUnicode.BLACK_RIGHT_POINTING_TRIANGLE)
+                            with li.span(class_='delta-amount ' + units_class) as amount:
+                                amount.text(delta.amount_short + delta.units_short)
                         show_sub_word(li, word.sbj, class_='word sbj', title_prefix= "sbj = ")
                         li.span("-")
                         show_sub_word(li, word.vrb, class_='word vrb', title_prefix = "vrb = ")
@@ -694,7 +836,7 @@ def meta_all():
                             if word.num != qiki.Number(1):
                                 with li.span(class_='word num', title="num = " + word.num.qstring()) as span:
                                     span.text(" ")
-                                    span.raw_text("&times;")
+                                    span.char_name('times')
                                     span.text(render_num(word.num))
                             if word.txt != '':
                                 with li.span(class_='word txt') as span:
@@ -702,64 +844,226 @@ def meta_all():
                                     show_txt(span, word.txt)
 
                         li.span(" ")
-                        show_whn(li, word.whn, class_='word whn', title_prefix = "whn = ")
+                        # show_whn(li, word.whn, class_='word whn', title_prefix = "whn = ")
+                        ago = ago_lex.describe(word.whn)
+                        with li.span(
+                            title="whn = " + ago.description_longer,   # e.g. "34.9 hours ago: 2019.0604.0459.02"
+                            class_='word whn ' + ago.units_long,       # e.g. "hours"
+                        ) as whn_span:
+                            whn_span.text(ago.description_short)       # e.g. "35h"
+                        last_whn = word.whn
 
             body.footer()
 
     return html.doctype_plus_html()
 
 
-SECONDS_PER_DAY = 24*60*60
-SECONDS_PER_WEEK = 7*SECONDS_PER_DAY
+class DeltaTimeLex(qiki.TimeLex):
+    """Augment the time interval feature with more formatting."""
+
+    def differ(self, word, sbj, vrb, obj):
+        """
+        Intercept a time_lex[t1]('differ')[t2] word lookup.
+
+        Augment this word with extra information
+            amount_short
+            amount_long
+            units_short
+            units_long
+            description_short
+            description_long
+
+        :param word: - a TimeLex word representing a time interval
+        :param sbj: - a TimeLex word representing the earlier time.
+        :param vrb: - 'differ' to get here
+        :param obj:- a TimeLex word representing the later time.
+        :return: - true if this time interval "exists" (otherwise caller will raise NotFound)
+        """
+        does_exist = super(DeltaTimeLex, self).differ(word, sbj, vrb, obj)
+        if does_exist:
+
+            def div(n, d):
+                return "{:.0f}".format(float(n)/d)
+
+            def div1(n, d):
+                return "{:.1f}".format(float(n)/d)
+
+            delta_seconds = word.num
+            if delta_seconds ==                                   0.000:
+                word.amount_short = ""
+                word.amount_long = ""
+                word.units_short = "z"
+                word.units_long = "zero"
+            elif delta_seconds <=                               120*1:
+                word.amount_short = div(delta_seconds,            1)
+                word.amount_long = div1(delta_seconds,            1)
+                word.units_short = "s"
+                word.units_long = "seconds"
+            elif delta_seconds <=                            120*60:
+                word.amount_short = div(delta_seconds,           60)
+                word.amount_long = div1(delta_seconds,           60)
+                word.units_short = "m"
+                word.units_long = "minutes"
+            elif delta_seconds <=                          48*60*60:
+                word.amount_short = div(delta_seconds,        60*60)
+                word.amount_long = div1(delta_seconds,        60*60)
+                word.units_short = "h"
+                word.units_long = "hours"
+            elif delta_seconds <=                       90*24*60*60:
+                word.amount_short = div(delta_seconds,     24*60*60)
+                word.amount_long = div1(delta_seconds,     24*60*60)
+                word.units_short = "d"
+                word.units_long = "days"
+            elif delta_seconds <=                    24*30*24*60*60:
+                word.amount_short = div(delta_seconds,  30*24*60*60)
+                word.amount_long = div1(delta_seconds,  30*24*60*60)
+                word.units_short = "M"
+                word.units_long = "months"
+            else:
+                word.amount_short = div(delta_seconds, 365*24*60*60)
+                word.amount_long = div1(delta_seconds, 365*24*60*60)
+                word.units_short = "Y"
+                word.units_long = "years"
+
+            word.description_short = word.amount_short + word.units_short
+            word.description_long = word.amount_long + " " + word.units_long
+        return does_exist
 
 
-def show_whn(element, whn, title_prefix = "", **kwargs):
+class AgoLex(DeltaTimeLex):
+    """Time interval between now and some word in the past."""
 
-    def div(n, d):
-        return str((n + d//2) // d)
+    def __init__(self, **kwargs):
+        super(AgoLex, self).__init__(**kwargs)
+        self._now = self.now_word()
 
-    def fdiv(n, d):
-        return "{:.1f}".format(n/d)
+    def differ(self, word, sbj, vrb, obj):
+        does_exist = super(AgoLex, self).differ(word, sbj, vrb, obj)
+        if does_exist:
+            time_n_date_of_original_event = self[sbj.whn].txt
+            word.description_longer = "{description_long} ago: {time_n_date}".format(
+                description_long=word.description_long,
+                time_n_date=time_n_date_of_original_event,
+            )
+        return does_exist
 
-    class_ = kwargs.pop(b'class_', '')
-    now = lex.now()
-    seconds_ago = int(now - whn)
-    if seconds_ago <=                   120:
-        ago_short = str(seconds_ago)               + "s"
-        ago_long  = str(seconds_ago)               + " seconds ago"
-        additional_class = 'seconds'
-    elif seconds_ago <=              120*60:
-        ago_short = div(seconds_ago,           60) + "m"
-        ago_long = fdiv(seconds_ago,           60) + " minutes ago"
-        additional_class = 'minutes'
-    elif seconds_ago <=            48*60*60:
-        ago_short = div(seconds_ago,        60*60) + "h"
-        ago_long = fdiv(seconds_ago,        60*60) + " hours ago"
-        additional_class = 'hours'
-    elif seconds_ago <=         90*24*60*60:
-        ago_short = div(seconds_ago,     24*60*60) + "d"
-        ago_long = fdiv(seconds_ago,     24*60*60) + " days ago"
-        additional_class = 'days'
-    elif seconds_ago <=      24*30*24*60*60:
-        ago_short = div(seconds_ago,  30*24*60*60) + "M"
-        ago_long = fdiv(seconds_ago,  30*24*60*60) + " months ago"
-        additional_class = 'months'
-    else:
-        ago_short = div(seconds_ago, 365*24*60*60) + "Y"
-        ago_long = fdiv(seconds_ago, 365*24*60*60) + " years ago"
-        additional_class = 'years'
+    def describe(self, t):
+        return self[t]('differ')[self._now]
 
-    class_ += ' ' + additional_class
-    seconds_since_midnight = int(now) % SECONDS_PER_DAY
-    # TODO:  Local time vs universal time?
-    time_of_it = time.localtime(int(whn))
-    time_date = time.strftime(b"%H:%M:%S %d-%b-%Y", time_of_it)
-    if seconds_ago <= seconds_since_midnight:
-        time_date += ", today"
-    else:
-        time_date += time.strftime(b", %a", time_of_it)
-    title = title_prefix + "{ago_long}: {time_date}".format(ago_long=ago_long, time_date=time_date)
-    return element.span(ago_short, title=title, class_=class_, **kwargs)
+
+# SECONDS_PER_DAY = 24*60*60
+# SECONDS_PER_WEEK = 7*SECONDS_PER_DAY
+#
+#
+# def show_whn(element, whn, title_prefix = "", **kwargs):
+#
+#     now = lex.now_number()
+#     ago_short, ago_long, ago_class = delta_format(whn, now)
+#     try:
+#         class_ = kwargs.pop('class_')
+#     except KeyError:
+#         class_ = ago_class
+#     else:
+#         class_ += ' ' + ago_class
+#     return element.span(ago_short, title=title_prefix + ago_long, class_=class_, **kwargs)
+#
+#
+# def delta_format(time_early, time_later):
+#     """
+#     Format short and long descriptions of the difference between two times.
+#
+#     :param time_early: - e.g. the whn field of some word
+#     :param time_later: - e.g. lex.now()
+#     :return: (amount_short, amount_long,   units_short, units_long,   delta_seconds)
+#         e.g. ('3', '2.8', 'm', 'minutes', 168.5)
+#     """
+#     def div(n, d):
+#         return str((int(n) + d//2) // d)
+#
+#     def fdiv(n, d):
+#         return "{:.1f}".format(int(n)/d)
+#
+#     delta_seconds = qiki.Number(time_later) - qiki.Number(time_early)
+#     if delta_seconds <=                          120*1:
+#         amount_short = div(delta_seconds,            1)
+#         amount_long = fdiv(delta_seconds,            1)
+#         units_short_long = ["s", "seconds"]
+#     elif delta_seconds <=                       120*60:
+#         amount_short = div(delta_seconds,           60)
+#         amount_long = fdiv(delta_seconds,           60)
+#         units_short_long = ["m", "minutes"]
+#     elif delta_seconds <=                     48*60*60:
+#         amount_short = div(delta_seconds,        60*60)
+#         amount_long = fdiv(delta_seconds,        60*60)
+#         units_short_long = ["h", "hours"]
+#     elif delta_seconds <=                  90*24*60*60:
+#         amount_short = div(delta_seconds,     24*60*60)
+#         amount_long = fdiv(delta_seconds,     24*60*60)
+#         units_short_long = ["d", "days"]
+#     elif delta_seconds <=               24*30*24*60*60:
+#         amount_short = div(delta_seconds,  30*24*60*60)
+#         amount_long = fdiv(delta_seconds,  30*24*60*60)
+#         units_short_long = ["M", "months"]
+#     else:
+#         amount_short = div(delta_seconds, 365*24*60*60)
+#         amount_long = fdiv(delta_seconds, 365*24*60*60)
+#         units_short_long = ["Y", "years"]
+#
+#     seconds_since_midnight = int(time_later) % SECONDS_PER_DAY
+#     time_of_it = time.localtime(float(time_early))
+#     time_date = time.strftime("%H:%M:%S %d-%b-%Y", time_of_it)
+#     if delta_seconds <= seconds_since_midnight:
+#         time_date += ", today"
+#     else:
+#         time_date += time.strftime(", %a", time_of_it)
+#     return tuple([amount_short, amount_long] + units_short_long + [delta_seconds])
+#
+#
+# def ago_format(time_past):
+#     """
+#     Format descriptions of a time in the past.
+#
+#     :param time_past:
+#     :return: (amount_short, amount_long,   units_short, units_long,   delta_seconds,  long_description)
+#         e.g. ('3', '2.8', 'm', 'minutes', 168.5, "2.8 minutes ago: 17:13:41 06-Jun-2019, Thu")
+#     """
+#     # TODO  Support future time too, "hence" instead of ago.
+#     date_time = time_format(time_past)
+#     now = lex.now()
+#     delta_formats = list(delta_format(time_past, now))
+#     _, amount, _, units, _ = delta_formats
+#     long_description = "{amount} {units} ago: {date_time}".format(
+#         amount=amount,
+#         units=units,
+#         date_time=date_time,
+#     )
+#     return tuple(delta_formats + [long_description])
+#
+#
+# def time_format(some_time):
+#     """
+#     Format a time.
+#
+#     replaces day-of-week with "today" if some_time is since midnight local time (I think).
+#
+#     :param some_time: - unix epoch, float seconds since 1970
+#     :return: e.g. "17:13:41 06-Jun-2019, Thu"
+#     """
+#     time_9_tuple = time.localtime(float(some_time))
+#     date_time = time.strftime("%H:%M:%S %d-%b-%Y", time_9_tuple)
+#     now = lex.now()
+#     ago = now - some_time
+#     now_9_tuple = time.localtime(float(now))
+#     midnight_9_tuple = tuple
+#     seconds_since_midnight = int(now) % SECONDS_PER_DAY
+#     # TODO:  This is not local, it's time since midnight UTC.  Fix that.
+#     #        E.g. Pacific Time 9am would show 6pm yesterday as "today" (too eager to show "today")
+#     #        E.g. Pacific Time 6pm would show 2pm as e.g. "Thursday" (too reluctant to show "today")
+#     if ago <= seconds_since_midnight:
+#         day_of_week = "today"
+#     else:
+#         day_of_week = time.strftime("%a", time_9_tuple)
+#     return date_time + day_of_week
 
 
 @flask_app.route('/meta/all words', methods=('GET', 'HEAD'))   # the older, simpler way
@@ -850,6 +1154,7 @@ def answer_qiki(url_suffix):
 
     # print("ANSWER", *[repr(w.idn) + " " + w.txt + ", " for w in qoolbar.get_verbs()])
     # EXAMPLE:  ANSWER Number('0q82_86') like,  Number('0q82_89') delete,  Number('0q83_01FC') laugh,
+
     question_words = lex.find_words(
         idn=word_for_path.idn,
         jbo_vrb=qoolbar.get_verbs(),
@@ -882,6 +1187,7 @@ def answer_qiki(url_suffix):
         picture = pictures[0] if len(pictures) >= 1 else None
         names = lex.find_words(vrb=name_word, obj=a.sbj)
         name = names[0] if len(names) >= 1 else a.sbj.txt
+        # TODO:  Get latest name instead of earliest name
         if picture is not None:
             author_img = "<img src='{url}' title='{name}' class='answer-author'>".format(url=picture.txt, name=name)
         elif name:
@@ -1108,6 +1414,9 @@ def version_report():
             qiki_version=qiki.__version__,
         )
     )
+    # EXAMPLES:
+    #     Fliki 2019.0603.1144.11, git e74a46d9ed, Python 2.7.15.candidate.1, Flask 1.0.3, qiki 0.0.1.2019.0603.0012.15
+    #     Fliki 2019.0603.1133.40, git a34d72cdc6, Python 2.7.16.final.0, Flask 1.0.2, qiki 0.0.1.2019.0603.0012.15
 
 
 if __name__ == '__main__':

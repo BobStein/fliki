@@ -229,6 +229,7 @@ __version__ = '1.16'
 import sys
 import cgi
 import unittest
+import six
 
 
 class HTML(object):
@@ -299,6 +300,7 @@ class HTML(object):
             self._stack[-1]._content.append(text)
         else:
             self._content.append(text)
+        return self   # STEIN added, so e.g. div.p(id='foo').text('bar').p(id='two').text('fer')
 
     def raw_text(self, text):
         '''Add raw, unescaped text to the document. This is useful for
@@ -329,7 +331,7 @@ class HTML(object):
             # special-case to allow control over newlines
             self._newlines = kw.pop('newlines')
         for k in kw:
-            if not isinstance(kw[k], (str, unicode)):
+            if not isinstance(kw[k], six.string_types):
                 # TODO:  six.string_types instead of (str, unicode)
                 raise ValueError("Attribute values should be string, not " + type(kw[k]).__name__)
             if k == 'klass':
@@ -414,7 +416,7 @@ class HTML(object):
         return self._stringify(str)
 
     def __unicode__(self):
-        return self._stringify(unicode)
+        return self._stringify(six.text_type)
 
     def __iter__(self):
         return iter([str(self)])
@@ -507,15 +509,15 @@ class TestCase(unittest.TestCase):
     if sys.version_info[0] == 2:
         def test_empty_tag_unicode(self):
             'generation of an empty HTML tag'
-            self.assertEquals(unicode(HTML().br), unicode('<br>'))
+            self.assertEquals(six.text_type(HTML().br), u'<br>')
 
         def test_empty_tag_xml_unicode(self):
             'generation of an empty XHTML tag'
-            self.assertEquals(unicode(XHTML().br), unicode('<br />'))
+            self.assertEquals(six.text_type(XHTML().br), u'<br />')
 
         def test_xhtml_match_tag_unicode(self):
             'check forced generation of matching tag when empty'
-            self.assertEquals(unicode(XHTML().p), unicode('<p></p>'))
+            self.assertEquals(six.text_type(XHTML().p), u'<p></p>')
 
     def test_just_tag(self):
         'generate HTML for just one tag'
@@ -622,13 +624,14 @@ class TestCase(unittest.TestCase):
         h = HTML(newlines=False)
         # Python 3 compat
         try:
-            unicode = unicode
+            # noinspection PyUnresolvedReferences
+            u = unicode
             TEST = 'euro \xe2\x82\xac'.decode('utf8')
         except:
-            unicode = str
+            u = str
             TEST = 'euro €'
         h.p(TEST)
-        self.assertEquals(unicode(h), '<p>%s</p>' % TEST)
+        self.assertEquals(u(h), '<p>%s</p>' % TEST)
 
     def test_table(self):
         'multiple "with" context blocks'

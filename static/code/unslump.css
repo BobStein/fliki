@@ -1,4 +1,90 @@
-#their_contributions {
-    border: 1px gray;
+h1, h2, h3, h4 {
+    margin-bottom: 0;
+    margin-top: 0;
+}
+
+#logging {
+    text-align: right;
+}
+
+#my_ump {
+    padding: 0.5em 0.5em 0.5em 0.5em;
+}
+
+#their_ump {
+    margin-top: 1em;
+    padding: 0.5em 0.5em 0.5em 0.5em;
+}
+
+#my_contributions {
+    /*border: 1px black solid;*/
     padding: 0.9em 0.5em 0.9em 0.5em;
+}
+#their_contributions {
+    /*border: 1px black solid;*/
+    padding: 0.9em 0.5em 0.9em 0.5em;
+}
+
+.container {
+    display: inline-block;
+    vertical-align: top;
+
+}
+.contribution {
+    border-color: black;
+    border-style: solid;
+    padding: 0.7em 0.5em 0.7em 0.5em;
+    white-space: pre-line;
+    background-color: #EEEEEE;
+    border-width: 1px;
+    max-width: 20em;
+    max-height: 8em;
+    overflow: auto;
+    position: relative;
+    top: 0;
+    left: 0;
+    resize: both;
+}
+
+.contribution.entry {
+    border: none;
+}
+
+.contribution.mine {
+}
+
+.contribution.thine {
+}
+
+.contribution + .caption {
+    clear: left;
+    background-color: #AAAAAA;
+    color: white;
+    font: small-caption;
+    padding: 0 0.5em 0.1em 0.5em;
+}
+
+.anonymous .contribution {
+    border-color: #C00000;
+    background-color: #F4ECEC;
+}
+
+.anonymous .caption {
+    background-color: #B8A0A0;
+}
+.anonymous_hide {
+    display: none;
+}
+
+.contribution.drop-hover,
+.contribution.drop-hover.anonymous {
+    background-color: white;
+    border-width: 2px;
+    margin: -1px;
+}
+
+.caption + .qool-bling,
+.contribution + .qool-bling {
+    margin-top: 0.1em;
+    display: block;
 }

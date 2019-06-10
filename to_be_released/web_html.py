@@ -2,7 +2,7 @@ import os
 import re
 import six
 
-import richard_jones_html
+from to_be_released import richard_jones_html
 
 
 class WebHTML(richard_jones_html.HTML):
@@ -326,7 +326,11 @@ class WebHTML(richard_jones_html.HTML):
             body.comment("Cheese.")
             body.comment(["Gouda is good.", "Blue is better."])
         """
-        if hasattr(inside_the_comment, '__iter__'):
+        if (
+            not isinstance(inside_the_comment, six.string_types) and
+            hasattr(inside_the_comment, '__iter__')
+        ):
+            # NOTE:  Python 3 strings have an __iter__ method.
             self.comment("\n" + "\n".join(inside_the_comment) + "\n")
         else:
             self.raw_text('<!--')
@@ -345,6 +349,12 @@ class WebHTML(richard_jones_html.HTML):
         for sub_content in self._content:
             if isinstance(sub_content, richard_jones_html.HTML):
                 sub_content.map_attribute(attribute_modifier)
+
+    def char_name(self, name):
+        self.raw_text('&' + name + ';')
+
+    def char_code(self, code):
+        self.raw_text('&#x{:X};'.format(int(code)))
 
     ''' 
     Render begin.

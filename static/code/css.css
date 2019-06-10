@@ -75,3 +75,57 @@
     font-family: "Arial Narrow", sans-serif;
     font-size: 0.7em;
 }
+
+.lex-list {
+    padding-inline-start: 60px;
+}
+.word-description {
+    position: relative;
+}
+.delta-triangle {
+    position: absolute;
+    left: -50px;
+    top: -0.77em;
+}
+.delta-amount {
+    position: absolute;
+    left: -47px;
+    top: -0.66em;
+}
+.delta-triangle         { color: #FFFFFF; }  /* in case of new units_long values */
+.delta-triangle.zero    { color: #D8D8D8; font-size: 1.0em; }
+.delta-triangle.subsec  { color: #D8D8D8; font-size: 1.0em; }
+.delta-triangle.seconds { color: #C8C8C8; font-size: 1.0em; }
+.delta-triangle.minutes { color: #B8B8B8; font-size: 1.5em; }
+.delta-triangle.hours   { color: #989898; font-size: 2.0em; left: -51px; }
+.delta-triangle.days    { color: #787878; font-size: 2.5em; left: -52px; top: -0.82em; }
+.delta-triangle.months  { color: #585858; font-size: 3.0em; left: -53px; top: -0.84em; }
+.delta-triangle.years   { color: #383838; font-size: 3.5em; left: -54px; top: -0.85em; }
+
+.delta-amount {
+    font-family: 'Arial Narrow', sans-serif;
+    font-size: 0.6em;
+}
+.delta-amount.zero,
+.delta-amount.subsec,
+.delta-amount.seconds {
+    display: none;
+}
+.delta-amount.minutes,
+.delta-amount.hours {
+    color: #000000;
+}
+.delta-amount.days,
+.delta-amount.months,
+.delta-amount.years {
+    color: #FFFFFF;
+}
+
+.word-description.delta-zero    { }
+.word-description.delta-subsec  { }
+.word-description.delta-seconds { }
+.word-description.delta-minutes { }
+.word-description.delta-hours   { border-top: 1px solid #C0C0C0; }
+.word-description.delta-days    { border-top: 3px solid #808080; }
+.word-description.delta-months  { border-top: 5px solid #404040; }
+.word-description.delta-years   { border-top: 7px solid #000000; }

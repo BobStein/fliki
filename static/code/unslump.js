@@ -22,6 +22,7 @@ function js_for_unslumping(window, $, MONTY) {
             qoolbar.bling('.word');
             $status.text("");
         });
+        qoolbar.target('.word');   // Each of these elements must have a data-idn attribute.
         $(document).on('click', '#enter_ump', function ump_click() {
             var text_ump = $('#text_ump').val();
             qoolbar.post(
@@ -36,5 +37,17 @@ function js_for_unslumping(window, $, MONTY) {
                     // console.log("Ump", new_words.length, new_words[0].idn, new_words[0].txt);
                 });
         });
+        $('#show_anonymous').on('change', function () {
+            enforce_anonymous();
+        });
+        enforce_anonymous();
     });
+
+    function enforce_anonymous() {
+        if ($('#show_anonymous').is(':enabled:checked')) {
+            $('.anonymous').removeClass('anonymous_hide');
+        } else {
+            $('.anonymous').addClass('anonymous_hide');
+        }
+    }
 }
