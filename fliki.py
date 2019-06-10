@@ -563,7 +563,7 @@ def unslumping_home():
                     # anon_input(checked='checked')
             body.js_stamped(flask.url_for('static', filename='code/unslump.js'))
 
-            unslumps = lex.find_words(vrb=lex['define'], txt='unslump')
+            unslumps = lex.find_words(vrb=lex[u'define'], txt=u'unslump')
             uns_words = lex.find_words(
                 vrb=unslumps,
                 jbo_vrb=qoolbar.get_verbs(),
