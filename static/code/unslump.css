@@ -28,7 +28,7 @@ h1, h2, h3, h4 {
 .container {
     display: inline-block;
     vertical-align: top;
-
+    padding: 0.3em 0.5em 0.3em 0.5em;
 }
 .contribution {
     border-color: black;
@@ -50,10 +50,10 @@ h1, h2, h3, h4 {
     border: none;
 }
 
-.contribution.mine {
+.mine .contribution {
 }
 
-.contribution.thine {
+.thine .contribution {
 }
 
 .contribution + .caption {

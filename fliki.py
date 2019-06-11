@@ -100,7 +100,7 @@ browse = lex.verb(u'browse')
 answer = lex.verb(u'answer')
 
 iconify_word = lex.verb(u'iconify')   # TODO:  Why in the world was this noun??   lex.noun('iconify')
-name_word = lex.noun(u'name')   # TODO:  ffs why isn't this a verb??
+name_word = lex.verb(u'name')   # TODO:  ffs why wasn't this a verb??
 
 me = lex.define('agent', u'user')  # TODO:  Authentication
 me(iconify_word, use_already=True)[me] = u'http://tool.qiki.info/icon/ghost.png'
@@ -577,6 +577,9 @@ def unslumping_home():
             # body.p("uns_words: {}".format(repr(uns_words)))
             # EXAMPLE:  uns_words: [Word(956), Word(953), Word(947), Word(882)]
 
+            # TODO:  Send these as json instead?  Construct in unslump.js?
+            #        Ooh, imagine a long-poll where new contributions would show up as
+            #        a "show new stuff" button!!
             for uns_word in uns_words:
                 is_my_contribution = uns_word.sbj == qiki_user
 
@@ -597,32 +600,37 @@ def unslumping_home():
                 #     me(0q82_A7__8A059E058E6A6308C8B0_1D0B00, GoogleQikiListing)
                 #         unslumped by 0q83_0372: pithy...
 
+                is_me_anon = is_qiki_user_anonymous(qiki_user)
+                is_they_anon = is_qiki_user_anonymous(uns_word.sbj)
+                short_d, long_d = short_long_description(uns_word.sbj)
+
+                def add_container(parent, class_):
+                    parent.text(" ")
+
+                    container_classes = ['container', 'word', class_]
+                    if is_they_anon:
+                        container_classes += ['anonymous']
+
+                    with parent.div(classes=container_classes) as this_container:
+                        with this_container.div(class_='contribution') as contribution:
+                            contribution.text(str(uns_word.txt))
+                        with this_container.div(class_='caption', title=long_d) as contribution_caption:
+                            contribution_caption.text(short_d)
+                        return this_container
+
                 if is_my_contribution:
-                    my_contributions.char_name("nbsp")
-                    my_contributions.text(" ")
-                    with my_contributions.div(class_='container word') as container:
-                        container.div(class_='contribution mine').text(str(uns_word.txt))
+                    container = add_container(my_contributions, 'mine')
+                    # my_contributions.text(" ")
+                    # with my_contributions.div(class_='container word') as container:
+                    #     container.div(class_='contribution mine').text(str(uns_word.txt))
                 else:
-                    is_me_anon = is_qiki_user_anonymous(qiki_user)
-                    is_they_anon = is_qiki_user_anonymous(uns_word.sbj)
                     if is_me_anon and is_they_anon:
-                        # NOTE:  Don't even expose anonymous contributions to OTHER
+                        container = None
+                        # NOTE:  Don't expose anonymous contributions to OTHER
                         #        anonymous users' browsers.
                         #        (But anons should see their own contributions)
-                        container = None
                     else:
-                        their_contributions.text(" ")
-
-                        container_classes = ['container', 'word']
-                        if is_they_anon:
-                            container_classes += ['anonymous']
-
-                        with their_contributions.div(classes=container_classes) as container:
-                            short_d, long_d = short_long_description(uns_word.sbj)
-                            with container.div(classes=['contribution', 'thine']) as contribution:
-                                contribution.text(str(uns_word.txt))
-                            with container.div(class_='caption', title=long_d) as contribution_caption:
-                                contribution_caption.text(short_d)
+                        container = add_container(their_contributions, 'thine')
 
                 if container is not None:
                     container(

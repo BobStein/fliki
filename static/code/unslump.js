@@ -45,9 +45,11 @@ function js_for_unslumping(window, $, MONTY) {
 
     function enforce_anonymous() {
         if ($('#show_anonymous').is(':enabled:checked')) {
-            $('.anonymous').removeClass('anonymous_hide');
+            $('#their_ump .anonymous').removeClass('anonymous_hide');
+            // NOTE:  Limit the hiding to "their" contributions.
+            //        Always show "my" anonymous contributions.
         } else {
-            $('.anonymous').addClass('anonymous_hide');
+            $('#their_ump .anonymous').addClass('anonymous_hide');
         }
     }
 }
