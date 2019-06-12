@@ -342,9 +342,9 @@ def logout():
 
 def get_then_url():
     """Get next URL from session variable.  Default to home."""
-    then_url_default = flask.url_for('home')
-    then_url = flask.session.get('then_url', then_url_default)
-    return then_url
+    then_url_default = flask.url_for('home_or_root_directory')
+    then_url_actual = flask.session.get('then_url', then_url_default)
+    return then_url_actual
 
 
 def set_then_url(then_url):
@@ -523,7 +523,16 @@ def cache_bust(s):
     return FlikiHTML.url_stamp(s)
 
 
+def what_do_we_show_as_the_home_page():
+    return unslumping_home()
+    # return "home page not available"
+
+
 @flask_app.route('/home', methods=('GET', 'HEAD'))
+def home_subdirectory():
+    return unslumping_home()
+
+
 def unslumping_home():
     flask_user, qiki_user = my_login()
     log_html = log_link(flask_user, qiki_user, then_url=flask.request.path)
@@ -950,6 +959,7 @@ class DeltaTimeLex(qiki.TimeLex):
 
 class AgoLex(DeltaTimeLex):
     """Time interval between now and some word in the past."""
+    # TODO  Support future time too, "hence" instead of ago.
 
     def __init__(self, **kwargs):
         super(AgoLex, self).__init__(**kwargs)
@@ -969,123 +979,9 @@ class AgoLex(DeltaTimeLex):
         return self[t](u'differ')[self._now]
 
 
-# SECONDS_PER_DAY = 24*60*60
-# SECONDS_PER_WEEK = 7*SECONDS_PER_DAY
-#
-#
-# def show_whn(element, whn, title_prefix = "", **kwargs):
-#
-#     now = lex.now_number()
-#     ago_short, ago_long, ago_class = delta_format(whn, now)
-#     try:
-#         class_ = kwargs.pop('class_')
-#     except KeyError:
-#         class_ = ago_class
-#     else:
-#         class_ += ' ' + ago_class
-#     return element.span(ago_short, title=title_prefix + ago_long, class_=class_, **kwargs)
-#
-#
-# def delta_format(time_early, time_later):
-#     """
-#     Format short and long descriptions of the difference between two times.
-#
-#     :param time_early: - e.g. the whn field of some word
-#     :param time_later: - e.g. lex.now()
-#     :return: (amount_short, amount_long,   units_short, units_long,   delta_seconds)
-#         e.g. ('3', '2.8', 'm', 'minutes', 168.5)
-#     """
-#     def div(n, d):
-#         return str((int(n) + d//2) // d)
-#
-#     def fdiv(n, d):
-#         return "{:.1f}".format(int(n)/d)
-#
-#     delta_seconds = qiki.Number(time_later) - qiki.Number(time_early)
-#     if delta_seconds <=                          120*1:
-#         amount_short = div(delta_seconds,            1)
-#         amount_long = fdiv(delta_seconds,            1)
-#         units_short_long = ["s", "seconds"]
-#     elif delta_seconds <=                       120*60:
-#         amount_short = div(delta_seconds,           60)
-#         amount_long = fdiv(delta_seconds,           60)
-#         units_short_long = ["m", "minutes"]
-#     elif delta_seconds <=                     48*60*60:
-#         amount_short = div(delta_seconds,        60*60)
-#         amount_long = fdiv(delta_seconds,        60*60)
-#         units_short_long = ["h", "hours"]
-#     elif delta_seconds <=                  90*24*60*60:
-#         amount_short = div(delta_seconds,     24*60*60)
-#         amount_long = fdiv(delta_seconds,     24*60*60)
-#         units_short_long = ["d", "days"]
-#     elif delta_seconds <=               24*30*24*60*60:
-#         amount_short = div(delta_seconds,  30*24*60*60)
-#         amount_long = fdiv(delta_seconds,  30*24*60*60)
-#         units_short_long = ["M", "months"]
-#     else:
-#         amount_short = div(delta_seconds, 365*24*60*60)
-#         amount_long = fdiv(delta_seconds, 365*24*60*60)
-#         units_short_long = ["Y", "years"]
-#
-#     seconds_since_midnight = int(time_later) % SECONDS_PER_DAY
-#     time_of_it = time.localtime(float(time_early))
-#     time_date = time.strftime("%H:%M:%S %d-%b-%Y", time_of_it)
-#     if delta_seconds <= seconds_since_midnight:
-#         time_date += ", today"
-#     else:
-#         time_date += time.strftime(", %a", time_of_it)
-#     return tuple([amount_short, amount_long] + units_short_long + [delta_seconds])
-#
-#
-# def ago_format(time_past):
-#     """
-#     Format descriptions of a time in the past.
-#
-#     :param time_past:
-#     :return: (amount_short, amount_long,   units_short, units_long,   delta_seconds,  long_description)
-#         e.g. ('3', '2.8', 'm', 'minutes', 168.5, "2.8 minutes ago: 17:13:41 06-Jun-2019, Thu")
-#     """
-#     # TODO  Support future time too, "hence" instead of ago.
-#     date_time = time_format(time_past)
-#     now = lex.now()
-#     delta_formats = list(delta_format(time_past, now))
-#     _, amount, _, units, _ = delta_formats
-#     long_description = "{amount} {units} ago: {date_time}".format(
-#         amount=amount,
-#         units=units,
-#         date_time=date_time,
-#     )
-#     return tuple(delta_formats + [long_description])
-#
-#
-# def time_format(some_time):
-#     """
-#     Format a time.
-#
-#     replaces day-of-week with "today" if some_time is since midnight local time (I think).
-#
-#     :param some_time: - unix epoch, float seconds since 1970
-#     :return: e.g. "17:13:41 06-Jun-2019, Thu"
-#     """
-#     time_9_tuple = time.localtime(float(some_time))
-#     date_time = time.strftime("%H:%M:%S %d-%b-%Y", time_9_tuple)
-#     now = lex.now()
-#     ago = now - some_time
-#     now_9_tuple = time.localtime(float(now))
-#     midnight_9_tuple = tuple
-#     seconds_since_midnight = int(now) % SECONDS_PER_DAY
-#     # TODO:  This is not local, it's time since midnight UTC.  Fix that.
-#     #        E.g. Pacific Time 9am would show 6pm yesterday as "today" (too eager to show "today")
-#     #        E.g. Pacific Time 6pm would show 2pm as e.g. "Thursday" (too reluctant to show "today")
-#     if ago <= seconds_since_midnight:
-#         day_of_week = "today"
-#     else:
-#         day_of_week = time.strftime("%a", time_9_tuple)
-#     return date_time + day_of_week
-
-
 @flask_app.route('/meta/all words', methods=('GET', 'HEAD'))   # the older, simpler way
 def meta_all_words():
+    """Primitive dump entire lex."""
     # NOTE:  The following logs itself, but that gets to be annoying:
     #            the_path = flask.request.url
     #            word_for_the_path = lex.define(path, the_path)
@@ -1130,8 +1026,8 @@ def safe_txt(w):
 
 
 @flask_app.route('/', methods=('GET', 'HEAD'))
-def home():
-    return "(Latest content goes here)"
+def home_or_root_directory():
+    return what_do_we_show_as_the_home_page()
 
 
 @flask_app.route('/<path:url_suffix>', methods=('GET', 'HEAD'))
@@ -1279,11 +1175,12 @@ def render_num(num):
 
 def native_num(num):
     if num.is_suffixed():
+        # TODO:  Complex?
         return repr(num)
     elif num.is_whole():
         return int(num)
     else:
-        # TODO:  Complex? Ludicrous? Transfinite?
+        # TODO:  Ludicrous numbers should become int.
         return float(num)
 
 
