@@ -1164,10 +1164,11 @@ def answer_qiki(url_suffix):
     flask_user, qiki_user = my_login()
     log_html = log_link(flask_user, qiki_user, then_url=flask.request.path)
     word_for_path = lex.define(path, qiki.Text.decode_if_you_must(url_suffix))
-    # DONE:  lex.define(path, url_suffix)
+
     if str(word_for_path) == 'favicon.ico':
         return qiki_javascript(filename=six.text_type(word_for_path))
         # SEE:  favicon.ico in root, https://realfavicongenerator.net/faq#why_icons_in_root
+
     qiki_user(question)[word_for_path] = 1, referrer(flask.request)
 
     # print("ANSWER", *[repr(w.idn) + " " + w.txt + ", " for w in qoolbar.get_verbs()])
@@ -1371,14 +1372,14 @@ def ajax():
             return invalid_response("Missing name")
         new_verb = lex.create_word(
             sbj=qiki_user,
-            vrb=lex['define'],
-            obj=lex['verb'],
+            vrb=lex[u'define'],
+            obj=lex[u'verb'],
             txt=new_verb_name,
             use_already=True,
         )
         lex.create_word(
             sbj=qiki_user,
-            vrb=lex['qool'],
+            vrb=lex[u'qool'],
             obj=new_verb,
             num=NUM_QOOL_VERB_NEW,
             use_already=True,
@@ -1393,7 +1394,7 @@ def ajax():
 
         lex.create_word(
             sbj=qiki_user,
-            vrb=lex['qool'],
+            vrb=lex[u'qool'],
             obj=old_verb_idn,
             num=NUM_QOOL_VERB_DELETE,
             use_already=True,
