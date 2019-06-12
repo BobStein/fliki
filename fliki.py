@@ -541,19 +541,29 @@ def unslumping_home():
                 my_ump.h2("Stuff you find inspiring")
                 my_contributions = my_ump.div(id='their_contributions')
                 with my_contributions.div(id='box_ump', class_='container entry') as box_ump:
-                    box_ump.textarea(id='text_ump', placeholder="a quote or video")
+                    box_ump.textarea(id='text_ump', placeholder="a quote")
                     box_ump.br()
                     box_ump.button(id='enter_ump').text("save")
 
             with body.div(id='their_ump', class_='target-environment') as their_ump:
                 their_ump.h2("Stuff others find inspiring")
-                anon_input = their_ump.input(
-                    id='show_anonymous',
-                    type='checkbox',
-                )
-                anon_label = their_ump.label(
-                    for_='show_anonymous',
-                ).text("show anonymous contributions")
+                with their_ump.p(class_='show-options') as show_options:
+                    show_options.text("show ")
+
+                    anon_input = show_options.input(id='show_anonymous', type='checkbox')
+                    anon_label = show_options.label(for_='show_anonymous').text("anonymous")
+
+                    show_options.char_name('nbsp')
+                    show_options.text(" ")
+
+                    show_options.input(id='show_deleted', type='checkbox')
+                    show_options.label(for_='show_deleted', title="if you deleted it").text("deleted")
+
+                    show_options.char_name('nbsp')
+                    show_options.text(" ")
+
+                    show_options.input(id='show_spam', type='checkbox')
+                    show_options.label(for_='show_spam', title="if anybody tags something spam").text("spam")
                 their_contributions = their_ump.div(id='their_contributions')
                 if flask_user.is_anonymous:
                     anon_input(disabled='disabled')
@@ -609,7 +619,7 @@ def unslumping_home():
 
                     container_classes = ['container', 'word', class_]
                     if is_they_anon:
-                        container_classes += ['anonymous']
+                        container_classes += ['anonymous', 'anonymous_hide']
 
                     with parent.div(classes=container_classes) as this_container:
                         with this_container.div(class_='contribution') as contribution:

@@ -351,9 +351,11 @@ class WebHTML(richard_jones_html.HTML):
                 sub_content.map_attribute(attribute_modifier)
 
     def char_name(self, name):
+        assert isinstance(name, six.string_types)
         self.raw_text('&' + name + ';')
 
     def char_code(self, code):
+        assert isinstance(code, int)
         self.raw_text('&#x{:X};'.format(int(code)))
 
     ''' 

@@ -72,9 +72,16 @@ h1, h2, h3, h4 {
 .anonymous .caption {
     background-color: #B8A0A0;
 }
+.deleted_hide,
+.spam_hide,
 .anonymous_hide {
     display: none;
 }
+
+input:disabled + label {
+    color: #AAAAAA;
+}
+/* THANKS:  Disabled label, https://stackoverflow.com/a/19363036/673991 */
 
 .contribution.drop-hover,
 .contribution.drop-hover.anonymous {
