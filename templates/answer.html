@@ -38,9 +38,9 @@
 <div id="logging">{{ log_html | safe }}</div>
 
 <!--suppress JSUnresolvedLibraryURL -->
-<script src="//ajax.googleapis.com/ajax/libs/jquery/{{ JQUERY_VERSION }}/jquery.min.js"></script>
+<script src="//ajax.googleapis.com/ajax/libs/jquery/{{ JQUERY_VERSION }}/jquery{{ dot_min }}.js"></script>
 <!--suppress JSUnresolvedLibraryURL -->
- <script src="//ajax.googleapis.com/ajax/libs/jqueryui/{{ JQUERYUI_VERSION }}/jquery-ui.min.js"></script>
+ <script src="//ajax.googleapis.com/ajax/libs/jqueryui/{{ JQUERYUI_VERSION }}/jquery-ui{{ dot_min }}.js"></script>
 <script src="{{ url_for('qiki_javascript', filename='qoolbar.js') | cache_bust }}"></script>
 <link rel="stylesheet" type="text/css" href="{{ url_for('qiki_javascript', filename='qoolbar.css') | cache_bust }}" />
 <script src="{{ url_for('qiki_javascript', filename='jquery.hotkeys.js') | cache_bust }}"></script>

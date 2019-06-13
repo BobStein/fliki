@@ -1128,6 +1128,7 @@ def answer_qiki(url_suffix):
         me_idn=qiki_user.idn,
         log_html=log_html,
         render_question=render_question,
+        dot_min='.min' if DO_MINIFY else '',
         **config_dict
     )
 
@@ -1168,7 +1169,8 @@ def json_from_words(words):
             num=native_num(word.num),
             txt=word.txt
         ))
-    return json.dumps(dicts)
+    return json.dumps(dicts, allow_nan=False)
+    # TODO:  try-except OverflowError if NaN or Infinity got into dicts somehow.
 
 
 def render_num(num):
@@ -1179,6 +1181,11 @@ def native_num(num):
     if num.is_suffixed():
         # TODO:  Complex?
         return repr(num)
+    elif not num.is_reasonable():
+        # THANKS:  JSON is a dummy about NaN, inf,
+        #          https://stackoverflow.com/q/1423081/673991#comment52764219_1424034
+        # THANKS:  None to nul, https://docs.python.org/library/json.html#py-to-json-table
+        return None
     elif num.is_whole():
         return int(num)
     else:
