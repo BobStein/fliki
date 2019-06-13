@@ -42,7 +42,7 @@ class WebHTML(richard_jones_html.HTML):
     """
 
     def __init__(self, *args, **kwargs):
-        super(WebHTML).__init__(*args, **kwargs)
+        super(WebHTML, self).__init__(*args, **kwargs)
         self.do_minify = True
 
     HTML_DOCTYPE = "<!DOCTYPE html>\n"
