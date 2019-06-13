@@ -58,6 +58,7 @@ import to_be_released.web_html as web_html
 AJAX_URL = '/meta/ajax'
 JQUERY_VERSION = '3.3.1'   # https://developers.google.com/speed/libraries/#jquery
 JQUERYUI_VERSION = '1.12.1'   # https://developers.google.com/speed/libraries/#jquery-ui
+DO_MINIFY = False
 config_names = ('AJAX_URL', 'JQUERY_VERSION', 'JQUERYUI_VERSION')
 config_dict = {name: globals()[name] for name in config_names}
 SCRIPT_DIRECTORY = os.path.dirname(os.path.realpath(__file__))   # e.g. '/var/www/flask'
@@ -481,6 +482,8 @@ class Parse(object):
 
 class FlikiHTML(web_html.WebHTML):
     """Custom HTML for the fliki project."""
+
+    do_minify = DO_MINIFY
 
     def __init__(self, name=None, **kwargs):
         super(FlikiHTML, self).__init__(name, **kwargs)
