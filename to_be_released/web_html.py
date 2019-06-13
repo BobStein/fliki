@@ -41,7 +41,9 @@ class WebHTML(richard_jones_html.HTML):
         THANKS:  function arguments with dashes, https://stackoverflow.com/a/24121330/673991
     """
 
-    do_minify = True
+    def __init__(self, *args, **kwargs):
+        super(richard_jones_html.HTML, self).__init__(*args, **kwargs)
+        self.do_minify = True
 
     HTML_DOCTYPE = "<!DOCTYPE html>\n"
 
@@ -303,9 +305,8 @@ class WebHTML(richard_jones_html.HTML):
         string = string.replace("'", '&#39;')
         return string
 
-    @classmethod
-    def dot_min(cls):
-        return '.min' if cls.do_minify else ''
+    def dot_min(self):
+        return '.min' if self.do_minify else ''
 
     def comment(self, inside_the_comment):
         """

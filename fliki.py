@@ -483,10 +483,9 @@ class Parse(object):
 class FlikiHTML(web_html.WebHTML):
     """Custom HTML for the fliki project."""
 
-    do_minify = DO_MINIFY
-
     def __init__(self, name=None, **kwargs):
         super(FlikiHTML, self).__init__(name, **kwargs)
+        self.do_minify = DO_MINIFY
         if name == 'html':
             self(lang='en')
 
