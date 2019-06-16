@@ -453,14 +453,14 @@ def my_login():
         qiki_user = None
         logger.fatal("User is neither authenticated nor anonymous.")
 
-    try:
-        qiki_user.session = flask.session[SessionVariableName.QIKI_USER]
-    except KeyError:
-        qiki_user.session = time_lex.now_word().txt   # TODO:  idn
-        flask.session[SessionVariableName.QIKI_USER] = qiki_user.session
-        print("New user session", qiki_user.session)
-    else:
-        print("Old user session", qiki_user.session)
+    # try:
+    #     qiki_user.session = flask.session[SessionVariableName.QIKI_USER]
+    # except KeyError:
+    #     qiki_user.session = time_lex.now_word().txt   # TODO:  idn
+    #     flask.session[SessionVariableName.QIKI_USER] = qiki_user.session
+    #     print("New user session", qiki_user.session)
+    # else:
+    #     print("Old user session", qiki_user.session)
 
     # try:
     #     user_idn = "idn " + qiki_user.idn.qstring()
