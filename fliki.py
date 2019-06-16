@@ -17,11 +17,13 @@ from __future__ import print_function
 #     (Still don't know what o11c meant by "flags = 0".)
 #     But from __future__ import print_function appears to work anyway!
 
+import abc
 import json
 import logging
 import os
 import re
 import sys
+import traceback
 
 # print("Python version", ".".join(str(x) for x in sys.version_info))
 # EXAMPLE:  Python version 2.7.15.candidate.1
@@ -66,6 +68,12 @@ GIT_SHA = git.Repo(SCRIPT_DIRECTORY).head.object.hexsha
 GIT_SHA_10 = GIT_SHA[ : 10]
 NUM_QOOL_VERB_NEW = qiki.Number(1)
 NUM_QOOL_VERB_DELETE = qiki.Number(0)
+MINIMUM_SECONDS_BETWEEN_ANONYMOUS_QUESTIONS = 10
+MINIMUM_SECONDS_BETWEEN_ANONYMOUS_ANSWERS = 60
+
+time_lex = qiki.TimeLex()
+t_last_anonymous_question = time_lex.now_word()
+t_last_anonymous_answer = time_lex.now_word()
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -89,6 +97,27 @@ def flask_earliest_convenience():
     version_report()
 
 
+def seconds_until_anonymous_question():
+    # TODO:  This feature should be its own lex, or word, or something.
+    #        And sysadmins should be able to change it.  With a word.
+    return (
+        MINIMUM_SECONDS_BETWEEN_ANONYMOUS_QUESTIONS -
+        time_lex[t_last_anonymous_question.idn]('differ')[time_lex.now_word()].num
+    )
+
+
+def seconds_until_anonymous_answer():
+    return (
+        MINIMUM_SECONDS_BETWEEN_ANONYMOUS_ANSWERS -
+        time_lex[t_last_anonymous_answer]('differ')[qiki.Number.NAN].num
+    )
+
+
+def anonymous_question_happened():
+    global t_last_anonymous_question
+    t_last_anonymous_question = time_lex.now_word()
+
+
 class MyUnicode(object):
     RIGHT_ARROW = 0x2192
     BLACK_RIGHT_POINTING_TRIANGLE = 0x25B6
@@ -102,6 +131,7 @@ answer = lex.verb(u'answer')
 
 iconify_word = lex.verb(u'iconify')   # TODO:  Why in the world was this noun??   lex.noun('iconify')
 name_word = lex.verb(u'name')   # TODO:  ffs why wasn't this a verb??
+session_noun = lex.noun(u'session')
 
 me = lex.define('agent', u'user')  # TODO:  Authentication
 me(iconify_word, use_already=True)[me] = u'http://tool.qiki.info/icon/ghost.png'
@@ -180,6 +210,206 @@ class AnonymousQikiListing(qiki.Listing):
 # SEE:  http://stackoverflow.com/questions/3768895/how-to-make-a-class-json-serializable
 
 
+class Auth(object):
+    """Qiki generic logging in."""
+    def __init__(
+        self,
+        this_lex,
+        is_authenticated,
+        is_anonymous,
+        ip_address_txt,
+    ):
+        self.lex = this_lex
+        self.is_authenticated = is_authenticated
+        self.is_anonymous = is_anonymous
+        self.ip_address_txt = ip_address_txt
+
+        session_string = self.session_get()
+        if session_string is None:
+            self.session_new()
+        else:
+            try:
+                session_idn = qiki.Number.from_qstring(session_string)
+                self.session_word = self.lex[session_idn]
+            except ValueError:
+                print("BAD SESSION IDENTIFIER", session_string)
+                self.session_new()
+            else:
+                if self.session_word.obj == session_noun:
+                    '''old session word is good'''
+                    # TODO:  if ip address is different, tag session
+                else:
+                    print("NOT A SESSION IDENTIFIER", session_string)
+                    self.session_new()
+
+        if self.is_authenticated:
+            self.qiki_user = google_qiki_user[self.authenticated_id()]
+            # TODO:  tag session_word with google user, or vice versa
+            #        if they haven't been paired yet,
+            #        or aren't the most recent pairing
+            #        (or remove that last thing, could churn if user is on two devices at once)
+        elif self.is_anonymous:
+            # anonymous_identifier = lex.define(ip_address_word, txt=self.ip_address_txt)
+            self.qiki_user = anonymous_qiki_user[self.session_word.idn]
+            # TODO:  Tag the anonymous user with the session (like authenticated user)
+            #        rather than embedding the session ID so prominently
+            #        although, that session ID is the only way to identify anonymous users
+            #        so maybe not
+        else:
+            self.qiki_user = None
+            print("User is neither authenticated nor anonymous.")
+
+    def session_new(self):
+        # self.session_word = self.lex.define(session_noun, txt=self.ip_address_txt)
+        self.session_word = self.lex.create_word(
+            sbj=self.lex[self.lex],
+            vrb=self.lex['define'],
+            obj=session_noun,
+            txt=self.ip_address_txt,
+            use_already=False
+        )
+        self.session_set(self.session_word.idn.qstring())
+        print("New session", self.session_word.idn.qstring(), self.ip_address_txt)
+
+    def session_get(self):
+        raise NotImplementedError
+
+    def session_set(self, session_string):
+        raise NotImplementedError
+
+    def authenticated_id(self):
+        raise NotImplementedError
+
+    @property
+    def current_url(self):
+        raise NotImplementedError
+
+    @property
+    def login_url(self):
+        raise NotImplementedError
+
+    @property
+    def logout_url(self):
+        raise NotImplementedError
+
+    @property
+    @abc.abstractmethod
+    def then_url(self):
+        raise NotImplementedError
+
+    @then_url.setter
+    @abc.abstractmethod
+    def then_url(self, new_url):
+        raise NotImplementedError
+
+    def log_html(self, then_url=None):
+        """
+        Log in or out link.  Redirected to then_url, defaults to current_url
+        """
+        if then_url is None:
+            self.then_url = self.current_url
+        else:
+            self.then_url = then_url
+        # NOTE:  The timing of setting this URL is weird.
+        #
+        #        Here we are presumably generating a login link for some page.
+        #        We're remembering the URL of that page in order to "return" to that page.
+        #        That is, we expect to use that page-URL some time after
+        #        the login-link is clicked and the login is completed.
+        #
+        #        Will this really be the right URL to "return" to after login?
+        #        It just smacks of a global variable that could get stale or something.
+        #
+        #        Like what if that user generated some SECOND page on some SECOND browser
+        #        window?  Then went back to the FIRST page and clicked login.
+        #        Then the first browser window would go to the second page after logging in.
+        #
+        #        Might it be better to record that page-URL WHEN the login-link is clicked.
+        #        But how to do that?  Can't futz with the URL itself, that breaks login.
+        #        Maybe some ajax request, just before the link is followed.
+        #
+        #        Or maybe go ahead and add then_url to the query string but strip it off
+        #        (by cloning the Request object -- request.args is immutable)
+        #        before passing it to Authomatic.login().
+
+        if self.is_authenticated:
+            return (
+                u"<a href='{logout_link}'>"
+                u"logout"
+                u"</a>"
+                u" "
+                u"{display_name}"
+            ).format(
+                display_name=self.qiki_user.txt,
+                logout_link=self.logout_url,
+            )
+        elif self.is_anonymous:
+            return (
+                u"<a href='{login_link}' title='{login_title}'>"
+                u"login"
+                u"</a>"
+            ).format(
+                login_title=u"You are " + self.qiki_user.txt,
+                login_link=self.login_url,
+                # login_link=flask.url_for('login', next=then_url),
+                # login_link=flask.url_for('login', then_url=then_url),
+                # NOTE:  Adding a parameter to the query string makes Authomatic.login()
+                #        return None.
+            )
+        else:
+            return "neither auth nor anon???"
+
+
+class AuthFliki(Auth):
+    """Fliki / Authomatic specific implementation of logging in"""
+    def __init__(self):
+        self.flask_user = flask_login.current_user
+        super(AuthFliki, self).__init__(
+            this_lex=lex,
+            is_authenticated=self.flask_user.is_authenticated,
+            is_anonymous=self.flask_user.is_anonymous,
+            ip_address_txt=qiki.Text.decode_if_you_must(flask.request.remote_addr),
+        )
+
+    SESSION_VARIABLE_NAME = 'qiki_user'
+
+    def session_get(self):
+        try:
+            return flask.session[self.SESSION_VARIABLE_NAME]
+        except KeyError:
+            return None
+
+    def session_set(self, session_string):
+        flask.session[self.SESSION_VARIABLE_NAME] = session_string
+
+    def authenticated_id(self):
+        return self.flask_user.get_id()
+
+    @property
+    def current_url(self):
+        return flask.request.url
+        # SEE:  path vs url, http://flask.pocoo.org/docs/api/#incoming-request-data
+
+    @property
+    def login_url(self):
+        return flask.url_for(u'login')
+
+    @property
+    def logout_url(self):
+        return flask.url_for('logout')
+
+    @property
+    def then_url(self):
+        """Get next URL from session variable.  Default to home."""
+        then_url_default = flask.url_for('home_or_root_directory')
+        then_url_actual = flask.session.get('then_url', then_url_default)
+        return then_url_actual
+
+    @then_url.setter
+    def then_url(self, new_url):
+        flask.session['then_url'] = new_url
+
+
 listing = lex.noun(u'listing')
 
 google_user = lex.define(listing, u'google user')
@@ -188,15 +418,18 @@ google_qiki_user = GoogleQikiListing(meta_word=google_user)
 anonymous_user = lex.define(listing, u'anonymous')
 anonymous_qiki_user = AnonymousQikiListing(meta_word=anonymous_user)
 
-ip_address = lex.noun(u'IP address')
+ip_address_word = lex.noun(u'IP address')
 
 
 def is_qiki_user_anonymous(user_word):
     return isinstance(user_word.lex, AnonymousQikiListing)
 
 
+class SessionVariableName(object):
+    QIKI_USER = 'qiki_user'
+
+
 def my_login():
-    # XXX:  Objectify
     flask_user = flask_login.current_user
     assert isinstance(flask_user, werkzeug.local.LocalProxy)   # was flask_login.LocalProxy
 
@@ -206,12 +439,12 @@ def my_login():
         # print(repr(flask_user), flask.request.remote_addr)
         # EXAMPLE:  <flask_login.mixins.AnonymousUserMixin object at 0x0000000004304D30> 127.0.0.1
         # EXAMPLE:  <flask_login.mixins.AnonymousUserMixin object at 0x7fd3fc2fda50> 173.20.2.109
-        anonymous_identifier = lex.define(ip_address, txt=qiki.Text.decode_if_you_must(flask.request.remote_addr))
-        qiki_user = anonymous_qiki_user[anonymous_identifier.idn]   # (flask.request.remote_addr)
-        # FIXME:  This needs to use some random hash from a cookie in the idn too
-        #         (in addition to the IP address), so e.g.
-        #         anonymous users at the same IP address
-        #         won't see each others' contributions.
+
+        ip_address_txt = qiki.Text.decode_if_you_must(flask.request.remote_addr)
+        anonymous_identifier = lex.define(ip_address_word, txt=ip_address_txt)
+        qiki_user = anonymous_qiki_user[anonymous_identifier.idn]
+        # FIXME:  Anonymous users at the same IP address
+        #         shouldn't see each others' contributions.
         #         Anonymous users with no cookies could also be warned they won't
         #         be able to see their own contributions.
         #         Unless they sign up and "claim" them?  No can't allow them to claim them
@@ -219,6 +452,15 @@ def my_login():
     else:
         qiki_user = None
         logger.fatal("User is neither authenticated nor anonymous.")
+
+    try:
+        qiki_user.session = flask.session[SessionVariableName.QIKI_USER]
+    except KeyError:
+        qiki_user.session = time_lex.now_word().txt   # TODO:  idn
+        flask.session[SessionVariableName.QIKI_USER] = qiki_user.session
+        print("New user session", qiki_user.session)
+    else:
+        print("Old user session", qiki_user.session)
 
     # try:
     #     user_idn = "idn " + qiki_user.idn.qstring()
@@ -537,7 +779,9 @@ def home_subdirectory():
 
 def unslumping_home():
     flask_user, qiki_user = my_login()
-    log_html = log_link(flask_user, qiki_user, then_url=flask.request.path)
+    auth = AuthFliki()
+    print("AUTH", auth.qiki_user.idn.qstring(), auth.is_anonymous, auth.is_authenticated)
+    log_html = auth.log_html()   # log_link(flask_user, qiki_user, then_url=flask.request.path)
     with FlikiHTML('html') as html:
         head = html.header("Unslumping")
         head.css_stamped(flask.url_for('static', filename='code/unslump.css'))
@@ -548,133 +792,155 @@ def unslumping_home():
             body.div(id='my-qoolbar')
             body.div(id='status')
 
-            with body.div(id='my_ump', class_='target-environment') as my_ump:
-                my_ump.h2("Stuff you find inspiring")
-                my_contributions = my_ump.div(id='their_contributions')
-                with my_contributions.div(id='box_ump', class_='container entry') as box_ump:
-                    box_ump.textarea(id='text_ump', placeholder="a quote")
-                    box_ump.br()
-                    box_ump.button(id='enter_ump').text("save")
-
-            with body.div(id='their_ump', class_='target-environment') as their_ump:
-                their_ump.h2("Stuff others find inspiring")
-                with their_ump.p(class_='show-options') as show_options:
-                    show_options.text("show ")
-
-                    anon_input = show_options.input(id='show_anonymous', type='checkbox')
-                    anon_label = show_options.label(for_='show_anonymous').text("anonymous")
-
-                    show_options.char_name('nbsp')
-                    show_options.text(" ")
-
-                    show_options.input(id='show_deleted', type='checkbox')
-                    show_options.label(for_='show_deleted', title="if you deleted it").text("deleted")
-
-                    show_options.char_name('nbsp')
-                    show_options.text(" ")
-
-                    show_options.input(id='show_spam', type='checkbox')
-                    show_options.label(for_='show_spam', title="if anybody tags something spam").text("spam")
-                their_contributions = their_ump.div(id='their_contributions')
-                if flask_user.is_anonymous:
-                    anon_input(disabled='disabled')
-                    anon_label(title='Logged-in users can see anonymous contributions.')
-                else:
-                    pass
-                    # anon_input(checked='checked')
-            body.js_stamped(flask.url_for('static', filename='code/unslump.js'))
-
-            unslumps = lex.find_words(vrb=lex[u'define'], txt=u'unslump')
-            uns_words = lex.find_words(
-                vrb=unslumps,
-                jbo_vrb=qoolbar.get_verbs(),
-                obj=lex[lex],
-                idn_ascending=False,
-                jbo_ascending=True,
-            )
-
-            # body.p("unslumps: {}".format(repr(unslumps)))
-            # EXAMPLE:  unslumps: [Word('unslump'), Word('unslump')]
-            # body.p("uns_words: {}".format(repr(uns_words)))
-            # EXAMPLE:  uns_words: [Word(956), Word(953), Word(947), Word(882)]
-
-            # TODO:  Send these as json instead?  Construct in unslump.js?
-            #        Ooh, imagine a long-poll where new contributions would show up as
-            #        a "show new stuff" button!!
-            for uns_word in uns_words:
-                is_my_contribution = uns_word.sbj == qiki_user
-
-                # body.p("{me_or_they}({they_idn}, {they_lex_class}) unslumped by {uns_idn}: {uns_txt:.25s}...".format(
-                #     they_idn=uns_word.sbj.idn.qstring(),
-                #     they_lex_class=type_name(uns_word.sbj.lex),
-                #     me_or_they="me" if is_me else "they",
-                #     uns_idn=uns_word.idn,
-                #     uns_txt=str(uns_word.txt),
-                # ))
-                # EXAMPLE:
-                #     they(0q82_A7__8A05F9A0A1873A14BD1C_1D0B00, GoogleQikiListing)
-                #         unslumped by 0q83_03BC: It is interesting to cont...
-                #     me(0q82_A7__8A059E058E6A6308C8B0_1D0B00, GoogleQikiListing)
-                #         unslumped by 0q83_03B9: profound...
-                #     they(0q82_A8__82AB_1D0300, AnonymousQikiListing)
-                #         unslumped by 0q83_03B3: Life has loveliness to se...
-                #     me(0q82_A7__8A059E058E6A6308C8B0_1D0B00, GoogleQikiListing)
-                #         unslumped by 0q83_0372: pithy...
-
-                is_me_anon = is_qiki_user_anonymous(qiki_user)
-                is_they_anon = is_qiki_user_anonymous(uns_word.sbj)
-                short_d, long_d = short_long_description(uns_word.sbj)
-
-                def add_container(parent, class_):
-                    parent.text(" ")
-
-                    container_classes = ['container', 'word', class_]
-                    if is_they_anon:
-                        container_classes += ['anonymous', 'anonymous_hide']
-
-                    with parent.div(classes=container_classes) as this_container:
-                        with this_container.div(class_='contribution') as contribution:
-                            contribution.text(str(uns_word.txt))
-                        with this_container.div(class_='caption', title=long_d) as contribution_caption:
-                            contribution_caption.text(short_d)
-                        return this_container
-
-                if is_my_contribution:
-                    container = add_container(my_contributions, 'mine')
-                    # my_contributions.text(" ")
-                    # with my_contributions.div(class_='container word') as container:
-                    #     container.div(class_='contribution mine').text(str(uns_word.txt))
-                else:
-                    if is_me_anon and is_they_anon:
-                        container = None
-                        # NOTE:  Don't expose anonymous contributions to OTHER
-                        #        anonymous users' browsers.
-                        #        (But anons should see their own contributions)
-                    else:
-                        container = add_container(their_contributions, 'thine')
-
-                if container is not None:
-                    container(
-                        **({
-                            'data-idn': uns_word.idn.qstring(),
-                            'data-jbo': json_from_words(uns_word.jbo),
-                        })
+            is_allowable_throughput = True
+            if auth.is_anonymous:
+                wait = seconds_until_anonymous_question()
+                if wait > 0:
+                    is_allowable_throughput = False
+                    between = MINIMUM_SECONDS_BETWEEN_ANONYMOUS_QUESTIONS
+                    ago = between - wait
+                    body.div.text(
+                        "Oops, this site only supports anonymous views every {between:.0f} seconds. "
+                        "Someone was here just {ago:.0f} seconds ago. "
+                        "Please try again in {wait:.0f} seconds.".format(
+                            between=float(between),
+                            wait=float(wait),
+                            ago=float(ago),
+                        )
                     )
+                    # TODO:  Change "Someone" to "You" if it was (use cookies)
+                else:
+                    anonymous_question_happened()
 
-            monty = dict(
-                me_idn=qiki_user.idn.qstring(),
-                AJAX_URL=AJAX_URL,
-                lex_idn=lex[lex].idn.qstring(),
-            )
-            foot = body.footer()
-            with foot.script(newlines=True) as script:
-                script.raw_text('var MONTY = {json};'.format(json=json.dumps(
-                    monty,
-                    sort_keys=True,
-                    indent=4,
-                    separators=(',', ': '),
-                )))
-                script.raw_text('js_for_unslumping(window, window.$, MONTY);')
+            if is_allowable_throughput:
+                with body.div(id='my_ump', class_='target-environment') as my_ump:
+                    my_ump.h2("Stuff you find inspiring")
+                    my_contributions = my_ump.div(id='their_contributions')
+                    with my_contributions.div(id='box_ump', class_='container entry') as box_ump:
+                        box_ump.textarea(id='text_ump', placeholder="a quote")
+                        box_ump.br()
+                        box_ump.button(id='enter_ump').text("save")
+
+                with body.div(id='their_ump', class_='target-environment') as their_ump:
+                    their_ump.h2("Stuff others find inspiring")
+                    with their_ump.p(class_='show-options') as show_options:
+                        show_options.text("show ")
+
+                        anon_input = show_options.input(id='show_anonymous', type='checkbox')
+                        anon_label = show_options.label(for_='show_anonymous').text("anonymous")
+
+                        show_options.char_name('nbsp')
+                        show_options.text(" ")
+
+                        show_options.input(id='show_deleted', type='checkbox')
+                        show_options.label(for_='show_deleted', title="if you deleted it").text("deleted")
+
+                        show_options.char_name('nbsp')
+                        show_options.text(" ")
+
+                        show_options.input(id='show_spam', type='checkbox')
+                        show_options.label(for_='show_spam', title="if anybody tags something spam").text("spam")
+                    their_contributions = their_ump.div(id='their_contributions')
+                    if flask_user.is_anonymous:
+                        anon_input(disabled='disabled')
+                        anon_label(title='Logged-in users can see anonymous contributions.')
+                    else:
+                        pass
+                        # anon_input(checked='checked')
+                body.js_stamped(flask.url_for('static', filename='code/unslump.js'))
+
+                unslumps = lex.find_words(vrb=lex[u'define'], txt=u'unslump')
+                uns_words = lex.find_words(
+                    vrb=unslumps,
+                    jbo_vrb=qoolbar.get_verbs(),
+                    obj=lex[lex],
+                    idn_ascending=False,
+                    jbo_ascending=True,
+                )
+
+                # body.p("unslumps: {}".format(repr(unslumps)))
+                # EXAMPLE:  unslumps: [Word('unslump'), Word('unslump')]
+                # body.p("uns_words: {}".format(repr(uns_words)))
+                # EXAMPLE:  uns_words: [Word(956), Word(953), Word(947), Word(882)]
+
+                # TODO:  Send these as json instead?  Construct in unslump.js?
+                #        Ooh, imagine a long-poll where new contributions would show up as
+                #        a "show new stuff" button!!
+                for uns_word in uns_words:
+                    is_my_contribution = uns_word.sbj == qiki_user
+
+                    # body.p("{me_or_they}({they_idn}, {they_lex_class}) "
+                    #        "unslumped by {uns_idn}: {uns_txt:.25s}...".format(
+                    #     they_idn=uns_word.sbj.idn.qstring(),
+                    #     they_lex_class=type_name(uns_word.sbj.lex),
+                    #     me_or_they="me" if is_me else "they",
+                    #     uns_idn=uns_word.idn,
+                    #     uns_txt=str(uns_word.txt),
+                    # ))
+                    # EXAMPLE:
+                    #     they(0q82_A7__8A05F9A0A1873A14BD1C_1D0B00, GoogleQikiListing)
+                    #         unslumped by 0q83_03BC: It is interesting to cont...
+                    #     me(0q82_A7__8A059E058E6A6308C8B0_1D0B00, GoogleQikiListing)
+                    #         unslumped by 0q83_03B9: profound...
+                    #     they(0q82_A8__82AB_1D0300, AnonymousQikiListing)
+                    #         unslumped by 0q83_03B3: Life has loveliness to se...
+                    #     me(0q82_A7__8A059E058E6A6308C8B0_1D0B00, GoogleQikiListing)
+                    #         unslumped by 0q83_0372: pithy...
+
+                    is_me_anon = is_qiki_user_anonymous(qiki_user)
+                    is_they_anon = is_qiki_user_anonymous(uns_word.sbj)
+                    short_d, long_d = short_long_description(uns_word.sbj)
+
+                    def add_container(parent, class_):
+                        parent.text(" ")
+
+                        container_classes = ['container', 'word', class_]
+                        if is_they_anon:
+                            container_classes += ['anonymous', 'anonymous_hide']
+
+                        with parent.div(classes=container_classes) as this_container:
+                            with this_container.div(class_='contribution') as contribution:
+                                contribution.text(str(uns_word.txt))
+                            with this_container.div(class_='caption', title=long_d) as contribution_caption:
+                                contribution_caption.text(short_d)
+                            return this_container
+
+                    if is_my_contribution:
+                        container = add_container(my_contributions, 'mine')
+                        # my_contributions.text(" ")
+                        # with my_contributions.div(class_='container word') as container:
+                        #     container.div(class_='contribution mine').text(str(uns_word.txt))
+                    else:
+                        if is_me_anon and is_they_anon:
+                            container = None
+                            # NOTE:  Don't expose anonymous contributions to OTHER
+                            #        anonymous users' browsers.
+                            #        (But anons should see their own contributions)
+                        else:
+                            container = add_container(their_contributions, 'thine')
+
+                    if container is not None:
+                        container(
+                            **({
+                                'data-idn': uns_word.idn.qstring(),
+                                'data-jbo': json_from_words(uns_word.jbo),
+                            })
+                        )
+
+                monty = dict(
+                    me_idn=qiki_user.idn.qstring(),
+                    AJAX_URL=AJAX_URL,
+                    lex_idn=lex[lex].idn.qstring(),
+                )
+                foot = body.footer()
+                with foot.script(newlines=True) as script:
+                    script.raw_text('var MONTY = {json};'.format(json=json.dumps(
+                        monty,
+                        sort_keys=True,
+                        indent=4,
+                        separators=(',', ': '),
+                    )))
+                    script.raw_text('js_for_unslumping(window, window.$, MONTY);')
 
     return html.doctype_plus_html()
 
@@ -1195,120 +1461,145 @@ def native_num(num):
 
 @flask_app.route(AJAX_URL, methods=('POST',))
 def ajax():
-    flask_user, qiki_user = my_login()
-    action = flask.request.form['action']
-    if action == 'answer':
-        question_path = flask.request.form['question']
-        answer_txt = flask.request.form['answer']
-        question_word = lex.define(path, question_path)
-        qiki_user(answer)[question_word] = 1, answer_txt
-        return valid_response('message', "Question {q} answer {a}".format(
-            q=question_path,
-            a=answer_txt,
-        ))
-    elif action == 'qoolbar_list':
-        verbs = list(qoolbar.get_verb_dicts())
+    try:
+        flask_user, qiki_user = my_login()
+        action = flask.request.form['action']
+        if action == 'answer':
+            question_path = flask.request.form['question']
+            answer_txt = flask.request.form['answer']
+            question_word = lex.define(path, question_path)
+            qiki_user(answer)[question_word] = 1, answer_txt
+            return valid_response('message', "Question {q} answer {a}".format(
+                q=question_path,
+                a=answer_txt,
+            ))
+        elif action == 'qoolbar_list':
+            verbs = list(qoolbar.get_verb_dicts())
 
-        # print("qoolbar - " + " ".join(v[b'name'] + " " + str(v[b'qool_num']) for v in verbs))
-        # EXAMPLE:  qoolbar delete 1 like 1
-        # EXAMPLE:  qoolbar - like 1 delete 1 laugh 0 spam 1 laugh 1
+            # print("qoolbar - " + " ".join(v[b'name'] + " " + str(v[b'qool_num']) for v in verbs))
+            # EXAMPLE:  qoolbar delete 1 like 1
+            # EXAMPLE:  qoolbar - like 1 delete 1 laugh 0 spam 1 laugh 1
 
-        return valid_response('verbs', verbs)
-        # print(verbs) (I guess)
-        # EXAMPLE:
-        #     {"is_valid": true, "verbs": [
-        #         {"idn": "0q82_86",   "icon_url": "http://tool.qiki.info/icon/thumbsup_16.png", "name": "like"},
-        #         {"idn": "0q82_89",   "icon_url": "http://tool.qiki.info/icon/delete_16.png",   "name": "delete"},
-        #         {"idn": "0q83_01FC", "icon_url": null,                                         "name": "laugh"}
-        #     ]}
+            return valid_response('verbs', verbs)
+            # print(verbs) (I guess)
+            # EXAMPLE:
+            #     {"is_valid": true, "verbs": [
+            #         {"idn": "0q82_86",   "icon_url": "http://tool.qiki.info/icon/thumbsup_16.png", "name": "like"},
+            #         {"idn": "0q82_89",   "icon_url": "http://tool.qiki.info/icon/delete_16.png",   "name": "delete"},
+            #         {"idn": "0q83_01FC", "icon_url": null,                                         "name": "laugh"}
+            #     ]}
 
-    elif action == 'sentence':
-        form = flask.request.form
+        elif action == 'sentence':
+            form = flask.request.form
 
-        try:
-            obj_idn = form['obj_idn']
-        except KeyError:
-            return invalid_response("Missing obj")
-
-        try:
-            vrb_txt = form['vrb_txt']
-        except KeyError:
-            # TODO:  Should vrb_idn have priority over vrb_txt instead?
             try:
-                vrb_idn = form['vrb_idn']
+                obj_idn = form['obj_idn']
             except KeyError:
-                return invalid_response("Missing vrb_txt and vrb_idn")
+                return invalid_response("Missing obj")
+
+            try:
+                vrb_txt = form['vrb_txt']
+            except KeyError:
+                # TODO:  Should vrb_idn have priority over vrb_txt instead?
+                try:
+                    vrb_idn = form['vrb_idn']
+                except KeyError:
+                    return invalid_response("Missing vrb_txt and vrb_idn")
+                else:
+                    vrb = lex[qiki.Number(vrb_idn)]
             else:
-                vrb = lex[qiki.Number(vrb_idn)]
-        else:
-            # vrb = lex[vrb_txt]
-            vrb = lex.verb(vrb_txt)
-            # FIXME:  can we allow browser trash to define a verb?
+                # vrb = lex[vrb_txt]
+                vrb = lex.verb(vrb_txt)
+                # FIXME:  can we allow browser trash to define a verb?
 
-        try:
-            txt = form['txt']
-        except KeyError:
-            return invalid_response("Missing txt")
+            try:
+                txt = form['txt']
+            except KeyError:
+                return invalid_response("Missing txt")
 
-        use_already = form.get('use_already', False)
+            use_already = form.get('use_already', False)
 
-        obj = lex[qiki.Number(obj_idn)]
-        num_add_str = form.get('num_add', None)
-        num_str = form.get('num', None)
-        try:
-            num_add = None if num_add_str is None else qiki.Number(num_add_str)
-            num = None if num_str is None else qiki.Number(num_str)
-        except ValueError as e:
-            return invalid_response("num or num_add invalid: " + str(e))
-        else:
-            new_word = lex.create_word(
+            obj = lex[qiki.Number(obj_idn)]
+            num_add_str = form.get('num_add', None)
+            num_str = form.get('num', None)
+            try:
+                num_add = None if num_add_str is None else qiki.Number(num_add_str)
+                num = None if num_str is None else qiki.Number(num_str)
+            except ValueError as e:
+                return invalid_response("num or num_add invalid: " + str(e))
+            else:
+                new_word = lex.create_word(
+                    sbj=qiki_user,
+                    vrb=vrb,
+                    obj=obj,
+                    num=num,
+                    num_add=num_add,
+                    txt=txt,
+                    use_already=use_already,
+                )
+                return valid_response('new_words', json_from_words([new_word]))
+        elif action == 'new_verb':
+            try:
+                new_verb_name = flask.request.form['name']
+            except KeyError:
+                return invalid_response("Missing name")
+            new_verb = lex.create_word(
                 sbj=qiki_user,
-                vrb=vrb,
-                obj=obj,
-                num=num,
-                num_add=num_add,
-                txt=txt,
-                use_already=use_already,
+                vrb=lex[u'define'],
+                obj=lex[u'verb'],
+                txt=new_verb_name,
+                use_already=True,
             )
-            return valid_response('new_words', json_from_words([new_word]))
-    elif action == 'new_verb':
-        try:
-            new_verb_name = flask.request.form['name']
-        except KeyError:
-            return invalid_response("Missing name")
-        new_verb = lex.create_word(
-            sbj=qiki_user,
-            vrb=lex[u'define'],
-            obj=lex[u'verb'],
-            txt=new_verb_name,
-            use_already=True,
-        )
-        lex.create_word(
-            sbj=qiki_user,
-            vrb=lex[u'qool'],
-            obj=new_verb,
-            num=NUM_QOOL_VERB_NEW,
-            use_already=True,
-        )
-        return valid_response('idn', new_verb.idn.qstring())
+            lex.create_word(
+                sbj=qiki_user,
+                vrb=lex[u'qool'],
+                obj=new_verb,
+                num=NUM_QOOL_VERB_NEW,
+                use_already=True,
+            )
+            return valid_response('idn', new_verb.idn.qstring())
 
-    elif action == 'delete_verb':
-        try:
-            old_verb_idn = qiki.Number(flask.request.form['idn'])
-        except (KeyError, ValueError):
-            return invalid_response("Missing or malformed idn: " + flask.request.form.get('idn', "(missing)"))
+        elif action == 'delete_verb':
+            try:
+                old_verb_idn = qiki.Number(flask.request.form['idn'])
+            except (KeyError, ValueError):
+                return invalid_response("Missing or malformed idn: " + flask.request.form.get('idn', "(missing)"))
 
-        lex.create_word(
-            sbj=qiki_user,
-            vrb=lex[u'qool'],
-            obj=old_verb_idn,
-            num=NUM_QOOL_VERB_DELETE,
-            use_already=True,
-        )
-        return valid_response('idn', old_verb_idn.qstring())
+            lex.create_word(
+                sbj=qiki_user,
+                vrb=lex[u'qool'],
+                obj=old_verb_idn,
+                num=NUM_QOOL_VERB_DELETE,
+                use_already=True,
+            )
+            return valid_response('idn', old_verb_idn.qstring())
 
-    else:
-        return invalid_response("Unknown action " + action)
+        elif action == 'anon_question':
+            return valid_response('seconds', float(seconds_until_anonymous_question()))
+
+        elif action == 'anon_answer':
+            return valid_response('seconds', float(seconds_until_anonymous_answer()))
+
+        else:
+            return invalid_response("Unknown action " + action)
+
+    except KeyError as e:
+        # EXAMPLE:  werkzeug.exceptions.BadRequestKeyError
+
+        print("AJAX KEY ERROR", str(e))
+        traceback.print_exc()
+        # EXAMPLE:
+        # AJAX KEY ERROR 400 Bad Request: The browser (or proxy) sent a request that this server could not understand.
+        # Traceback (most recent call last):
+        #   File "...\fliki\fliki.py", line 1222, in ajax
+        #     action = flask.request.form['action']
+        #   File "...\lib\site-packages\werkzeug\datastructures.py", line 442, in __getitem__
+        #     raise exceptions.BadRequestKeyError(key)
+        # werkzeug.exceptions.HTTPException.wrap.<locals>.newcls: 400 Bad Request:
+        # The browser (or proxy) sent a request that this server could not understand.
+        # 127.0.0.1 - - [13/Jun/2019 18:56:28] "POST /meta/ajax HTTP/1.1" 200 -
+
+        return invalid_response("request error")
 
 
 def valid_response(name, value):
@@ -1332,7 +1623,7 @@ def version_report():
         "Python {python_version}, "
         "Flask {flask_version}, "
         "qiki {qiki_version}".format(
-            yyyy_mmdd_hhmm_ss=qiki.TimeLex()[qiki.Number.NAN].txt,
+            yyyy_mmdd_hhmm_ss=qiki.TimeLex().now_word().txt,
             git_sha_10=GIT_SHA_10,
             python_version=".".join(str(x) for x in sys.version_info),
             flask_version=flask.__version__,
