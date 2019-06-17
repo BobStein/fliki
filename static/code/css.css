@@ -13,7 +13,12 @@
     background-color: #DDFFDD;
 }
 
-.word.sbj .named {
+.word.obj.vrb-question .named {
+    background-color: #DDDDFF;
+}
+
+.word.sbj .named,
+.word.obj .named {
     border: 1px solid silver;
     padding: 0 2px 2px 2px;
     font: small-caption;
@@ -33,6 +38,10 @@
      -moz-border-radius: 0.5em;   /*noinspection CssUnknownProperty*/
        -o-border-radius: 0.5em;
           border-radius: 0.5em;
+}
+
+.word.txt {
+    font-family: Verdana, sans-serif;
 }
 
 .whn {

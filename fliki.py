@@ -173,6 +173,18 @@ class GoogleFlaskUser(flask_login.UserMixin):
 
 class GoogleQikiListing(qiki.Listing):
 
+    class GoogleQikiUser(qiki.WordListed):
+        lex = None
+
+        @classmethod
+        def is_anonymous(cls):
+            return False
+
+    def __init__(self, meta_word, word_class=None, **kwargs):
+        if word_class is None:
+            word_class = self.GoogleQikiUser
+        super(GoogleQikiListing, self).__init__(meta_word=meta_word, word_class=word_class, **kwargs)
+
     def lookup(self, google_user_id):
         """
         Qiki model for a Google user.
@@ -197,6 +209,18 @@ class GoogleQikiListing(qiki.Listing):
 
 
 class AnonymousQikiListing(qiki.Listing):
+
+    class AnonymousQikiUser(qiki.WordListed):
+        lex = None
+
+        @classmethod
+        def is_anonymous(cls):
+            return True
+
+    def __init__(self, meta_word, word_class=None, **kwargs):
+        if word_class is None:
+            word_class = self.AnonymousQikiUser
+        super(AnonymousQikiListing, self).__init__(meta_word=meta_word, word_class=word_class, **kwargs)
 
     def lookup(self, ip_address_idn):
         return lex[ip_address_idn].txt, qiki.Number(1)
@@ -243,14 +267,14 @@ class Auth(object):
                     self.session_new()
 
         if self.is_authenticated:
-            self.qiki_user = google_qiki_user[self.authenticated_id()]
+            self.qiki_user = google_qiki_listing[self.authenticated_id()]
             # TODO:  tag session_word with google user, or vice versa
             #        if they haven't been paired yet,
             #        or aren't the most recent pairing
             #        (or remove that last thing, could churn if user is on two devices at once)
         elif self.is_anonymous:
             # anonymous_identifier = lex.define(ip_address_word, txt=self.ip_address_txt)
-            self.qiki_user = anonymous_qiki_user[self.session_word.idn]
+            self.qiki_user = anonymous_qiki_listing[self.session_word.idn]
             # TODO:  Tag the anonymous user with the session (like authenticated user)
             #        rather than embedding the session ID so prominently
             #        although, that session ID is the only way to identify anonymous users
@@ -300,6 +324,10 @@ class Auth(object):
     @then_url.setter
     @abc.abstractmethod
     def then_url(self, new_url):
+        raise NotImplementedError
+
+    @abc.abstractmethod
+    def form(self, variable_name):
         raise NotImplementedError
 
     def log_html(self, then_url=None):
@@ -370,6 +398,7 @@ class AuthFliki(Auth):
             is_anonymous=self.flask_user.is_anonymous,
             ip_address_txt=qiki.Text.decode_if_you_must(flask.request.remote_addr),
         )
+        print("AUTH", self.qiki_user.idn.qstring(), self.is_anonymous, self.is_authenticated)
 
     SESSION_VARIABLE_NAME = 'qiki_user'
 
@@ -409,14 +438,26 @@ class AuthFliki(Auth):
     def then_url(self, new_url):
         flask.session['then_url'] = new_url
 
+    _not_specified = object()   # like None but more obscure, so None CAN be specified
+
+    class FormVariableMissing(KeyError):
+        """auth.form('no such variable')"""
+
+    def form(self, variable_name, default=_not_specified):
+        value = flask.request.form.get(variable_name, default)
+        if value is self._not_specified:
+            raise self.FormVariableMissing("No form variable " + variable_name)
+        else:
+            return value
+
 
 listing = lex.noun(u'listing')
 
 google_user = lex.define(listing, u'google user')
-google_qiki_user = GoogleQikiListing(meta_word=google_user)
+google_qiki_listing = GoogleQikiListing(meta_word=google_user)
 
 anonymous_user = lex.define(listing, u'anonymous')
-anonymous_qiki_user = AnonymousQikiListing(meta_word=anonymous_user)
+anonymous_qiki_listing = AnonymousQikiListing(meta_word=anonymous_user)
 
 ip_address_word = lex.noun(u'IP address')
 
@@ -434,7 +475,7 @@ def my_login():
     assert isinstance(flask_user, werkzeug.local.LocalProxy)   # was flask_login.LocalProxy
 
     if flask_user.is_authenticated:
-        qiki_user = google_qiki_user[flask_user.get_id()]
+        qiki_user = google_qiki_listing[flask_user.get_id()]
     elif flask_user.is_anonymous:
         # print(repr(flask_user), flask.request.remote_addr)
         # EXAMPLE:  <flask_login.mixins.AnonymousUserMixin object at 0x0000000004304D30> 127.0.0.1
@@ -442,7 +483,7 @@ def my_login():
 
         ip_address_txt = qiki.Text.decode_if_you_must(flask.request.remote_addr)
         anonymous_identifier = lex.define(ip_address_word, txt=ip_address_txt)
-        qiki_user = anonymous_qiki_user[anonymous_identifier.idn]
+        qiki_user = anonymous_qiki_listing[anonymous_identifier.idn]
         # FIXME:  Anonymous users at the same IP address
         #         shouldn't see each others' contributions.
         #         Anonymous users with no cookies could also be warned they won't
@@ -555,7 +596,7 @@ def user_loader(google_user_id_string):
     # EXAMPLE:  user_loader 103620384189003122864
 
     # try:
-    #     new_qiki_user = google_qiki_user[qiki.Number(google_user_id_string)]
+    #     new_qiki_user = google_qiki_listing[qiki.Number(google_user_id_string)]
     # except qiki.Listing.NotFound:
     #     print("\t", "QIKI LISTING NOT FOUND")
     #     return None
@@ -636,7 +677,7 @@ def login():
             if hasattr(login_result, 'user') and login_result.user is not None:
                 login_result.user.update()
                 flask_user = GoogleFlaskUser(login_result.user.id)
-                qiki_user = google_qiki_user[login_result.user.id]
+                qiki_user = google_qiki_listing[login_result.user.id]
                 picture_parts = urllib.parse.urlsplit(login_result.user.picture)
                 picture_dict = urllib.parse.parse_qs(picture_parts.query)
                 # THANKS:  Parse URL query-string, http://stackoverflow.com/a/21584580/673991
@@ -778,17 +819,14 @@ def home_subdirectory():
 
 
 def unslumping_home():
-    flask_user, qiki_user = my_login()
     auth = AuthFliki()
-    print("AUTH", auth.qiki_user.idn.qstring(), auth.is_anonymous, auth.is_authenticated)
-    log_html = auth.log_html()   # log_link(flask_user, qiki_user, then_url=flask.request.path)
     with FlikiHTML('html') as html:
         head = html.header("Unslumping")
         head.css_stamped(flask.url_for('static', filename='code/unslump.css'))
 
         with html.body() as body:
             with body.div(id='logging') as div:
-                div.raw_text(log_html)
+                div.raw_text(auth.log_html())
             body.div(id='my-qoolbar')
             body.div(id='status')
 
@@ -841,12 +879,15 @@ def unslumping_home():
                         show_options.input(id='show_spam', type='checkbox')
                         show_options.label(for_='show_spam', title="if anybody tags something spam").text("spam")
                     their_contributions = their_ump.div(id='their_contributions')
-                    if flask_user.is_anonymous:
+
+                    if auth.is_anonymous:
                         anon_input(disabled='disabled')
                         anon_label(title='Logged-in users can see anonymous contributions.')
                     else:
                         pass
                         # anon_input(checked='checked')
+                        # NOTE:  authenticated user, checkbox to see anonymous content defaults OFF
+
                 body.js_stamped(flask.url_for('static', filename='code/unslump.js'))
 
                 unslumps = lex.find_words(vrb=lex[u'define'], txt=u'unslump')
@@ -867,7 +908,7 @@ def unslumping_home():
                 #        Ooh, imagine a long-poll where new contributions would show up as
                 #        a "show new stuff" button!!
                 for uns_word in uns_words:
-                    is_my_contribution = uns_word.sbj == qiki_user
+                    is_my_contribution = uns_word.sbj == auth.qiki_user
 
                     # body.p("{me_or_they}({they_idn}, {they_lex_class}) "
                     #        "unslumped by {uns_idn}: {uns_txt:.25s}...".format(
@@ -887,8 +928,13 @@ def unslumping_home():
                     #     me(0q82_A7__8A059E058E6A6308C8B0_1D0B00, GoogleQikiListing)
                     #         unslumped by 0q83_0372: pithy...
 
-                    is_me_anon = is_qiki_user_anonymous(qiki_user)
-                    is_they_anon = is_qiki_user_anonymous(uns_word.sbj)
+                    is_me_anon = auth.qiki_user.is_anonymous()
+                    try:
+                        is_they_anon = uns_word.sbj.is_anonymous()
+                    except AttributeError:
+                        print("USER WORD WITHOUT is_anonymous member", repr(uns_word.sbj))
+                        is_they_anon = True
+
                     short_d, long_d = short_long_description(uns_word.sbj)
 
                     def add_container(parent, class_):
@@ -928,7 +974,7 @@ def unslumping_home():
                         )
 
                 monty = dict(
-                    me_idn=qiki_user.idn.qstring(),
+                    me_idn=auth.qiki_user.idn.qstring(),
                     AJAX_URL=AJAX_URL,
                     lex_idn=lex[lex].idn.qstring(),
                 )
@@ -1050,29 +1096,30 @@ def meta_all():
                 element.text(compress_txt(txt))
                 element.char_name('rdquo')
 
-            def show_vrb_iconify(element, word, title_prefix=""):
-                show_sub_word(element, word.obj, class_='word obj', title_prefix=title_prefix)
+            def show_iconify_obj(element, word, title_prefix=""):
+                show_sub_word(element, word.obj, class_='word obj vrb-iconify', title_prefix=title_prefix)
                 with element.span(class_='word txt') as span_txt:
                     span_txt.text(" ")
                     span_txt.img(src=word.txt, title="txt = " + compress_txt(word.txt))
 
-            def url_from_question(question_text):
-                if question == '':
-                    return None
-                else:
-                    return flask.url_for('answer_qiki', url_suffix=question_text, _external=True)
-                    # THANKS:  Absolute url, https://stackoverflow.com/q/12162634/673991#comment17401215_12162726
+            def show_question_obj(element, word, title_prefix=""):
 
-            def show_vrb_question(element, word, title_prefix=""):
+                def url_from_question(question_text):
+                    if question == '':
+                        return None
+                    else:
+                        return flask.url_for('answer_qiki', url_suffix=question_text, _external=True)
+                        # THANKS:  Absolute url, https://stackoverflow.com/q/12162634/673991#comment17401215_12162726
+
                 question_url = url_from_question(word.obj.txt)
                 if question_url is None:
-                    show_sub_word(element, word.obj, class_='word obj', title_prefix=title_prefix)
+                    show_sub_word(element, word.obj, class_='word obj vrb-question', title_prefix=title_prefix)
                 else:
                     with element.a(
                         href=question_url,
                         target='_blank',
                     ) as a:
-                        show_sub_word(a, word.obj, class_='word obj', title_prefix=title_prefix)
+                        show_sub_word(a, word.obj, class_='word obj vrb-question', title_prefix=title_prefix)
 
                 if word.txt != '':   # When vrb=question, txt is the referrer.
                     if word.txt == flask.request.url:
@@ -1117,15 +1164,17 @@ def meta_all():
                                 triangle.char_code(MyUnicode.BLACK_RIGHT_POINTING_TRIANGLE)
                             with li.span(class_='delta-amount ' + units_class) as amount:
                                 amount.text(delta.amount_short + delta.units_short)
+
                         show_sub_word(li, word.sbj, class_='word sbj', title_prefix= "sbj = ")
                         li.span("-")
+
                         show_sub_word(li, word.vrb, class_='word vrb', title_prefix = "vrb = ")
                         li.span("-")
 
                         if word.vrb.txt == 'iconify':
-                            show_vrb_iconify(li, word, title_prefix = "obj = ")
+                            show_iconify_obj(li, word, title_prefix = "obj = ")
                         elif word.vrb.txt == 'question':
-                            show_vrb_question(li.span(), word, title_prefix = "obj = ")
+                            show_question_obj(li.span(), word, title_prefix = "obj = ")
                         else:
                             show_sub_word(li, word.obj, class_='word obj', title_prefix = "obj = ")
                             if word.num != qiki.Number(1):
@@ -1325,15 +1374,15 @@ def answer_qiki(url_suffix):
                                  but maybe context "/" context "/" name
     :return:
     """
-    flask_user, qiki_user = my_login()
-    log_html = log_link(flask_user, qiki_user, then_url=flask.request.path)
+    # flask_user, qiki_user = my_login()
+    auth = AuthFliki()
     word_for_path = lex.define(path, qiki.Text.decode_if_you_must(url_suffix))
 
     if str(word_for_path) == 'favicon.ico':
         return qiki_javascript(filename=six.text_type(word_for_path))
         # SEE:  favicon.ico in root, https://realfavicongenerator.net/faq#why_icons_in_root
 
-    qiki_user(question)[word_for_path] = 1, referrer(flask.request)
+    auth.qiki_user(question)[word_for_path] = 1, referrer(flask.request)
 
     # print("ANSWER", *[repr(w.idn) + " " + w.txt + ", " for w in qoolbar.get_verbs()])
     # EXAMPLE:  ANSWER Number('0q82_86') like,  Number('0q82_89') delete,  Number('0q83_01FC') laugh,
@@ -1391,8 +1440,8 @@ def answer_qiki(url_suffix):
         answers=answers,
         len_answers=len(answers),
         len_questions=len(questions),
-        me_idn=qiki_user.idn,
-        log_html=log_html,
+        me_idn=auth.qiki_user.idn,
+        log_html=auth.log_html(),
         render_question=render_question,
         dot_min='.min' if DO_MINIFY else '',
         **config_dict
@@ -1462,13 +1511,14 @@ def native_num(num):
 @flask_app.route(AJAX_URL, methods=('POST',))
 def ajax():
     try:
-        flask_user, qiki_user = my_login()
-        action = flask.request.form['action']
+        # flask_user, qiki_user = my_login()
+        auth = AuthFliki()
+        action = auth.form('action')
         if action == 'answer':
-            question_path = flask.request.form['question']
-            answer_txt = flask.request.form['answer']
+            question_path = auth.form('question')
+            answer_txt = auth.form('answer')
             question_word = lex.define(path, question_path)
-            qiki_user(answer)[question_word] = 1, answer_txt
+            auth.qiki_user(answer)[question_word] = 1, answer_txt
             return valid_response('message', "Question {q} answer {a}".format(
                 q=question_path,
                 a=answer_txt,
@@ -1490,68 +1540,44 @@ def ajax():
             #     ]}
 
         elif action == 'sentence':
-            form = flask.request.form
-
-            try:
-                obj_idn = form['obj_idn']
-            except KeyError:
-                return invalid_response("Missing obj")
-
-            try:
-                vrb_txt = form['vrb_txt']
-            except KeyError:
+            obj_idn = auth.form('obj_idn')
+            vrb_txt = auth.form('vrb_txt', None)
+            if vrb_txt is None:
                 # TODO:  Should vrb_idn have priority over vrb_txt instead?
-                try:
-                    vrb_idn = form['vrb_idn']
-                except KeyError:
-                    return invalid_response("Missing vrb_txt and vrb_idn")
-                else:
-                    vrb = lex[qiki.Number(vrb_idn)]
+                vrb_idn = auth.form('vrb_idn')
+                vrb = lex[qiki.Number(vrb_idn)]
             else:
-                # vrb = lex[vrb_txt]
                 vrb = lex.verb(vrb_txt)
                 # FIXME:  can we allow browser trash to define a verb?
 
-            try:
-                txt = form['txt']
-            except KeyError:
-                return invalid_response("Missing txt")
-
-            use_already = form.get('use_already', False)
-
+            txt = auth.form('txt')
+            use_already = auth.form('use_already', False)
             obj = lex[qiki.Number(obj_idn)]
-            num_add_str = form.get('num_add', None)
-            num_str = form.get('num', None)
-            try:
-                num_add = None if num_add_str is None else qiki.Number(num_add_str)
-                num = None if num_str is None else qiki.Number(num_str)
-            except ValueError as e:
-                return invalid_response("num or num_add invalid: " + str(e))
-            else:
-                new_word = lex.create_word(
-                    sbj=qiki_user,
-                    vrb=vrb,
-                    obj=obj,
-                    num=num,
-                    num_add=num_add,
-                    txt=txt,
-                    use_already=use_already,
-                )
-                return valid_response('new_words', json_from_words([new_word]))
+            num_add_str = auth.form('num_add', None)
+            num_str = auth.form('num', None)
+            num_add = None if num_add_str is None else qiki.Number(num_add_str)
+            num = None if num_str is None else qiki.Number(num_str)
+            new_word = lex.create_word(
+                sbj=auth.qiki_user,
+                vrb=vrb,
+                obj=obj,
+                num=num,
+                num_add=num_add,
+                txt=txt,
+                use_already=use_already,
+            )
+            return valid_response('new_words', json_from_words([new_word]))
         elif action == 'new_verb':
-            try:
-                new_verb_name = flask.request.form['name']
-            except KeyError:
-                return invalid_response("Missing name")
+            new_verb_name = auth.form('name')
             new_verb = lex.create_word(
-                sbj=qiki_user,
+                sbj=auth.qiki_user,
                 vrb=lex[u'define'],
                 obj=lex[u'verb'],
                 txt=new_verb_name,
                 use_already=True,
             )
             lex.create_word(
-                sbj=qiki_user,
+                sbj=auth.qiki_user,
                 vrb=lex[u'qool'],
                 obj=new_verb,
                 num=NUM_QOOL_VERB_NEW,
@@ -1560,13 +1586,10 @@ def ajax():
             return valid_response('idn', new_verb.idn.qstring())
 
         elif action == 'delete_verb':
-            try:
-                old_verb_idn = qiki.Number(flask.request.form['idn'])
-            except (KeyError, ValueError):
-                return invalid_response("Missing or malformed idn: " + flask.request.form.get('idn', "(missing)"))
+            old_verb_idn = qiki.Number(auth.form('idn'))
 
             lex.create_word(
-                sbj=qiki_user,
+                sbj=auth.qiki_user,
                 vrb=lex[u'qool'],
                 obj=old_verb_idn,
                 num=NUM_QOOL_VERB_DELETE,
@@ -1583,21 +1606,33 @@ def ajax():
         else:
             return invalid_response("Unknown action " + action)
 
-    except KeyError as e:
+    except (KeyError, IndexError, ValueError) as e:
         # EXAMPLE:  werkzeug.exceptions.BadRequestKeyError
+        # EXAMPLE:  qiki.word.LexSentence.CreateWordError
+        # EXAMPLE:  fliki.AuthFliki.FormVariableMissing
 
-        print("AJAX KEY ERROR", str(e))
+        print("AJAX ERROR", type_name(e), str(e))
         traceback.print_exc()
-        # EXAMPLE:
-        # AJAX KEY ERROR 400 Bad Request: The browser (or proxy) sent a request that this server could not understand.
-        # Traceback (most recent call last):
-        #   File "...\fliki\fliki.py", line 1222, in ajax
-        #     action = flask.request.form['action']
-        #   File "...\lib\site-packages\werkzeug\datastructures.py", line 442, in __getitem__
-        #     raise exceptions.BadRequestKeyError(key)
-        # werkzeug.exceptions.HTTPException.wrap.<locals>.newcls: 400 Bad Request:
-        # The browser (or proxy) sent a request that this server could not understand.
-        # 127.0.0.1 - - [13/Jun/2019 18:56:28] "POST /meta/ajax HTTP/1.1" 200 -
+        # EXAMPLE:  (request with no action, before Auth.form() was created)
+        #     AJAX ERROR 400 Bad Request: The browser (or proxy) sent a request
+        #           that this server could not understand.
+        #     Traceback (most recent call last):
+        #       File "...\fliki\fliki.py", line 1222, in ajax
+        #         action = auth.form('action')
+        #       File "...\lib\site-packages\werkzeug\datastructures.py", line 442, in __getitem__
+        #         raise exceptions.BadRequestKeyError(key)
+        #     werkzeug.exceptions.HTTPException.wrap.<locals>.newcls: 400 Bad Request:
+        #     The browser (or proxy) sent a request that this server could not understand.
+        #     127.0.0.1 - - [13/Jun/2019 18:56:28] "POST /meta/ajax HTTP/1.1" 200 -
+        # EXAMPLE:  (action=sentence with no other vars)
+        #     AJAX ERROR FormVariableMissing 'No form variable obj_idn'
+        #     Traceback (most recent call last):
+        #       File "D:\PyCharmProjects\fliki\fliki.py", line 1543, in ajax
+        #         obj_idn = auth.form('obj_idn')
+        #       File "D:\PyCharmProjects\fliki\fliki.py", line 449, in form
+        #         raise self.FormVariableMissing("No form variable " + variable_name)
+        #     AuthFliki.FormVariableMissing: 'No form variable obj_idn'
+        #     127.0.0.1 - - [17/Jun/2019 10:07:40] "POST /meta/ajax HTTP/1.1" 200 -
 
         return invalid_response("request error")
 
