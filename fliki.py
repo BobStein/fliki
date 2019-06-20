@@ -50,6 +50,7 @@ import six
 # noinspection PyUnresolvedReferences
 import six.moves.urllib as urllib
 import werkzeug.local
+import werkzeug.useragents
 
 import qiki
 from qiki.number import type_name
@@ -124,17 +125,22 @@ class MyUnicode(object):
 
 
 lex = qiki.LexMySQL(**secure.credentials.for_fliki_lex_database)
-path = lex.noun(u'path')
-question = lex.verb(u'question')
-browse = lex.verb(u'browse')
-answer = lex.verb(u'answer')
+path_noun = lex.noun(u'path')
+question_verb = lex.verb(u'question')
+browse_verb = lex.verb(u'browse')
+# TODO:  Change this to browser_verbs[]
+#        x == browse_verb becomes x in browse_verbs
+#        obj=browse_verb becomes obj=browse_verbs[-1]
+#           oh wait, would that invite redefinition vulnerability?
+answer_verb = lex.verb(u'answer')
+referrer_verb = lex.verb('referrer')
 
-iconify_word = lex.verb(u'iconify')   # TODO:  Why in the world was this noun??   lex.noun('iconify')
-name_word = lex.verb(u'name')   # TODO:  ffs why wasn't this a verb??
+iconify_verb = lex.verb(u'iconify')   # TODO:  Why in the world was this noun??   lex.noun('iconify')
+name_verb = lex.verb(u'name')   # TODO:  ffs why wasn't this a verb??
 session_noun = lex.noun(u'session')
 
 me = lex.define('agent', u'user')  # TODO:  Authentication
-me(iconify_word, use_already=True)[me] = u'http://tool.qiki.info/icon/ghost.png'
+me(iconify_verb, use_already=True)[me] = u'http://tool.qiki.info/icon/ghost.png'
 qoolbar = qiki.QoolbarSimple(lex)
 
 
@@ -196,7 +202,7 @@ class GoogleQikiListing(qiki.Listing):
 
         namings = self.meta_word.lex.find_words(
             sbj=self.meta_word.lex[self.meta_word.lex],
-            vrb=name_word,
+            vrb=name_verb,
             obj=idn
         )
         try:
@@ -206,6 +212,11 @@ class GoogleQikiListing(qiki.Listing):
         else:
             the_name = latest_naming.txt
         return the_name, qiki.Number(1)
+
+
+tag_verb = lex.verb('tag')
+ip_address_tag = lex.define(tag_verb, "ip address tag")
+user_agent_tag = lex.define(tag_verb, "user agent tag")
 
 
 class AnonymousQikiListing(qiki.Listing):
@@ -222,8 +233,53 @@ class AnonymousQikiListing(qiki.Listing):
             word_class = self.AnonymousQikiUser
         super(AnonymousQikiListing, self).__init__(meta_word=meta_word, word_class=word_class, **kwargs)
 
-    def lookup(self, ip_address_idn):
-        return lex[ip_address_idn].txt, qiki.Number(1)
+    def lookup(self, session_verb_idn):
+        parts = []
+        parts_complete = True
+        anon_user = self.composite_idn(session_verb_idn)
+
+        ips = self.root_lex.find_words(obj=session_verb_idn, vrb=ip_address_tag, sbj=anon_user)
+        try:
+            parts.append(str(ips[-1].txt))
+        except IndexError:
+            '''session was never ip-address-tagged'''
+            parts_complete = False
+
+        uas = self.root_lex.find_words(obj=session_verb_idn, vrb=user_agent_tag, sbj=anon_user)
+        try:
+            user_agent_str = str(uas[-1].txt)
+        except IndexError:
+            '''session was never user-agent-tagged'''
+            parts_complete = False
+        else:
+            try:
+                user_agent_object = werkzeug.useragents.UserAgent(user_agent_str)
+            except AttributeError:
+                parts.append("(indeterminate user agent)")
+                parts_complete = False
+            else:
+                user_agent_makes_sense = True
+
+                if user_agent_object.browser is None:
+                    user_agent_makes_sense = False
+                    parts_complete = False
+                else:
+                    parts.append(user_agent_object.browser)
+
+                if user_agent_object.platform is None:
+                    user_agent_makes_sense = False
+                    parts_complete = False
+                else:
+                    parts.append(user_agent_object.platform)
+
+                if not user_agent_makes_sense:
+                    parts.append("user agent '{}'".format(user_agent_str))
+
+        if not parts_complete:
+            parts.append("idn " + session_verb_idn.qstring())
+
+        txt = qiki.Text(" ".join(parts))
+        return txt, qiki.Number(1)
 
 
 # TODO:  Combine classes, e.g. GoogleUser(flask_login.UserMixin, qiki.Listing)
@@ -236,45 +292,49 @@ class AnonymousQikiListing(qiki.Listing):
 
 class Auth(object):
     """Qiki generic logging in."""
+    # TODO:  Morph this into a Session lex?
+
     def __init__(
         self,
         this_lex,
         is_authenticated,
         is_anonymous,
         ip_address_txt,
+        user_agent_txt,
     ):
         self.lex = this_lex
+        self.define = self.lex['define']
+
         self.is_authenticated = is_authenticated
         self.is_anonymous = is_anonymous
         self.ip_address_txt = ip_address_txt
 
-        session_string = self.session_get()
-        if session_string is None:
+        try:
+            session_idn_qstring = self.session_idn_qstring
+        except (KeyError, IndexError, AttributeError):
             self.session_new()
         else:
             try:
-                session_idn = qiki.Number.from_qstring(session_string)
-                self.session_word = self.lex[session_idn]
+                session_idn = qiki.Number.from_qstring(session_idn_qstring)
+                self.session_verb = self.lex[session_idn]
             except ValueError:
-                print("BAD SESSION IDENTIFIER", session_string)
+                print("BAD SESSION IDENTIFIER", session_idn_qstring)
                 self.session_new()
             else:
-                if self.session_word.obj == session_noun:
-                    '''old session word is good'''
-                    # TODO:  if ip address is different, tag session
+                if self.session_verb.obj == browse_verb:
+                    '''old session word is good, keep it'''
                 else:
-                    print("NOT A SESSION IDENTIFIER", session_string)
+                    print("NOT A SESSION IDENTIFIER", session_idn_qstring)
                     self.session_new()
 
         if self.is_authenticated:
             self.qiki_user = google_qiki_listing[self.authenticated_id()]
-            # TODO:  tag session_word with google user, or vice versa
+            # TODO:  tag session_verb with google user, or vice versa
             #        if they haven't been paired yet,
             #        or aren't the most recent pairing
             #        (or remove that last thing, could churn if user is on two devices at once)
         elif self.is_anonymous:
-            # anonymous_identifier = lex.define(ip_address_word, txt=self.ip_address_txt)
-            self.qiki_user = anonymous_qiki_listing[self.session_word.idn]
+            self.qiki_user = anonymous_qiki_listing[self.session_verb.idn]
             # TODO:  Tag the anonymous user with the session (like authenticated user)
             #        rather than embedding the session ID so prominently
             #        although, that session ID is the only way to identify anonymous users
@@ -283,17 +343,49 @@ class Auth(object):
             self.qiki_user = None
             print("User is neither authenticated nor anonymous.")
 
+        ip_words = self.lex.find_words(
+            sbj=self.qiki_user,
+            vrb=ip_address_tag,
+            obj=self.session_verb,
+            idn_ascending=True,
+        )
+        if len(ip_words) == 0 or ip_words[-1].txt != ip_address_txt:
+            self.qiki_user(ip_address_tag, use_already=False)[self.session_verb] = ip_address_txt
+
+        ua_words = self.lex.find_words(
+            sbj=self.qiki_user,
+            vrb=user_agent_tag,
+            obj=self.session_verb,
+            idn_ascending=True,
+        )
+        if len(ua_words) == 0 or ua_words[-1].txt != user_agent_txt:
+            self.qiki_user(user_agent_tag, use_already=False)[self.session_verb] = user_agent_txt
+
     def session_new(self):
-        # self.session_word = self.lex.define(session_noun, txt=self.ip_address_txt)
-        self.session_word = self.lex.create_word(
+        self.session_verb = self.lex.create_word(
             sbj=self.lex[self.lex],
-            vrb=self.lex['define'],
-            obj=session_noun,
-            txt=self.ip_address_txt,
+            vrb=self.define,
+            obj=browse_verb,
+            txt="",   # self.session_framework_identifier,
             use_already=False
         )
-        self.session_set(self.session_word.idn.qstring())
-        print("New session", self.session_word.idn.qstring(), self.ip_address_txt)
+        self.session_idn_qstring = self.session_verb.idn.qstring()
+        print("New session", self.session_verb.idn.qstring(), self.ip_address_txt)
+
+    @property
+    @abc.abstractmethod
+    def session_idn_qstring(self):
+        raise NotImplementedError
+
+    @session_idn_qstring.setter
+    @abc.abstractmethod
+    def session_idn_qstring(self, qstring):
+        raise NotImplementedError
+
+    # @property
+    # @abc.abstractmethod
+    # def session_framework_identifier(self):
+    #     raise NotImplementedError
 
     def session_get(self):
         raise NotImplementedError
@@ -397,10 +489,72 @@ class AuthFliki(Auth):
             is_authenticated=self.flask_user.is_authenticated,
             is_anonymous=self.flask_user.is_anonymous,
             ip_address_txt=qiki.Text.decode_if_you_must(flask.request.remote_addr),
+            user_agent_txt=qiki.Text.decode_if_you_must(flask.request.user_agent.string),
         )
-        print("AUTH", self.qiki_user.idn.qstring(), self.is_anonymous, self.is_authenticated)
+        # THANKS:  User agent fields, https://stackoverflow.com/a/33706555/673991
+        # SEE:  https://werkzeug.palletsprojects.com/en/0.15.x/utils/#module-werkzeug.useragents
 
-    SESSION_VARIABLE_NAME = 'qiki_user'
+        auth_anon = (
+            " logged in" if self.is_authenticated else "" +
+            " anonymous" if self.is_anonymous else ""
+        )
+        print(
+            "AUTH",
+            self.qiki_user.idn.qstring(),
+            auth_anon,
+            repr(flask.session),
+        )
+        self.path_word = None
+        self.browse_word = None
+
+    def hit(self, path_str):
+        # path_str = flask.request.full_path
+        # if path_str.startswith('/'):
+        #     path_str = path_str[1 : ]
+        #     # NOTE:  Strip leading slash so old hits still count
+        self.path_word = self.lex.define(
+            path_noun,
+            qiki.Text.decode_if_you_must(path_str)
+        )
+        self.browse_word = self.lex.create_word(
+            sbj=self.qiki_user,
+            vrb=self.session_verb,
+            obj=self.path_word,
+            use_already=False,
+        )
+        this_referrer = flask.request.referrer
+        if this_referrer is not None:
+            self.lex.create_word(
+                sbj=self.qiki_user,
+                vrb=referrer_verb,
+                obj=self.browse_word,
+                txt=qiki.Text.decode_if_you_must(this_referrer),
+                use_already=False,
+            )
+
+    SESSION_VARIABLE_NAME = 'qiki_user'   # where we store the session verb's idn
+
+    @property
+    def session_idn_qstring(self):
+        return flask.session[self.SESSION_VARIABLE_NAME]
+
+    @session_idn_qstring.setter
+    def session_idn_qstring(self, qstring):
+        flask.session[self.SESSION_VARIABLE_NAME] = qstring
+
+    @property
+    def session_framework_identifier(self):
+        # print("SESSION", repr(flask.session))
+        # try:
+        #     print("SESSION SID", repr(flask.session.sid))
+        # except AttributeError:
+        #     print("SESSION SID is missing")
+        try:
+            return flask.session['_id']
+            # THANKS:  Session id, https://stackoverflow.com/a/43505668/673991
+        except KeyError:
+            return ''
+        # return flask.session.get('_id', repr(flask.session))
 
     def session_get(self):
         try:
@@ -593,7 +747,10 @@ def log_link(flask_user, qiki_user, then_url):
 @login_manager.user_loader
 def user_loader(google_user_id_string):
     # print("user_loader", google_user_id_string)
-    # EXAMPLE:  user_loader 103620384189003122864
+    # EXAMPLE:  user_loader 103620384189003122864 (Bob Stein's google user id, apparently)
+    #           hex 0x59e058e6a6308c8b0 (67 bits)
+    #           qiki 0q8A_059E058E6A6308C8B0 (9 qigits)
+    #           (Yeah well it better not be a security thing to air this number like a toynbee tile.)
 
     # try:
     #     new_qiki_user = google_qiki_listing[qiki.Number(google_user_id_string)]
@@ -609,12 +766,12 @@ def user_loader(google_user_id_string):
     return new_flask_user
 
 
-def referrer(request):
-    this_referrer = request.referrer
-    if this_referrer is None:
-        return qiki.Text(u'')
-    else:
-        return qiki.Text.decode_if_you_must(this_referrer)
+# def referrer(request):
+#     this_referrer = request.referrer
+#     if this_referrer is None:
+#         return qiki.Text(u'')
+#     else:
+#         return qiki.Text.decode_if_you_must(this_referrer)
 
 
 @flask_app.route('/meta/logout', methods=('GET', 'POST'))
@@ -687,8 +844,8 @@ def login():
                 display_name = login_result.user.name
                 print("Logging in", qiki_user.index, qiki_user.idn.qstring())
                 # EXAMPLE:   Logging in 0q8A_059E058E6A6308C8B0 0q82_15__8A059E058E6A6308C8B0_1D0B00
-                lex[lex](iconify_word, use_already=True)[qiki_user.idn] = avatar_width, avatar_url
-                lex[lex](name_word, use_already=True)[qiki_user.idn] = display_name
+                lex[lex](iconify_verb, use_already=True)[qiki_user.idn] = avatar_width, avatar_url
+                lex[lex](name_verb, use_already=True)[qiki_user.idn] = display_name
                 flask_login.login_user(flask_user)
                 # return flask.redirect(flask.url_for('play'))
                 # then_url = flask.request.args.get('then_url', flask.url_for('home'))
@@ -820,6 +977,7 @@ def home_subdirectory():
 
 def unslumping_home():
     auth = AuthFliki()
+    auth.hit(flask.request.path)   # e.g. "/"
     with FlikiHTML('html') as html:
         head = html.header("Unslumping")
         head.css_stamped(flask.url_for('static', filename='code/unslump.css'))
@@ -1027,7 +1185,7 @@ def meta_all():
             all_subjects = {word.sbj for word in words}
 
             def latest_iconifier_or_none(s):
-                iconifiers = lex.find_words(obj=s, vrb=iconify_word)
+                iconifiers = lex.find_words(obj=s, vrb=iconify_verb)
                 try:
                     return iconifiers[-1]
                 except IndexError:
@@ -1055,9 +1213,17 @@ def meta_all():
                 )
 
             def show_sub_word(element, w, title_prefix="", **kwargs):
+                if w.obj == browse_verb:
+                    w_txt = "session #" + str(native_num(w.idn))
+                elif w.vrb is not None and w.vrb.obj == browse_verb:
+                    w_txt = "hit #" + str(native_num(w.idn))
+                else:
+                    w_txt = compress_txt(safe_txt(w))
+                return show_sub_word_txt(element, w, w_txt, title_prefix=title_prefix, **kwargs)
+
+            def show_sub_word_txt(element, w, w_txt, title_prefix="", **kwargs):
                 """Diagram a sbj, vrb, or obj."""
                 with element.span(**kwargs) as span_sub_word:
-                    w_txt = compress_txt(safe_txt(w))
                     if w in subject_icons:
                         span_sub_word.img(
                             src=subject_icons[w].txt,
@@ -1091,7 +1257,7 @@ def meta_all():
                 else:
                     return txt
 
-            def show_txt(element, txt):
+            def quoted_compressed_txt(element, txt):
                 element.char_name('ldquo')
                 element.text(compress_txt(txt))
                 element.char_name('rdquo')
@@ -1102,14 +1268,14 @@ def meta_all():
                     span_txt.text(" ")
                     span_txt.img(src=word.txt, title="txt = " + compress_txt(word.txt))
 
-            def show_question_obj(element, word, title_prefix=""):
+            def url_from_question(question_text):
+                if question_text == '':
+                    return None
+                else:
+                    return flask.url_for('answer_qiki', url_suffix=question_text, _external=True)
+                    # THANKS:  Absolute url, https://stackoverflow.com/q/12162634/673991#comment17401215_12162726
 
-                def url_from_question(question_text):
-                    if question == '':
-                        return None
-                    else:
-                        return flask.url_for('answer_qiki', url_suffix=question_text, _external=True)
-                        # THANKS:  Absolute url, https://stackoverflow.com/q/12162634/673991#comment17401215_12162726
+            def show_question_obj(element, word, title_prefix=""):
 
                 question_url = url_from_question(word.obj.txt)
                 if question_url is None:
@@ -1121,12 +1287,15 @@ def meta_all():
                     ) as a:
                         show_sub_word(a, word.obj, class_='word obj vrb-question', title_prefix=title_prefix)
 
-                if word.txt != '':   # When vrb=question, txt is the referrer.
+                if word.txt != '':   # When vrb=question_verb, txt was once the referrer.
                     if word.txt == flask.request.url:
                         element.span(" (here)", class_='referrer', title="was referred from here")
                     elif word.txt == question_url:
                         element.span(" (self)", class_='referrer', title="was referred from itself")
                     else:
+                        # TODO:  Remove these crufty if-clauses,
+                        #        because the referrer url is now stored in the txt
+                        #        of a separate referrer_verb word that objectifies the hit
                         element.text(" ")
                         with element.a(
                             href=word.txt,
@@ -1134,6 +1303,38 @@ def meta_all():
                             target='_blank',
                         ) as a:
                             a.span("(ref)", class_='referrer')
+
+            # def show_session_obj(element, word, title_prefix=""):
+            #     txt = "browse #" + str(native_num(word.obj.idn))
+            #     # if word.obj.txt == '':
+            #     #     txt = "session #" + str(int(word.obj.idn))
+            #     # else:
+            #     #     txt = "session " + word.obj.txt[-SHOW_SESSION_MAX : ]
+            #     show_sub_word_txt(element, word.obj, txt, class_='word obj', title_prefix=title_prefix)
+            #     show_num(element, word)
+            #     show_txt(element, word)
+
+            def show_num(element, word):
+                if word.num != qiki.Number(1):
+                    with element.span(class_='word num', title="num = " + word.num.qstring()) as num_span:
+                        num_span.text(" ")
+                        num_span.char_name('times')
+                        num_span.text(render_num(word.num))
+
+            def show_txt(element, word):
+                if word.txt != '':
+                    if word.vrb == referrer_verb:
+                        if word.txt == url_from_question(word.obj.obj.txt):
+                            with element.span(class_='referrer', title="was referred from itself") as ref_span:
+                                ref_span.text(" (self)")
+                            return
+                        if word.txt == flask.request.url:
+                            with element.span(class_='referrer', title="was referred from here") as ref_span:
+                                ref_span.text(" (here)")
+                            return
+                    with element.span(class_='word txt') as txt_span:
+                        txt_span.text(" ")
+                        quoted_compressed_txt(txt_span, word.txt)
 
             body.p("Hello Whorled!")
             body.comment(["My URL is", flask.request.url])
@@ -1168,24 +1369,30 @@ def meta_all():
                         show_sub_word(li, word.sbj, class_='word sbj', title_prefix= "sbj = ")
                         li.span("-")
 
-                        show_sub_word(li, word.vrb, class_='word vrb', title_prefix = "vrb = ")
+                        show_sub_word(li, word.vrb, class_='word vrb', title_prefix="vrb = ")
                         li.span("-")
 
                         if word.vrb.txt == 'iconify':
-                            show_iconify_obj(li, word, title_prefix = "obj = ")
-                        elif word.vrb.txt == 'question':
-                            show_question_obj(li.span(), word, title_prefix = "obj = ")
+                            show_iconify_obj(li, word, title_prefix="obj = ")
+                        elif word.vrb == question_verb:
+                            show_question_obj(li.span(), word, title_prefix="obj = ")
+                        elif word.vrb.obj == browse_verb:
+                            show_question_obj(li.span(), word, title_prefix="obj = ")
+                        # elif word.obj.obj == browse_verb:
+                        #     show_session_obj(li, word, title_prefix="obj = ")
                         else:
-                            show_sub_word(li, word.obj, class_='word obj', title_prefix = "obj = ")
-                            if word.num != qiki.Number(1):
-                                with li.span(class_='word num', title="num = " + word.num.qstring()) as span:
-                                    span.text(" ")
-                                    span.char_name('times')
-                                    span.text(render_num(word.num))
-                            if word.txt != '':
-                                with li.span(class_='word txt') as span:
-                                    span.text(" ")
-                                    show_txt(span, word.txt)
+                            show_sub_word(li, word.obj, class_='word obj', title_prefix="obj = ")
+                            show_num(li, word)
+                            show_txt(li, word)
+                            # if word.num != qiki.Number(1):
+                            #     with li.span(class_='word num', title="num = " + word.num.qstring()) as span:
+                            #         span.text(" ")
+                            #         span.char_name('times')
+                            #         span.text(render_num(word.num))
+                            # if word.txt != '':
+                            #     with li.span(class_='word txt') as span:
+                            #         span.text(" ")
+                            #         quoted_compressed_txt(span, word.txt)
 
                         li.span(" ")
                         # show_whn(li, word.whn, class_='word whn', title_prefix = "whn = ")
@@ -1374,21 +1581,23 @@ def answer_qiki(url_suffix):
                                  but maybe context "/" context "/" name
     :return:
     """
-    # flask_user, qiki_user = my_login()
-    auth = AuthFliki()
-    word_for_path = lex.define(path, qiki.Text.decode_if_you_must(url_suffix))
 
-    if str(word_for_path) == 'favicon.ico':
-        return qiki_javascript(filename=six.text_type(word_for_path))
+    if url_suffix == 'favicon.ico':
+        return qiki_javascript(filename=url_suffix)
         # SEE:  favicon.ico in root, https://realfavicongenerator.net/faq#why_icons_in_root
 
-    auth.qiki_user(question)[word_for_path] = 1, referrer(flask.request)
+    auth = AuthFliki()
+    # auth.hit(flask.request.path)   # oops this would start with a slash, do we want that?!?
+    auth.hit(url_suffix)
+    # word_for_path = lex.define(path_noun, qiki.Text.decode_if_you_must(url_suffix))
+    #
+    # auth.qiki_user(question_verb)[word_for_path] = 1, referrer(flask.request)
 
     # print("ANSWER", *[repr(w.idn) + " " + w.txt + ", " for w in qoolbar.get_verbs()])
     # EXAMPLE:  ANSWER Number('0q82_86') like,  Number('0q82_89') delete,  Number('0q83_01FC') laugh,
 
     question_words = lex.find_words(
-        idn=word_for_path.idn,
+        idn=auth.path_word.idn,
         jbo_vrb=qoolbar.get_verbs(),
         jbo_ascending=True,
     )
@@ -1396,14 +1605,14 @@ def answer_qiki(url_suffix):
     question_word = question_words[0]
     question_jbo_json = json_from_words(question_word.jbo)
     answers = lex.find_words(
-        vrb=answer,
-        obj=word_for_path,
+        vrb=answer_verb,
+        obj=auth.path_word,
         jbo_vrb=qoolbar.get_verbs(),
         idn_ascending=False,
         jbo_ascending=True,
     )
     # TODO:  Alternatives to find_words()?
-    #        answers = lex.find(vrb=answer, obj=word_for_path,
+    #        answers = lex.find(vrb=answer, obj=auth.this_path,
     for a in answers:
         a.jbo_json = json_from_words(a.jbo)
         # print("Answer", repr(a), a.jbo_json)
@@ -1415,9 +1624,9 @@ def answer_qiki(url_suffix):
         #    {"sbj": "0q82_A7__8A059E058E6A6308C8B0_1D0B00", "vrb": "0q82_86", "txt": "", "num": 3, "idn": "0q83_017F"},
         #    {"sbj": "0q82_A7__8A059E058E6A6308C8B0_1D0B00", "vrb": "0q82_86", "txt": "", "num": 1, "idn": "0q83_0180"}
         # ]
-        pictures = lex.find_words(vrb=iconify_word, obj=a.sbj)
+        pictures = lex.find_words(vrb=iconify_verb, obj=a.sbj)
         picture = pictures[0] if len(pictures) >= 1 else None
-        names = lex.find_words(vrb=name_word, obj=a.sbj)
+        names = lex.find_words(vrb=name_verb, obj=a.sbj)
         name = names[0] if len(names) >= 1 else a.sbj.txt
         # TODO:  Get latest name instead of earliest name
         if picture is not None:
@@ -1428,18 +1637,24 @@ def answer_qiki(url_suffix):
             author_img = ""
 
         a.author = author_img
-    questions = lex.find_words(vrb=question, obj=word_for_path)
+    question_words = lex.find_words(vrb=question_verb, obj=auth.path_word)
+    session_words = lex.find_words(obj=browse_verb)
+    hit_words = lex.find_words(vrb=session_words, obj=auth.path_word)
+    # TODO:  browses = lex.words(vrb_obj=browse_verb)
+    # TODO:  browses = lex.jbo(session_words)
+    # TODO:  browses = lex(obj=lex(vrb=browse_verb, obj=auth.this_path))
+    # TODO:  browses = lex.find_words(obj=lex.find_words(vrb=browse_verb, obj=auth.this_path))
     render_question = youtube_render(url_suffix)
     if render_question is None:
         render_question = "Here is a page for '{}'".format(flask.escape(url_suffix))
     return flask.render_template(
         'answer.html',
         question=url_suffix,
-        question_idn=word_for_path.idn.qstring(),
+        question_idn=auth.path_word.idn.qstring(),
         question_jbo_json=question_jbo_json,
         answers=answers,
         len_answers=len(answers),
-        len_questions=len(questions),
+        len_questions=len(question_words) + len(hit_words),
         me_idn=auth.qiki_user.idn,
         log_html=auth.log_html(),
         render_question=render_question,
@@ -1517,8 +1732,8 @@ def ajax():
         if action == 'answer':
             question_path = auth.form('question')
             answer_txt = auth.form('answer')
-            question_word = lex.define(path, question_path)
-            auth.qiki_user(answer)[question_word] = 1, answer_txt
+            question_word = lex.define(path_noun, question_path)
+            auth.qiki_user(answer_verb)[question_word] = 1, answer_txt
             return valid_response('message', "Question {q} answer {a}".format(
                 q=question_path,
                 a=answer_txt,
