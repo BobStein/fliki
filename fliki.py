@@ -23,6 +23,7 @@ import logging
 import os
 import re
 import sys
+import time
 import traceback
 import uuid
 
@@ -266,13 +267,24 @@ def define_our_words(lex):
     lex.verb(TXT.ICONIFY)
 
 
+class LexFliki(qiki.LexMySQL):
+
+    def __init__(self, **kwargs):
+        self.query_count = 0
+        super(LexFliki, self).__init__(**kwargs)
+
+    def _execute(self, cursor, query, parameters=()):
+        self.query_count += 1
+        return super(LexFliki, self)._execute(cursor, query, parameters)
+
+
 def setup_application_context():
     if hasattr(flask.g, 'lex'):
         print("WHOOPS, ALREADY SETUP WITH A LEX")
 
     try:
-        flask.g.lex = qiki.LexMySQL(**secure.credentials.for_fliki_lex_database)
-    except qiki.LexMySQL.ConnectError:
+        flask.g.lex = LexFliki(**secure.credentials.for_fliki_lex_database)
+    except LexFliki.ConnectError:
         flask.g.lex = None
         flask.g.is_online = False
     else:
@@ -1109,7 +1121,12 @@ def meta_all():
                 # p("Hello {}!".format(auth.qiki_user.txt))
                 p.raw_text(auth.log_html(then_url=flask.url_for('meta_all')))
 
+            qc_start = lex.query_count
+            t_start = time.time()
             words = lex.find_words()
+            t_find_words = time.time()
+            qc_find_words = lex.query_count
+
             words = list(words)[ : ]
             all_subjects = {word.sbj for word in words}
 
@@ -1297,6 +1314,10 @@ def meta_all():
                 last_whn = None
                 first_word = True
                 ago_lex = AgoLex()
+
+                t_loop = time.time()
+                t_words = list()
+
                 for word in words:
                     if first_word:
                         first_word = False
@@ -1359,7 +1380,30 @@ def meta_all():
                             whn_span.text(ago.description_short)       # e.g. "35h"
                         last_whn = word.whn
 
+                    t_now = time.time()
+                    t_elapsed = t_now - t_loop
+                    t_loop = t_now
+                    t_words.append(t_elapsed)
+
             body.footer()
+
+    qc_loop = lex.query_count
+
+    print(
+        "ALL TIMING "
+        "find {qc_find}:{t_find:.3f}, "
+        "{n}*loop {qc_loop} : {t_min:.3f} / {t_max:.3f} / {t_avg:.3f}, "
+        "total {t_total:.3f}".format(
+            qc_find=qc_find_words - qc_start,
+            t_find=t_find_words - t_start,
+            qc_loop=qc_loop - qc_find_words,
+            t_min=min(t_words),
+            t_max=max(t_words),
+            t_avg=sum(t_words)/len(t_words),
+            t_total=t_loop - t_start,
+            n=len(words),
+        )
+    )
 
     return html.doctype_plus_html()
 
@@ -1475,11 +1519,17 @@ def legacy_meta_all_words():
 
     lex = auth.lex
 
+    qc_start = lex.query_count
+    t_start = time.time()
     words = lex.find_words()
-    logger.info("Lex has " + str(len(words)) + " words.")
-    reports = []
+    t_find_words = time.time()
+    qc_find_words = lex.query_count
 
+    t_loop = time.time()
+    t_words = list()
+    reports = []
     for word in words:
+
         reports.append(dict(
             i=render_num(word.idn),
             idn_qstring=word.idn.qstring(),
@@ -1493,13 +1543,38 @@ def legacy_meta_all_words():
             # n=word.num,
             xn="" if word.num == 1 else "&times;" + render_num(word.num)
         ))
-    print("all done")
+        t_now = time.time()
+        t_elapsed = t_now - t_loop
+        t_loop = t_now
+        t_words.append(t_elapsed)
+    qc_loop = lex.query_count
+
     response = flask.render_template(
         'meta.html',
         reports=reports,
         **config_dict
     )
-    print("rendered")
+    t_rendered = time.time()
+    qc_rendered = lex.query_count
+
+    print(
+        "LEGACY ALL WORDS TIMING "
+        "find {qc_find}:{t_find:.3f}, "
+        "{n}*loop {qc_loop} : {t_min:.3f} / {t_max:.3f} / {t_avg:.3f}, "
+        "render {qc_render:d}:{t_render:.3f} "
+        "total {t_total:.3f}".format(
+            qc_find=qc_find_words - qc_start,
+            t_find=t_find_words - t_start,
+            qc_loop=qc_loop - qc_find_words,
+            t_min=min(t_words),
+            t_max=max(t_words),
+            t_avg=sum(t_words)/len(t_words),
+            qc_render=qc_rendered - qc_loop,
+            t_render=t_rendered - t_loop,
+            t_total=t_rendered - t_start,
+            n=len(words),
+        )
+    )
     return response
 
 
