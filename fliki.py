@@ -184,10 +184,14 @@ class AnonymousQikiListing(qiki.Listing):
             except AttributeError:
                 parts.append("(indeterminate user agent)")
             else:
-                parts.append(user_agent_object.browser or "(browser?)")
-                parts.append(user_agent_object.platform or "(platform?)")
+                parts.append(user_agent_object.browser)   # "(browser?)")
+                parts.append(user_agent_object.platform)   # "(platform?)")
 
-        txt = qiki.Text(" ".join(parts))
+        # TODO:  Make ip address, user agent, browser, platform
+        #        available to logged-in users too.
+
+
+        txt = qiki.Text(" ".join(p for p in parts if p is not None))
         return txt, qiki.Number(1)
 
 
