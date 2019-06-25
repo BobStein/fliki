@@ -288,11 +288,12 @@ def setup_application_context():
 
 
 @flask_app.teardown_appcontext
-def teardown_application_context(exc):
+def teardown_application_context(exc=None):
     if hasattr(flask.g, 'lex'):
         flask.g.lex.disconnect()
         flask.g.pop('lex')
-    print("teardown exception", type_name(exc), str(exc))
+    if exc is not None:
+        print("teardown exception", type_name(exc), str(exc))
 
 
 GOOGLE_PROVIDER = 'google'
