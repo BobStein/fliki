@@ -130,7 +130,7 @@ class WebHTML(richard_jones_html.HTML):
         """
         src_maybe_minified = src.format(dot_min=self.dot_min())
 
-        self.script(src=src_maybe_minified, newlines=True, **kwargs).close_tag()
+        self.script(src=src_maybe_minified, newlines=True, **kwargs)
 
         if local_file is not None and litmus_function is not None:
             # TODO:  Warn if local file doesn't exist?
@@ -202,9 +202,19 @@ class WebHTML(richard_jones_html.HTML):
         try:
             mtime_float = os.path.getmtime(os_path)
         except OSError:
-            return 'random={:s}'.format(os.urandom(4).encode('hex'))
+            # NOTE:  e.g. FileNotFoundError
+            return 'random={:s}'.format(cls.hex_from_bytes(os.urandom(4)))
         else:
             return 'mtime={:.3f}'.format(mtime_float)
+
+    @classmethod
+    def hex_from_bytes(cls, some_bytes):
+        if six.PY2:
+            return some_bytes.encode('hex')
+            # THANKS:  Python 2 hex from bytes, https://stackoverflow.com/a/16033232/673991
+        else:
+            return some_bytes.hex()
+            # THANKS:  Python 3.5 hex from bytes, https://stackoverflow.com/a/36149089/673991
 
     class MissingMethod(NotImplementedError):
         """os_path_from_url() must be implemented to use js_stamped() or css_stamped()."""

@@ -8,7 +8,7 @@
  * @param MONTY
  * @param MONTY.AJAX_URL
  * @param MONTY.me_idn
- * @param MONTY.lex_idn
+ * @param MONTY.IDN_LEX
  */
 function js_for_unslumping(window, $, MONTY) {
 
@@ -44,7 +44,7 @@ function js_for_unslumping(window, $, MONTY) {
                 'sentence',
                 {
                     vrb_txt: 'unslump',
-                    obj_idn: MONTY.lex_idn,
+                    obj_idn: MONTY.IDN_LEX,
                     txt: text_ump
                 },
                 function ump_done(response) {

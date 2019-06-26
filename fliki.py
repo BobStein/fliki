@@ -1058,17 +1058,16 @@ def unslumping_home():
                 monty = dict(
                     me_idn=auth.qiki_user.idn.qstring(),
                     AJAX_URL=AJAX_URL,
-                    lex_idn=lex[lex].idn.qstring(),
+                    IDN_LEX=lex[lex].idn.qstring(),
                 )
                 foot = body.footer()
                 with foot.script(newlines=True) as script:
-                    script.raw_text('var MONTY = {json};'.format(json=json.dumps(
+                    script.raw_text('var MONTY = {json};\n'.format(json=json.dumps(
                         monty,
                         sort_keys=True,
                         indent=4,
-                        separators=(',', ': '),
                     )))
-                    script.raw_text('js_for_unslumping(window, window.$, MONTY);')
+                    script.raw_text('js_for_unslumping(window, window.$, MONTY);\n')
 
     return html.doctype_plus_html()
 
@@ -1096,7 +1095,67 @@ def short_long_description(user_word):
     return short_description, long_description
 
 
-# noinspection PyPep8Naming
+@flask_app.route('/meta/lex', methods=('GET', 'HEAD'))
+def meta_lex():
+    # TODO:  verb filter checkboxes (show/hide each one, especially may want to hide "questions")
+
+    auth = AuthFliki()
+    if not auth.is_online:
+        return "lex offline"
+    if auth.is_anonymous:
+        return auth.log_html()   # anonymous viewing not allowed, just show "login" link
+        # TODO:  Omit anonymous content for anonymous users (except their own).
+
+    with FlikiHTML('html') as html:
+        html.header("Lex")
+
+        with html.body(class_='target-environment') as body:
+            words = auth.lex.find_words()
+            listing_dict = dict()
+
+            with body.ol as ol:
+                for word in words:
+                    ol.li(**{
+                        'class': 'word-rendering',
+                        'value': render_num(word.idn),
+                        'id': word.idn.qstring(),
+                        'data-sbj': word.sbj.idn.qstring(),
+                        'data-vrb': word.vrb.idn.qstring(),
+                        'data-obj': word.obj.idn.qstring(),
+                        'data-txt': str(word.txt),
+                        'data-num': render_num(word.num),
+                        'data-whn': ":.3f".format(float(word.whn)),
+                    })
+
+                    for sub_word in (word.sbj, word.vrb, word.obj):
+                        qstring = sub_word.idn.qstring()
+                        if isinstance(sub_word.lex, qiki.Listing) and qstring not in listing_dict:
+                            listing_dict[qstring] = dict(
+                                txt=str(sub_word.txt),
+                                meta_idn=sub_word.lex.meta_word.idn.qstring(),
+                                is_anonymous=sub_word.is_anonymous,
+                            )
+            with body.footer() as foot:
+                foot.js_stamped(flask.url_for('static', filename='code/meta_lex.js'))
+                with foot.script() as script:
+                    monty = dict(
+                        IDN_LEX=auth.lex[auth.lex].idn.qstring(),
+                    )
+                    script.raw_text('var MONTY = {json};\n'.format(json=json.dumps(
+                        monty,
+                        sort_keys=True,
+                        indent=4,
+                    )))
+                    script.raw_text('var listing_words = {};\n'.format(json.dumps(
+                        listing_dict,
+                        indent=4,
+                        sort_keys=True
+                    )))
+                    script.raw_text('js_for_meta_lex(window, window.$, listing_words, MONTY);\n')
+
+    return html.doctype_plus_html()
+
+
 @flask_app.route('/meta/all', methods=('GET', 'HEAD'))
 def meta_all():
     # TODO:  verb filter checkboxes (show/hide each one, especially may want to hide "questions")
@@ -1221,33 +1280,14 @@ def meta_all():
                             span_named(w_txt, title=title_prefix + word_identification(w))
                     return span_sub_word
 
-            MAX_TXT_LITERAL = 120
-            BEFORE_DOTS = 80
-            AFTER_DOTS = 20
-
-            def compress_txt(txt):
-                if txt is None:
-                    return "(((None)))"
-                if len(txt) > MAX_TXT_LITERAL:
-                    before = txt[ : BEFORE_DOTS]
-                    after = txt[-AFTER_DOTS : ]
-                    n_more = len(txt) - BEFORE_DOTS - AFTER_DOTS
-                    return "{before}...({n_more} more characters)...{after}".format(
-                        before=before,
-                        n_more=n_more,
-                        after=after,
-                    )
-                else:
-                    return txt
-
             def quoted_compressed_txt(element, txt):
                 element.char_name('ldquo')
                 element.text(compress_txt(txt))
                 element.char_name('rdquo')
 
             def show_iconify_obj(element, word, title_prefix=""):
-                show_sub_word(element, word.obj, class_='word obj vrb-iconify', title_prefix=title_prefix)
-                with element.span(class_='word txt') as span_txt:
+                show_sub_word(element, word.obj, class_='obj vrb-iconify', title_prefix=title_prefix)
+                with element.span(class_='txt') as span_txt:
                     span_txt.text(" ")
                     span_txt.img(src=word.txt, title="txt = " + compress_txt(word.txt))
 
@@ -1262,13 +1302,13 @@ def meta_all():
 
                 question_url = url_from_question(word.obj.txt)
                 if question_url is None:
-                    show_sub_word(element, word.obj, class_='word obj vrb-question', title_prefix=title_prefix)
+                    show_sub_word(element, word.obj, class_='obj vrb-question', title_prefix=title_prefix)
                 else:
                     with element.a(
                         href=question_url,
                         target='_blank',
                     ) as a:
-                        show_sub_word(a, word.obj, class_='word obj vrb-question', title_prefix=title_prefix)
+                        show_sub_word(a, word.obj, class_='obj vrb-question', title_prefix=title_prefix)
 
                 if word.txt != '':   # When vrb=question_verb, txt was once the referrer.
                     if word.txt == flask.request.url:
@@ -1289,7 +1329,7 @@ def meta_all():
 
             def show_num(element, word):
                 if word.num != qiki.Number(1):
-                    with element.span(class_='word num', title="num = " + word.num.qstring()) as num_span:
+                    with element.span(class_='num', title="num = " + word.num.qstring()) as num_span:
                         num_span.text(" ")
                         num_span.char_name('times')
                         num_span.text(render_num(word.num))
@@ -1305,7 +1345,7 @@ def meta_all():
                             with element.span(class_='referrer', title="was referred from here") as ref_span:
                                 ref_span.text(" (here)")
                             return
-                    with element.span(class_='word txt') as txt_span:
+                    with element.span(class_='txt') as txt_span:
                         txt_span.text(" ")
                         quoted_compressed_txt(txt_span, word.txt)
 
@@ -1330,7 +1370,7 @@ def meta_all():
                     with ol.li(
                         value=render_num(word.idn),   # the "bullet" of the list
                         title="idn = " + word.idn.qstring(),
-                        class_='word-description' + extra_class,
+                        class_='word-rendering' + extra_class,
                     ) as li:
                         if delta is not None:
                             units_class = delta.units_long
@@ -1342,10 +1382,10 @@ def meta_all():
                             with li.span(class_='delta-amount ' + units_class) as amount:
                                 amount.text(delta.amount_short + delta.units_short)
 
-                        show_sub_word(li, word.sbj, class_='word sbj', title_prefix= "sbj = ")
+                        show_sub_word(li, word.sbj, class_='sbj', title_prefix= "sbj = ")
                         li.span("-")
 
-                        show_sub_word(li, word.vrb, class_='word vrb', title_prefix="vrb = ")
+                        show_sub_word(li, word.vrb, class_='vrb', title_prefix="vrb = ")
                         li.span("-")
 
                         if word.vrb.txt == 'iconify':
@@ -1357,7 +1397,7 @@ def meta_all():
                         # elif word.obj.obj == browse_verb:
                         #     show_session_obj(li, word, title_prefix="obj = ")
                         else:
-                            show_sub_word(li, word.obj, class_='word obj', title_prefix="obj = ")
+                            show_sub_word(li, word.obj, class_='obj', title_prefix="obj = ")
                             show_num(li, word)
                             show_txt(li, word)
                             # if word.num != qiki.Number(1):
@@ -1375,7 +1415,7 @@ def meta_all():
                         ago = ago_lex.describe(word.whn)
                         with li.span(
                             title="whn = " + ago.description_longer,   # e.g. "34.9 hours ago: 2019.0604.0459.02"
-                            class_='word whn ' + ago.units_long,       # e.g. "hours"
+                            class_='whn ' + ago.units_long,       # e.g. "hours"
                         ) as whn_span:
                             whn_span.text(ago.description_short)       # e.g. "35h"
                         last_whn = word.whn
@@ -1406,6 +1446,27 @@ def meta_all():
     )
 
     return html.doctype_plus_html()
+
+
+MAX_TXT_LITERAL = 120
+BEFORE_DOTS = 80
+AFTER_DOTS = 20
+
+
+def compress_txt(txt):
+    if txt is None:
+        return "(((None)))"
+    if len(txt) > MAX_TXT_LITERAL:
+        before = txt[ : BEFORE_DOTS]
+        after = txt[-AFTER_DOTS : ]
+        n_more = len(txt) - BEFORE_DOTS - AFTER_DOTS
+        return "{before}...({n_more} more characters)...{after}".format(
+            before=before,
+            n_more=n_more,
+            after=after,
+        )
+    else:
+        return txt
 
 
 class DeltaTimeLex(qiki.TimeLex):

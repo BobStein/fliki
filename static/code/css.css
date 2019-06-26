@@ -1,24 +1,24 @@
 /* css.css */
 
-.word img {
+.word-rendering img {
     width: 1em;
     height: 1em;
 }
 
-.word.sbj .named.anonymous {
+.word-rendering .sbj .named.anonymous {
     background-color: #FFDDDD;
 }
 
-.word.sbj .named.lex {
+.word-rendering .sbj .named.lex {
     background-color: #DDFFDD;
 }
 
-.word.obj.vrb-question .named {
+.word-rendering .obj.vrb-question .named {
     background-color: #DDDDFF;
 }
 
-.word.sbj .named,
-.word.obj .named {
+.word-rendering .sbj .named,
+.word-rendering .obj .named {
     border: 1px solid silver;
     padding: 0 2px 2px 2px;
     font: small-caption;
@@ -27,7 +27,7 @@
     background-color: white;
 }
 
-.word.vrb {
+.word-rendering .vrb {
     border: 1px solid silver;
     padding: 0 2px 2px 2px;
     font: small-caption;
@@ -40,7 +40,7 @@
           border-radius: 0.5em;
 }
 
-.word.txt {
+.word-rendering .txt {
     font-family: Verdana, sans-serif;
 }
 
@@ -88,7 +88,7 @@
 .lex-list {
     padding-inline-start: 60px;
 }
-.word-description {
+.word-rendering {
     position: relative;
 }
 .delta-triangle {
@@ -130,11 +130,11 @@
     color: #FFFFFF;
 }
 
-.word-description.delta-zero    { }
-.word-description.delta-subsec  { }
-.word-description.delta-seconds { }
-.word-description.delta-minutes { }
-.word-description.delta-hours   { border-top: 1px solid #C0C0C0; }
-.word-description.delta-days    { border-top: 3px solid #808080; }
-.word-description.delta-months  { border-top: 5px solid #404040; }
-.word-description.delta-years   { border-top: 7px solid #000000; }
+.word-rendering.delta-zero    { }
+.word-rendering.delta-subsec  { }
+.word-rendering.delta-seconds { }
+.word-rendering.delta-minutes { }
+.word-rendering.delta-hours   { border-top: 1px solid #C0C0C0; }
+.word-rendering.delta-days    { border-top: 3px solid #808080; }
+.word-rendering.delta-months  { border-top: 5px solid #404040; }
+.word-rendering.delta-years   { border-top: 7px solid #000000; }
