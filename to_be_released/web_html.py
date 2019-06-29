@@ -101,7 +101,7 @@ class WebHTML(richard_jones_html.HTML):
             head.css('/static/code/css.css')
             head.css('//code.jquery.com/ui/1.12.1/themes/base/jquery-ui.css')
         """
-        return self.link(rel='stylesheet', type='text/css', href=href, newlines=True, **kwargs)
+        return self.link(rel='stylesheet', type='text/css', href=href, **kwargs)
 
     def js(self, src, litmus_function=None, local_file=None, **kwargs):
         """
@@ -130,7 +130,7 @@ class WebHTML(richard_jones_html.HTML):
         """
         src_maybe_minified = src.format(dot_min=self.dot_min())
 
-        self.script(src=src_maybe_minified, newlines=True, **kwargs)
+        self.script(src=src_maybe_minified, **kwargs)
 
         if local_file is not None and litmus_function is not None:
             # TODO:  Warn if local file doesn't exist?

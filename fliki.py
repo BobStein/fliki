@@ -86,6 +86,66 @@ def flask_earliest_convenience():
     version_report()
 
 
+class WorkingIdns(object):
+
+    def __init__(self):
+        with flask_app.app_context():
+            setup_lex()
+            if flask.g.is_online:
+                lex = flask.g.lex
+                self.LEX               = lex.noun(u'lex').idn
+                self.VERB              = lex.noun(u'verb').idn
+                self.DEFINE            = lex.verb(u'define').idn
+                self.LISTING           = lex.noun(u'listing').idn
+                self.NAME              = lex.verb(u'name').idn
+                self.BROWSE            = lex.verb(u'browse').idn
+                self.SESSION_OBSOLETE  = lex.verb(u'session').idn
+                self.IP_ADDRESS_OBSOLETE = lex.verb(u'IP address').idn
+                self.PATH              = lex.noun(u'path').idn
+                self.QUESTION_OBSOLETE = lex.noun(u'question').idn
+                self.ANSWER            = lex.noun(u'answer').idn
+                self.TAG               = lex.verb(u'tag').idn
+                self.IP_ADDRESS_TAG    = lex.define(self.TAG, u'ip address tag').idn
+                self.USER_AGENT_TAG    = lex.define(self.TAG, u'user agent tag').idn
+                self.REFERRER          = lex.verb(u'referrer').idn
+                self.ICONIFY           = lex.verb(u'iconify').idn
+                self.GOOGLE_LISTING    = lex.define(self.LISTING, u'google user').idn
+                self.ANONYMOUS_LISTING = lex.define(self.LISTING, u'anonymous').idn
+
+    def dictionary_of_qstrings(self):
+        of_idns = dict_from_object(self)
+        of_qstrings = {key: idn.qstring() for key, idn in of_idns.items()}
+        return of_qstrings
+
+
+class LexFliki(qiki.LexMySQL):
+
+    def __init__(self, **kwargs):
+        self.query_count = 0
+        super(LexFliki, self).__init__(**kwargs)
+
+    def _execute(self, cursor, query, parameters=()):
+        self.query_count += 1
+        return super(LexFliki, self)._execute(cursor, query, parameters)
+
+
+def setup_lex():
+    if hasattr(flask.g, 'lex'):
+        print("WHOOPS, ALREADY SETUP WITH A LEX")
+
+    try:
+        flask.g.lex = LexFliki(**secure.credentials.for_fliki_lex_database)
+    except LexFliki.ConnectError as e:
+        print("CANNOT CONNECT", str(e))
+        flask.g.lex = None
+        flask.g.is_online = False
+    else:
+        flask.g.is_online = True
+
+
+IDN = WorkingIdns()
+
+
 def seconds_until_anonymous_question():
     # TODO:  This feature should be its own lex, or word, or something.
     #        And sysadmins should be able to change it.  With a word.
@@ -107,7 +167,7 @@ def anonymous_question_happened():
     t_last_anonymous_question = time_lex.now_word()
 
 
-class MyUnicode(object):
+class UNICODE(object):
     RIGHT_ARROW = 0x2192
     BLACK_RIGHT_POINTING_TRIANGLE = 0x25B6
 
@@ -140,7 +200,7 @@ class GoogleQikiListing(qiki.Listing):
 
         namings = self.meta_word.lex.find_words(
             sbj=self.meta_word.lex[self.meta_word.lex],
-            vrb=TXT.NAME,   # Ooh, will this bubble out of Listing to LexMySQL?
+            vrb=IDN.NAME,   # Ooh, will this bubble out of Listing to LexMySQL?
             obj=idn
         )
         try:
@@ -166,7 +226,7 @@ class AnonymousQikiListing(qiki.Listing):
         parts = []
         anon_user = self.composite_idn(session_verb_idn)
 
-        ips = self.root_lex.find_words(obj=session_verb_idn, vrb=TXT.IP_ADDRESS_TAG, sbj=anon_user)
+        ips = self.root_lex.find_words(obj=session_verb_idn, vrb=IDN.IP_ADDRESS_TAG, sbj=anon_user)
         try:
             parts.append(str(ips[-1].txt))
         except IndexError:
@@ -174,7 +234,7 @@ class AnonymousQikiListing(qiki.Listing):
 
         parts.append("session #" + render_num(session_verb_idn))
 
-        uas = self.root_lex.find_words(obj=session_verb_idn, vrb=TXT.USER_AGENT_TAG, sbj=anon_user)
+        uas = self.root_lex.find_words(obj=session_verb_idn, vrb=IDN.USER_AGENT_TAG, sbj=anon_user)
         try:
             user_agent_str = str(uas[-1].txt)
         except IndexError:
@@ -191,8 +251,8 @@ class AnonymousQikiListing(qiki.Listing):
         # TODO:  Make ip address, user agent, browser, platform
         #        available to logged-in users too.
 
-
-        txt = qiki.Text(" ".join(p for p in parts if p is not None))
+        parts_not_null = (p for p in parts if p is not None)
+        txt = qiki.Text(" ".join(parts_not_null))
         return txt, qiki.Number(1)
 
 
@@ -236,71 +296,28 @@ class AnonymousQikiListing(qiki.Listing):
 # starter_lex.disconnect()
 
 
-class TXT:
-    LISTING = u'listing'
-    ANONYMOUS_LISTING = u'anonymous'
-    GOOGLE_USER_LISTING = u'google user'
-    NAME_VERB = u'name'
-    BROWSE = u'browse'
-    PATH = u'path'
-    QUESTION_OBSOLETE = u'question'   # replaced by "hit" derived from session, derived from browse
-    ANSWER = u'answer'
-    TAG = u'tag'
-    IP_ADDRESS_TAG = u'ip address tag'
-    USER_AGENT_TAG = u'user agent tag'
-    REFERRER = u'referrer'
-    ICONIFY = u'iconify'
-    NAME = u'name'
-
-
-def define_our_words(lex):
-    lex.noun(TXT.LISTING)
-    lex.verb(TXT.NAME)
-    lex.verb(TXT.BROWSE)
-    lex.noun(TXT.PATH)
-    lex.noun(TXT.QUESTION_OBSOLETE)
-    lex.noun(TXT.ANSWER)
-    tag = lex.verb(TXT.TAG)
-    lex.define(tag, TXT.IP_ADDRESS_TAG)
-    lex.define(tag, TXT.USER_AGENT_TAG)
-    lex.verb(TXT.REFERRER)
-    lex.verb(TXT.ICONIFY)
-
-
-class LexFliki(qiki.LexMySQL):
-
-    def __init__(self, **kwargs):
-        self.query_count = 0
-        super(LexFliki, self).__init__(**kwargs)
-
-    def _execute(self, cursor, query, parameters=()):
-        self.query_count += 1
-        return super(LexFliki, self)._execute(cursor, query, parameters)
+def dict_from_object(o):
+    props_and_underscores = vars(o)
+    props = [
+        p for p in props_and_underscores
+        if not p.startswith('__')
+    ]
+    the_dict = {p: getattr(o, p) for p in props}
+    return the_dict
 
 
 def setup_application_context():
-    if hasattr(flask.g, 'lex'):
-        print("WHOOPS, ALREADY SETUP WITH A LEX")
-
-    try:
-        flask.g.lex = LexFliki(**secure.credentials.for_fliki_lex_database)
-    except LexFliki.ConnectError:
-        flask.g.lex = None
-        flask.g.is_online = False
-    else:
+    setup_lex()
+    if flask.g.is_online:
         lex = flask.g.lex
-        flask.g.is_online = True
 
         def report_dup_def(_, message):
             print("DUP DUP", message)
 
-        flask.g.lex.duplicate_definition_notify(report_dup_def)
+        lex.duplicate_definition_notify(report_dup_def)
 
-        google_user_listing_meta_word = lex.define(TXT.LISTING, TXT.GOOGLE_USER_LISTING)
-        anonymous_listing_meta_word = lex.define(TXT.LISTING, TXT.ANONYMOUS_LISTING)
-
-        flask.g.google_qiki_listing = GoogleQikiListing(meta_word=google_user_listing_meta_word)
-        flask.g.anonymous_qiki_listing = AnonymousQikiListing(meta_word=anonymous_listing_meta_word)
+        flask.g.google_qiki_listing = GoogleQikiListing(meta_word=lex[IDN.GOOGLE_LISTING])
+        flask.g.anonymous_qiki_listing = AnonymousQikiListing(meta_word=lex[IDN.ANONYMOUS_LISTING])
 
 
 @flask_app.teardown_appcontext
@@ -369,13 +386,11 @@ class Auth(object):
                 print("BAD SESSION IDENTIFIER", session_idn_qstring)
                 self.session_new()
             else:
-                if self.session_verb.obj == self.lex.verb(TXT.BROWSE):
+                if self.session_verb.obj.idn == IDN.BROWSE:
                     '''old session word is good, keep it'''
                 else:
                     print("NOT A SESSION IDENTIFIER", session_idn_qstring)
                     self.session_new()
-
-        define_our_words(self.lex)   # TODO:  Call this once, not every session?
 
         if self.is_authenticated:
             self.qiki_user = flask.g.google_qiki_listing[self.authenticated_id()]
@@ -395,34 +410,34 @@ class Auth(object):
 
         ip_words = self.lex.find_words(
             sbj=self.qiki_user,
-            vrb=TXT.IP_ADDRESS_TAG,
+            vrb=IDN.IP_ADDRESS_TAG,
             obj=self.session_verb,
             idn_ascending=True,
         )
         if len(ip_words) == 0 or ip_words[-1].txt != ip_address_txt:
-            self.qiki_user(TXT.IP_ADDRESS_TAG, use_already=False)[self.session_verb] = ip_address_txt
+            self.qiki_user(IDN.IP_ADDRESS_TAG, use_already=False)[self.session_verb] = ip_address_txt
             # TODO:  How could this get a duplicate key?
             #        mysql.connector.errors.IntegrityError: 1062 (23000): Duplicate entry '\x821' for key 'PRIMARY'
             #        '\x821' === Number('0q82_31').raw, which is the idn for session_verb
-            #        (i.e. the obj=TXT.BROWSE word)
+            #        (i.e. the obj=WORD.BROWSE word)
             #        override_idn should have been None all the way down
             #        So was this a race condition in word in lex.max_idn()??
             #        That function does cause nested cursors.
 
         ua_words = self.lex.find_words(
             sbj=self.qiki_user,
-            vrb=TXT.USER_AGENT_TAG,
+            vrb=IDN.USER_AGENT_TAG,
             obj=self.session_verb,
             idn_ascending=True,
         )
         if len(ua_words) == 0 or ua_words[-1].txt != user_agent_txt:
-            self.qiki_user(TXT.USER_AGENT_TAG, use_already=False)[self.session_verb] = user_agent_txt
+            self.qiki_user(IDN.USER_AGENT_TAG, use_already=False)[self.session_verb] = user_agent_txt
 
     def session_new(self):
         self.session_verb = self.lex.create_word(
             sbj=self.lex[self.lex],
             vrb=self.define,
-            obj=TXT.BROWSE,
+            obj=IDN.BROWSE,
             txt=self.unique_session_identifier(),
             use_already=False
         )
@@ -578,7 +593,7 @@ class AuthFliki(Auth):
         #     path_str = path_str[1 : ]
         #     # NOTE:  Strip leading slash so old hits still count
         self.path_word = self.lex.define(
-            TXT.PATH,
+            IDN.PATH,
             qiki.Text.decode_if_you_must(path_str)
         )
         self.browse_word = self.lex.create_word(
@@ -591,7 +606,7 @@ class AuthFliki(Auth):
         if this_referrer is not None:
             self.lex.create_word(
                 sbj=self.qiki_user,
-                vrb=TXT.REFERRER,
+                vrb=IDN.REFERRER,
                 obj=self.browse_word,
                 txt=qiki.Text.decode_if_you_must(this_referrer),
                 use_already=False,
@@ -770,8 +785,8 @@ def login():
                 display_name = login_result.user.name
                 print("Logging in", qiki_user.index, qiki_user.idn.qstring())
                 # EXAMPLE:   Logging in 0q8A_059E058E6A6308C8B0 0q82_15__8A059E058E6A6308C8B0_1D0B00
-                lex[lex](TXT.ICONIFY, use_already=True)[qiki_user.idn] = avatar_width, avatar_url
-                lex[lex](TXT.NAME, use_already=True)[qiki_user.idn] = display_name
+                lex[lex](IDN.ICONIFY, use_already=True)[qiki_user.idn] = avatar_width, avatar_url
+                lex[lex](IDN.NAME, use_already=True)[qiki_user.idn] = display_name
                 flask_login.login_user(flask_user)
                 return flask.redirect(get_then_url())
                 # TODO:  Why does Chrome put a # on the end of this URL (empty fragment)?
@@ -852,7 +867,7 @@ class FlikiHTML(web_html.WebHTML):
             self(lang='en')
 
     def header(self, title):
-        with self.head() as head:
+        with self.head(newlines=True) as head:
             head.title(title)
             head.meta(charset='utf-8')
             head.link(
@@ -866,7 +881,7 @@ class FlikiHTML(web_html.WebHTML):
     def footer(self):
         self.jquery(JQUERY_VERSION)
         self.js('//ajax.googleapis.com/ajax/libs/jqueryui/{}/jquery-ui.min.js'.format(JQUERYUI_VERSION))
-        self.js('//cdn.jsdelivr.net/jquery.cookie/1.4.1/jquery.cookie.js')
+        # self.js('//cdn.jsdelivr.net/jquery.cookie/1.4.1/jquery.cookie.js')
         self.js_stamped(flask.url_for('qiki_javascript', filename='jquery.hotkeys.js'))
         self.js_stamped(flask.url_for('qiki_javascript', filename='qoolbar.js'))
         return self
@@ -1061,7 +1076,7 @@ def unslumping_home():
                     IDN_LEX=lex[lex].idn.qstring(),
                 )
                 foot = body.footer()
-                with foot.script(newlines=True) as script:
+                with foot.script() as script:
                     script.raw_text('var MONTY = {json};\n'.format(json=json.dumps(
                         monty,
                         sort_keys=True,
@@ -1106,40 +1121,54 @@ def meta_lex():
         return auth.log_html()   # anonymous viewing not allowed, just show "login" link
         # TODO:  Omit anonymous content for anonymous users (except their own).
 
+    t_start = time.time()
+    qc_start = auth.lex.query_count
     with FlikiHTML('html') as html:
         html.header("Lex")
 
-        with html.body(class_='target-environment') as body:
+        with html.body(class_='target-environment', newlines=True) as body:
             words = auth.lex.find_words()
             listing_dict = dict()
-
+            qc_find = auth.lex.query_count
             with body.ol as ol:
                 for word in words:
-                    ol.li(**{
-                        'class': 'word-rendering',
+                    with ol.li(**{
+                        'class': 'srend',
                         'value': render_num(word.idn),
                         'id': word.idn.qstring(),
-                        'data-sbj': word.sbj.idn.qstring(),
-                        'data-vrb': word.vrb.idn.qstring(),
-                        'data-obj': word.obj.idn.qstring(),
-                        'data-txt': str(word.txt),
-                        'data-num': render_num(word.num),
-                        'data-whn': ":.3f".format(float(word.whn)),
-                    })
+                        'data-whn': "{:.3f}".format(float(word.whn)),
+                    }) as li:
+                        li.span(**{'class': 'wrend sbj', 'data-idn': word.sbj.idn.qstring()})
+                        li.span(**{'class': 'wrend vrb', 'data-idn': word.vrb.idn.qstring()})
+                        li.span(**{'class': 'wrend obj', 'data-idn': word.obj.idn.qstring()})
+
+                        if word.txt != "":
+                            li(**{'data-txt': str(word.txt)})
+
+                        if word.num != 1:
+                            li(**{'data-num': render_num(word.num)})
 
                     for sub_word in (word.sbj, word.vrb, word.obj):
                         qstring = sub_word.idn.qstring()
                         if isinstance(sub_word.lex, qiki.Listing) and qstring not in listing_dict:
                             listing_dict[qstring] = dict(
-                                txt=str(sub_word.txt),
+                                # txt=str(sub_word.txt),
+                                # NOTE:  causes lots a queries: 2x google and 4x anon
                                 meta_idn=sub_word.lex.meta_word.idn.qstring(),
                                 is_anonymous=sub_word.is_anonymous,
+                                lex_class=type_name(sub_word.lex),
+                                word_class=sub_word.lex.word_class.__name__,
+                                index=sub_word.index.qstring(),
+                                index_number=native_num(sub_word.index),
                             )
+            qc_foot = auth.lex.query_count
             with body.footer() as foot:
                 foot.js_stamped(flask.url_for('static', filename='code/meta_lex.js'))
                 with foot.script() as script:
                     monty = dict(
-                        IDN_LEX=auth.lex[auth.lex].idn.qstring(),
+                        IDN=IDN.dictionary_of_qstrings(),
+                        URL_PREFIX_QUESTION=url_from_question(''),
+                        URL_HERE=flask.request.url,
                     )
                     script.raw_text('var MONTY = {json};\n'.format(json=json.dumps(
                         monty,
@@ -1153,6 +1182,17 @@ def meta_lex():
                     )))
                     script.raw_text('js_for_meta_lex(window, window.$, listing_words, MONTY);\n')
 
+    print(
+        "META LEX TIMING,",
+        qc_find - qc_start,
+        qc_foot - qc_find,
+        auth.lex.query_count - qc_foot,
+        "queries,",
+        len(words),
+        "words,"
+        "{:.3f}".format(time.time() - t_start),
+        "sec"
+    )
     return html.doctype_plus_html()
 
 
@@ -1170,7 +1210,7 @@ def meta_all():
         #        That is, where sbj.lex.meta_word.txt == 'anonymous'
 
     lex = auth.lex
-    browse_verb = auth.lex.verb(TXT.BROWSE)
+    browse_verb = lex[IDN.BROWSE]
 
     with FlikiHTML('html') as html:
         html.header("Lex all")
@@ -1225,7 +1265,7 @@ def meta_all():
 
 
             def latest_iconifier_or_none(s):
-                iconifiers = lex.find_words(obj=s, vrb=TXT.ICONIFY)
+                iconifiers = lex.find_words(obj=s, vrb=IDN.ICONIFY)
                 try:
                     return iconifiers[-1]
                 except IndexError:
@@ -1261,11 +1301,19 @@ def meta_all():
                     w_txt = compress_txt(safe_txt(w))
                 return show_sub_word_txt(element, w, w_txt, title_prefix=title_prefix, **kwargs)
 
-            def show_sub_word_txt(element, w, w_txt, title_prefix="", **kwargs):
+            def show_sub_word_txt(element, w, w_txt, title_prefix="", a_href=None, **kwargs):
                 """Diagram a sbj, vrb, or obj."""
                 with element.span(**kwargs) as span_sub_word:
+                    if a_href is None:
+                        inner = span_sub_word
+                    else:
+                        inner = span_sub_word.a(
+                            href=a_href,
+                            target='_blank',
+                        )
+
                     if w in subject_icons:
-                        span_sub_word.img(
+                        inner.img(
                             src=subject_icons[w].txt,
                             title=title_prefix + word_identification_text(w)
                         )
@@ -1274,9 +1322,9 @@ def meta_all():
                         classes = ['named']
                         if isinstance(w.lex, AnonymousQikiListing):
                             classes.append('anonymous')
-                        elif isinstance(w.lex, qiki.Lex):
+                        elif w.idn == IDN.LEX:
                             classes.append('lex')
-                        with span_sub_word.span(classes=classes) as span_named:
+                        with inner.span(classes=classes) as span_named:
                             span_named(w_txt, title=title_prefix + word_identification(w))
                     return span_sub_word
 
@@ -1286,34 +1334,22 @@ def meta_all():
                 element.char_name('rdquo')
 
             def show_iconify_obj(element, word, title_prefix=""):
-                show_sub_word(element, word.obj, class_='obj vrb-iconify', title_prefix=title_prefix)
+                show_sub_word(element, word.obj, class_='wrend obj vrb-iconify', title_prefix=title_prefix)
                 with element.span(class_='txt') as span_txt:
                     span_txt.text(" ")
                     span_txt.img(src=word.txt, title="txt = " + compress_txt(word.txt))
 
-            def url_from_question(question_text):
-                if question_text == '':
-                    return None
-                else:
-                    return flask.url_for('answer_qiki', url_suffix=question_text, _external=True)
-                    # THANKS:  Absolute url, https://stackoverflow.com/q/12162634/673991#comment17401215_12162726
-
             def show_question_obj(element, word, title_prefix=""):
 
-                question_url = url_from_question(word.obj.txt)
-                if question_url is None:
-                    show_sub_word(element, word.obj, class_='obj vrb-question', title_prefix=title_prefix)
+                if word.obj.txt == '':
+                    show_sub_word(element, word.obj, class_='wrend obj vrb-question', title_prefix=title_prefix)
                 else:
-                    with element.a(
-                        href=question_url,
-                        target='_blank',
-                    ) as a:
-                        show_sub_word(a, word.obj, class_='obj vrb-question', title_prefix=title_prefix)
+                    show_sub_word(element, word.obj, class_='wrend obj vrb-question', title_prefix=title_prefix, a_href=url_from_question(word.obj.txt))
 
                 if word.txt != '':   # When vrb=question_verb, txt was once the referrer.
                     if word.txt == flask.request.url:
                         element.span(" (here)", class_='referrer', title="was referred from here")
-                    elif word.txt == question_url:
+                    elif word.txt == url_from_question(word.obj.txt):
                         element.span(" (self)", class_='referrer', title="was referred from itself")
                     else:
                         # TODO:  Remove these crufty if-clauses,
@@ -1336,7 +1372,7 @@ def meta_all():
 
             def show_txt(element, word):
                 if word.txt != '':
-                    if word.vrb == auth.lex[TXT.REFERRER]:
+                    if word.vrb == auth.lex[IDN.REFERRER]:
                         if word.txt == url_from_question(word.obj.obj.txt):
                             with element.span(class_='referrer', title="was referred from itself") as ref_span:
                                 ref_span.text(" (self)")
@@ -1370,7 +1406,7 @@ def meta_all():
                     with ol.li(
                         value=render_num(word.idn),   # the "bullet" of the list
                         title="idn = " + word.idn.qstring(),
-                        class_='word-rendering' + extra_class,
+                        class_='srend' + extra_class,
                     ) as li:
                         if delta is not None:
                             units_class = delta.units_long
@@ -1378,26 +1414,24 @@ def meta_all():
                                 units_class = 'subsec'
                             with li.span(class_='delta-triangle ' + units_class) as triangle:
                                 triangle(title=delta.description_long)
-                                triangle.char_code(MyUnicode.BLACK_RIGHT_POINTING_TRIANGLE)
+                                triangle.char_code(UNICODE.BLACK_RIGHT_POINTING_TRIANGLE)
                             with li.span(class_='delta-amount ' + units_class) as amount:
                                 amount.text(delta.amount_short + delta.units_short)
 
-                        show_sub_word(li, word.sbj, class_='sbj', title_prefix= "sbj = ")
-                        li.span("-")
+                        show_sub_word(li, word.sbj, class_='wrend sbj', title_prefix= "sbj = ")
 
-                        show_sub_word(li, word.vrb, class_='vrb', title_prefix="vrb = ")
-                        li.span("-")
+                        show_sub_word(li, word.vrb, class_='wrend vrb', title_prefix="vrb = ")
 
                         if word.vrb.txt == 'iconify':
                             show_iconify_obj(li, word, title_prefix="obj = ")
-                        elif word.vrb == auth.lex[TXT.QUESTION_OBSOLETE]:
-                            show_question_obj(li.span(), word, title_prefix="obj = ")
+                        elif word.vrb == auth.lex[IDN.QUESTION_OBSOLETE]:
+                            show_question_obj(li, word, title_prefix="obj = ")
                         elif word.vrb.obj == browse_verb:
-                            show_question_obj(li.span(), word, title_prefix="obj = ")
+                            show_question_obj(li, word, title_prefix="obj = ")
                         # elif word.obj.obj == browse_verb:
                         #     show_session_obj(li, word, title_prefix="obj = ")
                         else:
-                            show_sub_word(li, word.obj, class_='obj', title_prefix="obj = ")
+                            show_sub_word(li, word.obj, class_='wrend obj', title_prefix="obj = ")
                             show_num(li, word)
                             show_txt(li, word)
                             # if word.num != qiki.Number(1):
@@ -1446,6 +1480,11 @@ def meta_all():
     )
 
     return html.doctype_plus_html()
+
+
+def url_from_question(question_text):
+    return flask.url_for('answer_qiki', url_suffix=question_text, _external=True)
+    # THANKS:  Absolute url, https://stackoverflow.com/q/12162634/673991#comment17401215_12162726
 
 
 MAX_TXT_LITERAL = 120
@@ -1694,7 +1733,7 @@ def answer_qiki(url_suffix):
     ))
 
     answers = lex.find_words(
-        vrb=TXT.ANSWER,
+        vrb=IDN.ANSWER,
         obj=auth.path_word,
         jbo_vrb=qoolbar_verbs,
         idn_ascending=False,
@@ -1713,9 +1752,9 @@ def answer_qiki(url_suffix):
         #    {"sbj": "0q82_A7__8A059E058E6A6308C8B0_1D0B00", "vrb": "0q82_86", "txt": "", "num": 3, "idn": "0q83_017F"},
         #    {"sbj": "0q82_A7__8A059E058E6A6308C8B0_1D0B00", "vrb": "0q82_86", "txt": "", "num": 1, "idn": "0q83_0180"}
         # ]
-        pictures = lex.find_words(vrb=TXT.ICONIFY, obj=a.sbj)
+        pictures = lex.find_words(vrb=IDN.ICONIFY, obj=a.sbj)
         picture = pictures[0] if len(pictures) >= 1 else None
-        names = lex.find_words(vrb=TXT.NAME, obj=a.sbj)
+        names = lex.find_words(vrb=IDN.NAME, obj=a.sbj)
         name = names[-1] if len(names) >= 1 else a.sbj.txt
         # TODO:  Get latest name instead of earliest name
         if picture is not None:
@@ -1726,13 +1765,13 @@ def answer_qiki(url_suffix):
             author_img = ""
 
         a.author = author_img
-    question_words = lex.find_words(vrb=TXT.QUESTION_OBSOLETE, obj=auth.path_word)   # old hits
-    session_words = lex.find_words(obj=TXT.BROWSE)
+    question_words = lex.find_words(vrb=IDN.QUESTION_OBSOLETE, obj=auth.path_word)   # old hits
+    session_words = lex.find_words(obj=IDN.BROWSE)
     hit_words = lex.find_words(vrb=session_words, obj=auth.path_word)   # new hits
-    # TODO:  browses = lex.words(vrb_obj=TXT.BROWSE)
+    # TODO:  browses = lex.words(vrb_obj=WORD.BROWSE)
     # TODO:  browses = lex.jbo(session_words)
-    # TODO:  browses = lex(obj=lex(vrb=TXT.BROWSE, obj=auth.this_path))
-    # TODO:  browses = lex.find_words(obj=lex.find_words(vrb=TXT.BROWSE, obj=auth.this_path))
+    # TODO:  browses = lex(obj=lex(vrb=WORD.BROWSE, obj=auth.this_path))
+    # TODO:  browses = lex.find_words(obj=lex.find_words(vrb=WORD.BROWSE, obj=auth.this_path))
     render_question = youtube_render(url_suffix)
     if render_question is None:
         render_question = "Here is a page for '{}'".format(flask.escape(url_suffix))
@@ -1827,8 +1866,8 @@ def ajax():
         if action == 'answer':
             question_path = auth.form('question')
             answer_txt = auth.form('answer')
-            question_word = lex.define(TXT.PATH, question_path)
-            auth.qiki_user(TXT.ANSWER)[question_word] = 1, answer_txt
+            question_word = lex.define(IDN.PATH, question_path)
+            auth.qiki_user(IDN.ANSWER)[question_word] = 1, answer_txt
             return valid_response('message', "Question {q} answer {a}".format(
                 q=question_path,
                 a=answer_txt,

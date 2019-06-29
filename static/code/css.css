@@ -1,24 +1,28 @@
 /* css.css */
 
-.word-rendering img {
+.srend img {
     width: 1em;
     height: 1em;
 }
 
-.word-rendering .sbj .named.anonymous {
+.wrend .named.anonymous {
     background-color: #FFDDDD;
 }
 
-.word-rendering .sbj .named.lex {
+.wrend .named.lex {
     background-color: #DDFFDD;
 }
 
-.word-rendering .obj.vrb-question .named {
+.wrend .named.empty,
+.wrend .named.un-lexed {
+    background-color: #FFDDFF;
+}
+
+.wrend a .named {
     background-color: #DDDDFF;
 }
 
-.word-rendering .sbj .named,
-.word-rendering .obj .named {
+.wrend .named {
     border: 1px solid silver;
     padding: 0 2px 2px 2px;
     font: small-caption;
@@ -27,7 +31,15 @@
     background-color: white;
 }
 
-.word-rendering .vrb {
+/*.wrend.vrb:before {*/
+/*    content: "-";*/
+/*}*/
+
+/*.wrend.obj:before {*/
+/*    content: "-";*/
+/*}*/
+
+.wrend.vrb .named {
     border: 1px solid silver;
     padding: 0 2px 2px 2px;
     font: small-caption;
@@ -40,11 +52,25 @@
           border-radius: 0.5em;
 }
 
-.word-rendering .txt {
+.sbj .ditto {
+    position: relative;
+    top: -0.05em;
+    font-size: 1.25em;
+    line-height: 0.8em;
+}
+
+.obj .ditto {
+    position: relative;
+    top: +0.05em;
+    font-size: 1.5em;
+    line-height: 0.66em;
+}
+
+.srend .txt {
     font-family: Verdana, sans-serif;
 }
 
-.whn {
+.srend .whn {
     height: 1.0em;
     width: 1.0em;
     padding: 0 0.25em 0 0.2em;
@@ -55,7 +81,7 @@
     background: white;
     text-align: center;
 
-    margin-left: 0.25em;
+    margin-left: 0.6em;
 
     -webkit-box-shadow: .15em .15em .20em rgba(0,0,0,0.1);
        -moz-box-shadow: .15em .15em .20em rgba(0,0,0,0.1);   /*noinspection CssUnknownProperty*/
@@ -63,9 +89,9 @@
          -o-box-shadow: .15em .15em .20em rgba(0,0,0,0.1);
             box-shadow: .15em .15em .20em rgba(0,0,0,0.1);
 }
-.whn.seconds,
-.whn.minutes,
-.whn.hours {
+.srend .whn.seconds,
+.srend .whn.minutes,
+.srend .whn.hours {
   -webkit-border-radius: 0.5em;
      -moz-border-radius: 0.5em;   /*noinspection CssUnknownProperty*/
        -o-border-radius: 0.5em;
@@ -74,9 +100,9 @@
     border-bottom-width: 0.2em;  /* like a clock face */
 }
 
-.whn.days,
-.whn.months,
-.whn.years {
+.srend .whn.days,
+.srend .whn.months,
+.srend .whn.years {
     border-top-width: 0.2em;   /* like a day calendar page */
 }
 
@@ -88,7 +114,7 @@
 .lex-list {
     padding-inline-start: 60px;
 }
-.word-rendering {
+.srend {
     position: relative;
 }
 .delta-triangle {
@@ -130,11 +156,11 @@
     color: #FFFFFF;
 }
 
-.word-rendering.delta-zero    { }
-.word-rendering.delta-subsec  { }
-.word-rendering.delta-seconds { }
-.word-rendering.delta-minutes { }
-.word-rendering.delta-hours   { border-top: 1px solid #C0C0C0; }
-.word-rendering.delta-days    { border-top: 3px solid #808080; }
-.word-rendering.delta-months  { border-top: 5px solid #404040; }
-.word-rendering.delta-years   { border-top: 7px solid #000000; }
+.srend.delta-zero    { }
+.srend.delta-subsec  { }
+.srend.delta-seconds { }
+.srend.delta-minutes { }
+.srend.delta-hours   { border-top: 1px solid #C0C0C0; }
+.srend.delta-days    { border-top: 3px solid #808080; }
+.srend.delta-months  { border-top: 5px solid #404040; }
+.srend.delta-years   { border-top: 7px solid #000000; }
