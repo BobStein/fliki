@@ -111,6 +111,7 @@ class WorkingIdns(object):
                 self.ICONIFY           = lex.verb(u'iconify').idn
                 self.GOOGLE_LISTING    = lex.define(self.LISTING, u'google user').idn
                 self.ANONYMOUS_LISTING = lex.define(self.LISTING, u'anonymous').idn
+                self.QOOL              = lex.verb(u'qool').idn
 
     def dictionary_of_qstrings(self):
         of_idns = dict_from_object(self)
@@ -368,8 +369,6 @@ class Auth(object):
         user_agent_txt,
     ):
         self.lex = this_lex
-        self.define = self.lex['define']
-
         self.is_authenticated = is_authenticated
         self.is_anonymous = is_anonymous
         self.ip_address_txt = ip_address_txt
@@ -436,7 +435,7 @@ class Auth(object):
     def session_new(self):
         self.session_verb = self.lex.create_word(
             sbj=self.lex[self.lex],
-            vrb=self.define,
+            vrb=IDN.DEFINE,
             obj=IDN.BROWSE,
             txt=self.unique_session_identifier(),
             use_already=False
@@ -987,7 +986,7 @@ def unslumping_home():
 
                 body.js_stamped(flask.url_for('static', filename='code/unslump.js'))
 
-                unslumps = lex.find_words(vrb=lex[u'define'], txt=u'unslump')
+                unslumps = lex.find_words(vrb=IDN.DEFINE, txt=u'unslump')
                 uns_words = lex.find_words(
                     vrb=unslumps,
                     jbo_vrb=auth.qoolbar.get_verbs(),
@@ -1110,9 +1109,61 @@ def short_long_description(user_word):
     return short_description, long_description
 
 
+@flask_app.route('/meta/raw', methods=('GET', 'HEAD'))
+def meta_raw():
+
+    auth = AuthFliki()
+    if not auth.is_online:
+        return "lex offline"
+    if auth.is_anonymous:
+        return auth.log_html()   # anonymous viewing not allowed, just show "login" link
+        # TODO:  Omit anonymous content for anonymous users (except their own).
+
+    t_start = time.time()
+    qc_start = auth.lex.query_count
+    words = auth.lex.find_words()
+    t_find = time.time()
+    num_suffixed = 0
+    num_anon = 0
+    num_goog = 0
+    for word in words:
+        if word.sbj.idn.is_suffixed():
+            num_suffixed += 1
+            meta_idn, index = qiki.Listing.split_compound_idn(word.sbj.idn)
+            if meta_idn == IDN.ANONYMOUS_LISTING:
+                num_anon += 1
+            elif meta_idn == IDN.GOOGLE_LISTING:
+                num_goog += 1
+    t_loop = time.time()
+    response = valid_response('words', words)
+    t_end = time.time()
+    print(
+        "RAW LEX TIMING,",
+        auth.lex.query_count - qc_start,
+        "queries,",
+        len(words),
+        "words,",
+        "{:.3f} + {:.3f} + {:.3f} = {:.3f}".format(
+            t_find - t_start,
+            t_loop - t_find,
+            t_end - t_loop,
+            t_end - t_start,
+        ),
+        "sec,",
+        len(response) // 1000,
+        "Kbytes,",
+        num_suffixed,
+        "suffixed",
+        num_anon,
+        "anon",
+        num_goog,
+        "goog",
+    )
+    return response
+
+
 @flask_app.route('/meta/lex', methods=('GET', 'HEAD'))
 def meta_lex():
-    # TODO:  verb filter checkboxes (show/hide each one, especially may want to hide "questions")
 
     auth = AuthFliki()
     if not auth.is_online:
@@ -1127,9 +1178,30 @@ def meta_lex():
         html.header("Lex")
 
         with html.body(class_='target-environment', newlines=True) as body:
+
+            body.div(id='logging').raw_text(auth.log_html(then_url=flask.url_for('meta_lex')))
+
             words = auth.lex.find_words()
             listing_dict = dict()
+
+            def listing_log(sub, **kwargs):
+                # if isinstance(sub.lex, qiki.Listing):
+                q = sub.idn.qstring()
+                if q not in listing_dict:
+                    listing_dict[q] = dict()
+                listing_dict[q].update(kwargs)
+
             qc_find = auth.lex.query_count
+
+            def z(idn):
+                return idn.raw
+
+            class Z(object):
+                IP_ADDRESS_TAG = z(IDN.IP_ADDRESS_TAG)
+                NAME           = z(IDN.NAME)
+                ICONIFY        = z(IDN.ICONIFY)
+                USER_AGENT_TAG = z(IDN.USER_AGENT_TAG)
+
             with body.ol(class_='lex-list') as ol:
                 for word in words:
                     with ol.li(**{
@@ -1138,9 +1210,11 @@ def meta_lex():
                         'id': word.idn.qstring(),
                         'data-whn': "{:.3f}".format(float(word.whn)),
                     }) as li:
-                        li.span(**{'class': 'wrend sbj', 'data-idn': word.sbj.idn.qstring()})
-                        li.span(**{'class': 'wrend vrb', 'data-idn': word.vrb.idn.qstring()})
-                        li.span(**{'class': 'wrend obj', 'data-idn': word.obj.idn.qstring()})
+                        li.span(**{'class': 'wrend sbj', 'data-idn': word.sbj.idn.qstring()}).span(class_='named')
+                        li.span(**{'class': 'wrend vrb', 'data-idn': word.vrb.idn.qstring()}).span(class_='named')
+                        li.span(**{'class': 'wrend obj', 'data-idn': word.obj.idn.qstring()}).span(class_='named')
+                        li.span(**{'class': 'num'})
+                        li.span(**{'class': 'txt'})
 
                         if word.txt != "":
                             li(**{'data-txt': str(word.txt)})
@@ -1151,19 +1225,58 @@ def meta_lex():
                         li.span(**{'class': 'whn'})
                         li.svg(**{'class': 'whn-delta'})
 
-                    for sub_word in (word.sbj, word.vrb, word.obj):
-                        qstring = sub_word.idn.qstring()
-                        if isinstance(sub_word.lex, qiki.Listing) and qstring not in listing_dict:
-                            listing_dict[qstring] = dict(
-                                # txt=str(sub_word.txt),
-                                # NOTE:  causes lots a queries: 2x google and 4x anon
-                                meta_idn=sub_word.lex.meta_word.idn.qstring(),
-                                is_anonymous=sub_word.is_anonymous,
-                                lex_class=type_name(sub_word.lex),
-                                word_class=sub_word.lex.word_class.__name__,
-                                index=sub_word.index.qstring(),
-                                index_number=native_num(sub_word.index),
-                            )
+                    if isinstance(word.sbj.lex, qiki.Listing):
+                        listing_log(
+                            word.sbj,
+                            meta_idn=word.sbj.lex.meta_word.idn.qstring(),
+                            is_anonymous=word.sbj.is_anonymous,
+                            lex_class=type_name(word.sbj.lex),
+                            word_class=word.sbj.lex.word_class.__name__,
+                            index=word.sbj.index.qstring(),
+                            index_number=native_num(word.sbj.index),
+                        )
+
+                    # for sub_word in (word.sbj, word.vrb, word.obj):
+                    #     if sub_word.idn.is_suffixed() and isinstance(sub_word.lex, qiki.Listing):
+                    #         listing_log(
+                    #             sub_word,
+                    #             meta_idn=sub_word.lex.meta_word.idn.qstring(),
+                    #             is_anonymous=sub_word.is_anonymous,
+                    #             lex_class=type_name(sub_word.lex),
+                    #             word_class=sub_word.lex.word_class.__name__,
+                    #             index=sub_word.index.qstring(),
+                    #             index_number=native_num(sub_word.index),
+                    #         )
+                        # qstring = sub_word.idn.qstring()
+                        # if isinstance(sub_word.lex, qiki.Listing) and qstring not in listing_dict:
+                        #     listing_dict[qstring] = dict(
+                        #         # txt=str(sub_word.txt),
+                        #         # NOTE:  causes lots a queries: 2x google and 4x anon
+                        #         meta_idn=sub_word.lex.meta_word.idn.qstring(),
+                        #         is_anonymous=sub_word.is_anonymous,
+                        #         lex_class=type_name(sub_word.lex),
+                        #         word_class=sub_word.lex.word_class.__name__,
+                        #         index=sub_word.index.qstring(),
+                        #         index_number=native_num(sub_word.index),
+                        #     )
+
+                    vrb_z = z(word.vrb.idn)
+                    if vrb_z == Z.IP_ADDRESS_TAG:
+                        listing_log(word.sbj, ip_address=word.txt)
+                    elif vrb_z == Z.NAME:
+                        listing_log(word.obj, name=word.txt)
+                    elif vrb_z == Z.ICONIFY:
+                        listing_log(word.obj, iconify=word.txt, name=word.obj.txt)
+                    elif vrb_z == Z.USER_AGENT_TAG:
+                        ua = werkzeug.useragents.UserAgent(word.txt)
+                        listing_log(
+                            word.sbj,
+                            user_agent=word.txt,
+                            browser=ua.browser,
+                            platform=ua.platform,
+                        )
+
+            t_lex = time.time()
             qc_foot = auth.lex.query_count
             with body.footer() as foot:
                 foot.js_stamped(flask.url_for('static', filename='code/d3.js'))
@@ -1185,7 +1298,9 @@ def meta_lex():
                         sort_keys=True
                     )))
                     script.raw_text('js_for_meta_lex(window, window.$, listing_words, MONTY);\n')
-
+    t_render = time.time()
+    response = html.doctype_plus_html()
+    t_end = time.time()
     print(
         "META LEX TIMING,",
         qc_find - qc_start,
@@ -1193,11 +1308,16 @@ def meta_lex():
         auth.lex.query_count - qc_foot,
         "queries,",
         len(words),
-        "words,"
-        "{:.3f}".format(time.time() - t_start),
+        "words,",
+        "{:.3f} {:.3f} {:.3f} =  {:.3f}".format(
+            t_lex - t_start,
+            t_render - t_lex,
+            t_end - t_render,
+            t_end - t_start,
+        ),
         "sec"
     )
-    return html.doctype_plus_html()
+    return response
 
 
 @flask_app.route('/meta/all', methods=('GET', 'HEAD'))
@@ -1348,7 +1468,13 @@ def meta_all():
                 if word.obj.txt == '':
                     show_sub_word(element, word.obj, class_='wrend obj vrb-question', title_prefix=title_prefix)
                 else:
-                    show_sub_word(element, word.obj, class_='wrend obj vrb-question', title_prefix=title_prefix, a_href=url_from_question(word.obj.txt))
+                    show_sub_word(
+                        element,
+                        word.obj,
+                        class_='wrend obj vrb-question',
+                        title_prefix=title_prefix,
+                        a_href=url_from_question(word.obj.txt)
+                    )
 
                 if word.txt != '':   # When vrb=question_verb, txt was once the referrer.
                     if word.txt == flask.request.url:
@@ -1831,7 +1957,11 @@ def json_from_words(words):
             num=native_num(word.num),
             txt=word.txt
         ))
-    return json.dumps(dicts, allow_nan=False)
+    return json.dumps(
+        dicts,
+        allow_nan=False,
+        separators=(',', ':'),   # NOTE:  Less whitespace
+    )
     # TODO:  try-except OverflowError if NaN or Infinity got into dicts somehow.
 
 
@@ -1842,7 +1972,7 @@ def render_num(num):
 def native_num(num):
     if num.is_suffixed():
         # TODO:  Complex?
-        return repr(num)
+        return num.qstring()
     elif not num.is_reasonable():
         # THANKS:  JSON is a dummy about NaN, inf,
         #          https://stackoverflow.com/q/1423081/673991#comment52764219_1424034
@@ -1924,14 +2054,14 @@ def ajax():
             new_verb_name = auth.form('name')
             new_verb = lex.create_word(
                 sbj=auth.qiki_user,
-                vrb=lex[u'define'],
-                obj=lex[u'verb'],
+                vrb=IDN.DEFINE,
+                obj=IDN.VERB,
                 txt=new_verb_name,
                 use_already=True,
             )
             lex.create_word(
                 sbj=auth.qiki_user,
-                vrb=lex[u'qool'],
+                vrb=IDN.QOOL,
                 obj=new_verb,
                 num=NUM_QOOL_VERB_NEW,
                 use_already=True,
@@ -1943,7 +2073,7 @@ def ajax():
 
             lex.create_word(
                 sbj=auth.qiki_user,
-                vrb=lex[u'qool'],
+                vrb=IDN.QOOL,
                 obj=old_verb_idn,
                 num=NUM_QOOL_VERB_DELETE,
                 use_already=True,
@@ -1990,11 +2120,44 @@ def ajax():
         return invalid_response("request error")
 
 
+class WordEncoder(json.JSONEncoder):
+    """Support JSON of qiki Word instances."""
+    # TODO:  Unify with json_from_words()
+    def default(self, w):
+        if isinstance(w, qiki.WordListed):
+            return dict(
+                idn=w.idn.qstring(),
+                index=w.index,
+                txt=w.txt,
+            )
+        elif isinstance(w, qiki.Word):
+            d = dict(
+                idn=w.idn.qstring(),
+                sbj=w.sbj.idn.qstring(),
+                vrb=w.vrb.idn.qstring(),
+                obj=w.obj.idn.qstring(),
+                whn=float(w.whn),
+            )
+            if w.txt != "":
+                d['txt'] = w.txt
+            if w.num != 1:
+                d['num'] = native_num(w.num),
+            return d
+        else:
+            return super(WordEncoder, self).default(w)
+
+
 def valid_response(name, value):
-    return json.dumps(dict([
-        ('is_valid', True),
-        (name, value)
-    ]))
+    return json.dumps(
+        dict([
+            ('is_valid', True),
+            (name, value)
+        ]),
+        cls=WordEncoder,
+        separators=(',', ':'),   # NOTE:  Less whitespace
+        allow_nan=False,
+        indent=None,   # TODO:  Why the newlines when separators are compact?
+    )
 
 
 def invalid_response(error_message):

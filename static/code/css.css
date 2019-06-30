@@ -7,6 +7,10 @@ body {
     padding-inline-start: 48px;
 }
 
+#logging {
+    text-align: right;
+}
+
 .srend img {
     width: 1em;
     height: 1em;
@@ -61,6 +65,10 @@ body {
 
 .srend .txt {
     font-family: Verdana, sans-serif;
+    margin-left: 10px;
+}
+.srend .txt:empty {
+    margin-left: 0;
 }
 
 .srend .whn {
@@ -170,3 +178,14 @@ body {
 .srend.delta-days    { border-top: 3px solid #808080; }
 .srend.delta-months  { border-top: 5px solid #404040; }
 .srend.delta-years   { border-top: 7px solid #000000; }
+
+.srend               { border-top: 1px solid transparent; }
+
+.wrend {
+    position: relative;
+}
+img.iconify {
+    vertical-align: middle;
+    margin: -1em 0 -1em 0;
+    /* THANKS:  img won't increase line height, https://stackoverflow.com/a/26823180/673991 */
+}
