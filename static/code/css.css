@@ -1,5 +1,12 @@
 /* css.css */
 
+body {
+    margin: 8px;
+}
+.lex-list {
+    padding-inline-start: 48px;
+}
+
 .srend img {
     width: 1em;
     height: 1em;
@@ -31,13 +38,13 @@
     background-color: white;
 }
 
-/*.wrend.vrb:before {*/
-/*    content: "-";*/
-/*}*/
+.wrend.vrb:before {
+    content: "-";
+}
 
-/*.wrend.obj:before {*/
-/*    content: "-";*/
-/*}*/
+.wrend.obj:before {
+    content: "-";
+}
 
 .wrend.vrb .named {
     border: 1px solid silver;
@@ -50,20 +57,6 @@
      -moz-border-radius: 0.5em;   /*noinspection CssUnknownProperty*/
        -o-border-radius: 0.5em;
           border-radius: 0.5em;
-}
-
-.sbj .ditto {
-    position: relative;
-    top: -0.05em;
-    font-size: 1.25em;
-    line-height: 0.8em;
-}
-
-.obj .ditto {
-    position: relative;
-    top: +0.05em;
-    font-size: 1.5em;
-    line-height: 0.66em;
 }
 
 .srend .txt {
@@ -111,8 +104,20 @@
     font-size: 0.7em;
 }
 
-.lex-list {
-    padding-inline-start: 60px;
+.whn-delta {
+    position: absolute;
+    left: -56px;
+    top: -0.60em;
+    height: 1.20em;
+    width: 52px;
+}
+
+.whn-label {
+    font-family: 'Arial Narrow', sans-serif;
+    font-size: 0.6em;
+}
+.hide {
+    display: none;
 }
 .srend {
     position: relative;
@@ -127,6 +132,7 @@
     left: -47px;
     top: -0.66em;
 }
+
 .delta-triangle         { color: #FFFFFF; }  /* in case of new units_long values */
 .delta-triangle.zero    { color: #D8D8D8; font-size: 1.0em; }
 .delta-triangle.subsec  { color: #D8D8D8; font-size: 1.0em; }
@@ -142,14 +148,14 @@
     font-size: 0.6em;
 }
 .delta-amount.zero,
-.delta-amount.subsec,
-.delta-amount.seconds {
+.delta-amount.subsec {
     display: none;
 }
-.delta-amount.minutes,
-.delta-amount.hours {
+.delta-amount.seconds,
+.delta-amount.minutes {
     color: #000000;
 }
+.delta-amount.hours,
 .delta-amount.days,
 .delta-amount.months,
 .delta-amount.years {

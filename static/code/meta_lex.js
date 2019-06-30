@@ -42,36 +42,114 @@ function js_for_meta_lex(window, $, listing_words, MONTY) {
         UPWARDS_WHITE_ARROW: '\u21E7'
     };
     var session_list = [];   // helps identify session words when they're the vrb or obj
+    // var BODY_PADDING_LEFT = parseFloat($('body').css('margin-left'));
+    // var LEX_LIST_INDENT = parseFloat($('.lex-list').css('padding-inline-start'));
+    var SREND_FONT_SIZE = parseFloat($('.srend').css('font-size'));
+    var one_second = delta_format(new Date(0), new Date(1));
+    var whn_delta = [one_second];
+
     $(document).ready(function() {
-        $('.srend').each(function word_pass() {
-            render_word(this);
-        });
-        console.log("Sessions", session_list);
-        console.log("numberings", $.map(session_list, value_from_idn));
-        console.log("listing_words", listing_words);
-        looper(listing_words, function (idn, listed) {
-            if (has(listed, 'img_src')) {
-                var $words_with_same_idn = $data_idn(idn);
-                var $words_to_iconify = $words_with_same_idn.filter(':not(:contains(.ditto))');
-                // noinspection HtmlRequiredAltAttribute,RequiredAttributes
-                var $img = $('<img>', {
-                    src: listed.img_src,
-                    alt: "icon for " + listed.name,
-                    title: "icon for " + listed.name
+        // $('.srend').each(function word_pass() {
+        //     render_word(this);
+        // });
+        array_async($('.srend'), render_word, 1, 25, function() {
+
+            // console.log("Sessions", session_list);
+            // console.log("numberings", $.map(session_list, value_from_idn));
+            // console.log("listing_words", listing_words);
+            // EXAMPLE:
+            //     Sessions (11) ["0q83_044D", "0q83_0460", "0q83_0464", "0q83_046C", "0q83_0470",
+            //                    "0q83_047B", "0q83_047E", "0q83_0491", "0q83_04C8", "0q83_04CE", "0q83_04D9"]
+            //     numberings (11) ["1101", "1120", "1124", "1132", "1136", "1147", "1150", "1169",
+            //                      "1224", "1230", "1241"]
+            //     listing_words {0q82_A7__8A059E058E6A6308C8B0_1D0B00: {...},
+            //                    0q82_A7__8A05F9A0A1873A14BD1C_1D0B00: {...}, 0q82_A8__82AB_1D0300: {...},
+            //                    0q82_A8__830425_1D0400: {...}, 0q82_A8__83044D_1D0400: {...}, ...}
+            setTimeout(function() {
+                looper(listing_words, function (idn, listed) {
+                    if (has(listed, 'img_src')) {
+                        var $words_with_same_idn = $data_idn(idn);
+                        var $words_to_iconify = $words_with_same_idn.filter(':not(:contains(.ditto))');
+                        // noinspection HtmlRequiredAltAttribute,RequiredAttributes
+                        var $img = $('<img>', {
+                            src: listed.img_src,
+                            alt: "icon for " + listed.name,
+                            title: "icon for " + listed.name
+                        });
+                        $words_to_iconify.html($img);
+                    } else if (has(listed, 'name')) {
+                        var $words_to_name = $data_idn(idn);
+                        $words_to_name.attr('title', listed.name);
+                    } else if (listed.is_anonymous) {
+                        var $anons_to_name = $data_idn(idn);
+                        var parts = [];
+                        if (has(listed, 'ip_address')) {
+                            parts.push(listed.ip_address);
+                        }
+                        parts.push('#' + listed.index_number);
+                        $anons_to_name.find('.named').text(parts.join(" "));
+                    }
                 });
-                $words_to_iconify.html($img);
-            } else if (has(listed, 'name')) {
-                var $words_to_name = $data_idn(idn);
-                $words_to_name.attr('title', listed.name);
-            } else if (listed.is_anonymous) {
-                var $anons_to_name = $data_idn(idn);
-                var parts = [];
-                if (has(listed, 'ip_address')) {
-                    parts.push(listed.ip_address);
-                }
-                parts.push('#' + listed.index_number);
-                $anons_to_name.find('.named').text(parts.join(" "));
-            }
+                setTimeout(function() {
+                    var svg = d3.selectAll('.whn-delta');
+                    var h = SREND_FONT_SIZE * 1.20;
+                    var triangle_array = [[0,0], [0,h], [h,h/2]];
+                    var triangle_string = triangle_array.map(function(p) {
+                        return p.map(function(x) {
+                            return x.toString();
+                        }).join(',');
+                    }).join(' ');
+
+                    function gray_of(delta) {
+                        var log_sec = Math.log(delta.num);
+                        var MIN_GRAY = 216;
+                        var MAX_GRAY = 0;
+                        var MIN_LOG_SEC = Math.log(1);
+                        var MAX_LOG_SEC = Math.log(3600*24*365*1000);
+                        var gray = scale(log_sec, MIN_LOG_SEC, MAX_LOG_SEC, MIN_GRAY, MAX_GRAY);
+                        delta.gray = gray;
+                        gray = Math.min(gray, Math.max(MIN_GRAY, MAX_GRAY));
+                        gray = Math.max(gray, Math.min(MIN_GRAY, MAX_GRAY));
+                        delta.gray2 = gray;
+                        delta.gray3 = gray_scale(gray);
+                        return gray_scale(gray);
+                    }
+                    function gray_scale(gray) {
+                        var HH = ('00' + Math.round(gray).toString(16)).substr(-2);
+                        // THANKS:  Hex with 0-pad, https://stackoverflow.com/a/9909166/673991
+                        return '#' + HH + HH + HH;
+                    }
+
+                    svg.data(whn_delta);
+                    var triangle = svg.append('polygon');
+                    triangle.attr('points', triangle_string);
+                    triangle.attr('fill', gray_of);
+
+                    var tooltip = svg.append('title');
+                    tooltip.text(function (between) { return between.description_long; });
+
+                    var label = svg.append('text');
+                    label.text(function (between) {
+                        return between.description_short;
+                    });
+                    label.attr('x', '0');
+                    label.attr('y', '12');
+                    label.attr('class', function (between) {
+                        if (between.num < 60) {
+                            return 'whn-label hide';
+                        } else {
+                            return 'whn-label';
+                        }
+                    });
+                    label.attr('fill', function (between) {
+                        if (between.num < 3600) {
+                            return 'black';
+                        } else {
+                            return 'white';
+                        }
+                    });
+                }, 100);
+            }, 100);
         });
     });
 
@@ -145,16 +223,6 @@ function js_for_meta_lex(window, $, listing_words, MONTY) {
                 $referrer.attr('title', "That hit was referred from here.");
                 $obj.after($referrer);
             }
-
-            if (obj_idn === $word_previous.attr('id')) {
-                var $up_pointer = $('<span>', {
-                    class: 'up-pointer',
-                    title: "Referrer for the hit above"
-                });
-                $up_pointer.text(UNICODE.RIGHT_ARROW_UP);
-                $obj.after($up_pointer);
-                // NOTE:  Inserted 2nd but appears 1st
-            }
             break;
         default:
             if (has(session_list, vrb_idn)) {
@@ -221,55 +289,40 @@ function js_for_meta_lex(window, $, listing_words, MONTY) {
         return '.' + $.escapeSelector(id);
     }
 
-    var $sub_prevs = {sbj: $(), vrb: $(), obj: $()};
-
-    function sub($word, sub, ditto_symbol) {
+    function sub($word, sub) {
         var $span = $word.find(selector_from_class(sub));
         var idn = $span.data('idn');
 
         var $inner = $('<span>');
         $span.append($inner);
 
-        var $sub_prev = $sub_prevs[sub];
-        $sub_prevs[sub] = $span;
-        var idn_prev = $sub_prev.data('idn');  // the sbj.idn or obj.idn of the word above
-        var title_ditto = "";
-
-        console.log("DITTO", $word.attr('value'), sub, idn, idn_prev, idn === idn_prev, is_specified(ditto_symbol));
-
-        if (idn === idn_prev && is_specified(ditto_symbol)) {
-            $inner.addClass('ditto');
-            $inner.text(ditto_symbol);
-            title_ditto = " (same as above)";
+        $inner.addClass('named');
+        if (has(listing_words, idn)) {
+            if (listing_words[idn].is_anonymous) {
+                $inner.addClass('anonymous');
+            }
         } else {
-            $inner.addClass('named');
-            if (has(listing_words, idn)) {
-                if (listing_words[idn].is_anonymous) {
-                    $inner.addClass('anonymous');
+            var $faraway_word = $_from_id(idn);
+            if ($faraway_word.length === 1) {
+                if (has(session_list, idn)) {
+                    $inner.text("session #" + $faraway_word.attr('value'));
+                } else {
+                    var faraway_txt = $faraway_word.data('txt');
+                    if (is_laden(faraway_txt)) {
+                        $inner.text(faraway_txt);
+                        $span.data('txt', faraway_txt);
+                    } else {
+                        $inner.addClass('empty');
+                        $inner.text(idn);
+                    }
+                    if (idn === MONTY.IDN.LEX) {
+                        $inner.addClass('lex');
+                    }
                 }
             } else {
-                var $faraway_word = $_from_id(idn);
-                if ($faraway_word.length === 1) {
-                    if (has(session_list, idn)) {
-                        $inner.text("session #" + $faraway_word.attr('value'));
-                    } else {
-                        var faraway_txt = $faraway_word.data('txt');
-                        if (is_laden(faraway_txt)) {
-                            $inner.text(faraway_txt);
-                            $span.data('txt', faraway_txt);
-                        } else {
-                            $inner.addClass('empty');
-                            $inner.text(idn);
-                        }
-                        if (idn === MONTY.IDN.LEX) {
-                            $inner.addClass('lex');
-                        }
-                    }
-                } else {
-                    console.warn("Word neither listed nor lexed:", idn, $faraway_word.length);
-                    $inner.addClass('un-lexed');
-                    $inner.text("??? " + idn);
-                }
+                console.warn("Word neither listed nor lexed:", idn, $faraway_word.length);
+                $inner.addClass('un-lexed');
+                $inner.text("??? " + idn);
             }
         }
         var title = sub + " = " + idn;
@@ -277,16 +330,15 @@ function js_for_meta_lex(window, $, listing_words, MONTY) {
         if (is_defined(value)) {
             title += " (" + value + ")";
         }
-        title += title_ditto;
         $inner.attr('title', title);
         return idn;
     }
     function sub_txt($word) {
         var txt = $word.data('txt');
         if (is_laden(txt)) {
-            var $span = $('<span>');
-            $span.addClass('txt');
-            $span.append(" ", UNICODE.LEFT_DOUBLE_QUOTE, txt, UNICODE.RIGHT_DOUBLE_QUOTE);
+            var $span = $('<span>', {class: 'txt'});
+            $span.text(UNICODE.LEFT_DOUBLE_QUOTE + txt + UNICODE.RIGHT_DOUBLE_QUOTE);
+            $word.append(" ");
             $word.append($span);
         }
         return txt;
@@ -295,7 +347,7 @@ function js_for_meta_lex(window, $, listing_words, MONTY) {
     function sub_whn($word_previous, $word) {
         var word_date = date_from_whn($word.data('whn'));
         var delta = delta_format(delta_seconds(word_date, now));
-        var $span = $('<span>', {class: 'whn'});
+        var $span = $word.find('.whn');   // $('<span>', {class: 'whn'});
         $span.addClass(delta.units_long);
         $span.text(delta.description_short);
         $span.attr(
@@ -314,11 +366,51 @@ function js_for_meta_lex(window, $, listing_words, MONTY) {
             var word_previous_date = date_from_whn($word_previous.data('whn'));
             var between = delta_format(delta_seconds(word_previous_date, word_date));
             $word.addClass('delta-' + between.units_long);
+            whn_delta.push(between);
         }
     }
     function num($word) {
 
     }
+
+
+    /**
+     * Process the members of an array asynchronously.
+     *
+     * Avoid Chrome warnings e.g. 'setTimeout' handler took 1361ms
+     *
+     * THANKS:  Code derived from 4th option at https://stackoverflow.com/a/45484448/673991
+     *
+     * @param array - e.g. $('div')
+     * @param process - callback function
+     * @param delay_ms - milliseconds between calls, 0 to run ASAP
+     * @param n_chunk - (optional) e.g 10 to handle 10 elements per iteration
+     * @param then - (optional) called after array is finished, to do what's next
+     * @return {object} setInterval object, pass to clearInterval() to abort early.
+     */
+    function array_async(array, process, delay_ms, n_chunk, then) {
+        console.assert(typeof array.length === 'number', "Cannot async " + typeof array);
+        if (typeof n_chunk !== 'number' || n_chunk < 1) {
+            n_chunk = 1;
+        }
+        var i = 0;
+        var interval = setInterval(function () {
+            var i_chunk;
+            for (i_chunk = 0 ; i_chunk < n_chunk ; i_chunk++) {
+                process(array[i]);
+                if (i++ >= array.length - 1) {
+                    clearInterval(interval);
+                    if (is_specified(then)) {
+                        then();
+                    }
+                    return;
+                }
+            }
+        }, delay_ms);
+        return interval;
+    }
+
+
     function date_from_whn(whn) {
         return new Date(whn * 1000.0);
     }
@@ -356,7 +448,6 @@ function js_for_meta_lex(window, $, listing_words, MONTY) {
     }
     console.assert(is_defined(42));
     console.assert(!is_defined(undefined));
-
 
     function delta_format(delta_seconds) {
         function div(n, d) {
@@ -407,6 +498,15 @@ function js_for_meta_lex(window, $, listing_words, MONTY) {
 
         return word;
     }
+    console.assert("1s" === delta_format(1).description_short);
+    console.assert("42.0 days" === delta_format(42*24*3600).description_long);
+
+    // noinspection SpellCheckingInspection
+    function scale(x, imin, imax, omin, omax) {
+        return (x - imin) * (omax - omin) / (imax - imin) + omin;
+    }
+    console.assert(0.5 === scale(50, 0,100, 0,1.0));
+
     function has(collection, thing) {
         if (typeof collection === 'undefined') {
             return false;

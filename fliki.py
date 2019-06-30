@@ -1130,7 +1130,7 @@ def meta_lex():
             words = auth.lex.find_words()
             listing_dict = dict()
             qc_find = auth.lex.query_count
-            with body.ol as ol:
+            with body.ol(class_='lex-list') as ol:
                 for word in words:
                     with ol.li(**{
                         'class': 'srend',
@@ -1148,6 +1148,9 @@ def meta_lex():
                         if word.num != 1:
                             li(**{'data-num': render_num(word.num)})
 
+                        li.span(**{'class': 'whn'})
+                        li.svg(**{'class': 'whn-delta'})
+
                     for sub_word in (word.sbj, word.vrb, word.obj):
                         qstring = sub_word.idn.qstring()
                         if isinstance(sub_word.lex, qiki.Listing) and qstring not in listing_dict:
@@ -1163,6 +1166,7 @@ def meta_lex():
                             )
             qc_foot = auth.lex.query_count
             with body.footer() as foot:
+                foot.js_stamped(flask.url_for('static', filename='code/d3.js'))
                 foot.js_stamped(flask.url_for('static', filename='code/meta_lex.js'))
                 with foot.script() as script:
                     monty = dict(
@@ -1386,7 +1390,7 @@ def meta_all():
                         quoted_compressed_txt(txt_span, word.txt)
 
             body.comment(["My URL is", flask.request.url])
-            with body.ol as ol:
+            with body.ol(class_='lex-list') as ol:
                 last_whn = None
                 first_word = True
                 ago_lex = AgoLex()
