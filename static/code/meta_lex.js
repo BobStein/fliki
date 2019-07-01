@@ -9,6 +9,7 @@
  * @param listing_words[].ip_address - supplied by server
  * @param listing_words[].browser - supplied by server
  * @param listing_words[].platform - supplied by server
+ * @param listing_words[].word_class - supplied by server
  * @param listing_words[].iconify - supplied by server
  * @param listing_words[].index_number - computed by client
  * @param MONTY
@@ -84,37 +85,37 @@ function js_for_meta_lex(window, $, listing_words, MONTY) {
             //                    0q82_A8__830425_1D0400: {...}, 0q82_A8__83044D_1D0400: {...}, ...}
             setTimeout(function() {
                 console.time('listing_words_loop');
-                looper(listing_words, function listing_words_loop(idn, listed) {
-                    if (has(listed, 'iconify')) {
-                        // // noinspection HtmlRequiredAltAttribute,RequiredAttributes
-                        // var $img = $('<img>', {
-                        //     class: 'iconify',
-                        //     src: listed.iconify,
-                        //     alt: "icon for " + listed.name,
-                        //     title: "icon for " + listed.name
-                        // });
-                        // // TODO:  Graceful handling if iconify but no name?
-                        // var $words_to_iconify = $data_idn(idn);
-                        // $words_to_iconify.empty().append($img);
-                    } else if (has(listed, 'name')) {
-                        var $words_to_name = $data_idn(idn);
-                        $words_to_name.attr('title', listed.name);
-                    } else if (listed.is_anonymous) {
-                        var parts = [];
-                        if (has(listed, 'ip_address')) {
-                            parts.push(listed.ip_address);
-                        }
-                        parts.push('#' + listed.index_number);
-                        if (has(listed, 'browser')) {
-                            parts.push(listed.browser);
-                        }
-                        if (has(listed, 'platform')) {
-                            parts.push(listed.platform);
-                        }
-                        var $anons_to_name = $data_idn(idn);
-                        $anons_to_name.find('.named').text(parts.join(" "));
-                    }
-                });
+                // looper(listing_words, function listing_words_loop(idn, listed) {
+                //     if (has(listed, 'iconify')) {
+                //         // // noinspection HtmlRequiredAltAttribute,RequiredAttributes
+                //         // var $img = $('<img>', {
+                //         //     class: 'iconify',
+                //         //     src: listed.iconify,
+                //         //     alt: "icon for " + listed.name,
+                //         //     title: "icon for " + listed.name
+                //         // });
+                //         // // TODO:  Graceful handling if iconify but no name?
+                //         // var $words_to_iconify = $data_idn(idn);
+                //         // $words_to_iconify.empty().append($img);
+                //     } else if (has(listed, 'name')) {
+                //         // var $words_to_name = $data_idn(idn);
+                //         // $words_to_name.attr('title', listed.name);
+                //     } else if (listed.is_anonymous) {
+                //         // var parts = [];
+                //         // if (has(listed, 'ip_address')) {
+                //         //     parts.push(listed.ip_address);
+                //         // }
+                //         // parts.push('#' + listed.index_number);
+                //         // if (has(listed, 'browser')) {
+                //         //     parts.push(listed.browser);
+                //         // }
+                //         // if (has(listed, 'platform')) {
+                //         //     parts.push(listed.platform);
+                //         // }
+                //         // var $anons_to_name = $data_idn(idn);
+                //         // $anons_to_name.find('.named').text(parts.join(" "));
+                //     }
+                // });
                 console.timeEnd('listing_words_loop');
                 setTimeout(function() {
                     console.time('whn_delta');
@@ -129,6 +130,9 @@ function js_for_meta_lex(window, $, listing_words, MONTY) {
     /**
      * Render the delta-time triangles on the left.
      */
+    // TODO:  Instead synthesize triangle parts in render_word()?
+    // SEE:  createElement(NS) debacle, https://stackoverflow.com/a/3642265/673991
+    // SEE:  createElementNS with jQuery, https://stackoverflow.com/a/20852029/673991
     function whn_delta_render() {
 
         function point_join(array_of_points) {
@@ -175,7 +179,6 @@ function js_for_meta_lex(window, $, listing_words, MONTY) {
         label.attr('class', function (b) { return (b ? b.num : 0) < 10 ? 'whn-label hide' : 'whn-label'; });
         label.attr('fill', function (b) { return (b ? b.num : 0) < 60 ? 'black' : 'white'; });
         label.append('title').text(tooltip_delta);
-
     }
 
     var $word_previous = null;
@@ -233,18 +236,20 @@ function js_for_meta_lex(window, $, listing_words, MONTY) {
                 session_list.push(idn);
             }
             break;
-            case MONTY.IDN.REFERRER:
+        case MONTY.IDN.REFERRER:
             $obj = $word.find('.obj');
             $inner = $obj.find('.named');
             $inner.text("hit #" + value_from_idn(obj_idn));
             $inner.removeClass('empty');
-
             question_url = $_from_id(obj_idn).data('question_url');
+
             var txt_encoded = encodeURI(txt);
-            // NOTE:  Because sometimes a referrer (txt) comes %-encoded, and sometimes it doesn't.
+            // NOTE:  Compare both %-encoded and unencoded versions of the referrer url,
+            //        because sometimes it comes encoded, and sometimes it doesn't.
             //        question_url is always encoded.
             // EXAMPLE:  Yes, http://.../python/something%20obscure
             // EXAMPLE:  Not, http://.../python/%
+
             if (txt === question_url || txt_encoded === question_url) {
                 $txt = $word.find('.txt');
                 $txt.remove();
@@ -273,8 +278,20 @@ function js_for_meta_lex(window, $, listing_words, MONTY) {
         }
     }
     function url_from_question(question) {
-        return MONTY.URL_PREFIX_QUESTION + encodeURI(question);
+        var url = path_join(MONTY.URL_PREFIX_QUESTION, encodeURI(question));
+        url = url.replace(/\?$/, "");
+        // NOTE:  Flask request.full_path appends a `?` even when there was no query string.
+        return url;
     }
+
+    function path_join(left, right) {
+        left = left.replace(/\/$/, "");
+        right = right.replace(/^\//, "");
+        return left + '/' + right;
+    }
+    console.assert('foo/bar' === path_join('foo', 'bar'));
+    console.assert('foo/bar' === path_join('foo/', '/bar'));
+
     function value_from_idn(idn) {
         return $_from_id(idn).attr('value');
     }
@@ -309,12 +326,12 @@ function js_for_meta_lex(window, $, listing_words, MONTY) {
     //     }
     // }
 
-    function $data_idn(idn) {
-        return $data('idn', idn);
-    }
-    function $data(name, value) {
-        return $('[data-' + $.escapeSelector(name) + '=' + $.escapeSelector(value) + ']');
-    }
+    // function $data_idn(idn) {
+    //     return $data('idn', idn);
+    // }
+    // function $data(name, value) {
+    //     return $('[data-' + $.escapeSelector(name) + '=' + $.escapeSelector(value) + ']');
+    // }
     function $_from_id(id) {
         return $(selector_from_id(id));
     }
@@ -360,6 +377,23 @@ function js_for_meta_lex(window, $, listing_words, MONTY) {
                 $inner.replaceWith($img);
             } else if (listed.is_anonymous) {
                 $inner.addClass('anonymous');
+                var parts = [];
+                if (has(listed, 'ip_address')) {
+                    parts.push(listed.ip_address);
+                }
+                parts.push('#' + listed.index_number);
+                if (has(listed, 'browser')) {
+                    parts.push(listed.browser);
+                }
+                if (has(listed, 'platform')) {
+                    parts.push(listed.platform);
+                }
+                $inner.text(parts.join(" "));
+
+                if (has(listed, 'word_class')) {
+                    title += " - " + listed.word_class;
+                }
+                $inner.attr('title', title);
             }
         } else {
             var $faraway_word = $_from_id(idn);

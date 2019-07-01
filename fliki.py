@@ -623,7 +623,9 @@ class AuthFliki(Auth):
 
     @property
     def current_path(self):
-        return flask.request.full_path   # NOTE:  include query string, if any
+        return flask.request.path
+        # NOTE:  Do NOT include query string,
+        #        because quirky Flask appends an empty '?' even if there was none.
         # SEE:  path vs url, http://flask.pocoo.org/docs/api/#incoming-request-data
 
     @property
@@ -1144,7 +1146,9 @@ def meta_raw():
         num_google,
         "google",
     )
-    return response
+    return flask.Response(response, mimetype='application/json')
+    # THANKS:  Flask mime type, https://stackoverflow.com/a/11774026/673991
+    # THANKS:  JSON mime type, https://stackoverflow.com/a/477819/673991
 
 
 @flask_app.route('/meta/lex', methods=('GET', 'HEAD'))
@@ -1179,7 +1183,9 @@ def meta_lex():
             qc_find = auth.lex.query_count
 
             def z(idn):
-                return idn.raw
+                """Convert qiki.Number into something more efficient to compare."""
+                # TODO:  Eyeroll, got to make Numbers more efficient.  Damn the normalizing.
+                return idn
 
             class Z(object):
                 IP_ADDRESS_TAG = z(IDN.IP_ADDRESS_TAG)
