@@ -65,7 +65,7 @@ body {
 
 .srend .txt {
     font-family: Verdana, sans-serif;
-    margin-left: 10px;
+    margin-left: 0.66em;
 }
 .srend .txt:empty {
     margin-left: 0;
@@ -82,7 +82,7 @@ body {
     background: white;
     text-align: center;
 
-    margin-left: 0.6em;
+    margin-left: 0.66em;
 
     -webkit-box-shadow: .15em .15em .20em rgba(0,0,0,0.1);
        -moz-box-shadow: .15em .15em .20em rgba(0,0,0,0.1);   /*noinspection CssUnknownProperty*/
@@ -110,12 +110,13 @@ body {
 .referrer {
     font-family: "Arial Narrow", sans-serif;
     font-size: 0.7em;
+    margin-left: 0.66em;
 }
 
 .whn-delta {
     position: absolute;
     left: -56px;
-    top: -0.60em;
+    top: +0.60em;
     height: 1.20em;
     width: 52px;
 }
@@ -188,4 +189,8 @@ img.iconify {
     vertical-align: middle;
     margin: -1em 0 -1em 0;
     /* THANKS:  img won't increase line height, https://stackoverflow.com/a/26823180/673991 */
+}
+
+.txt.refer-other {
+    color: #AA5500;
 }

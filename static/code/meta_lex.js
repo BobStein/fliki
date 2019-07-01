@@ -31,6 +31,7 @@
  * @param MONTY.IDN.ICONIFY
  * @param MONTY.IDN.GOOGLE_LISTING
  * @param MONTY.IDN.ANONYMOUS_LISTING
+ * @param MONTY.NOW
  * @param MONTY.URL_PREFIX_QUESTION
  * @param MONTY.URL_HERE
  */
@@ -51,8 +52,16 @@ function js_for_meta_lex(window, $, listing_words, MONTY) {
     // var BODY_PADDING_LEFT = parseFloat($('body').css('margin-left'));
     // var LEX_LIST_INDENT = parseFloat($('.lex-list').css('padding-inline-start'));
     var SREND_FONT_SIZE = parseFloat($('.srend').css('font-size'));
-    var one_second = delta_format(new Date(0), new Date(1));
-    var whn_delta = [one_second];
+    var whn_delta = [];   // Built by sub_whn(), consumed by whn_delta_render().
+
+    var now_date = new Date();
+    var now_seconds = now_date.getTime() / 1000.0;
+    var load_delay = now_seconds - MONTY.NOW;
+    console.log("Load delay", load_delay.toFixed(3));
+    // EXAMPLE:  0.874
+    // NOTE:  Also includes server/client time discrepancy.
+    //        Which should be zero, no matter the time zone,
+    //        because both are seconds since 1970 UTC.
 
     $(document).ready(function() {
         // $('.srend').each(function word_pass() {
@@ -117,6 +126,9 @@ function js_for_meta_lex(window, $, listing_words, MONTY) {
         });
     });
 
+    /**
+     * Render the delta-time triangles on the left.
+     */
     function whn_delta_render() {
 
         function point_join(array_of_points) {
@@ -127,12 +139,22 @@ function js_for_meta_lex(window, $, listing_words, MONTY) {
             }).join(' ');
         }
 
+        /**
+         * Tooltip for BOTH the polygon and text elements.
+         */
+        function tooltip_delta(between) {
+            return between ? between.description_long : "";
+        }
+
         var svg = d3.selectAll('.whn-delta');
+
+        sneak_in_one_last_whn_delta();
         svg.data(whn_delta);
+
         var triangle = svg.append('polygon');
         triangle.attr('points', function (b) {
             var h = SREND_FONT_SIZE * 1.20;
-            var w = log_time(b ? b.num : 0, h*0.33, h*3.00);
+            var w = log_time_scale(b ? b.num : 0, h*0.33, h*3.00);
             if (isNaN(w)) { w = h*5.0; }   // NOTE:  Negative time busts the logarithm.
             var triangle_array = [[0,0], [0,h], [w,h/2]];
             var triangle_string = point_join(triangle_array);
@@ -141,13 +163,10 @@ function js_for_meta_lex(window, $, listing_words, MONTY) {
         var LIGHTEST = 216;   // XXX:  D.R.Y. crime - qoolbar.js .target-environment rgb(216,216,216)
         var DARKEST = 0;
         triangle.attr('fill', function (b) {
-            return gray_scale(log_time(b ? b.num : 0, LIGHTEST, DARKEST));
+            return gray_scale(log_time_scale(b ? b.num : 0, LIGHTEST, DARKEST));
         });
 
-        var tooltip = svg.append('title');
-        tooltip.text(function (b) {
-            return b ? b.description_long : "";
-        });
+        triangle.append('title').text(tooltip_delta);
 
         var label = svg.append('text');
         label.text(function (b) { return b ? b.description_short : ""; });
@@ -155,13 +174,13 @@ function js_for_meta_lex(window, $, listing_words, MONTY) {
         label.attr('y', '12');
         label.attr('class', function (b) { return (b ? b.num : 0) < 10 ? 'whn-label hide' : 'whn-label'; });
         label.attr('fill', function (b) { return (b ? b.num : 0) < 60 ? 'black' : 'white'; });
+        label.append('title').text(tooltip_delta);
+
     }
 
-    var _the_real_$word_previous = null;
+    var $word_previous = null;
     function render_word(word) {
         var $word = $(word);
-        var $word_previous = _the_real_$word_previous;
-        _the_real_$word_previous = $word;
 
         var idn = $word.attr('id');
         sub($word, 'sbj', UNICODE.DOWN_ARROW_RIGHT);
@@ -170,6 +189,7 @@ function js_for_meta_lex(window, $, listing_words, MONTY) {
         sub_num($word);
         var txt = sub_txt($word);
         sub_whn($word_previous, $word);
+        $word_previous = $word;
 
         var $obj;
         var $inner;
@@ -213,14 +233,19 @@ function js_for_meta_lex(window, $, listing_words, MONTY) {
                 session_list.push(idn);
             }
             break;
-        case MONTY.IDN.REFERRER:
+            case MONTY.IDN.REFERRER:
             $obj = $word.find('.obj');
             $inner = $obj.find('.named');
             $inner.text("hit #" + value_from_idn(obj_idn));
             $inner.removeClass('empty');
 
             question_url = $_from_id(obj_idn).data('question_url');
-            if (txt === question_url) {
+            var txt_encoded = encodeURI(txt);
+            // NOTE:  Because sometimes a referrer (txt) comes %-encoded, and sometimes it doesn't.
+            //        question_url is always encoded.
+            // EXAMPLE:  Yes, http://.../python/something%20obscure
+            // EXAMPLE:  Not, http://.../python/%
+            if (txt === question_url || txt_encoded === question_url) {
                 $txt = $word.find('.txt');
                 $txt.remove();
                 $referrer = $('<span>', {class: 'referrer'}).text("(self)");
@@ -232,6 +257,8 @@ function js_for_meta_lex(window, $, listing_words, MONTY) {
                 $referrer = $('<span>', {class: 'referrer'}).text("(here)");
                 $referrer.attr('title', "That hit was referred from this page.");
                 $obj.after($referrer);
+            } else {
+                $word.find('.txt').addClass('refer-other');
             }
             break;
         default:
@@ -246,7 +273,7 @@ function js_for_meta_lex(window, $, listing_words, MONTY) {
         }
     }
     function url_from_question(question) {
-        return MONTY.URL_PREFIX_QUESTION + question;
+        return MONTY.URL_PREFIX_QUESTION + encodeURI(question);
     }
     function value_from_idn(idn) {
         return $_from_id(idn).attr('value');
@@ -386,12 +413,10 @@ function js_for_meta_lex(window, $, listing_words, MONTY) {
         return txt;
     }
 
-    var now_date = new Date();
-    var now_seconds = now_date.getTime() / 1000.0;
     function sub_whn($word_previous, $word) {
         var whn_seconds = $word.data('whn');
         var word_date = date_from_whn(whn_seconds);
-        var delta = delta_format(now_seconds - whn_seconds);
+        var delta = delta_format(MONTY.NOW - whn_seconds);
         // var delta = delta_format(delta_seconds(word_date, now_date));
         // var delta = {units_long: "X", description_short: "8X", description_long: "Eight Ex"};
         var $span = $word.find('.whn');   // $('<span>', {class: 'whn'});
@@ -418,14 +443,26 @@ function js_for_meta_lex(window, $, listing_words, MONTY) {
 
             // $word.addClass('delta-' + between.units_long);
             if (between.num >= 3600) {
-                $word.css('border-top-color', gray_scale(log_time(between.num, 333, 0)));
+                $word.css('border-top-color', gray_scale(log_time_scale(between.num, 333, 0)));
                 if (between.num >= 7*24*3600) {
-                    $word.css('border-top-width', log_time(between.num, -150, 100));
+                    $word.css('border-top-width', log_time_scale(between.num, -150, 100));
                 }
             }
             // $word.css('border-top-width', line_width);
             whn_delta.push(between);
         }
+    }
+
+    /**
+     * The bottom triangle shows the time between the last word,
+     * and when the page was loaded.
+     *
+     * This is of course redundant with the whn indication for that last word.
+     */
+    function sneak_in_one_last_whn_delta() {
+        var last_delta_float = MONTY.NOW - $word_previous.data('whn');
+        var last_delta_between = delta_format(last_delta_float);
+        whn_delta.push(last_delta_between);
     }
 
     /**
@@ -449,7 +486,7 @@ function js_for_meta_lex(window, $, listing_words, MONTY) {
      * @param output_100_years - output value to represent 100Y or longer
      * @return {*}
      */
-    function log_time(seconds, output_1_second, output_100_years) {
+    function log_time_scale(seconds, output_1_second, output_100_years) {
         var log_sec = Math.log(seconds);
         var omin = output_1_second;
         var omax = output_100_years;
@@ -582,7 +619,37 @@ function js_for_meta_lex(window, $, listing_words, MONTY) {
     var UP_TO_DAY = 90*DAY;
     var UP_TO_MONTH = 24*MONTH;
 
+    // CAUTION:  Because these "constants" are defined here,
+    //           delta_format() can be called before it works.
+    //           If called above this line (not inside a function)
+    //           it will return a bunch of NaNs.
+    // SEE:  const unavailable in IE10, etc., https://stackoverflow.com/a/130399/673991
 
+    /**
+     * Format a period of time in multiple human-readable formats.
+     *
+     * EXAMPLE:  delta_format(1) == {
+     *     "num": 1,
+     *     "amount_short": "1",
+     *     "amount_long": "1.0",
+     *     "units_short": "s",
+     *     "units_long": "seconds",
+     *     "description_short": "1s",
+     *     "description_long": "1.0 seconds"
+     * }
+     * EXAMPLE:  delta_format(3628800) == {
+     *     "num": 3628800,
+     *     "amount_short": "42",
+     *     "amount_long": "42.0",
+     *     "units_short": "d",
+     *     "units_long": "days",
+     *     "description_short": "42d",
+     *     "description_long": "42.0 days"
+     * }
+     *
+     * @param sec - number of seconds
+     * @return {{}}
+     */
     function delta_format(sec) {
         function div(n, d) {
             return (n/d).toFixed(0);
@@ -631,15 +698,13 @@ function js_for_meta_lex(window, $, listing_words, MONTY) {
         word.description_short = word.amount_short + word.units_short;
         word.description_long = word.amount_long + " " + word.units_long;
 
-        // return {num: 42*DAY, amount_short: "1", amount_long: "42.0", units_short: "s", units_long: "days", description_short: "1s", description_long: "42.0 days"};
         return word;
     }
     console.assert("1s" === delta_format(1).description_short);
     console.assert("42.0 days" === delta_format(42*24*3600).description_long);
 
-    // noinspection SpellCheckingInspection
-    function scale(x, imin, imax, omin, omax) {
-        return (x - imin) * (omax - omin) / (imax - imin) + omin;
+    function scale(x, i_min, i_max, o_min, o_max) {
+        return (x - i_min) * (o_max - o_min) / (i_max - i_min) + o_min;
     }
     console.assert(0.5 === scale(50, 0,100, 0,1.0));
 

@@ -265,38 +265,6 @@ class AnonymousQikiListing(qiki.Listing):
 # SEE:  http://stackoverflow.com/questions/3768895/how-to-make-a-class-json-serializable
 
 
-# starter_lex = qiki.LexMySQL(**secure.credentials.for_fliki_lex_database)
-# path_noun = starter_lex.noun(u'path')
-# question_verb = starter_lex.verb(u'question')
-# browse_verb = starter_lex.verb(u'browse')
-# # TODO:  Change this to browser_verbs[]
-# #        x == browse_verb becomes x in browse_verbs
-# #        obj=browse_verb becomes obj=browse_verbs[-1]
-# #           oh wait, would that invite redefinition vulnerability?
-# answer_verb = starter_lex.verb(u'answer')
-# referrer_verb = starter_lex.verb('referrer')
-#
-# iconify_verb = starter_lex.verb(u'iconify')   # TODO:  Why in the world was this noun??   starter_lex.noun('iconify')
-# name_verb = starter_lex.verb(u'name')   # TODO:  ffs why wasn't this a verb??
-# session_noun = starter_lex.noun(u'session')
-#
-# me = starter_lex.define('agent', u'user')  # TODO:  Authentication
-# me(iconify_verb, use_already=True)[me] = u'http://tool.qiki.info/icon/ghost.png'
-#
-# # qoolbar = qiki.QoolbarSimple(lex)
-#
-# tag_verb = starter_lex.verb('tag')
-# ip_address_tag = starter_lex.define(tag_verb, "ip address tag")
-# user_agent_tag = starter_lex.define(tag_verb, "user agent tag")
-#
-# listing = starter_lex.noun(u'listing')
-# google_user = starter_lex.define(listing, u'google user')
-# anonymous_user = starter_lex.define(listing, u'anonymous')
-# ip_address_word = starter_lex.noun(u'IP address')
-#
-# starter_lex.disconnect()
-
-
 def dict_from_object(o):
     props_and_underscores = vars(o)
     props = [
@@ -478,6 +446,12 @@ class Auth(object):
 
     @property
     def current_url(self):
+        """E.g. '/python/yield'"""
+        raise NotImplementedError
+
+    @property
+    def current_path(self):
+        """E.g. 'https://qiki.info/python/yield'"""
         raise NotImplementedError
 
     @property
@@ -496,6 +470,9 @@ class Auth(object):
     @then_url.setter
     @abc.abstractmethod
     def then_url(self, new_url):
+        raise NotImplementedError
+
+    def static_url(self, relative_path):
         raise NotImplementedError
 
     @abc.abstractmethod
@@ -608,7 +585,7 @@ class AuthFliki(Auth):
                 vrb=IDN.REFERRER,
                 obj=self.browse_word,
                 txt=qiki.Text.decode_if_you_must(this_referrer),
-                use_already=False,
+                use_already=False,   # TODO:  Could be True?  obj should be unique.
             )
 
     SESSION_VARIABLE_NAME = 'qiki_user'   # where we store the session verb's idn
@@ -645,6 +622,11 @@ class AuthFliki(Auth):
         # SEE:  path vs url, http://flask.pocoo.org/docs/api/#incoming-request-data
 
     @property
+    def current_path(self):
+        return flask.request.full_path   # NOTE:  include query string, if any
+        # SEE:  path vs url, http://flask.pocoo.org/docs/api/#incoming-request-data
+
+    @property
     def login_url(self):
         return flask.url_for(u'login')
         # NOTE:  Adding a parameter to the query string makes Authomatic.login()
@@ -676,6 +658,9 @@ class AuthFliki(Auth):
             raise self.FormVariableMissing("No form variable " + variable_name)
         else:
             return value
+
+    def static_url(self, relative_path):
+        return flask.url_for('static', filename=relative_path)
 
 
 def is_qiki_user_anonymous(user_word):
@@ -754,7 +739,7 @@ def login():
             #       "error_description" : "Invalid code."
             #     }.
             # e.g. after a partial login crashes, trying to resume with a URL such as:
-            # http://localhost.visibone.com:5000/meta/login?state=f45ad ... 4OKQ#
+            # http://.../meta/login?state=f45ad ... 4OKQ#
 
             url_has_question_mark_parameters = flask.request.path != flask.request.full_path
             is_stale = str(login_result.error) == STALE_LOGIN_ERROR
@@ -915,10 +900,10 @@ def home_subdirectory():
 def unslumping_home():
     auth = AuthFliki()
     lex = auth.lex
-    auth.hit(flask.request.path)   # e.g. "/"
+    auth.hit(auth.current_path)   # e.g. "/"
     with FlikiHTML('html') as html:
         head = html.header("Unslumping")
-        head.css_stamped(flask.url_for('static', filename='code/unslump.css'))
+        head.css_stamped(auth.static_url('code/unslump.css'))
 
         with html.body() as body:
             with body.div(id='logging') as div:
@@ -984,7 +969,7 @@ def unslumping_home():
                         # anon_input(checked='checked')
                         # NOTE:  authenticated user, checkbox to see anonymous content defaults OFF
 
-                body.js_stamped(flask.url_for('static', filename='code/unslump.js'))
+                body.js_stamped(auth.static_url('code/unslump.js'))
 
                 unslumps = lex.find_words(vrb=IDN.DEFINE, txt=u'unslump')
                 uns_words = lex.find_words(
@@ -1125,7 +1110,7 @@ def meta_raw():
     t_find = time.time()
     num_suffixed = 0
     num_anon = 0
-    num_goog = 0
+    num_google = 0
     for word in words:
         if word.sbj.idn.is_suffixed():
             num_suffixed += 1
@@ -1133,7 +1118,7 @@ def meta_raw():
             if meta_idn == IDN.ANONYMOUS_LISTING:
                 num_anon += 1
             elif meta_idn == IDN.GOOGLE_LISTING:
-                num_goog += 1
+                num_google += 1
     t_loop = time.time()
     response = valid_response('words', words)
     t_end = time.time()
@@ -1156,8 +1141,8 @@ def meta_raw():
         "suffixed",
         num_anon,
         "anon",
-        num_goog,
-        "goog",
+        num_google,
+        "google",
     )
     return response
 
@@ -1179,7 +1164,7 @@ def meta_lex():
 
         with html.body(class_='target-environment', newlines=True) as body:
 
-            body.div(id='logging').raw_text(auth.log_html(then_url=flask.url_for('meta_lex')))
+            body.div(id='logging').raw_text(auth.log_html())
 
             words = auth.lex.find_words()
             listing_dict = dict()
@@ -1204,26 +1189,25 @@ def meta_lex():
 
             with body.ol(class_='lex-list') as ol:
                 for word in words:
+                    tooltip = "idn = " + word.idn.qstring() + " (" + render_num(word.idn) + ")"
                     with ol.li(**{
                         'class': 'srend',
                         'value': render_num(word.idn),
                         'id': word.idn.qstring(),
-                        'data-whn': "{:.3f}".format(float(word.whn)),
+                        'data-whn': render_whn(word.whn),
+                        'title': tooltip,
                     }) as li:
                         li.span(**{'class': 'wrend sbj', 'data-idn': word.sbj.idn.qstring()}).span(class_='named')
                         li.span(**{'class': 'wrend vrb', 'data-idn': word.vrb.idn.qstring()}).span(class_='named')
                         li.span(**{'class': 'wrend obj', 'data-idn': word.obj.idn.qstring()}).span(class_='named')
                         li.span(**{'class': 'num'})
-                        li.span(**{'class': 'txt'})
-
-                        if word.txt != "":
-                            li(**{'data-txt': str(word.txt)})
-
-                        if word.num != 1:
-                            li(**{'data-num': render_num(word.num)})
-
+                        li.span(**{'class': 'txt', 'title': "txt is {} characters".format(len(word.txt))})
                         li.span(**{'class': 'whn'})
                         li.svg(**{'class': 'whn-delta'})
+                        if word.txt != "":
+                            li(**{'data-txt': str(word.txt)})
+                        if word.num != 1:
+                            li(**{'data-num': render_num(word.num)})
 
                     if isinstance(word.sbj.lex, qiki.Listing):
                         listing_log(
@@ -1279,13 +1263,14 @@ def meta_lex():
             t_lex = time.time()
             qc_foot = auth.lex.query_count
             with body.footer() as foot:
-                foot.js_stamped(flask.url_for('static', filename='code/d3.js'))
-                foot.js_stamped(flask.url_for('static', filename='code/meta_lex.js'))
+                foot.js_stamped(auth.static_url('code/d3.js'))
+                foot.js_stamped(auth.static_url('code/meta_lex.js'))
                 with foot.script() as script:
                     monty = dict(
                         IDN=IDN.dictionary_of_qstrings(),
                         URL_PREFIX_QUESTION=url_from_question(''),
-                        URL_HERE=flask.request.url,
+                        URL_HERE=auth.current_url,
+                        NOW=float(time_lex.now_word().num),
                     )
                     script.raw_text('var MONTY = {json};\n'.format(json=json.dumps(
                         monty,
@@ -1342,7 +1327,7 @@ def meta_all():
         with html.body(class_='target-environment') as body:
             with body.p() as p:
                 # p("Hello {}!".format(auth.qiki_user.txt))
-                p.raw_text(auth.log_html(then_url=flask.url_for('meta_all')))
+                p.raw_text(auth.log_html())
 
             qc_start = lex.query_count
             t_start = time.time()
@@ -1477,7 +1462,7 @@ def meta_all():
                     )
 
                 if word.txt != '':   # When vrb=question_verb, txt was once the referrer.
-                    if word.txt == flask.request.url:
+                    if word.txt == auth.current_url:
                         element.span(" (here)", class_='referrer', title="was referred from here")
                     elif word.txt == url_from_question(word.obj.txt):
                         element.span(" (self)", class_='referrer', title="was referred from itself")
@@ -1507,7 +1492,7 @@ def meta_all():
                             with element.span(class_='referrer', title="was referred from itself") as ref_span:
                                 ref_span.text(" (self)")
                             return
-                        if word.txt == flask.request.url:
+                        if word.txt == auth.current_url:
                             with element.span(class_='referrer', title="was referred from here") as ref_span:
                                 ref_span.text(" (here)")
                             return
@@ -1515,7 +1500,7 @@ def meta_all():
                         txt_span.text(" ")
                         quoted_compressed_txt(txt_span, word.txt)
 
-            body.comment(["My URL is", flask.request.url])
+            body.comment(["My URL is", auth.current_url])
             with body.ol(class_='lex-list') as ol:
                 last_whn = None
                 first_word = True
@@ -1967,6 +1952,10 @@ def json_from_words(words):
 
 def render_num(num):
     return str(native_num(num))
+
+
+def render_whn(whn):
+    return "{:.3f}".format(float(whn))
 
 
 def native_num(num):
