@@ -1,4 +1,3 @@
-
 // noinspection JSUnusedGlobalSymbols
 /**
  *
@@ -49,9 +48,7 @@ function js_for_meta_lex(window, $, listing_words, MONTY) {
         TIMES: '\u00D7',
         CIRCLED_TIMES: '\u2297'
     };
-    var session_list = [];   // helps identify session words when they're the vrb or obj
-    // var BODY_PADDING_LEFT = parseFloat($('body').css('margin-left'));
-    // var LEX_LIST_INDENT = parseFloat($('.lex-list').css('padding-inline-start'));
+    var session_list = [];   // helps identify session words when used as the vrb or obj
     var SREND_FONT_SIZE = parseFloat($('.srend').css('font-size'));
     var whn_delta = [];   // Built by sub_whn(), consumed by whn_delta_render().
 
@@ -65,16 +62,13 @@ function js_for_meta_lex(window, $, listing_words, MONTY) {
     //        because both are seconds since 1970 UTC.
 
     $(document).ready(function() {
-        // $('.srend').each(function word_pass() {
-        //     render_word(this);
-        // });
         console.time('total');
         console.time('render_word');
         array_async($('.srend'), render_word, 6, 100, function() {
             console.timeEnd('render_word');
             // console.log("Sessions", session_list);
             // console.log("numberings", $.map(session_list, value_from_idn));
-            console.log("listing_words", listing_words);
+            // console.log("listing_words", listing_words);
             // EXAMPLE:
             //     Sessions (11) ["0q83_044D", "0q83_0460", "0q83_0464", "0q83_046C", "0q83_0470",
             //                    "0q83_047B", "0q83_047E", "0q83_0491", "0q83_04C8", "0q83_04CE", "0q83_04D9"]
@@ -84,45 +78,10 @@ function js_for_meta_lex(window, $, listing_words, MONTY) {
             //                    0q82_A7__8A05F9A0A1873A14BD1C_1D0B00: {...}, 0q82_A8__82AB_1D0300: {...},
             //                    0q82_A8__830425_1D0400: {...}, 0q82_A8__83044D_1D0400: {...}, ...}
             setTimeout(function() {
-                console.time('listing_words_loop');
-                // looper(listing_words, function listing_words_loop(idn, listed) {
-                //     if (has(listed, 'iconify')) {
-                //         // // noinspection HtmlRequiredAltAttribute,RequiredAttributes
-                //         // var $img = $('<img>', {
-                //         //     class: 'iconify',
-                //         //     src: listed.iconify,
-                //         //     alt: "icon for " + listed.name,
-                //         //     title: "icon for " + listed.name
-                //         // });
-                //         // // TODO:  Graceful handling if iconify but no name?
-                //         // var $words_to_iconify = $data_idn(idn);
-                //         // $words_to_iconify.empty().append($img);
-                //     } else if (has(listed, 'name')) {
-                //         // var $words_to_name = $data_idn(idn);
-                //         // $words_to_name.attr('title', listed.name);
-                //     } else if (listed.is_anonymous) {
-                //         // var parts = [];
-                //         // if (has(listed, 'ip_address')) {
-                //         //     parts.push(listed.ip_address);
-                //         // }
-                //         // parts.push('#' + listed.index_number);
-                //         // if (has(listed, 'browser')) {
-                //         //     parts.push(listed.browser);
-                //         // }
-                //         // if (has(listed, 'platform')) {
-                //         //     parts.push(listed.platform);
-                //         // }
-                //         // var $anons_to_name = $data_idn(idn);
-                //         // $anons_to_name.find('.named').text(parts.join(" "));
-                //     }
-                // });
-                console.timeEnd('listing_words_loop');
-                setTimeout(function() {
-                    console.time('whn_delta');
-                    whn_delta_render();
-                    console.timeEnd('whn_delta');
-                    console.timeEnd('total');
-                }, 6);
+                console.time('whn_delta');
+                whn_delta_render();
+                console.timeEnd('whn_delta');
+                console.timeEnd('total');
             }, 6);
         });
     });
@@ -201,38 +160,8 @@ function js_for_meta_lex(window, $, listing_words, MONTY) {
         var $referrer;
 
         switch (vrb_idn) {
-        // case MONTY.IDN.IP_ADDRESS_TAG:
-        //     var ip_address = txt;
-        //     if (has(listing_words, sbj_idn)) {
-        //         listed = listing_words[sbj_idn];
-        //         if (listed.is_anonymous) {
-        //             // console.log(
-        //             //     "Tagging",
-        //             //     $word.attr('value'),
-        //             //     sbj_idn,
-        //             //     ip_address
-        //             // );
-        //             listed.ip_address = ip_address;
-        //             listed.session_idn = obj_idn;
-        //         } else {
-        //             // console.log("non-anonymous", $word.attr('value'));
-        //             // TODO:  Non-anonymous session tagged, how to reveal this info?
-        //         }
-        //     } else {
-        //         console.log("Unlisted", sbj_idn);
-        //     }
-        //     break;
-        // case MONTY.IDN.ICONIFY:
-        //     chronicle(obj_idn, 'img_src', txt);
-        //     break;
-        // case MONTY.IDN.NAME:
-        //     chronicle(obj_idn, 'name', txt);
-        //     break;
         case MONTY.IDN.DEFINE:
             if (obj_idn === MONTY.IDN.BROWSE) {
-                // NOTE:  These didn't work. Why?
-                //        || obj_idn === MONTY.IDN.SESSION_OBSOLETE
-                //        || obj_idn === MONTY.IDN.IP_ADDRESS_OBSOLETE) {
                 session_list.push(idn);
             }
             break;
@@ -284,54 +213,9 @@ function js_for_meta_lex(window, $, listing_words, MONTY) {
         return url;
     }
 
-    function path_join(left, right) {
-        left = left.replace(/\/$/, "");
-        right = right.replace(/^\//, "");
-        return left + '/' + right;
-    }
-    console.assert('foo/bar' === path_join('foo', 'bar'));
-    console.assert('foo/bar' === path_join('foo/', '/bar'));
-
     function value_from_idn(idn) {
         return $_from_id(idn).attr('value');
     }
-    // function chronicle(idn, field_name, value) {
-    //     if (has(listing_words, idn)) {
-    //         var listed = listing_words[idn];
-    //         if (listed.is_anonymous) {
-    //             console.warn(
-    //                 "Anonymous chronicle",
-    //                 idn,
-    //                 field_name,
-    //                 value.substr(0, 20)
-    //             );
-    //             // TODO:  Is this a problem?  Tagging anonymous users?
-    //         // } else {
-    //         //     console.log(
-    //         //         "Chronicle",
-    //         //         idn,
-    //         //         field_name,
-    //         //         value.substr(0, 20)
-    //         //     );
-    //         }
-    //         listed[field_name] = value;
-    //     } else {
-    //         console.debug(
-    //             "Non-listed chronicle",
-    //             idn,
-    //             field_name,
-    //             value.substr(0,20)
-    //         );
-    //         // TODO:  keep track of non-listing words too
-    //     }
-    // }
-
-    // function $data_idn(idn) {
-    //     return $data('idn', idn);
-    // }
-    // function $data(name, value) {
-    //     return $('[data-' + $.escapeSelector(name) + '=' + $.escapeSelector(value) + ']');
-    // }
     function $_from_id(id) {
         return $(selector_from_id(id));
     }
@@ -345,10 +229,6 @@ function js_for_meta_lex(window, $, listing_words, MONTY) {
     function sub($word, sub) {
         var $span = $word.find(selector_from_class(sub));
         var idn = $span.data('idn');
-
-        // var $inner = $('<span>');
-        // $span.append($inner);
-        // $inner.addClass('named');
         var $inner = $span.find('.named');
         var title = sub + " = " + idn;
         var value = value_from_idn(idn);
@@ -438,11 +318,8 @@ function js_for_meta_lex(window, $, listing_words, MONTY) {
     function sub_txt($word) {
         var txt = $word.data('txt');
         if (is_laden(txt)) {
-            // var $span = $('<span>', {class: 'txt'});
             var $span = $word.find('.txt');
             $span.text(UNICODE.LEFT_DOUBLE_QUOTE + compress_txt(txt) + UNICODE.RIGHT_DOUBLE_QUOTE);
-            // $word.append(" ");
-            // $word.append($span);
         }
         return txt;
     }
@@ -451,8 +328,6 @@ function js_for_meta_lex(window, $, listing_words, MONTY) {
         var whn_seconds = $word.data('whn');
         var word_date = date_from_whn(whn_seconds);
         var delta = delta_format(MONTY.NOW - whn_seconds);
-        // var delta = delta_format(delta_seconds(word_date, now_date));
-        // var delta = {units_long: "X", description_short: "8X", description_long: "Eight Ex"};
         var $span = $word.find('.whn');   // $('<span>', {class: 'whn'});
         $span.addClass(delta.units_long);
         $span.text(delta.description_short);
@@ -467,22 +342,14 @@ function js_for_meta_lex(window, $, listing_words, MONTY) {
                 " local"
             )
         );
-        // $word.append($span);
         if ($word_previous !== null) {
-            // var word_previous_date = date_from_whn($word_previous.data('whn'));
             var between = delta_format($word.data('whn') - $word_previous.data('whn'));
-            // var between = delta_format(delta_seconds(word_previous_date, word_date));
-            // var between = delta_format(60);
-            // var between = {num: 60, units_long: "X", description_short: "8X", description_long: "Eight Ex"};
-
-            // $word.addClass('delta-' + between.units_long);
             if (between.num >= 3600) {
                 $word.css('border-top-color', gray_scale(log_time_scale(between.num, 333, 0)));
                 if (between.num >= 7*24*3600) {
                     $word.css('border-top-width', log_time_scale(between.num, -150, 100));
                 }
             }
-            // $word.css('border-top-width', line_width);
             whn_delta.push(between);
         }
     }
@@ -498,6 +365,14 @@ function js_for_meta_lex(window, $, listing_words, MONTY) {
         var last_delta_between = delta_format(last_delta_float);
         whn_delta.push(last_delta_between);
     }
+
+    function path_join(left, right) {
+        left = left.replace(/\/$/, "");
+        right = right.replace(/^\//, "");
+        return left + '/' + right;
+    }
+    console.assert('foo/bar' === path_join('foo', 'bar'));
+    console.assert('foo/bar' === path_join('foo/', '/bar'));
 
     /**
      *
@@ -601,13 +476,10 @@ function js_for_meta_lex(window, $, listing_words, MONTY) {
         return interval;
     }
 
-
     function date_from_whn(whn) {
         return new Date(whn * 1000.0);
     }
-    // function delta_seconds(date_early, date_late) {
-    //     return (date_late.getTime() - date_early.getTime()) / 1000.0;
-    // }
+
     /**
      * Is a txt field nonempty?
      *
@@ -622,7 +494,6 @@ function js_for_meta_lex(window, $, listing_words, MONTY) {
      * @return {boolean}
      */
     function is_laden(txt) {
-        // return typeof txt === 'undefined' || txt === null || txt === "";
         return is_specified(txt) && txt !== "";
     }
     console.assert(is_laden(" "));
@@ -664,21 +535,21 @@ function js_for_meta_lex(window, $, listing_words, MONTY) {
      *
      * EXAMPLE:  delta_format(1) == {
      *     "num": 1,
-     *     "amount_short": "1",
-     *     "amount_long": "1.0",
-     *     "units_short": "s",
-     *     "units_long": "seconds",
+     *     "amount_short":      "1",
+     *     "amount_long":       "1.0",
+     *     "units_short":       "s",
+     *     "units_long":        "seconds",
      *     "description_short": "1s",
-     *     "description_long": "1.0 seconds"
+     *     "description_long":  "1.0 seconds"
      * }
      * EXAMPLE:  delta_format(3628800) == {
      *     "num": 3628800,
-     *     "amount_short": "42",
-     *     "amount_long": "42.0",
-     *     "units_short": "d",
-     *     "units_long": "days",
+     *     "amount_short":      "42",
+     *     "amount_long":       "42.0",
+     *     "units_short":       "d",
+     *     "units_long":        "days",
      *     "description_short": "42d",
-     *     "description_long": "42.0 days"
+     *     "description_long":  "42.0 days"
      * }
      *
      * @param sec - number of seconds

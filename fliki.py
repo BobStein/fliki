@@ -1074,9 +1074,7 @@ def unslumping_home():
 
 
 def short_long_description(user_word):
-    # namings = lex.find_words(obj=user_word, vrb=name_word)
     try:
-        # user_naming_txt = namings[-1].txt
         user_naming_txt = user_word.txt
     except (IndexError, AttributeError):
         user_naming_txt = "(unknown contributor)"
@@ -1174,7 +1172,6 @@ def meta_lex():
             listing_dict = dict()
 
             def listing_log(sub, **kwargs):
-                # if isinstance(sub.lex, qiki.Listing):
                 q = sub.idn.qstring()
                 if q not in listing_dict:
                     listing_dict[q] = dict()
@@ -1225,30 +1222,6 @@ def meta_lex():
                             index=word.sbj.index.qstring(),
                             index_number=native_num(word.sbj.index),
                         )
-
-                    # for sub_word in (word.sbj, word.vrb, word.obj):
-                    #     if sub_word.idn.is_suffixed() and isinstance(sub_word.lex, qiki.Listing):
-                    #         listing_log(
-                    #             sub_word,
-                    #             meta_idn=sub_word.lex.meta_word.idn.qstring(),
-                    #             is_anonymous=sub_word.is_anonymous,
-                    #             lex_class=type_name(sub_word.lex),
-                    #             word_class=sub_word.lex.word_class.__name__,
-                    #             index=sub_word.index.qstring(),
-                    #             index_number=native_num(sub_word.index),
-                    #         )
-                        # qstring = sub_word.idn.qstring()
-                        # if isinstance(sub_word.lex, qiki.Listing) and qstring not in listing_dict:
-                        #     listing_dict[qstring] = dict(
-                        #         # txt=str(sub_word.txt),
-                        #         # NOTE:  causes lots a queries: 2x google and 4x anon
-                        #         meta_idn=sub_word.lex.meta_word.idn.qstring(),
-                        #         is_anonymous=sub_word.is_anonymous,
-                        #         lex_class=type_name(sub_word.lex),
-                        #         word_class=sub_word.lex.word_class.__name__,
-                        #         index=sub_word.index.qstring(),
-                        #         index_number=native_num(sub_word.index),
-                        #     )
 
                     vrb_z = z(word.vrb.idn)
                     if vrb_z == Z.IP_ADDRESS_TAG:
@@ -1332,7 +1305,6 @@ def meta_all():
 
         with html.body(class_='target-environment') as body:
             with body.p() as p:
-                # p("Hello {}!".format(auth.qiki_user.txt))
                 p.raw_text(auth.log_html())
 
             qc_start = lex.query_count
@@ -1521,7 +1493,6 @@ def meta_all():
                         delta = None
                         extra_class = ''
                     else:
-                        # _, delta_whn_description, delta_whn_class = whn_format(last_whn, word.whn)
                         delta = DeltaTimeLex()[last_whn](u'differ')[word.whn]
                         extra_class = ' delta-' + delta.units_long
                     with ol.li(
@@ -1549,24 +1520,12 @@ def meta_all():
                             show_question_obj(li, word, title_prefix="obj = ")
                         elif word.vrb.obj == browse_verb:
                             show_question_obj(li, word, title_prefix="obj = ")
-                        # elif word.obj.obj == browse_verb:
-                        #     show_session_obj(li, word, title_prefix="obj = ")
                         else:
                             show_sub_word(li, word.obj, class_='wrend obj', title_prefix="obj = ")
                             show_num(li, word)
                             show_txt(li, word)
-                            # if word.num != qiki.Number(1):
-                            #     with li.span(class_='word num', title="num = " + word.num.qstring()) as span:
-                            #         span.text(" ")
-                            #         span.char_name('times')
-                            #         span.text(render_num(word.num))
-                            # if word.txt != '':
-                            #     with li.span(class_='word txt') as span:
-                            #         span.text(" ")
-                            #         quoted_compressed_txt(span, word.txt)
 
                         li.span(" ")
-                        # show_whn(li, word.whn, class_='word whn', title_prefix = "whn = ")
                         ago = ago_lex.describe(word.whn)
                         with li.span(
                             title="whn = " + ago.description_longer,   # e.g. "34.9 hours ago: 2019.0604.0459.02"
