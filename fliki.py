@@ -53,6 +53,7 @@ DO_MINIFY = False
 config_names = ('AJAX_URL', 'JQUERY_VERSION', 'JQUERYUI_VERSION')
 config_dict = {name: globals()[name] for name in config_names}
 SCRIPT_DIRECTORY = os.path.dirname(os.path.realpath(__file__))   # e.g. '/var/www/flask'
+PARENT_DIRECTORY = os.path.dirname(SCRIPT_DIRECTORY)             # e.g. '/var/www'
 GIT_SHA = git.Repo(SCRIPT_DIRECTORY).head.object.hexsha
 GIT_SHA_10 = GIT_SHA[ : 10]
 NUM_QOOL_VERB_NEW = qiki.Number(1)
@@ -814,11 +815,14 @@ def os_path_static(relative_url):
 
     assert '/var/www/static/foo.bar' == os_path_static('foo.bar')
     """
-    return os.path.join(SCRIPT_DIRECTORY, flask_app.static_folder, relative_url)
+    # print("os_path_static", SCRIPT_DIRECTORY, flask_app.static_folder, relative_url)
+    # EXAMPLE:  os_path_static D:\PyCharmProjects\fliki D:\PyCharmProjects\fliki\static code/css.css
+    # Oops, this was broken:  return os.path.join(SCRIPT_DIRECTORY, flask_app.static_folder, relative_url)
+    return flask.safe_join(flask_app.static_folder, relative_url)
 
 
 def os_path_qiki_javascript(relative_url):
-    return os.path.join(SCRIPT_DIRECTORY, '..', 'qiki-javascript', relative_url)
+    return flask.safe_join(PARENT_DIRECTORY, 'qiki-javascript', relative_url)
     # NOTE:  Assume the fliki and qiki-javascript repos are in sibling directories.
 
 

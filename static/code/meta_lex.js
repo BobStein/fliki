@@ -518,11 +518,11 @@ function js_for_meta_lex(window, $, listing_words, MONTY) {
     var MONTH = 30*DAY;
     var YEAR = 365*DAY;
 
-    var UP_TO_SECOND = 120*SECOND;
-    var UP_TO_MINUTE = 120*MINUTE;
-    var UP_TO_HOUR = 48*HOUR;
-    var UP_TO_DAY = 90*DAY;
-    var UP_TO_MONTH = 24*MONTH;
+    var UP_TO_SECOND = 99.4*SECOND;   // 99s -> 2m
+    var UP_TO_MINUTE = 99.4*MINUTE;   // 99m -> 2h
+    var UP_TO_HOUR   = 48.4*HOUR;     // 48h -> 2d
+    var UP_TO_DAY    = 99.4*DAY;      // 99d -> 3M
+    var UP_TO_MONTH  = 24.4*MONTH;    // 24M -> 2Y
 
     // CAUTION:  Because these "constants" are defined here,
     //           delta_format() can be called before it works.
@@ -532,6 +532,8 @@ function js_for_meta_lex(window, $, listing_words, MONTY) {
 
     /**
      * Format a period of time in multiple human-readable formats.
+     *
+     * description_short is guaranteed 2-3 characters from 0 time (z) to 99.5 years (99Y).
      *
      * EXAMPLE:  delta_format(1) == {
      *     "num": 1,
@@ -555,6 +557,35 @@ function js_for_meta_lex(window, $, listing_words, MONTY) {
      * @param sec - number of seconds
      * @return {{}}
      */
+    // TODO:  Candidate short descriptions for 0-1 second:
+    //          0.05 - 0.94    ...  ".1s" - ".9s"
+    //        0.0094 - 0.0500             ?          10ms,99ms,.01s,.05s,.09s are too long
+    //                                               9-90 milliseconds - NOMINAL problem range
+    //                                               10-50 milliseconds - REAL problem range
+    //                                               can't be "50m"!
+    //                                               Xms-Lms Roman Numerals???
+    //        0.0005 - 0.0094  ...  "1ms" - "9ms"
+    //        9.4e-6 - 500e-6             ?          10-500 microseconds
+    //                                               10us,99us,.1ms,.5ms,.9ms   4-char-rule fits!
+    //         .5e-6 - 9.4e-6  ...  "1us" - "9us"
+    //        9.4e-9 - 500e-9
+    //         .5e-9 - 9.4e-9  ...  "1ns" - "9ns"
+    //
+    //        3.5 characters would work 1ms,9ms,.01s,.05s,.1s
+    //          4 characters is needed for 30 microseconds:  .1ms is too big, 9us is too small
+    //                       Oh wait!  30u would be fine! So would 30n, 30p, 30f, 30a, 30z, 30y
+    //        So the real problem is 30 milliseconds.  That bloody versatile letter m!
+    //            .1s is 30x too big
+    //            9ms is 30x too small
+    //            30m is ambiguous (looks like 30 minutes)
+    //            .03s might be a worthy compromise, similarly for .01s to .05s
+    //            .1s is maybe good enough for 60 milliseconds, anyway
+    //                   definitely good enough for 95 milliseconds
+    //        So there'd be 3.5 characters 9.5 to 95 milliseconds ONLY, shown as .01s to .09s
+    //            Wow, we could REALLY afford squeeze that decimal in close to the zero,
+    //            because nowhere else is a digit preceded by a zero.
+    //        Immediately outside the range .01s to .09s are
+    //                                  9ms      and     .1s
     function delta_format(sec) {
         function div(n, d) {
             return (n/d).toFixed(0);
@@ -564,7 +595,7 @@ function js_for_meta_lex(window, $, listing_words, MONTY) {
         }
 
         var word = {num: sec};
-        if (sec === 0.0) {
+        if (sec === 0.000000000000000) {
             word.amount_short = "";
             word.amount_long = "";
             word.units_short = "z";
