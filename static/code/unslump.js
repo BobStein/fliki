@@ -12,8 +12,24 @@
  */
 function js_for_unslumping(window, $, MONTY) {
 
+    var INSERT_AFTER_TARGET = 1;
+    // SEE:  SelectJS options, https://github.com/SortableJS/Sortable#user-content-options
+
     qoolbar.ajax_url(MONTY.AJAX_URL);
     $(document).ready(function() {
+        $('#my_contributions, #their_contributions').sortable({
+            animation: 150,
+            group: 'contributions',
+            handle: '.grip',
+            ghostClass: 'ghost',
+            draggable: '.container',
+            onMove: function (evt) {
+                if ($(evt.related).hasClass('entry')) {
+                    return INSERT_AFTER_TARGET;
+                }
+            }
+        });
+
         qoolbar.i_am(MONTY.me_idn);
         var $status =  $('#status');
         $status.text("Loading qoolbar...");

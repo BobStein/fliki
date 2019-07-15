@@ -1,13 +1,25 @@
-/* css.css */
+/* meta_lex.css */
 
 body {
     margin: 8px;
 }
-.lex-list {
+ol.lex-list {
     padding-inline-start: 48px;
+    /*counter-reset: list;*/
+}
+ol.lex-list > li.srend {
+    /*list-style: none;*/
+    /*position: relative;*/
+}
+ol.lex-list > li.srend:before {
+    /*content: attr(id);*/
+    /*counter-increment: list;*/
+    /*position: absolute;*/
+    /*text-align: right;*/
+    /*left: -1.4em;*/
 }
 
-#logging {
+#login-prompt {
     text-align: right;
 }
 
@@ -17,26 +29,36 @@ body {
 }
 
 .wrend .named.anonymous {
-    background-color: #FFDDDD;
+    background-color: #FFDDDD;   /* pink = anonymous */
 }
 
-.wrend .named.lex {
-    background-color: #DDFFDD;
+.wrend .named.lex,
+.wrend .named.sbj-lex,
+.wrend.vrb .named.sbj-lex {
+    background-color: #DDFFDD;   /* green = lex defined this word */
+}
+
+.wrend .named.session,
+.wrend .named.hit,
+.wrend.vrb .named.session,
+.wrend.vrb .named.hit {
+    background-color: #FFFFDD;   /* yellow = session # or hit # */
 }
 
 .wrend .named.empty,
 .wrend .named.un-lexed {
-    background-color: #FFDDFF;
+    background-color: #FFDDFF;   /* pink = unexpectedly empty txt, unable to describe. */
 }
 
-.wrend a .named {
-    background-color: #DDDDFF;
+.wrend a .named,
+.wrend a .named.sbj-lex {
+    background-color: #DDDDFF;   /* blue = link to a path */
 }
 
 .wrend .named {
     border: 1px solid silver;
     padding: 0 2px 2px 2px;
-    font: small-caption;
+    font: status-bar;
     line-height: 12px;
     display: inline-block;
     background-color: white;
@@ -51,12 +73,6 @@ body {
 }
 
 .wrend.vrb .named {
-    border: 1px solid silver;
-    padding: 0 2px 2px 2px;
-    font: small-caption;
-    line-height: 12px;
-    display: inline-block;
-    background-color: white;
   -webkit-border-radius: 0.5em;
      -moz-border-radius: 0.5em;   /*noinspection CssUnknownProperty*/
        -o-border-radius: 0.5em;

@@ -3,28 +3,58 @@ h1, h2, h3, h4 {
     margin-top: 0;
 }
 
-#logging {
-    text-align: right;
-}
-
-#my_ump {
+.target-environment {
+    -webkit-border-radius: 0.5em;
+       -moz-border-radius: 0.5em;
+            border-radius: 0.5em;
     padding: 0.5em 0.5em 0.5em 0.5em;
-}
-
-#their_ump {
     margin-top: 1em;
-    padding: 0.5em 0.5em 0.5em 0.5em;
+}
+#my_ump.target-environment {
+    margin-top: 0;
 }
 
-#my_contributions {
-    /*border: 1px black solid;*/
-    padding: 0.9em 0.5em 0.9em 0.5em;
+.target-environment h2 {
+    color: #AAAAAA;
+    font-family: 'Arial Black', sans-serif;
 }
-#their_contributions {
-    /*border: 1px black solid;*/
+
+.target-environment h2 .how-many {
+    font-family: 'Arial', sans-serif;
+    font-weight: normal;
+}
+
+#login-prompt {
+    text-align: right;
+    font: menu;
+}
+#text_ump,
+#caption_ump,
+.contribution {
+    font-family: 'Literata', serif;
+}
+
+.anon-blurb {
+    font-family:  'Georgia', 'Garamond', serif;
+    font-style: italic;
+}
+
+.category {
     padding: 0.9em 0.5em 0.9em 0.5em;
 }
 
+#text_ump,
+#caption_ump,
+#enter_ump {
+    display: block;
+    margin: 0;
+}
+#text_ump {
+    width: 18em;
+    height: 5em;
+}
+
+.container-entry,
 .container {
     display: inline-block;
     vertical-align: top;
@@ -33,6 +63,10 @@ h1, h2, h3, h4 {
 .contribution {
     border-color: black;
     border-style: solid;
+    -webkit-border-top-left-radius: 0.35em;
+            border-top-left-radius: 0.35em;
+        -moz-border-radius-topleft: 0.35em;
+
     padding: 0.7em 0.5em 0.7em 0.5em;
     white-space: pre-line;
     background-color: #EEEEEE;
@@ -46,9 +80,6 @@ h1, h2, h3, h4 {
     resize: both;
 }
 
-.contribution.entry {
-    border: none;
-}
 
 .mine .contribution {
 }
@@ -94,4 +125,44 @@ input:disabled + label {
 .contribution + .qool-bling {
     margin-top: 0.1em;
     display: block;
+}
+
+.grip {
+    cursor: move;
+    padding-right: 0.3em;
+}
+
+.ghost > div,
+.ghost > span {
+    visibility: hidden;
+}
+.ghost {
+    border: 0.25em dashed #AAAAAA;
+}
+
+.valve {
+    cursor: pointer;
+    -webkit-user-select: none;    /*noinspection CssUnknownProperty*/
+     -khtml-user-select: none;
+       -moz-user-select: none;
+        -ms-user-select: none;
+
+}
+.valve-closed .closer,
+.valve-opened .opener,
+.valve-hidden {
+    display: none;
+}
+.closer,
+.opener {
+    width: 1em;
+    display: inline-block;
+}
+
+.double-anon {
+    -ms-filter: "progid:DXImageTransform.Microsoft.Alpha(Opacity=50)"; /* IE 8 */
+        filter:                                    alpha(opacity=50);  /* IE 5-7 */ /*noinspection CssUnknownProperty*/
+                                               -khtml-opacity: 0.50;   /* Safari 1.x */
+                                                 -moz-opacity: 0.50;   /* Firefox */
+                                                      opacity: 0.50;   /* Good browsers */
 }

@@ -45,7 +45,6 @@
 <link rel="stylesheet" type="text/css" href="{{ url_for('qiki_javascript', filename='qoolbar.css') | cache_bust }}" />
 <script src="{{ url_for('qiki_javascript', filename='jquery.hotkeys.js') | cache_bust }}"></script>
 {# OR:  https://raw.githubusercontent.com/jeresig/jquery.hotkeys/master/jquery.hotkeys.js #}
-<script src="//cdn.jsdelivr.net/jquery.cookie/1.4.1/jquery.cookie.js"></script>
 <script>
 var AJAX_URL = '{{ AJAX_URL }}';
 qoolbar.ajax_url(AJAX_URL);

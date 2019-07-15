@@ -89,11 +89,18 @@ def flask_earliest_convenience():
 
 class WorkingIdns(object):
 
-    def __init__(self):
+    # TODO:  The instance of this class, "IDN" should probably be a member of
+    #        LexFliki, except we don't want the lookups here to run every
+    #        session.  For a given lex (database) these idns will never change.
+    #        The instantiation of LexFliki actually represents a *connection* to the lex,
+    #        which comes and goes every session.  What object can better represent the
+    #        lex itself, including these idns?
+    def __init__(self, lex):
         with flask_app.app_context():
-            setup_lex()
-            if flask.g.is_online:
-                lex = flask.g.lex
+            # setup_lex()
+            # if flask.g.is_online:
+            #     lex = flask.g.lex
+            if lex is not None:
                 self.LEX               = lex.noun(u'lex').idn
                 self.VERB              = lex.noun(u'verb').idn
                 self.DEFINE            = lex.verb(u'define').idn
@@ -113,10 +120,50 @@ class WorkingIdns(object):
                 self.GOOGLE_LISTING    = lex.define(self.LISTING, u'google user').idn
                 self.ANONYMOUS_LISTING = lex.define(self.LISTING, u'anonymous').idn
                 self.QOOL              = lex.verb(u'qool').idn
+                self.UNSLUMP_OBSOLETE  = lex.verb(u'unslump').idn
+
+                self.RESOURCE          = lex.noun(u'resource').idn
+                self.QUOTE             = lex.define(self.RESOURCE, u'quote').idn
+
+                self.CONTRIBUTE        = lex.verb(u'contribute').idn
+                self.CAPTION           = lex.verb(u'caption').idn
+
+                self.CATEGORY          = lex.verb(u'category').idn
+                self.CAT_MY            = lex.define(self.CATEGORY, u'my').idn
+                self.CAT_THEIR         = lex.define(self.CATEGORY, u'their').idn
+                self.CAT_ANON          = lex.define(self.CATEGORY, u'anon').idn
+                self.CAT_TRASH         = lex.define(self.CATEGORY, u'trash').idn
+                # self.CAT_MINE_OBSOLETE = lex.define(self.CATEGORY, u'mine').idn
+                # self.CAT_THINE_OBSOLETE= lex.define(self.CATEGORY, u'thine').idn
+
+
+                # self.REORDER           = lex.verb(u'reorder').idn
+
+                # self.EXPLAIN           = lex.verb(u'explain').idn
+                self.FENCE_POST_RIGHT  = lex.noun(u'fence post right').idn
+
+                # lex[lex](self.EXPLAIN, use_already=True)[self.FENCE_POST_RIGHT] = \
+                #     u"Represent the contribution to the right of the right-most contribution in a category.", 2
+                # lex[lex](self.EXPLAIN, use_already=True)[self.FENCE_POST_RIGHT] = \
+                #     u"Use it for a reordering number, instead of a contribution idn. " \
+                #     u"Call it a psuedo-contribution-idn. " \
+                #     u"So when we say a new contribution goes to the left of this, " \
+                #     u"we mean it goes all the way on the right. " \
+                #     u"It solves this fence-post-problem: " \
+                #     u"when 3 contributions exist already, there are 4 places a new one could go."
+                # NOTE:  Oops, these step on each other.  Each thinks it's overwriting the other, because
+                #        use_already looks at the latest s,v,o match.
+
+                self.FIELD_FLUB        = lex.verb(u'field flub').idn   # report of some wrongness from the field
 
     def dictionary_of_qstrings(self):
         of_idns = dict_from_object(self)
-        of_qstrings = {key: idn.qstring() for key, idn in of_idns.items()}
+        assert \
+            all(isinstance(idn, qiki.Number) for idn in of_idns.values()), \
+            "Expecting Numbers.  These members are not: " + repr(
+                {n: type_name(x) for n, x in of_idns.items() if not isinstance(x, qiki.Number)}
+            )
+        of_qstrings = {name: idn.qstring() for name, idn in of_idns.items()}
         return of_qstrings
 
 
@@ -124,6 +171,8 @@ class LexFliki(qiki.LexMySQL):
 
     def __init__(self, **kwargs):
         self.query_count = 0
+        # NOTE:  lex.IDN is made for use by e.g. cat_cont_order(),
+        #        and therefore for spoofing by test_fliki.py which would test cat_cont_order()
         super(LexFliki, self).__init__(**kwargs)
 
     def _execute(self, cursor, query, parameters=()):
@@ -131,21 +180,26 @@ class LexFliki(qiki.LexMySQL):
         return super(LexFliki, self)._execute(cursor, query, parameters)
 
 
+def connect_lex():
+    try:
+        lex = LexFliki(**secure.credentials.for_fliki_lex_database)
+    except LexFliki.ConnectError as e:
+        print("CANNOT CONNECT", str(e))
+        return None
+    else:
+        return lex
+
+
+IDN = WorkingIdns(connect_lex())   # TODO:  Call this only via WSGI, not test_fliki.py
+
+
 def setup_lex():
     if hasattr(flask.g, 'lex'):
         print("WHOOPS, ALREADY SETUP WITH A LEX")
 
-    try:
-        flask.g.lex = LexFliki(**secure.credentials.for_fliki_lex_database)
-    except LexFliki.ConnectError as e:
-        print("CANNOT CONNECT", str(e))
-        flask.g.lex = None
-        flask.g.is_online = False
-    else:
-        flask.g.is_online = True
-
-
-IDN = WorkingIdns()
+    flask.g.lex = connect_lex()
+    flask.g.lex.IDN = IDN   # these lookups were done once at startup, now reused by this session
+    flask.g.is_online = flask.g.lex is not None
 
 
 def seconds_until_anonymous_question():
@@ -170,8 +224,9 @@ def anonymous_question_happened():
 
 
 class UNICODE(object):
-    RIGHT_ARROW = 0x2192
-    BLACK_RIGHT_POINTING_TRIANGLE = 0x25B6
+    BLACK_RIGHT_POINTING_TRIANGLE = u'\u25B6'
+    VERTICAL_ELLIPSIS = u'\u22EE'   # 3 vertical dots, aka &vellip; &#x022ee; &#8942;
+    VERTICAL_FOUR_DOTS = u'\u205E'   # 4 vertical dots
 
 
 class GoogleFlaskUser(flask_login.UserMixin):
@@ -203,7 +258,7 @@ class GoogleQikiListing(qiki.Listing):
         namings = self.meta_word.lex.find_words(
             sbj=self.meta_word.lex[self.meta_word.lex],
             vrb=IDN.NAME,   # Ooh, will this bubble out of Listing to LexMySQL?
-            obj=idn
+            obj=idn,
         )
         try:
             latest_naming = namings[0]
@@ -228,7 +283,11 @@ class AnonymousQikiListing(qiki.Listing):
         parts = []
         anon_user = self.composite_idn(session_verb_idn)
 
-        ips = self.root_lex.find_words(obj=session_verb_idn, vrb=IDN.IP_ADDRESS_TAG, sbj=anon_user)
+        ips = self.root_lex.find_words(
+            sbj=anon_user,
+            vrb=IDN.IP_ADDRESS_TAG,
+            obj=session_verb_idn,
+        )
         try:
             parts.append(str(ips[-1].txt))
         except IndexError:
@@ -236,7 +295,11 @@ class AnonymousQikiListing(qiki.Listing):
 
         parts.append("session #" + render_num(session_verb_idn))
 
-        uas = self.root_lex.find_words(obj=session_verb_idn, vrb=IDN.USER_AGENT_TAG, sbj=anon_user)
+        uas = self.root_lex.find_words(
+            sbj=anon_user,
+            vrb=IDN.USER_AGENT_TAG,
+            obj=session_verb_idn,
+        )
         try:
             user_agent_str = str(uas[-1].txt)
         except IndexError:
@@ -267,12 +330,12 @@ class AnonymousQikiListing(qiki.Listing):
 
 
 def dict_from_object(o):
-    props_and_underscores = vars(o)
-    props = [
-        p for p in props_and_underscores
+    properties_and_underscores = vars(o)
+    properties = [
+        p for p in properties_and_underscores
         if not p.startswith('__')
     ]
-    the_dict = {p: getattr(o, p) for p in props}
+    the_dict = {p: getattr(o, p) for p in properties}
     return the_dict
 
 
@@ -403,7 +466,13 @@ class Auth(object):
 
     def session_new(self):
         self.session_verb = self.lex.create_word(
-            sbj=self.lex[self.lex],
+            # sbj=self.qiki_user,
+            # NOTE:  Subject can't be user, when the user depends
+            #        on the about-to-be-created session word
+            #        (It's the payload in the suffix of the anon user idn.)
+            #        Or can it?!  That would be a feat.
+            #        Would require some shenanigans inside the max_idn_lock.
+            sbj=IDN.LEX,
             vrb=IDN.DEFINE,
             obj=IDN.BROWSE,
             txt=self.unique_session_identifier(),
@@ -456,6 +525,11 @@ class Auth(object):
         raise NotImplementedError
 
     @property
+    def current_host(self):
+        """E.g. 'qiki.info'"""
+        raise NotImplementedError
+
+    @property
     def login_url(self):
         raise NotImplementedError
 
@@ -480,7 +554,7 @@ class Auth(object):
     def form(self, variable_name):
         raise NotImplementedError
 
-    def log_html(self, then_url=None):
+    def login_html(self, then_url=None):
         """
         Log in or out link.  Redirected to then_url, defaults to current_url
         """
@@ -532,6 +606,14 @@ class Auth(object):
             )
         else:
             return "neither auth nor anon???"
+
+    # noinspection PyMethodMayBeStatic,PyUnusedLocal
+    def is_enough_anonymous_patience(self, delay):
+        # TODO
+        return True
+
+    def q(self, word_or_idn):
+        return self.lex.idn_ify(word_or_idn).qstring()
 
 
 class AuthFliki(Auth):
@@ -628,6 +710,10 @@ class AuthFliki(Auth):
         # NOTE:  Do NOT include query string,
         #        because quirky Flask appends an empty '?' even if there was none.
         # SEE:  path vs url, http://flask.pocoo.org/docs/api/#incoming-request-data
+
+    @property
+    def current_host(self):
+        return flask.request.host
 
     @property
     def login_url(self):
@@ -813,10 +899,10 @@ def os_path_static(relative_url):
     """
     Convert url to path, for static files.
 
-    assert '/var/www/static/foo.bar' == os_path_static('foo.bar')
+    EXAMPLE:  '/var/www/static/foo.bar' == os_path_static('foo.bar')
     """
     # print("os_path_static", SCRIPT_DIRECTORY, flask_app.static_folder, relative_url)
-    # EXAMPLE:  os_path_static D:\PyCharmProjects\fliki D:\PyCharmProjects\fliki\static code/css.css
+    # EXAMPLE:  os_path_static D:\PyCharmProjects\fliki D:\PyCharmProjects\fliki\static code/meta_lex.css
     # Oops, this was broken:  return os.path.join(SCRIPT_DIRECTORY, flask_app.static_folder, relative_url)
     return flask.safe_join(flask_app.static_folder, relative_url)
 
@@ -864,14 +950,14 @@ class FlikiHTML(web_html.WebHTML):
                 rel='shortcut icon',
                 href=flask.url_for('qiki_javascript', filename='favicon.ico')
             )
-            head.css_stamped(flask.url_for('static', filename='code/css.css'))
+            head.css_stamped(flask.url_for('static', filename='code/meta_lex.css'))
             head.css_stamped(flask.url_for('qiki_javascript', filename='qoolbar.css'))
             return head
 
     def footer(self):
+        self(newlines=True)
         self.jquery(JQUERY_VERSION)
         self.js('//ajax.googleapis.com/ajax/libs/jqueryui/{}/jquery-ui.min.js'.format(JQUERYUI_VERSION))
-        # self.js('//cdn.jsdelivr.net/jquery.cookie/1.4.1/jquery.cookie.js')
         self.js_stamped(flask.url_for('qiki_javascript', filename='jquery.hotkeys.js'))
         self.js_stamped(flask.url_for('qiki_javascript', filename='qoolbar.js'))
         return self
@@ -894,26 +980,276 @@ def cache_bust(s):
 
 @flask_app.route('/', methods=('GET', 'HEAD'))
 def home_or_root_directory():
-    return unslumping_home()
-    # return "home page not available"
+    return contribution_home()
 
 
 @flask_app.route('/home', methods=('GET', 'HEAD'))
 def home_subdirectory():
-    return unslumping_home()
+    return unslumping_home_obsolete()
 
 
-def unslumping_home():
+@flask_app.route('/meta/contrib', methods=('GET', 'HEAD'))
+def meta_contrib():
+    return contribution_home()
+
+
+def contribution_home():
+    t_start = time.time()
+    auth = AuthFliki()
+    # auth.hit(auth.current_path)   Suppress early churn
+    if auth.is_enough_anonymous_patience(MINIMUM_SECONDS_BETWEEN_ANONYMOUS_QUESTIONS):
+        with FlikiHTML('html') as html:
+            with html.header("Unslumping") as head:
+                head.css_stamped(auth.static_url('code/unslump.css'))
+                head.css('https://fonts.googleapis.com/css?family=Literata&display=swap')
+            html.body("Loading...")
+            with html.footer() as foot:
+                foot.js('https://cdn.jsdelivr.net/npm/sortablejs@1.9.0/Sortable.js')
+                foot.js('https://cdn.jsdelivr.net/npm/jquery-sortablejs@1.0.0/jquery-sortable.js')
+                foot.js_stamped(auth.static_url('code/contribution.js'))
+                with foot.script() as script:
+                    # script.raw_text('contribution = ' + contribution_json(auth) + ';\n')
+                    monty = dict(
+                        me_idn=auth.qiki_user.idn.qstring(),
+                        me_txt=auth.qiki_user.txt,
+                        is_anonymous=auth.is_anonymous,
+                        URL_HERE=auth.current_url,
+                        AJAX_URL=AJAX_URL,
+                        IDN=IDN.dictionary_of_qstrings(),
+                        NOW=float(time_lex.now_word().num),
+                        login_html=auth.login_html(),
+                        order=cat_cont_order(auth),
+                        # order.cat - list of categories in order
+                        # order.cont - dict by category of lists of contributions in order
+                        words=cat_cont_words(auth),
+                        # words.cat - dict by category of category words
+                        # words.cont - list of contribution words
+                    )
+                    script.raw_text('var MONTY = {json};\n'.format(
+                        json=json_encode(
+                            monty,
+                            indent=4,
+                            sort_keys=True,
+                        )
+                    ))
+                    script.raw_text('js_for_contribution(window, jQuery, qoolbar, MONTY);\n')
+    t_end = time.time()
+    print("/meta/contrib {:.3f} sec".format(t_end - t_start))
+    return html.doctype_plus_html()
+
+
+# TODO:  New sections:
+#        my unslumping - what I've entered, or dragged here, and not deleted
+#            Enter or drag stuff here that you find inspires you out of a slump.
+#        other's unslumping - entered by logged in users, and not dragged to my stuff
+#        anonymous unslumping - entered anonymously, and not dragged to my stuff
+#        trash
+#        spam
+#        |____| (your category name here)
+
+def cat_cont_words(auth):
+    lex = auth.lex
+
+    lex_category_verbs = lex.find_words(
+        idn = (IDN.CAT_MY, IDN.CAT_THEIR, IDN.CAT_ANON, IDN.CAT_TRASH),
+        # sbj=IDN.LEX,   # but this may include obsolete mine, thine
+        # vrb=IDN.DEFINE,
+        # obj=IDN.CATEGORY
+    )
+    user_category_verbs = lex.find_words(
+        sbj=auth.qiki_user,
+        vrb=IDN.DEFINE,
+        obj=IDN.CATEGORY,
+    )
+    category_verbs = lex_category_verbs + user_category_verbs
+    interesting_verbs = category_verbs + [lex[IDN.CAPTION]]
+
+    # resource_nouns = lex.find_words(obj=IDN.RESOURCE)
+    contributed_resources = lex.find_words(
+        vrb=IDN.CONTRIBUTE,
+        # obj=resource_nouns,   # this could be huge, so not helpful
+        jbo_vrb=interesting_verbs,
+        jbo_ascending=True,
+    )
+
+    do_grandfathering = True
+    if do_grandfathering:
+        contributed_resources += lex.find_words(
+            vrb=IDN.UNSLUMP_OBSOLETE,
+            jbo_vrb=interesting_verbs,
+            jbo_ascending=True,
+        )
+
+    vetted_words = vet(contributed_resources, auth)
+
+    # vetted_words.sort(key=lambda word: -word.idn)   (order handled elsewhere
+
+    return dict(
+        cat={w.idn.qstring() : w for w in category_verbs},
+        cont=vetted_words,
+    )
+
+
+def vet(words, auth):
+    """Filter out illicit words:  anonymous contributions from other anonymous users."""
+    sbj_warnings = set()
+
+    if auth.is_anonymous:
+
+        def allowed_word(word):
+            try:
+                is_logged_in = not word.sbj.is_anonymous
+            except AttributeError:
+                if word.sbj.idn == IDN.LEX:
+                    # NOTE:  This test is buried because sbj=lex words are expected to be rare.
+                    return True
+                sbj_q = auth.q(word.sbj)
+                if sbj_q not in sbj_warnings:
+                    sbj_warnings.add(sbj_q)
+                    print("sbj", sbj_q, "is neither user nor lex, starting with", repr(word))
+                return False
+
+            return is_logged_in or word.sbj == auth.qiki_user
+
+        vetted_words = [w for w in words if allowed_word(w)]
+        n_removed = len(words) - len(vetted_words)
+        if n_removed > 0:
+            print("Vetting removed", n_removed, "words")
+    else:
+        vetted_words = words
+    return vetted_words
+
+
+def cat_cont_order(auth):
+    """Determine order of categories and contributions."""
+
+
+    cat_order = [
+        auth.lex.IDN.CAT_MY,
+        auth.lex.IDN.CAT_THEIR,
+        auth.lex.IDN.CAT_ANON,
+        auth.lex.IDN.CAT_TRASH,
+        # TODO:  user-defined categories
+    ]
+    cont_order = dict()   # dictionary of contribution lists, keyed by category
+    cat_from_cont = dict()  # current category of each contribution
+
+    words = vet(auth.lex.find_words(), auth)
+
+    for word in words:
+
+        def cat_room(cat):
+            cat_q = auth.q(cat)
+            if cat_q not in cont_order:
+                cont_order[cat_q] = []
+
+        def add_cont(cat, cont, insert_index):
+            cat_q = auth.q(cat)
+            cont_q = auth.q(cont)
+            if cat_q not in cat_order:  print("CAT", cat_q, "unknown"); return
+            cat_from_cont[cont_q] = cat_q
+            cat_room(cat_q)
+            cont_order[cat_q].insert(insert_index, cont_q)
+
+        # def move_cat(new_cat, cont):
+        #     new_cat_q = auth.q(new_cat)
+        #     cont_q = auth.q(cont)
+        #     if new_cat_q not in cat_order:  print("CAT", new_cat_q, "unknown"); return
+        #     # if new_cat_q not in cont_order:  print("CAT", new_cat_q, "missing")
+        #     # because it may have been empty
+        #     if cont_q not in cat_from_cont:  print("CAT unrecorded for", cont_q); return
+        #     old_cat_q = cat_from_cont[cont_q]
+        #     if cont_q not in cont_order[old_cat_q]:  print("CAT", old_cat_q, "lost", cont_q); return
+        #
+        #     cont_order[old_cat_q].remove(cont_q)
+        #     add_cont(new_cat, cont, False)
+        #
+        # def reorder(cont, insert_left_of_this_cont):
+        #     cont_q = auth.q(cont)
+        #     insert_q = auth.q(insert_left_of_this_cont)
+        #     if cont_q not in cat_from_cont:  print("REORDER unrecorded", cont_q); return
+        #     cat_q = cat_from_cont[cont_q]
+        #     if cont_q not in cont_order[cat_q]:  print("REORDER", cat_q, "lost", cont_q); return
+        #     cont_order[cat_q].remove(cont_q)
+        #     if insert_q == auth.q(auth.lex.IDN.FENCE_POST_RIGHT):
+        #         where_insert = len(cont_order[cat_q])
+        #     else:
+        #         if insert_q not in cont_order[cat_q]:  print("REORDER", cat_q, "absent", insert_q); return
+        #         where_insert = cont_order[cat_q].index(insert_q)
+        #     cont_order[cat_q].insert(where_insert, cont_q)
+
+        def remove_cont(cont):
+            cont_q = auth.q(cont)
+            old_cat_q = cat_from_cont[cont_q]
+            new_cat_q = auth.q(word.vrb)
+            if new_cat_q not in cat_order:  print("CAT", new_cat_q, "unknown"); return
+            if cont_q not in cat_from_cont:  print("CAT unrecorded for", cont_q); return
+            if cont_q not in cont_order[old_cat_q]:  print("CAT", old_cat_q, "lost", cont_q); return
+            cont_order[old_cat_q].remove(cont_q)
+
+        def index_cont(cat, cont):
+            cat_q = auth.q(cat)
+            cont_q = auth.q(cont)
+            cat_room(cat)
+            if cont_q == auth.lex.IDN.FENCE_POST_RIGHT.qstring():
+                return len(cont_order[cat_q])
+            try:
+                return cont_order[cat_q].index(cont_q)
+            except ValueError:
+                print("CONT", cont_q, "missing from", cat_q)
+                return 0   # desperate fallback when reorder location makes no sense
+
+        if word.vrb.idn in (auth.lex.IDN.CONTRIBUTE, auth.lex.IDN.UNSLUMP_OBSOLETE):
+            if word.sbj == auth.qiki_user:
+                add_cont(auth.lex.IDN.CAT_MY, word, 0)
+            elif isinstance(word.sbj, AnonymousQikiListing.AnonymousQikiUser):
+                add_cont(auth.lex.IDN.CAT_ANON, word, 0)
+            else:
+                add_cont(auth.lex.IDN.CAT_THEIR, word, 0)
+        elif word.vrb.idn in cat_order:
+            if word.sbj == auth.qiki_user:
+                # move_cat(word.vrb, word.obj)
+                # reorder(word.obj, word.num)
+
+                # cont_q = auth.q(word.obj)
+                # old_cat_q = cat_from_cont[cont_q]
+                # new_cat_q = auth.q(word.vrb)
+                # if new_cat_q not in cat_order:  print("CAT", new_cat_q, "unknown"); return
+                # if cont_q not in cat_from_cont:  print("CAT unrecorded for", cont_q); return
+                # if cont_q not in cont_order[old_cat_q]:  print("CAT", old_cat_q, "lost", cont_q); return
+                # cont_order[old_cat_q].remove(cont_q)
+                remove_cont(word.obj)
+
+                # try:
+                #     insert_index = cont_order[new_cat_q].index(word.num)
+                # except ValueError:
+                #     insert_index = len(cont_order[new_cat_q])
+                add_cont(word.vrb, word.obj, index_cont(word.vrb, word.num))
+
+
+                # if word.num == 1:
+                #     '''Legacy category word, no reordering information.'''
+                # else:
+                #     reorder(word.obj, word.num)
+
+                # elif word.vrb.idn == auth.lex.IDN.REORDER:
+                #     '''Legacy reorder word.'''
+                #     reorder(word.obj, word.num)
+
+    return dict(cat=cat_order, cont=cont_order)
+
+
+def unslumping_home_obsolete():
     auth = AuthFliki()
     lex = auth.lex
-    auth.hit(auth.current_path)   # e.g. "/"
+    auth.hit(auth.current_path)   # e.g. "/home"
     with FlikiHTML('html') as html:
-        head = html.header("Unslumping")
+        head = html.header("Ump The Former")
         head.css_stamped(auth.static_url('code/unslump.css'))
 
         with html.body() as body:
-            with body.div(id='logging') as div:
-                div.raw_text(auth.log_html())
+            with body.div(id='login-prompt') as div_login:
+                div_login.raw_text(auth.login_html())
             body.div(id='my-qoolbar')
             body.div(id='status')
 
@@ -940,8 +1276,8 @@ def unslumping_home():
             if is_allowable_throughput:
                 with body.div(id='my_ump', class_='target-environment') as my_ump:
                     my_ump.h2("Stuff you find inspiring")
-                    my_contributions = my_ump.div(id='their_contributions')
-                    with my_contributions.div(id='box_ump', class_='container entry') as box_ump:
+                    my_contributions = my_ump.div(id='my_contributions')
+                    with my_contributions.div(id='box_ump', class_='container-entry') as box_ump:
                         box_ump.textarea(id='text_ump', placeholder="a quote")
                         box_ump.br()
                         box_ump.button(id='enter_ump').text("save")
@@ -974,8 +1310,6 @@ def unslumping_home():
                         pass
                         # anon_input(checked='checked')
                         # NOTE:  authenticated user, checkbox to see anonymous content defaults OFF
-
-                body.js_stamped(auth.static_url('code/unslump.js'))
 
                 unslumps = lex.find_words(vrb=IDN.DEFINE, txt=u'unslump')
                 uns_words = lex.find_words(
@@ -1035,6 +1369,12 @@ def unslumping_home():
                             with this_container.div(class_='contribution') as contribution:
                                 contribution.text(str(uns_word.txt))
                             with this_container.div(class_='caption', title=long_d) as contribution_caption:
+                                with contribution_caption.span(class_='grip') as grip:
+                                    grip.text(
+                                        UNICODE.VERTICAL_ELLIPSIS +
+                                        UNICODE.VERTICAL_ELLIPSIS +
+                                        " "   # TODO:  Make this a margin instead.
+                                    )
                                 contribution_caption.text(short_d)
                             return this_container
 
@@ -1060,13 +1400,17 @@ def unslumping_home():
                             })
                         )
 
-                monty = dict(
-                    me_idn=auth.qiki_user.idn.qstring(),
-                    AJAX_URL=AJAX_URL,
-                    IDN_LEX=lex[lex].idn.qstring(),
-                )
                 foot = body.footer()
+                foot.js('https://cdn.jsdelivr.net/npm/sortablejs@1.9.0/Sortable.js')
+                foot.js('https://cdn.jsdelivr.net/npm/jquery-sortablejs@1.0.0/jquery-sortable.js')
+                foot.js_stamped(auth.static_url('code/unslump.js'))
                 with foot.script() as script:
+                    script.raw_text('\n')
+                    monty = dict(
+                        me_idn=auth.qiki_user.idn.qstring(),
+                        AJAX_URL=AJAX_URL,
+                        IDN_LEX=lex[lex].idn.qstring(),
+                    )
                     script.raw_text('var MONTY = {json};\n'.format(json=json.dumps(
                         monty,
                         sort_keys=True,
@@ -1105,7 +1449,7 @@ def meta_raw():
     if not auth.is_online:
         return "lex offline"
     if auth.is_anonymous:
-        return auth.log_html()   # anonymous viewing not allowed, just show "login" link
+        return auth.login_html()   # anonymous viewing not allowed, just show "login" link
         # TODO:  Omit anonymous content for anonymous users (except their own).
 
     t_start = time.time()
@@ -1160,7 +1504,7 @@ def meta_lex():
     if not auth.is_online:
         return "lex offline"
     if auth.is_anonymous:
-        return auth.log_html()   # anonymous viewing not allowed, just show "login" link
+        return auth.login_html()   # anonymous viewing not allowed, just show "login" link
         # TODO:  Omit anonymous content for anonymous users (except their own).
 
     t_start = time.time()
@@ -1169,10 +1513,11 @@ def meta_lex():
         html.header("Lex")
 
         with html.body(class_='target-environment', newlines=True) as body:
-
-            body.div(id='logging').raw_text(auth.log_html())
+            body.div(id='login-prompt').raw_text(auth.login_html())
+            # body.button(id='toggle_idn')
 
             words = auth.lex.find_words()
+
             listing_dict = dict()
 
             def listing_log(sub, **kwargs):
@@ -1185,8 +1530,10 @@ def meta_lex():
 
             def z(idn):
                 """Convert qiki.Number into something more efficient to compare."""
-                # TODO:  Eyeroll, got to make Numbers more efficient.  Damn the normalizing.
-                return idn
+                # TODO:  Eye roll, got to make Numbers more efficient.  Damn the normalizing.
+                # return idn
+                # return idn.hex()
+                return idn.raw
 
             class Z(object):
                 IP_ADDRESS_TAG = z(IDN.IP_ADDRESS_TAG)
@@ -1201,6 +1548,7 @@ def meta_lex():
                         'class': 'srend',
                         'value': render_num(word.idn),
                         'id': word.idn.qstring(),
+                        'data-idn-native': render_num(word.idn),
                         'data-whn': render_whn(word.whn),
                         'title': tooltip,
                     }) as li:
@@ -1249,23 +1597,20 @@ def meta_lex():
                 foot.js_stamped(auth.static_url('code/d3.js'))
                 foot.js_stamped(auth.static_url('code/meta_lex.js'))
                 with foot.script() as script:
+                    script.raw_text('\n')
                     monty = dict(
                         IDN=IDN.dictionary_of_qstrings(),
-                        URL_PREFIX_QUESTION=url_from_question(''),
-                        URL_HERE=auth.current_url,
+                        LISTING_WORDS=listing_dict,
                         NOW=float(time_lex.now_word().num),
+                        URL_HERE=auth.current_url,
+                        URL_PREFIX_QUESTION=url_from_question(''),
                     )
                     script.raw_text('var MONTY = {json};\n'.format(json=json.dumps(
                         monty,
                         sort_keys=True,
                         indent=4,
                     )))
-                    script.raw_text('var listing_words = {};\n'.format(json.dumps(
-                        listing_dict,
-                        indent=4,
-                        sort_keys=True
-                    )))
-                    script.raw_text('js_for_meta_lex(window, window.$, listing_words, MONTY);\n')
+                    script.raw_text('js_for_meta_lex(window, window.$, MONTY);\n')
     t_render = time.time()
     response = html.doctype_plus_html()
     t_end = time.time()
@@ -1296,7 +1641,7 @@ def meta_all():
     if not auth.is_online:
         return "meta offline"
     if auth.is_anonymous:
-        return auth.log_html()   # anonymous viewing not allowed, just show "login" link
+        return auth.login_html()   # anonymous viewing not allowed, just show "login" link
         # TODO:  Instead of rejecting all anonymous-user viewing,
         #        maybe just omit anonymous-content.
         #        That is, where sbj.lex.meta_word.txt == 'anonymous'
@@ -1309,7 +1654,7 @@ def meta_all():
 
         with html.body(class_='target-environment') as body:
             with body.p() as p:
-                p.raw_text(auth.log_html())
+                p.raw_text(auth.login_html())
 
             qc_start = lex.query_count
             t_start = time.time()
@@ -1510,7 +1855,7 @@ def meta_all():
                                 units_class = 'subsec'
                             with li.span(class_='delta-triangle ' + units_class) as triangle:
                                 triangle(title=delta.description_long)
-                                triangle.char_code(UNICODE.BLACK_RIGHT_POINTING_TRIANGLE)
+                                triangle.text(UNICODE.BLACK_RIGHT_POINTING_TRIANGLE)
                             with li.span(class_='delta-amount ' + units_class) as amount:
                                 amount.text(delta.amount_short + delta.units_short)
 
@@ -1699,7 +2044,7 @@ def legacy_meta_all_words():
     if not auth.is_online:
         return "words offline"
     if auth.is_anonymous:
-        return auth.log_html()   # anonymous viewing not allowed, just show "login" link
+        return auth.login_html()   # anonymous viewing not allowed, just show "login" link
 
     lex = auth.lex
 
@@ -1735,6 +2080,7 @@ def legacy_meta_all_words():
 
     response = flask.render_template(
         'meta.html',
+        domain=auth.current_host,
         reports=reports,
         **config_dict
     )
@@ -1868,7 +2214,7 @@ def answer_qiki(url_suffix):
         len_answers=len(answers),
         len_questions=len(question_words) + len(hit_words),
         me_idn=auth.qiki_user.idn,
-        log_html=auth.log_html(),
+        log_html=auth.login_html(),
         render_question=render_question,
         dot_min='.min' if DO_MINIFY else '',
         **config_dict
@@ -1950,7 +2296,11 @@ def ajax():
     if not auth.is_online:
         return invalid_response("ajax offline")
 
+    t_start = time.time()
+    qc_start = auth.lex.query_count
+
     lex = auth.lex
+    action = None
 
     try:
         # flask_user, qiki_user = my_login()
@@ -2038,6 +2388,9 @@ def ajax():
             )
             return valid_response('idn', old_verb_idn.qstring())
 
+        elif action == 'contribution_order':
+            return valid_response('order', cat_cont_order(auth))
+
         elif action == 'anon_question':
             return valid_response('seconds', float(seconds_until_anonymous_question()))
 
@@ -2077,6 +2430,18 @@ def ajax():
 
         return invalid_response("request error")
 
+    finally:
+
+        t_end = time.time()
+        qc_end = auth.lex.query_count
+        print(
+            "Ajax {action}, {qc} queries, {t:.3f} sec".format(
+                action=repr(action),
+                qc=qc_end - qc_start,
+                t=t_end - t_start
+            )
+        )
+
 
 class WordEncoder(json.JSONEncoder):
     """Support JSON of qiki Word instances."""
@@ -2096,25 +2461,70 @@ class WordEncoder(json.JSONEncoder):
                 obj=w.obj.idn.qstring(),
                 whn=float(w.whn),
             )
+
             if w.txt != "":
                 d['txt'] = w.txt
+
             if w.num != 1:
-                d['num'] = native_num(w.num),
+                d['num'] = native_num(w.num)
+
+            if isinstance(w.sbj, AnonymousQikiListing.AnonymousQikiUser):
+                d['was_submitted_anonymous'] = True
+                # NOTE:  Not bothering to clutter up other words with anon False
+
+            if hasattr(w, 'jbo') and len(w.jbo) > 0:
+                d['jbo'] = w.jbo
+
             return d
+        elif isinstance(w, qiki.Number):
+            return w.qstring()
         else:
-            return super(WordEncoder, self).default(w)
+            try:
+                return super(WordEncoder, self).default(w)
+            except TypeError:
+                raise
 
 
 def valid_response(name, value):
+    return json_encode(dict([
+        ('is_valid', True),
+        (name, value)
+    ]))
+
+
+JSON_SEPARATORS_NO_SPACES = (',', ':')
+
+
+def fix_dict(thing):
+    if isinstance(thing, dict):
+        for key, value in thing.items():
+            if isinstance(key, qiki.Number):
+                key = key.qstring()
+            if isinstance(value, dict):
+                value = dict(fix_dict(value))
+            elif isinstance(value, list):
+                value = list(fix_dict(value))
+            elif isinstance(value, tuple):
+                value = tuple(fix_dict(value))
+            yield key, value
+    elif isinstance(thing, (list, tuple)):
+        for value in thing:
+            if isinstance(value, dict):
+                value = dict(fix_dict(value))
+            yield value
+    else:
+        yield thing
+
+
+def json_encode(dictionary, **kwargs):
     return json.dumps(
-        dict([
-            ('is_valid', True),
-            (name, value)
-        ]),
+        dict(fix_dict(dictionary)),
         cls=WordEncoder,
-        separators=(',', ':'),   # NOTE:  Less whitespace
+        separators=JSON_SEPARATORS_NO_SPACES,
         allow_nan=False,
-        indent=None,   # TODO:  Why the newlines when separators are compact?
+        **kwargs
+        # NOTE:  If there APPEAR to be newlines when viewed in a browser,
+        #        it may just be the browser wrapping lines on the commas.
     )
 
 
@@ -2145,6 +2555,7 @@ def version_report():
 
 
 if __name__ == '__main__':
+    '''Run locally, fliki.py spins up its own web server.'''
     flask_app.run(debug=True)
 
 
