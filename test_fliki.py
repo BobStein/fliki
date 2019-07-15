@@ -1,6 +1,11 @@
-from fliki import *
-# TODO:  Don't instantiate IDN on local LexMySQL.  It's just tacky.
+from __future__ import unicode_literals
+
+# noinspection PyUnresolvedReferences
+import re
 import unittest
+
+from fliki import *
+# TODO:  Don't instantiate IDN by reading from LexMySQL.  It's just tacky.
 
 
 class TestFliki(unittest.TestCase):
@@ -149,6 +154,7 @@ class TestCatContOrder(TestAuthenticatedFeatures):
         return txt_cat + " " + txt_cont
 
     def reorder(self, cont, new_cat, new_position):
+        assert isinstance(new_position, qiki.Number)
         self.lex.create_word(
             sbj=self.anna,
             vrb=new_cat,
@@ -167,6 +173,13 @@ class TestCatContOrder(TestAuthenticatedFeatures):
                 actual=self.txt_from_order(actual_order),
             )
         )
+
+    def assert_disorder(self, auth, regex=None):
+        order = cat_cont_order(auth)
+        self.assertIn('error_messages', order, "Missing error message")
+        self.assertEqual(1, len(order['error_messages']), repr(order))
+        if regex is not None:
+            six.assertRegex(self, order['error_messages'][0], regex)
 
     def test_empty(self):
         auth = FakeAuth(self.lex, self.anna)
@@ -232,3 +245,17 @@ class TestCatContOrder(TestAuthenticatedFeatures):
             (self.lex.IDN.CAT_THEIR, [self.november.idn, self.lima.idn]),
             (self.lex.IDN.CAT_TRASH, [self.mike.idn]),
         ))))
+
+    def test_disorder_reorder(self):
+        auth = FakeAuth(self.lex, self.anna)
+        self.six_contributions()
+        invalid_cont = self.bart
+        self.reorder(self.mike, self.lex.IDN.CAT_TRASH, invalid_cont.idn)
+        self.assert_disorder(auth, re.compile(r'reorder.*missing', re.IGNORECASE))
+
+    def test_disorder_cont(self):
+        auth = FakeAuth(self.lex, self.anna)
+        self.six_contributions()
+        invalid_cont = self.bart
+        self.reorder(invalid_cont, self.lex.IDN.CAT_TRASH, self.lex.IDN.FENCE_POST_RIGHT)
+        self.assert_disorder(auth, re.compile(r'unrecorded', re.IGNORECASE))

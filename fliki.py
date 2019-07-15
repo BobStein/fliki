@@ -1121,8 +1121,11 @@ def vet(words, auth):
 
 
 def cat_cont_order(auth):
-    """Determine order of categories and contributions."""
+    """
+    Determine order of categories and contributions.
 
+    (1) error messages marked may be untestable
+    """
 
     cat_order = [
         auth.lex.IDN.CAT_MY,
@@ -1133,10 +1136,14 @@ def cat_cont_order(auth):
     ]
     cont_order = dict()   # dictionary of contribution lists, keyed by category
     cat_from_cont = dict()  # current category of each contribution
+    error_messages = list()
 
     words = vet(auth.lex.find_words(), auth)
 
     for word in words:
+
+        def error(*args):
+            error_messages.append(" ".join(args))
 
         def cat_room(cat):
             cat_q = auth.q(cat)
@@ -1146,7 +1153,7 @@ def cat_cont_order(auth):
         def add_cont(cat, cont, insert_index):
             cat_q = auth.q(cat)
             cont_q = auth.q(cont)
-            if cat_q not in cat_order:  print("CAT", cat_q, "unknown"); return
+            if cat_q not in cat_order:  error("CAT", cat_q, "unknown"); return   # (1)
             cat_from_cont[cont_q] = cat_q
             cat_room(cat_q)
             cont_order[cat_q].insert(insert_index, cont_q)
@@ -1180,11 +1187,10 @@ def cat_cont_order(auth):
 
         def remove_cont(cont):
             cont_q = auth.q(cont)
+            if cont_q not in cat_from_cont:  error("CAT unrecorded for", cont_q); return
             old_cat_q = cat_from_cont[cont_q]
-            new_cat_q = auth.q(word.vrb)
-            if new_cat_q not in cat_order:  print("CAT", new_cat_q, "unknown"); return
-            if cont_q not in cat_from_cont:  print("CAT unrecorded for", cont_q); return
-            if cont_q not in cont_order[old_cat_q]:  print("CAT", old_cat_q, "lost", cont_q); return
+            if old_cat_q not in cont_order:  error("CAT", old_cat_q, "is empty"); return   # (1)
+            if cont_q not in cont_order[old_cat_q]:  error("CAT", old_cat_q, "lost", cont_q); return   # (1)
             cont_order[old_cat_q].remove(cont_q)
 
         def index_cont(cat, cont):
@@ -1196,7 +1202,7 @@ def cat_cont_order(auth):
             try:
                 return cont_order[cat_q].index(cont_q)
             except ValueError:
-                print("CONT", cont_q, "missing from", cat_q)
+                error("Reorder reference", cont_q, "missing from", cat_q)
                 return 0   # desperate fallback when reorder location makes no sense
 
         if word.vrb.idn in (auth.lex.IDN.CONTRIBUTE, auth.lex.IDN.UNSLUMP_OBSOLETE):
@@ -1236,7 +1242,10 @@ def cat_cont_order(auth):
                 #     '''Legacy reorder word.'''
                 #     reorder(word.obj, word.num)
 
-    return dict(cat=cat_order, cont=cont_order)
+    order_dict = dict(cat=cat_order, cont=cont_order)
+    if len(error_messages) > 0:
+        order_dict['error_messages'] = error_messages
+    return order_dict
 
 
 def unslumping_home_obsolete():
