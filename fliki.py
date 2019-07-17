@@ -612,8 +612,8 @@ class Auth(object):
         # TODO
         return True
 
-    def q(self, word_or_idn):
-        return self.lex.idn_ify(word_or_idn).qstring()
+    def idn(self, word_or_idn):
+        return self.lex.idn_ify(word_or_idn)
 
 
 class AuthFliki(Auth):
@@ -1103,10 +1103,10 @@ def vet(words, auth):
                 if word.sbj.idn == IDN.LEX:
                     # NOTE:  This test is buried because sbj=lex words are expected to be rare.
                     return True
-                sbj_q = auth.q(word.sbj)
-                if sbj_q not in sbj_warnings:
-                    sbj_warnings.add(sbj_q)
-                    print("sbj", sbj_q, "is neither user nor lex, starting with", repr(word))
+                sbj = auth.idn(word.sbj)
+                if sbj not in sbj_warnings:
+                    sbj_warnings.add(sbj)
+                    print("sbj", sbj, "is neither user nor lex, starting with", repr(word))
                 return False
 
             return is_logged_in or word.sbj == auth.qiki_user
@@ -1143,67 +1143,40 @@ def cat_cont_order(auth):
     for word in words:
 
         def error(*args):
-            error_messages.append(" ".join(args))
+            error_messages.append(" ".join(str(arg) for arg in args))
 
         def cat_room(cat):
-            cat_q = auth.q(cat)
-            if cat_q not in cont_order:
-                cont_order[cat_q] = []
+            cat = auth.idn(cat)
+            if cat not in cont_order:
+                cont_order[cat] = []
 
         def add_cont(cat, cont, insert_index):
-            cat_q = auth.q(cat)
-            cont_q = auth.q(cont)
-            if cat_q not in cat_order:  error("CAT", cat_q, "unknown"); return   # (1)
-            cat_from_cont[cont_q] = cat_q
-            cat_room(cat_q)
-            cont_order[cat_q].insert(insert_index, cont_q)
-
-        # def move_cat(new_cat, cont):
-        #     new_cat_q = auth.q(new_cat)
-        #     cont_q = auth.q(cont)
-        #     if new_cat_q not in cat_order:  print("CAT", new_cat_q, "unknown"); return
-        #     # if new_cat_q not in cont_order:  print("CAT", new_cat_q, "missing")
-        #     # because it may have been empty
-        #     if cont_q not in cat_from_cont:  print("CAT unrecorded for", cont_q); return
-        #     old_cat_q = cat_from_cont[cont_q]
-        #     if cont_q not in cont_order[old_cat_q]:  print("CAT", old_cat_q, "lost", cont_q); return
-        #
-        #     cont_order[old_cat_q].remove(cont_q)
-        #     add_cont(new_cat, cont, False)
-        #
-        # def reorder(cont, insert_left_of_this_cont):
-        #     cont_q = auth.q(cont)
-        #     insert_q = auth.q(insert_left_of_this_cont)
-        #     if cont_q not in cat_from_cont:  print("REORDER unrecorded", cont_q); return
-        #     cat_q = cat_from_cont[cont_q]
-        #     if cont_q not in cont_order[cat_q]:  print("REORDER", cat_q, "lost", cont_q); return
-        #     cont_order[cat_q].remove(cont_q)
-        #     if insert_q == auth.q(auth.lex.IDN.FENCE_POST_RIGHT):
-        #         where_insert = len(cont_order[cat_q])
-        #     else:
-        #         if insert_q not in cont_order[cat_q]:  print("REORDER", cat_q, "absent", insert_q); return
-        #         where_insert = cont_order[cat_q].index(insert_q)
-        #     cont_order[cat_q].insert(where_insert, cont_q)
+            cat = auth.idn(cat)
+            cont = auth.idn(cont)
+            if cat not in cat_order:  error("CAT", cat, "unknown"); return   # (1)
+            cat_from_cont[cont] = cat
+            cat_room(cat)
+            cont_order[cat].insert(insert_index, cont)
 
         def remove_cont(cont):
-            cont_q = auth.q(cont)
-            if cont_q not in cat_from_cont:  error("CAT unrecorded for", cont_q); return
-            old_cat_q = cat_from_cont[cont_q]
-            if old_cat_q not in cont_order:  error("CAT", old_cat_q, "is empty"); return   # (1)
-            if cont_q not in cont_order[old_cat_q]:  error("CAT", old_cat_q, "lost", cont_q); return   # (1)
-            cont_order[old_cat_q].remove(cont_q)
+            cont = auth.idn(cont)
+            if cont not in cat_from_cont:  error("CAT unrecorded for", cont); return
+            old_cat = cat_from_cont[cont]
+            if old_cat not in cont_order:  error("CAT", old_cat, "has no contribution list"); return   # (1)
+            if cont not in cont_order[old_cat]:  error("CAT", old_cat, "lost", cont); return   # (1)
+            cont_order[old_cat].remove(cont)
 
         def index_cont(cat, cont):
-            cat_q = auth.q(cat)
-            cont_q = auth.q(cont)
+            cat = auth.idn(cat)
+            cont = auth.idn(cont)
             cat_room(cat)
-            if cont_q == auth.lex.IDN.FENCE_POST_RIGHT.qstring():
-                return len(cont_order[cat_q])
+            if cont == auth.lex.IDN.FENCE_POST_RIGHT:
+                return len(cont_order[cat])
             try:
-                return cont_order[cat_q].index(cont_q)
+                return cont_order[cat].index(cont)
             except ValueError:
-                error("Reorder reference", cont_q, "missing from", cat_q)
-                return 0   # desperate fallback when reorder location makes no sense
+                error("Reorder point", cont, "missing from", cat)
+                return 0   # desperate fallback to leftmost position, when reorder location makes no sense
 
         if word.vrb.idn in (auth.lex.IDN.CONTRIBUTE, auth.lex.IDN.UNSLUMP_OBSOLETE):
             if word.sbj == auth.qiki_user:
@@ -1214,33 +1187,8 @@ def cat_cont_order(auth):
                 add_cont(auth.lex.IDN.CAT_THEIR, word, 0)
         elif word.vrb.idn in cat_order:
             if word.sbj == auth.qiki_user:
-                # move_cat(word.vrb, word.obj)
-                # reorder(word.obj, word.num)
-
-                # cont_q = auth.q(word.obj)
-                # old_cat_q = cat_from_cont[cont_q]
-                # new_cat_q = auth.q(word.vrb)
-                # if new_cat_q not in cat_order:  print("CAT", new_cat_q, "unknown"); return
-                # if cont_q not in cat_from_cont:  print("CAT unrecorded for", cont_q); return
-                # if cont_q not in cont_order[old_cat_q]:  print("CAT", old_cat_q, "lost", cont_q); return
-                # cont_order[old_cat_q].remove(cont_q)
                 remove_cont(word.obj)
-
-                # try:
-                #     insert_index = cont_order[new_cat_q].index(word.num)
-                # except ValueError:
-                #     insert_index = len(cont_order[new_cat_q])
                 add_cont(word.vrb, word.obj, index_cont(word.vrb, word.num))
-
-
-                # if word.num == 1:
-                #     '''Legacy category word, no reordering information.'''
-                # else:
-                #     reorder(word.obj, word.num)
-
-                # elif word.vrb.idn == auth.lex.IDN.REORDER:
-                #     '''Legacy reorder word.'''
-                #     reorder(word.obj, word.num)
 
     order_dict = dict(cat=cat_order, cont=cont_order)
     if len(error_messages) > 0:

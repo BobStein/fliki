@@ -86,6 +86,7 @@ class LexSimple(qiki.LexInMemory):
     def __init__(self):
         super(LexSimple, self).__init__(word_class=WordSimple)
         self.IDN = WorkingIdns(self)
+        # NOTE:  Unlike live WSGI fliki sessions, the IDN lookups here are redone every test run
         self.anna = self.define(u'agent', u'anna')
 
 
@@ -93,15 +94,11 @@ class FakeAuth(object):
 
     def __init__(self, lex, user):
         self.lex = lex
-        # NOTE:  Unlike live WSGI fliki sessions, the IDN lookups are redone every test run
         self.is_anonymous = True
         self.qiki_user = user
 
-    def q(self, n):
-        if isinstance(n, six.string_types):
-            return n
-        else:
-            return self.lex.idn_ify(n).qstring()
+    def idn(self, word_or_idn):
+        return self.lex.idn_ify(word_or_idn)
 
 
 class TestAuthenticatedFeatures(unittest.TestCase):
@@ -153,18 +150,19 @@ class TestCatContOrder(TestAuthenticatedFeatures):
         )
         return txt_cat + " " + txt_cont
 
-    def reorder(self, cont, new_cat, new_position):
-        assert isinstance(new_position, qiki.Number)
+    def reorder(self, cat, cont, cont_before_which):
+        assert isinstance(cont_before_which, qiki.Number)
         self.lex.create_word(
             sbj=self.anna,
-            vrb=new_cat,
+            vrb=cat,
             obj=cont,
-            num=new_position,
+            num=cont_before_which,
         )
 
     def assert_order(self, auth, expected_order):
         expected_order = dict(fix_dict(expected_order))
         actual_order = cat_cont_order(auth)
+        actual_order = dict(fix_dict(actual_order))
         self.assertEqual(
             expected_order,
             actual_order,
@@ -203,7 +201,7 @@ class TestCatContOrder(TestAuthenticatedFeatures):
     def test_category_change_right_fence(self):
         auth = FakeAuth(self.lex, self.anna)
         self.six_contributions()
-        self.reorder(self.mike, self.lex.IDN.CAT_MY, self.lex.IDN.FENCE_POST_RIGHT)
+        self.reorder(self.lex.IDN.CAT_MY, self.mike, self.lex.IDN.FENCE_POST_RIGHT)
         self.assert_order(auth, dict(cat=self.basic_categories, cont=dict((
             (self.lex.IDN.CAT_MY,    [self.india.idn, self.hotel.idn, self.golf.idn, self.mike.idn]),
             (self.lex.IDN.CAT_THEIR, [self.november.idn, self.lima.idn]),
@@ -212,7 +210,7 @@ class TestCatContOrder(TestAuthenticatedFeatures):
     def test_category_reorder_golf(self):
         auth = FakeAuth(self.lex, self.anna)
         self.six_contributions()
-        self.reorder(self.mike, self.lex.IDN.CAT_MY, self.golf.idn)
+        self.reorder(self.lex.IDN.CAT_MY, self.mike, self.golf.idn)
         self.assert_order(auth, dict(cat=self.basic_categories, cont=dict((
             (self.lex.IDN.CAT_MY,    [self.india.idn, self.hotel.idn, self.mike.idn, self.golf.idn]),
             (self.lex.IDN.CAT_THEIR, [self.november.idn, self.lima.idn]),
@@ -221,7 +219,7 @@ class TestCatContOrder(TestAuthenticatedFeatures):
     def test_category_reorder_hotel(self):
         auth = FakeAuth(self.lex, self.anna)
         self.six_contributions()
-        self.reorder(self.mike, self.lex.IDN.CAT_MY, self.hotel.idn)
+        self.reorder(self.lex.IDN.CAT_MY, self.mike, self.hotel.idn)
         self.assert_order(auth, dict(cat=self.basic_categories, cont=dict((
             (self.lex.IDN.CAT_MY,    [self.india.idn, self.mike.idn, self.hotel.idn, self.golf.idn]),
             (self.lex.IDN.CAT_THEIR, [self.november.idn, self.lima.idn]),
@@ -230,7 +228,7 @@ class TestCatContOrder(TestAuthenticatedFeatures):
     def test_category_reorder_india(self):
         auth = FakeAuth(self.lex, self.anna)
         self.six_contributions()
-        self.reorder(self.mike, self.lex.IDN.CAT_MY, self.india.idn)
+        self.reorder(self.lex.IDN.CAT_MY, self.mike, self.india.idn)
         self.assert_order(auth, dict(cat=self.basic_categories, cont=dict((
             (self.lex.IDN.CAT_MY,    [self.mike.idn, self.india.idn, self.hotel.idn, self.golf.idn]),
             (self.lex.IDN.CAT_THEIR, [self.november.idn, self.lima.idn]),
@@ -239,7 +237,7 @@ class TestCatContOrder(TestAuthenticatedFeatures):
     def test_category_trash(self):
         auth = FakeAuth(self.lex, self.anna)
         self.six_contributions()
-        self.reorder(self.mike, self.lex.IDN.CAT_TRASH, self.lex.IDN.FENCE_POST_RIGHT)
+        self.reorder(self.lex.IDN.CAT_TRASH, self.mike, self.lex.IDN.FENCE_POST_RIGHT)
         self.assert_order(auth, dict(cat=self.basic_categories, cont=dict((
             (self.lex.IDN.CAT_MY,    [self.india.idn, self.hotel.idn, self.golf.idn]),
             (self.lex.IDN.CAT_THEIR, [self.november.idn, self.lima.idn]),
@@ -250,12 +248,12 @@ class TestCatContOrder(TestAuthenticatedFeatures):
         auth = FakeAuth(self.lex, self.anna)
         self.six_contributions()
         invalid_cont = self.bart
-        self.reorder(self.mike, self.lex.IDN.CAT_TRASH, invalid_cont.idn)
+        self.reorder(self.lex.IDN.CAT_TRASH, self.mike, invalid_cont.idn)
         self.assert_disorder(auth, re.compile(r'reorder.*missing', re.IGNORECASE))
 
     def test_disorder_cont(self):
         auth = FakeAuth(self.lex, self.anna)
         self.six_contributions()
         invalid_cont = self.bart
-        self.reorder(invalid_cont, self.lex.IDN.CAT_TRASH, self.lex.IDN.FENCE_POST_RIGHT)
+        self.reorder(self.lex.IDN.CAT_TRASH, invalid_cont, self.lex.IDN.FENCE_POST_RIGHT)
         self.assert_disorder(auth, re.compile(r'unrecorded', re.IGNORECASE))

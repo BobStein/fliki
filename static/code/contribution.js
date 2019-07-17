@@ -40,13 +40,15 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
 
     var UNICODE = {
         NBSP: '\u00A0',
+        EN_SPACE: '\u2002',
+        EM_SPACE: '\u2003',
         VERTICAL_ELLIPSIS: '\u22EE',
         BLACK_RIGHT_POINTING_TRIANGLE: '\u25B6',
         BLACK_DOWN_POINTING_TRIANGLE: '\u25BC'
         // THANKS:  https://www.fileformat.info/info/unicode/char/
     };
 
-    var INSERT_AFTER_TARGET = 1;
+    // var INSERT_AFTER_TARGET = 1;
     // SEE:  SelectJS options, https://github.com/SortableJS/Sortable#user-content-options
 
     var ANON_V_ANON_BLURB = "Log in to see anonymous contributions (other than yours).";
@@ -70,16 +72,15 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
                                //                       Includes all div.container.word's,
                                //                       plus (for my_category) div.container-entry
                                // MONTY.order.cont[][] is kind of a skeleton of $categories.
-                               // $categories[cat].find('.container').eq(n).attr('id')
-                               // $categories[cat].find('.container')[n].id
-                               // MONTY.order.cont[cat][n]
+                               // These are the same:
+                               //     $categories[cat].find('.container').eq(n).attr('id')
+                               //     $categories[cat].find('.container')[n].id
+                               //     MONTY.order.cont[cat][n]
 
     $(document).ready(function() {
         qoolbar.ajax_url(MONTY.AJAX_URL);
 
         build();
-
-        console.log("Initial order", order_report(MONTY.order));
 
         caption_should_track_text_width();
 
@@ -95,22 +96,22 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
             handle: '.grip',
             ghostClass: 'ghost',
             draggable: '.container',
-            onMove: function sortable_move(evt) {
-                if ($(evt.related).hasClass('container-entry')) {
-                    return INSERT_AFTER_TARGET;
-                    // NOTE:  Prevent moving the entry container.
-                }
-            },
+            // onMove: function sortable_move(evt) {
+            //     if ($(evt.related).hasClass('container-entry')) {
+            //         return INSERT_AFTER_TARGET;
+            //         // NOTE:  Prevent moving the entry container.
+            //     }
+            // },
             onEnd: function sortable_end(evt) {
+                var $movee = $(evt.item);
                 var from_cat_idn = $(evt.from).data('idn');
                 var to_cat_idn = $(evt.to).data('idn');
                 var from_cat_txt = MONTY.words.cat[from_cat_idn].txt;
                 var to_cat_txt = MONTY.words.cat[to_cat_idn].txt;
 
-                var $movee = $(evt.item);
                 var movee_idn = $movee.attr('id');
 
-                var $buttee = $(evt.item).next('.container');   // the one being displaced to the right
+                var $buttee = $movee.next('.container');   // the one being displaced to the right
                 var buttee_idn;
                 var buttee_txt_excerpt;
                 if ($buttee.length === 0) {
@@ -129,13 +130,12 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
                 if (evt.newDraggableIndex === evt.oldDraggableIndex && from_cat_idn === to_cat_idn) {
                     console.debug("(put back where it came from)");
                 } else {
-                    sentence({
+                    qoolbar.sentence({
                         vrb_idn: to_cat_idn,
                         obj_idn: movee_idn,
                         num: buttee_idn,
                         txt: ""
                     }, function () {
-                        console.log("moved content", movee_idn);
                         settle_down();
                     });
                 }
@@ -145,6 +145,10 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
         $('#enter_ump').on('click', enter_ump_click);
     });
 
+    function console_log_order() {
+        console.log("order", order_report(MONTY.order));
+    }
+
     function enter_ump_disability() {
         if ($('#text_ump').val().length === 0 || $('#caption_ump').val().length === 0) {
             $('#enter_ump').attr('disabled', 'disabled');
@@ -152,59 +156,43 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
             $('#enter_ump').removeAttr('disabled');
         }
     }
-    function sentence(sentence_or_null, then_what) {
-        if (sentence_or_null === null) {
-            then_what(null);
-        } else {
-            console.log("post", sentence_or_null);
-
-            qoolbar.post('sentence', sentence_or_null, function (response) {
-                var new_words = JSON.parse(response.new_words);
-                if (new_words.length === 1) {
-                    var new_word = new_words[0];
-                    then_what(new_word);
-                } else {
-                    console.error("no new words");
-                }
-            });
-        }
-    }
 
     function enter_ump_click() {
-        var text = $('#text_ump').val();
-        var caption = $('#caption_ump').val();
-        qoolbar.post(
-            'sentence',
-            {
+        var $text = $('#text_ump');
+        var $caption = $('#caption_ump');
+        var text = $text.val();
+        var caption = $caption.val();
+        if (text.length === 0) {
+            $text.focus();
+            console.warn("Enter a quote.");
+        } else if (caption.length === 0) {
+            $caption.focus();
+            console.warn("Enter a caption.");
+        } else {
+            qoolbar.sentence({
                 vrb_idn: MONTY.IDN.CONTRIBUTE,
                 obj_idn: MONTY.IDN.QUOTE,
                 txt: text
-            },
-            function enter_ump_done_1(response_1) {
-                if (response_1.is_valid) {
-                    var new_words_array = JSON.parse(response_1.new_words);
-                    console.log("enter_ump 1", new_words_array);
-                    console.assert(new_words_array.length === 1);
-                    var new_word = new_words_array[0];
-                    qoolbar.post(
-                        'sentence',
-                        {
-                            vrb_idn: MONTY.IDN.CAPTION,
-                            obj_idn: new_word.idn,
-                            txt: caption
-                        },
-                        function enter_ump_done_2(response_2) {
-                            var new_words_2 = JSON.parse(response_2.new_words);
-                            console.log("enter up 2", new_words_2);
-                            settle_down();
-                        }
-                    );
-                    // qoolbar.page_reload();
-                } else {
-                    console.error("enter quote", response_1.error_message);
-                }
-            }
-        );
+            }, function enter_ump_done_1(contribute_word) {
+                console.log("contribution", contribute_word);
+                qoolbar.sentence({
+                    vrb_idn: MONTY.IDN.CAPTION,
+                    obj_idn: contribute_word.idn,
+                    txt: caption
+                }, function enter_ump_done_2(caption_word) {
+                    console.log("caption", caption_word);
+                    contribute_word.jbo = [caption_word];
+                    MONTY.words.cont.push(contribute_word);
+                    var $new_container = build_contribution_dom(contribute_word);
+                    $categories[MONTY.IDN.CAT_MY].find('.container').first().before($new_container);
+                    // NOTE:  New .container goes before the leftmost .container
+                    MONTY.order.cont[MONTY.IDN.CAT_MY].unshift(contribute_word.idn);
+                    $text.val("");
+                    $caption.val("");
+                    settle_down();
+                });
+            });
+        }
     }
 
     /**
@@ -214,13 +202,13 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
         var $login_prompt = $('<div>', {id: 'login-prompt'});
         $login_prompt.html(MONTY.login_html);
 
-        $(document.body).text("");
+        $(document.body).empty();
         $(document.body).append($login_prompt);
 
-        build_ump(me_title,    MONTY.IDN.CAT_MY,    true, true);
-        build_ump("others",    MONTY.IDN.CAT_THEIR, true, true);
-        build_ump("anonymous", MONTY.IDN.CAT_ANON,  true, false);
-        build_ump("trash",     MONTY.IDN.CAT_TRASH, true, false);
+        build_category_dom(me_title,    MONTY.IDN.CAT_MY,    true, true);
+        build_category_dom("others",    MONTY.IDN.CAT_THEIR, true, true);
+        build_category_dom("anonymous", MONTY.IDN.CAT_ANON,  true, false);
+        build_category_dom("trash",     MONTY.IDN.CAT_TRASH, true, false);
 
         var $entry = $('<div>', {class: 'container-entry'});
         $entry.append($('<textarea>', {id: 'text_ump', placeholder: "enter a quote"}));
@@ -235,8 +223,8 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
         }
 
         var $containers = {};
-        looper(MONTY.words.cont, function (index, word) {
-            $containers[word.idn] = build_container(word);
+        looper(MONTY.words.cont, function (_, word) {
+            $containers[word.idn] = build_contribution_dom(word);
         });
 
         looper(MONTY.order.cat, function (_, cat) {
@@ -249,25 +237,50 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
         });
     }
 
-    function build_container(contribution) {
-        var $container = $('<div>', {class: 'container word', id: contribution.idn});
+    /**
+     * Build the div#idn.container for a contribution, containing its div.contribution and div.caption.
+     *
+     * @param contribution_word
+     * @return {jQuery}
+     */
+    function build_contribution_dom(contribution_word) {
+        var $container = $('<div>', {class: 'container word', id: contribution_word.idn});
         var $contribution = $('<div>', {class: 'contribution'});
         $container.append($contribution);
-        $contribution.text(contribution.txt);
+        $contribution.text(leading_spaces_indent(contribution_word.txt));
         var $caption = $('<div>', {class: 'caption'});
         $container.append($caption);
         var $grip = $('<span>', {class: 'grip'});
         $caption.append($grip);
         $grip.text(UNICODE.VERTICAL_ELLIPSIS + UNICODE.VERTICAL_ELLIPSIS);
-        var caption_txt = latest_txt(contribution.jbo, MONTY.IDN.CAPTION);
+        var caption_txt = latest_txt(contribution_word.jbo, MONTY.IDN.CAPTION);
         if (caption_txt !== undefined) {
             $caption.append(caption_txt);
         }
         return $container;
     }
 
-    function build_ump(title, idn, do_valve, is_valve_open) {
-        // console.log("build_ump", name, idn, MONTY.categories[idn].txt);
+    function leading_spaces_indent(text) {
+        if ( ! is_laden(text)) {
+            return "";
+        }
+        return text.replace(/^[ \t]+/gm, function(spaces) {
+            return new Array(spaces.length + 1).join(UNICODE.EN_SPACE);
+            // NOTE:  UNICODE.NBSP is narrow and UNICODE.EM_SPACE is very wide.
+        });
+        // THANKS:  leading spaces to nbsp, https://stackoverflow.com/a/4522228/673991
+    }
+    /**
+     * Build the div#xxx_ump for category xxx, including its heading, its open/close valve,
+     * and the div#xxx_category that will contain its contributions.
+     * Store the DOM in $umps[] and $categories[].  (Each $ump contains each $category.)
+     *
+     * @param title - for the <h2>
+     * @param idn - for the category
+     * @param do_valve - should it have an open/close triangle?
+     * @param is_valve_open - initially open?
+     */
+    function build_category_dom(title, idn, do_valve, is_valve_open) {
         var name = MONTY.words.cat[idn].txt;
         var $ump = $('<div>', {id: name + '_ump', class: 'target-environment'});
         var $title = $('<h2>');
@@ -282,7 +295,6 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
             $title.prepend($valve);
 
             var $how_many = $('<span>', {class:'how-many'});
-            // $how_many.text(" (n)");
             $title.append($how_many);
 
             valve_controls($valve, $category, $how_many);
@@ -292,7 +304,7 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
         $categories[idn] = $category;
     }
 
-    function reconstitute_order_from_elements() {
+    function reconstitute_order_from_dom() {
         var order = { cat:[], cont:{} };
 
         $('.category').each(function () {
@@ -351,7 +363,7 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
     function first_word_from_cont(cont) {
         var $cont = $_from_id(cont);   // actually the div.container#idn containing the div.contribution
         if ($cont.length !== 1) {
-            console.error("Missing $cont", cont);
+            console.error("Missing contribution element, id =", cont);
             return "[" + cont + "?]";
         }
         var txt = $cont.find('.contribution').text().trim();
@@ -378,17 +390,7 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
      * 3. Make sure MONTY.order agrees with ajax order.
      */
     function settle_down() {
-        looper(MONTY.order.cont, function recompute_category_anti_valves(cat, contribution_idns) {
-            var how_many;
-            if (contribution_idns.length === 0) {
-                how_many = "";
-            } else {
-                how_many = " (" + contribution_idns.length.toString() + ")";
-            }
-            $umps[cat].find('.how-many').text(how_many);
-        });
-
-        var recon = reconstitute_order_from_elements();
+        var recon = reconstitute_order_from_dom();
         var recon_order = order_idns(recon);
 
         // NOTE:  We're not rearranging MONTY.order so we don't expect that to agree:
@@ -397,9 +399,9 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
         //     console.warn(
         //         "Recon contribution order does not agree:\n" +
         //         monty_order + " == MONTY.order\n" +
-        //         recon_order + " == reconstitute_order_from_elements()\n" +
+        //         recon_order + " == reconstitute_order_from_dom()\n" +
         //         order_report(MONTY.order) + " == MONTY.order\n" +
-        //         order_report(recon) + " == reconstitute_order_from_elements()"
+        //         order_report(recon) + " == reconstitute_order_from_dom()"
         //     )
         // }
 
@@ -408,23 +410,27 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
                 var ajax_order = order_idns(response.order);
                 if (recon_order === ajax_order) {
                     MONTY.order = response.order;
+                    console_log_order();
+                    refresh_how_many();
                 } else {
+                    // FIXME:  This might mean legitimate changes on another window.
+                    //         Contributions by any other user, or
+                    //         rearrangements by the same user.
+                    // TODO:  Rebuild??
+                    //        We also need to download MONTY.words,
+                    //        But then, yea, just call build()!
                     var mismatch_report = "Ajax contribution order does not agree:\n" +
-                        recon_order + " <-- reconstitute_order_from_elements()\n" +
+                        recon_order + " <-- reconstitute_order_from_dom()\n" +
                         ajax_order + " <-- ajax order\n" +
-                        order_report(recon) + " <-- reconstitute_order_from_elements()\n" +
+                        order_report(recon) + " <-- reconstitute_order_from_dom()\n" +
                         order_report(response.order) + " <-- ajax order";
                     console.warn(mismatch_report);
                     if (first_mismatch) {
                         first_mismatch = false;
-                        sentence({
-                            vrb_idn: MONTY.IDN.FIELD_FLUB,
-                            txt: mismatch_report,
-                            use_already: false
-                        }, function () {
-                            console.log("Successfully uploaded order field-flub.");
-                        });
-                        alert("Might be a little mixed up about the order here. Reload the page would you?");
+                        flub(mismatch_report);
+                        if (confirm("Might be a little mixed up about the order here. Okay to reload the page?")) {
+                            qoolbar.page_reload();
+                        }
                     }
                     // TODO:  Ajax this warning somewhere and just reload the page?
                 }
@@ -440,6 +446,29 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
             } else {
                 console.error("ajax reconstituted_order bust", response.error_message);
             }
+        });
+    }
+
+    function refresh_how_many() {
+        looper(MONTY.order.cont, function recompute_category_anti_valves(cat, contribution_idns) {
+            var how_many;
+            if (contribution_idns.length === 0) {
+                how_many = "";
+            } else {
+                how_many = " (" + contribution_idns.length.toString() + ")";
+            }
+            $umps[cat].find('.how-many').text(how_many);
+        });
+    }
+
+    function flub(report) {
+        qoolbar.sentence({
+            vrb_idn: MONTY.IDN.FIELD_FLUB,
+            obj_idn: MONTY.IDN.LEX,
+            txt: report,
+            use_already: false
+        }, function () {
+            console.log("Uploaded field-flub.");
         });
     }
 
