@@ -162,14 +162,23 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
             //         // NOTE:  Prevent moving the entry container.
             //     }
             // },
-            onMove: function sortable_move(evt) {
+            onMove: function sortable_dragging(evt) {
                 if (is_in_frou(evt.related)) {
                     if (is_open_drop(evt.related)) {
+                        // NOTE:  This category is open (triangle points down).
+                        //        So user is able to drop on the contributions there.
+                        //        So don't let them drop on the "frou" (header),
+                        //        because it looks confusing, seeming to go in the title,
+                        //        OR among the contributions.
+                        // TODO:  Ideally this drop would be allowed,
+                        //        but the drop-hint would appear at the
+                        //        left-most position among the contributions.
+                        //        That's where it would go when dropping on a closed category.
                         return MOVE_CANCEL;
                     }
                 }
             },
-            onEnd: function sortable_end(evt) {
+            onEnd: function sortable_drop(evt) {
                 var $movee = $(evt.item);
                 var movee_idn = $movee.attr('id');
                 var from_cat_idn = $(evt.from).data('idn');
@@ -179,9 +188,16 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
                     var $cat = $cat_of(evt.to);
                     to_cat_idn = $cat.data('idn');
                     var cat_txt = MONTY.words.cat[to_cat_idn].txt;
-                    console.log("Frou drop", cat_txt, "where cont", $movee[0].id, "goes into cat", to_cat_idn, $cat.length);
-                    $cat.prepend($movee);
-                    // TODO:  But after entry fields.
+                    console.log(
+                        "Frou drop", cat_txt,
+                        "where cont", $movee[0].id,
+                        "goes into cat", to_cat_idn
+                    );
+                    if ($cat.find('.container-entry').length > 0) {
+                        $cat.find('.container-entry').after($movee);
+                    } else {
+                        $cat.prepend($movee);
+                    }
                 } else {
                     to_cat_idn = $(evt.to).data('idn');
                 }
@@ -189,7 +205,7 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
                 var to_cat_txt = MONTY.words.cat[to_cat_idn].txt;
 
 
-                var $buttee = $movee.next('.container');   // the one being displaced to the right
+                var $buttee = $movee.nextAll('.container');   // the one being displaced to the right
                 var buttee_idn;
                 var buttee_txt_excerpt;
                 if ($buttee.length === 0) {
@@ -414,6 +430,11 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
         var name = MONTY.words.cat[idn].txt;
         var $ump = $('<div>', {id: name + '_ump', class: 'sup-category'});
         var $title = $('<h2>', {class: 'frou-category'});
+        // NOTE:  "frou" refers to the decorative stuff associated with a category.
+        //        In this case, that's just the <h2> heading,
+        //        which contains the category valve (the open-close triangles).
+        //        In a closed category, this frou is all we see,
+        //        so we have to deal with dropping there.
         $title.append(title);
         $ump.append($title);
         var $category = $('<div>', {id: name + '_category', class: 'category'});
