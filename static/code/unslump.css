@@ -11,7 +11,7 @@ h1, h2, h3, h4 {
     margin-top: 1em;
     background-color: rgb(216,216,216);
 }
-#my_ump.sup-category {
+#sup-category-my {
     margin-top: 0;
 }
 
@@ -55,8 +55,8 @@ h1, h2, h3, h4 {
     height: 5em;
 }
 
-.container-entry,
-.container {
+.container-entry,     /* the textarea and input field for contribution and caption */
+.sup-contribution {   /* each container of a contribution and caption */
     display: inline-block;
     vertical-align: top;
     padding: 0.3em 0.5em 0.3em 0.5em;
@@ -75,20 +75,14 @@ h1, h2, h3, h4 {
     white-space: pre-line;
     background-color: #EEEEEE;
     border-width: 1px;
-    max-width: 20em;
-    max-height: 8em;
     overflow: auto;
     position: relative;
     top: 0;
     left: 0;
     resize: both;
-}
-
-
-.mine .contribution {
-}
-
-.thine .contribution {
+    min-width: 4em;
+    min-height: 2em;
+    box-sizing: border-box;
 }
 
 .contribution + .caption {

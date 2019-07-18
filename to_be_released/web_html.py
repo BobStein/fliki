@@ -46,6 +46,8 @@ class WebHTML(richard_jones_html.HTML):
         self.do_minify = True
 
     HTML_DOCTYPE = "<!DOCTYPE html>\n"
+    # THANKS:  https://developer.mozilla.org/en-US/docs/Web/HTML/Quirks_Mode_and_Standards_Mode
+    #          "... <!DOCTYPE html>, is the simplest possible, and the one recommended by HTML5."
 
     def __call__(self, *args, **kwargs_with_nones):
         # TODO:  Use class_ instead of classes with an array?  Allow klass=[class, class] also?
