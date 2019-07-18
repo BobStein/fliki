@@ -334,7 +334,7 @@ function js_for_meta_lex(window, $, MONTY) {
                         $span.data('txt', faraway_txt);
                     } else {
                         $named.addClass('empty');   // unexpectedly empty txt, unable to describe.
-                        $named.text(idn);
+                        $named.text("(BLANK)");
                     }
                     if (idn === MONTY.IDN.LEX) {
                         $named.addClass('lex');

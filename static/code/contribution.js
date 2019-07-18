@@ -48,7 +48,10 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
         // THANKS:  https://www.fileformat.info/info/unicode/char/
     };
 
-    // var INSERT_AFTER_TARGET = 1;
+    // noinspection JSUnusedLocalSymbols
+    var MOVE_AFTER_TARGET = 1,
+        MOVE_BEFORE_TARGET = -1,
+        MOVE_CANCEL = false;
     // SEE:  SelectJS options, https://github.com/SortableJS/Sortable#user-content-options
 
     var ANON_V_ANON_BLURB = "Log in to see anonymous contributions (other than yours).";
@@ -66,7 +69,7 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
     var me_title = me_possessive + " unslumping ";
 
     // Aux outputs of build_ump(), which puts the (orphan) DOM objects it creates here.
-    var $umps = {};            // outer category divs:  div#xxxx_ump.target-environment
+    var $umps = {};            // outer category divs:  div#xxxx_ump.sup-category
                                //                       includes h2 header and triangle valve
     var $categories = {};      // inner category divs:  div#xxxx_category.category
                                //                       Includes all div.container.word's,
@@ -84,13 +87,70 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
 
         caption_should_track_text_width();
 
-        $('#text_ump, #caption_ump').on('keyup', function text_or_caption_keyup() {
-            enter_ump_disability();
-        });
+        $('#text_ump, #caption_ump')
+            .on('keyup', function text_or_caption_keyup() {
+                enter_ump_disability();
+            })
+            .on('drop', function (evt) {
+                text_or_caption_drop(evt);
+            })
+            .on('paste', function (evt) {
+                text_or_caption_drop(evt);
+            })
+        ;
+        $('#login-prompt, .sup-category')
+            // .on('dragover', function () { $(this).addClass('dragging'); })
+            // .on('dragleave', function () { $(this).removeClass('dragging'); })
+            // .on('drop', function () { console.log("Drop sup-category"); })
+        ;
         enter_ump_disability();
 
+        $('.category, .frou-category')
+            .sortable(sortable_options())
+        ;
+
+        settle_down();
+        $('#enter_ump').on('click', enter_ump_click);
+    });
+
+    function text_or_caption_drop(evt) {
+        var data = evt.originalEvent.dataTransfer;
+        console.log("Dropped something", evt, data);
+        console.log("dropEffect", data.dropEffect);
+        console.log("effectAllowed", data.effectAllowed);
+        // EXAMPLE (dropping YouTube link)
+        //     Chrome:  dropEffect none, effectAllowed copyLink
+        //     Opera:  dropEffect none, effectAllowed copyLink
+        //     Firefox:  dropEffect copy, effectAllowed uninitialized
+        //     IE11:  dropEffect none, (((Unexpected call to method or property access.))) <Permission denied>
+
+        //
+        var items = data.items;
+        if (is_laden(items)) {
+            looper(items, function (index, item) {
+                console.log(index.toString() + ".", item.kind, item.type);
+                item.getAsString(function (s) {
+                    console.log("...", index, JSON.stringify(s));
+                });
+            });
+            // EXAMPLE (Chrome, Edge, Opera):
+            //     0. string text/plain
+            //     1. string text/uri-list
+            //     ... 0 "https://www.youtube.com/watch?v=o9tDO3HK20Q"
+            //     ... 1 "https://www.youtube.com/watch?v=o9tDO3HK20Q"
+            // EXAMPLE (Firefox):
+            //     0. string text/x-moz-url
+            //     1. string text/plain
+            //     ... 0 "https://www.youtube.com/watch?v=o9tDO3HK20Q\nEarth - The Pale Blue Dot - YouTube"
+            //     ... 1 "https://www.youtube.com/watch?v=o9tDO3HK20Q"
+            // EXAMPLE (IE11):
+            //     (data.items is undefined)
+        }
+    }
+
+    function sortable_options() {
         // noinspection JSUnusedGlobalSymbols
-        $('.category').sortable({
+        return {
             animation: 150,
             group: 'contributions',
             handle: '.grip',
@@ -98,18 +158,36 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
             draggable: '.container',
             // onMove: function sortable_move(evt) {
             //     if ($(evt.related).hasClass('container-entry')) {
-            //         return INSERT_AFTER_TARGET;
+            //         return MOVE_AFTER_TARGET;
             //         // NOTE:  Prevent moving the entry container.
             //     }
             // },
+            onMove: function sortable_move(evt) {
+                if (is_in_frou(evt.related)) {
+                    if (is_open_drop(evt.related)) {
+                        return MOVE_CANCEL;
+                    }
+                }
+            },
             onEnd: function sortable_end(evt) {
                 var $movee = $(evt.item);
+                var movee_idn = $movee.attr('id');
                 var from_cat_idn = $(evt.from).data('idn');
-                var to_cat_idn = $(evt.to).data('idn');
+                var to_cat_idn;
+                if (is_in_frou(evt.to)) {
+                    // if ( ! $(evt.to).is('.category')) {
+                    var $cat = $cat_of(evt.to);
+                    to_cat_idn = $cat.data('idn');
+                    var cat_txt = MONTY.words.cat[to_cat_idn].txt;
+                    console.log("Frou drop", cat_txt, "where cont", $movee[0].id, "goes into cat", to_cat_idn, $cat.length);
+                    $cat.prepend($movee);
+                    // TODO:  But after entry fields.
+                } else {
+                    to_cat_idn = $(evt.to).data('idn');
+                }
                 var from_cat_txt = MONTY.words.cat[from_cat_idn].txt;
                 var to_cat_txt = MONTY.words.cat[to_cat_idn].txt;
 
-                var movee_idn = $movee.attr('id');
 
                 var $buttee = $movee.next('.container');   // the one being displaced to the right
                 var buttee_idn;
@@ -140,10 +218,62 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
                     });
                 }
             }
-        });
-        settle_down();
-        $('#enter_ump').on('click', enter_ump_click);
-    });
+        };
+    }
+
+    /**
+     * What's the category idn of this element?
+     *
+     * @param element
+     * @return {?string}
+     */
+    function $cat_of(element) {
+        var $sup = $(element).closest('.sup-category');
+        if ($sup.length === 0) {
+            console.error("How can it not be in a sup-category!?", element);
+            return null;
+        }
+        var $cat = $sup.find('.category');
+        return $cat;
+    }
+
+    /**
+     * What's the category idn of this element?
+     *
+     * @param element
+     * @return {?string}
+     */
+    function cat_idn_of(element) {
+        var cat_idn = $cat_of(element).data('idn');
+        return cat_idn;
+    }
+
+    /**
+     * Is this element being dropped in an open-valved category?
+     *
+     * @param element
+     * @return {boolean}
+     */
+    function is_open_drop(element) {
+        var cat_idn = cat_idn_of(element);
+        var cat_txt = MONTY.words.cat[cat_idn].txt;
+        var is_open = get_valve($_from_id(id_valve(cat_txt)));
+        return is_open;
+    }
+
+    /**
+     * Is the element inside the frou-frou part of a category?
+     *
+     * This is part of the shenanigans for allowing a drop into a closed category.
+     *
+     * @param element
+     * @return {boolean}
+     */
+    function is_in_frou(element) {
+        return $(element).closest('.frou-category').length > 0;
+        // THANKS:  Does element or any parent have a class?
+        //          https://stackoverflow.com/a/17084912/673991
+    }
 
     function console_log_order() {
         console.log("order", order_report(MONTY.order));
@@ -282,8 +412,8 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
      */
     function build_category_dom(title, idn, do_valve, is_valve_open) {
         var name = MONTY.words.cat[idn].txt;
-        var $ump = $('<div>', {id: name + '_ump', class: 'target-environment'});
-        var $title = $('<h2>');
+        var $ump = $('<div>', {id: name + '_ump', class: 'sup-category'});
+        var $title = $('<h2>', {class: 'frou-category'});
         $title.append(title);
         $ump.append($title);
         var $category = $('<div>', {id: name + '_category', class: 'category'});
@@ -292,10 +422,10 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
         if (do_valve) {
             var $valve = valve(name, is_valve_open);
             // noinspection JSCheckFunctionSignatures
-            $title.prepend($valve);
+            $title.prepend($valve);   // triangles go BEFORE the heading text
 
             var $how_many = $('<span>', {class:'how-many'});
-            $title.append($how_many);
+            $title.append($how_many);   // (n) anti-valve goes AFTER the heading text
 
             valve_controls($valve, $category, $how_many);
         }
@@ -427,7 +557,7 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
                     console.warn(mismatch_report);
                     if (first_mismatch) {
                         first_mismatch = false;
-                        flub(mismatch_report);
+                        // flub(mismatch_report);
                         if (confirm("Might be a little mixed up about the order here. Okay to reload the page?")) {
                             qoolbar.page_reload();
                         }
@@ -461,6 +591,7 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
         });
     }
 
+    // noinspection JSUnusedLocalSymbols
     function flub(report) {
         qoolbar.sentence({
             vrb_idn: MONTY.IDN.FIELD_FLUB,
@@ -503,6 +634,7 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
      * @return {jQuery}
      */
     function valve(name, is_initially_open) {
+        // TODO:  valve(options) instead, e.g. valve({name: x, is_initially_open: x});
         var $valve = $('<span>', {id: id_valve(name), class: 'valve'});
         $valve.data('name', name);
         var $closer = $('<span>', {class: 'closer'}).text(UNICODE.BLACK_DOWN_POINTING_TRIANGLE);
@@ -519,6 +651,15 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
         return $valve;
     }
     function valve_controls($valve, $elements, $anti_elements) {
+        // TODO:  Pass these parameters as fields to valve() options.
+        //        Big problem with that!  Currently, between valve() and  valve_controls() call,
+        //        The element returned by valve() must be appended into the DOM.
+        //        What breaks if that doesn't happen?  I forget...
+        //        Well it may be a problem that the valved and anti-valved elements cannot
+        //        be conveniently placed until the $valve element exists.
+        //        But maybe the solution to all this is to create an empty element and
+        //        pass that TO valve() who then fills it in with triangles.
+        //        Maybe the "name" (and its derivatives) can be inferred from that element's id.
         var name = $valve.data('name');
         $elements.addClass(name + '-valved');
         $anti_elements.addClass(name + '-anti-valved');

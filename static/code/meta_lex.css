@@ -47,7 +47,9 @@ ol.lex-list > li.srend:before {
 
 .wrend .named.empty,
 .wrend .named.un-lexed {
-    background-color: #FFDDFF;   /* pink = unexpectedly empty txt, unable to describe. */
+    /*background-color: #FFDDFF;   !* pink = unexpectedly empty txt, unable to describe. *!*/
+    font: italic 0.625em "Arial Narrow";
+    background-color: #EEEEEE;
 }
 
 .wrend a .named,
