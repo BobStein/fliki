@@ -69,15 +69,16 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
     var me_title = me_possessive + " unslumping ";
 
     // Aux outputs of build_ump(), which puts the (orphan) DOM objects it creates here.
-    var $sup_categories = {};  // outer category divs:  div#sup-category-xxx.sup-category
+    var $sup_categories = {};  // outer category divs:  div.sup-category
                                //                       includes h2 header and triangle valve
-    var $categories = {};      // inner category divs:  div#xxxx_category.category
-                               //                       Includes all div.sup-contribution.word's,
+    var $categories = {};      // inner category divs:  div.category
+                               //                       id of this inner div is the idn of the category
+                               //                       Includes all div.sup-contribution elements,
                                //                       plus (for my_category) div.container-entry
                                // MONTY.order.cont[][] is kind of a skeleton of $categories.
-                               // These are the same:
-                               //     $categories[cat].find('.sup-contribution').eq(n).attr('id')
-                               //     $categories[cat].find('.sup-contribution')[n].id
+                               // These should always be the same, the idn of the contribution:
+                               //     $categories[cat].find('.contribution').eq(n).attr('id')
+                               //     $categories[cat].find('.contribution')[n].id
                                //     MONTY.order.cont[cat][n]
 
     var WIDTH_MAX_EM = {
@@ -95,17 +96,19 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
     function size_adjust($element, dimension, max_em) {
         var natural_px = $element[dimension]();
         var natural_em = em_from_px(natural_px, $element);
-        var initial_em;
-        if (natural_em < max_em.hard) {
-            initial_em = natural_em;
+        var adjust_em;
+        if (natural_em <= max_em.hard) {
+            adjust_em = null;
         } else if (natural_em < max_em.extreme) {
-            initial_em = max_em.hard;
+            adjust_em = max_em.hard;
         } else {
-            initial_em = max_em.soft;
+            adjust_em = max_em.soft;
         }
-        var initial_px = px_from_em(initial_em, $element);
-        console.log("Adjust", first_word($element.text()), dimension, natural_em, "to", initial_em, "em");
-        $element[dimension](initial_px);
+        if (adjust_em !== null) {
+            var initial_px = px_from_em(adjust_em, $element);
+            console.log("Adjust", first_word($element.text()), dimension, natural_em, "to", adjust_em, "em");
+            $element[dimension](initial_px);
+        }
     }
     function px_from_em(em, $element) {
         $element = $element || $('body');
@@ -122,6 +125,9 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
             size_adjust($element, 'width', WIDTH_MAX_EM);
             size_adjust($element, 'height', HEIGHT_MAX_EM);
         });
+    }
+    function some_contributions_might_be_visible_for_the_first_time() {
+        initialize_contribution_size();
     }
     $(document).ready(function() {
         qoolbar.ajax_url(MONTY.AJAX_URL);
@@ -141,11 +147,7 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
                 text_or_caption_drop(evt);
             })
         ;
-        $('#login-prompt, .sup-category')
-            // .on('dragover', function () { $(this).addClass('dragging'); })
-            // .on('dragleave', function () { $(this).removeClass('dragging'); })
-            // .on('drop', function () { console.log("Drop sup-category"); })
-        ;
+
         enter_ump_disability();
 
         $('.category, .frou-category')
@@ -222,43 +224,33 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
                 }
             },
             onEnd: function sortable_drop(evt) {
-                var $movee = $(evt.item);   // movee means the contribution being moved
-                var movee_idn = $movee.attr('id');
-                var from_cat_idn = $(evt.from).data('idn');
-                var to_cat_idn;
-                if (is_in_frou(evt.to)) {
-                    // drop into a closed category
-                    var $cat = $cat_of(evt.to);
-                    to_cat_idn = $cat.data('idn');
-                    var cat_txt = MONTY.words.cat[to_cat_idn].txt;
-                    console.log(
-                        "Frou drop", cat_txt,
-                        "where cont", $movee[0].id,
-                        "goes into cat", to_cat_idn
-                    );
-                    if ($cat.find('.container-entry').length > 0) {
-                        // drop into category-my
-                        $cat.find('.container-entry').last().after($movee);
-                    } else {
-                        // drop into any other category, whether empty or not
-                        $cat.prepend($movee);
-                    }
-                } else {
-                    // drop into an open category
-                    to_cat_idn = $(evt.to).data('idn');
-                }
+                // NOTE:  movee means the contribution being moved
+                var $movee = $(evt.item);
+                var movee_idn = $movee.find('.contribution').attr('id');
+
+                var from_cat_idn = $(evt.from).attr('id');
+                var to_cat_idn = $cat_of(evt.to).attr('id');   // whether frou or category
                 var from_cat_txt = MONTY.words.cat[from_cat_idn].txt;
                 var to_cat_txt = MONTY.words.cat[to_cat_idn].txt;
 
-                var $buttee = $movee.nextAll('.sup-contribution');   // buttee means the contribution
-                                                                     // being displaced to the right, if any
+                if (is_in_frou(evt.to)) {   // drop into a closed category
+                    console.log(
+                        "Frou drop", to_cat_txt,
+                        "where cont", $movee[0].id,
+                        "goes into cat", to_cat_idn
+                    );
+                    move_instead_to_left_edge_of_category($cat_of(evt.to), $movee);
+                }
+
+                // NOTE:  buttee means the contribution shoved over to the right, if any
+                var $buttee = $movee.nextAll('.sup-contribution');
                 var buttee_idn;
                 var buttee_txt_excerpt;
                 if ($buttee.length === 0) {
                     buttee_idn = MONTY.IDN.FENCE_POST_RIGHT;   // this means the empty place to the right of them all
                     buttee_txt_excerpt = "[right edge]";
                 } else {
-                    buttee_idn = $buttee.attr('id');
+                    buttee_idn = $buttee.find('.contribution').attr('id');
                     buttee_txt_excerpt = $buttee.find('.contribution').text().substr(0, 20) + "...";
                 }
                 console.log(
@@ -267,7 +259,9 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
                     "to", to_cat_txt + "#" + evt.newDraggableIndex.toString(),
                     "butting in before", buttee_idn, buttee_txt_excerpt
                 );
-                if (evt.newDraggableIndex === evt.oldDraggableIndex && from_cat_idn === to_cat_idn) {
+                var is_same_category = from_cat_idn === to_cat_idn;
+                var is_same_contribution = evt.newDraggableIndex === evt.oldDraggableIndex;
+                if (is_same_category && is_same_contribution) {
                     console.debug("(put back where it came from)");
                 } else {
                     qoolbar.sentence({
@@ -283,8 +277,31 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
         };
     }
 
+    function move_instead_to_left_edge_of_category($cat, $movee) {
+        if ($cat.find('.container-entry').length > 0) {
+            // Drop after contribution entry form (the one in 'my' category))
+            $cat.find('.container-entry').last().after($movee);
+        } else {
+            // drop into any other category, whether empty or not
+            $cat.prepend($movee);
+        }
+    }
+
     /**
-     * What's the category idn of this element?
+     * Is this element being dropped in an open-valved category?
+     *
+     * @param element
+     * @return {boolean}
+     */
+    function is_open_drop(element) {
+        var cat_idn = $cat_of(element).attr('id');
+        var cat_txt = MONTY.words.cat[cat_idn].txt;
+        var is_open = get_valve($_from_id(id_valve(cat_txt)));
+        return is_open;
+    }
+
+    /**
+     * What's the div.category element for this element?
      *
      * @param element
      * @return {?string}
@@ -297,30 +314,6 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
         }
         var $cat = $sup_category.find('.category');
         return $cat;
-    }
-
-    /**
-     * What's the category idn of this element?
-     *
-     * @param element
-     * @return {?string}
-     */
-    function cat_idn_of(element) {
-        var cat_idn = $cat_of(element).data('idn');
-        return cat_idn;
-    }
-
-    /**
-     * Is this element being dropped in an open-valved category?
-     *
-     * @param element
-     * @return {boolean}
-     */
-    function is_open_drop(element) {
-        var cat_idn = cat_idn_of(element);
-        var cat_txt = MONTY.words.cat[cat_idn].txt;
-        var is_open = get_valve($_from_id(id_valve(cat_txt)));
-        return is_open;
     }
 
     /**
@@ -337,10 +330,13 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
         //          https://stackoverflow.com/a/17084912/673991
     }
 
-    function console_log_order() {
+    function console_order_report() {
         console.log("order", order_report(MONTY.order));
     }
 
+    /**
+     * Should the "post it" button be disabled or not?
+     */
     function enter_ump_disability() {
         if ($('#text_ump').val().length === 0 || $('#caption_ump').val().length === 0) {
             $('#enter_ump').attr('disabled', 'disabled');
@@ -388,19 +384,20 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
     }
 
     /**
-     * Build this page
+     * Build the body from scratch.
      */
     function build() {
+        $(document.body).empty();
+
         var $login_prompt = $('<div>', {id: 'login-prompt'});
         $login_prompt.html(MONTY.login_html);
-
-        $(document.body).empty();
         $(document.body).append($login_prompt);
 
         build_category_dom(me_title,    MONTY.IDN.CAT_MY,    true, true);
         build_category_dom("others",    MONTY.IDN.CAT_THEIR, true, true);
         build_category_dom("anonymous", MONTY.IDN.CAT_ANON,  true, false);
         build_category_dom("trash",     MONTY.IDN.CAT_TRASH, true, false);
+        $sup_categories[MONTY.IDN.CAT_MY].addClass('sup-category-first');
 
         var $entry = $('<div>', {class: 'container-entry'});
         $entry.append($('<textarea>', {id: 'text_ump', placeholder: "enter a quote"}));
@@ -412,33 +409,75 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
             var $anon_blurb = $('<p>', {class: 'anon-blurb'}).text(ANON_V_ANON_BLURB);
             $categories[MONTY.IDN.CAT_ANON].append($anon_blurb);
             $sup_categories[MONTY.IDN.CAT_ANON].addClass('double-anon');
-            // The double-anon CSS class dims the anonymous category for anonymous users.
+            // Anonymous users see a faded anonymous category with explanation.
         }
 
         var $sup_contributions = {};
         looper(MONTY.words.cont, function (_, word) {
             $sup_contributions[word.idn] = build_contribution_dom(word);
         });
-
         looper(MONTY.order.cat, function (_, cat) {
             looper(MONTY.order.cont[cat], function (_, cont) {
                 $categories[cat].append($sup_contributions[cont]);
             });
         });
+
         looper(MONTY.order.cat, function (_, idn) {
             $(document.body).append($sup_categories[idn]);
         });
     }
 
     /**
-     * Build the div#idn.sup-contribution for a contribution, containing its div.contribution and div.caption.
+     * Build the div.sup-category ($sup_category) for a category.  Contributions will go in later.
+     *
+     * Including
+     *     - open/close valve
+     *     - heading text
+     *     - span.how-many that will show a number when the category is closed.
+     *     - div.category ($category) that will contain contributions.
+     *
+     * Output the DOM elements in $sup_categories[] and $categories[].
+     * (Each $sup_category contains each $category.)
+     *
+     * @param title text - for the <h2>
+     * @param cat_idn of the category
+     * @param do_valve - should it have an open/close triangle?
+     * @param is_valve_open - initially open?
+     */
+    function build_category_dom(title, cat_idn, do_valve, is_valve_open) {
+        var name = MONTY.words.cat[cat_idn].txt;
+        var $sup_category = $('<div>', {class: 'sup-category'});
+        var $title = $('<h2>', {class: 'frou-category'});
+        // NOTE:  "frou" refers to the decorative stuff associated with a category.
+        //        In this case, that's just the <h2> heading,
+        //        which contains the category valve (the open-close triangles).
+        //        In a closed category, this frou is all we see,
+        //        so we have to deal with dropping there.
+        $title.append(title);
+        $sup_category.append($title);
+        var $category = $('<div>', {id: cat_idn, class: 'category'});
+        $sup_category.append($category);
+        if (do_valve) {
+            var $valve = valve(name, is_valve_open);
+            // noinspection JSCheckFunctionSignatures
+            $title.prepend($valve);   // triangles go BEFORE the heading text
+            var $how_many = $('<span>', {class:'how-many'});
+            $title.append($how_many);   // (n) anti-valve goes AFTER the heading text
+            valve_controls($valve, $category, $how_many);
+        }
+        $sup_categories[cat_idn] = $sup_category;
+        $categories[cat_idn] = $category;
+    }
+
+    /**
+     * Build the div.sup-contribution for a contribution, containing its div.contribution and div.caption.
      *
      * @param contribution_word
      * @return {jQuery}
      */
     function build_contribution_dom(contribution_word) {
-        var $sup_contribution = $('<div>', {class: 'sup-contribution word', id: contribution_word.idn});
-        var $contribution = $('<div>', {class: 'contribution size-adjust-once'});
+        var $sup_contribution = $('<div>', {class: 'sup-contribution word'});
+        var $contribution = $('<div>', {class: 'contribution size-adjust-once', id: contribution_word.idn});
         $sup_contribution.append($contribution);
         $contribution.text(leading_spaces_indent(contribution_word.txt));
         var $caption = $('<div>', {class: 'caption'});
@@ -463,53 +502,15 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
         });
         // THANKS:  leading spaces to nbsp, https://stackoverflow.com/a/4522228/673991
     }
-    /**
-     * Build the div#sup-category-xxx for category xxx, including its heading, its open/close valve,
-     * and the div#xxx_category that will contain its contributions.
-     * Store the DOM in $sup_categories[] and $categories[].  (Each $sup_category contains each $category.)
-     *
-     * @param title - for the <h2>
-     * @param idn - for the category
-     * @param do_valve - should it have an open/close triangle?
-     * @param is_valve_open - initially open?
-     */
-    function build_category_dom(title, idn, do_valve, is_valve_open) {
-        var name = MONTY.words.cat[idn].txt;
-        var $sup_category = $('<div>', {id: 'sup-category-' + name, class: 'sup-category'});
-        var $title = $('<h2>', {class: 'frou-category'});
-        // NOTE:  "frou" refers to the decorative stuff associated with a category.
-        //        In this case, that's just the <h2> heading,
-        //        which contains the category valve (the open-close triangles).
-        //        In a closed category, this frou is all we see,
-        //        so we have to deal with dropping there.
-        $title.append(title);
-        $sup_category.append($title);
-        var $category = $('<div>', {id: name + '_category', class: 'category'});
-        $category.data('idn', idn);
-        $sup_category.append($category);
-        if (do_valve) {
-            var $valve = valve(name, is_valve_open);
-            // noinspection JSCheckFunctionSignatures
-            $title.prepend($valve);   // triangles go BEFORE the heading text
-
-            var $how_many = $('<span>', {class:'how-many'});
-            $title.append($how_many);   // (n) anti-valve goes AFTER the heading text
-
-            valve_controls($valve, $category, $how_many);
-        }
-
-        $sup_categories[idn] = $sup_category;
-        $categories[idn] = $category;
-    }
 
     function reconstitute_order_from_dom() {
         var order = { cat:[], cont:{} };
 
         $('.category').each(function () {
-            var cat = $(this).data('idn');
+            var cat = $(this).attr('id');
             order.cat.push(cat);
             order.cont[cat] = [];
-            $(this).find('.sup-contribution').each(function () {
+            $(this).find('.contribution').each(function () {
                 order.cont[cat].push(this.id);
             });
         });
@@ -542,6 +543,7 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
         });
         var cont_strings = cont_nonempty.map(function(cat) {
             var first_words = order.cont[cat].map(function (cont) {
+                console.assert(is_laden(cont), cat, "`" + cont + "`", order.cont[cat]);
                 return first_word_from_cont(cont);
             });
             return MONTY.words.cat[cat].txt + ":" + first_words.join(",");
@@ -564,7 +566,7 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
             console.error("Missing contribution element, id =", cont);
             return "[" + cont + "?]";
         }
-        var txt = $cont.find('.contribution').text().trim();
+        var txt = $cont/*.find('.contribution')*/.text().trim();
         if ( ! is_laden(txt)) {
             return "[blank]";
         }
@@ -596,7 +598,7 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
                 var ajax_order = order_idns(response.order);
                 if (recon_order === ajax_order) {
                     MONTY.order = response.order;
-                    console_log_order();
+                    console_order_report();
                     refresh_how_many();
                 } else {
                     // FIXME:  This might mean legitimate changes on another window.
@@ -702,10 +704,14 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
         //        because they can't have been "controlled" yet.
 
         $valve.on('click', function () {
-            set_valve($valve, ! get_valve($valve));
-            setTimeout(function () {
-                initialize_contribution_size();
-            });
+            var old_open = get_valve($valve);
+            var new_open = ! old_open;
+            set_valve($valve, new_open);
+            if (new_open) {
+                setTimeout(function () {
+                    some_contributions_might_be_visible_for_the_first_time();
+                });
+            }
         });
         return $valve;
     }
@@ -758,8 +764,31 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
                 }
             );
             caption_tracks_text();
+
+            // function cap_tracks_cont(mlist, ob) {
+            //     // console.log("observe", this, mlist, ob);
+            //     looper(mlist, function (index, mutation) {
+            //         var $cont = $(mutation.target);
+            //         var $caption = $cont.nextAll('.caption');
+            //         // console.log("observe", $cont.attr('id'), first_word($caption.text()));
+            //         $caption.width($cont.width());
+            //     });
+            // }
+            // $('.contribution').each(function () {
+            //     var each_contribution = this;
+            //     new MutationObserver(cap_tracks_cont).observe(
+            //         each_contribution,
+            //         {
+            //             attributes: true,
+            //             attributeFilter: ['style']
+            //         }
+            //     );
+            // });
+            // TODO:  Contribution and caption should track in .sup-contribution containers too.
+            //        Not just the entry fields in div.container-entry
         }
     }
+
     function $_from_class(class_) {
         return $(selector_from_class(class_));
     }
