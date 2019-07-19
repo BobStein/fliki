@@ -458,7 +458,7 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
             $title.prepend($valve);   // triangles go BEFORE the heading text
             var $how_many = $('<span>', {class:'how-many'});
             $title.append($how_many);   // (n) anti-valve goes AFTER the heading text
-            valve_controls($valve, $category, $how_many);
+            valve_control($valve, $category, $how_many);
         }
         $sup_categories[cat_idn] = $sup_category;
         $categories[cat_idn] = $category;
@@ -736,8 +736,10 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
     /**
      * Hide or show stuff.
      *
-     * valve('foo') generates the DOM controls for a valve called 'foo'.  Append this somewhere.
-     * valve_controls('foo', $elements) says the valve will show or hide these DOM $elements.
+     * $valve = valve('foo') generates the DOM controls for a valve called 'foo'.
+     * Append $valve somewhere in the DOM tree.
+     * valve_control() identifies what the valve should show or hide
+     * when the user clicks the triangles.
      *
      * @param name {string}
      * @param is_initially_open {boolean}
@@ -767,9 +769,17 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
         });
         return $valve;
     }
-    function valve_controls($valve, $elements, $anti_elements) {
+
+    /**
+     * Identify what gets opened and closed when clicking on the valve triangles.
+     *
+     * @param $valve - returned by valve()
+     * @param $elements - what's visible when "open"
+     * @param $anti_elements - what's visible when "closed"
+     */
+    function valve_control($valve, $elements, $anti_elements) {
         // TODO:  Pass these parameters as fields to valve() options.
-        //        Big problem with that!  Currently, between valve() and  valve_controls() call,
+        //        Big problem with that!  Currently, between valve() and  valve_control() call,
         //        The element returned by valve() must be appended into the DOM.
         //        What breaks if that doesn't happen?  I forget...
         //        Well it may be a problem that the valved and anti-valved elements cannot
