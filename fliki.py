@@ -1000,7 +1000,7 @@ def contribution_home():
     if auth.is_enough_anonymous_patience(MINIMUM_SECONDS_BETWEEN_ANONYMOUS_QUESTIONS):
         with FlikiHTML('html') as html:
             with html.header("Unslumping") as head:
-                head.css_stamped(auth.static_url('code/unslump.css'))
+                head.css_stamped(auth.static_url('code/contribution.css'))
                 head.css('https://fonts.googleapis.com/css?family=Literata&display=swap')
             html.body("Loading...")
             with html.footer() as foot:
@@ -1019,6 +1019,7 @@ def contribution_home():
                         NOW=float(time_lex.now_word().num),
                         login_html=auth.login_html(),
                         order=cat_cont_order(auth),
+                        WHAT_IS_THIS_THING="unslumping",
                         # order.cat - list of categories in order
                         # order.cont - dict by category of lists of contributions in order
                         words=cat_cont_words(auth),
@@ -1202,7 +1203,19 @@ def unslumping_home_obsolete():
     auth.hit(auth.current_path)   # e.g. "/home"
     with FlikiHTML('html') as html:
         head = html.header("Ump The Former")
-        head.css_stamped(auth.static_url('code/unslump.css'))
+        head.css_stamped(auth.static_url('code/contribution.css'))
+        head.style('''
+            /** Vestigial stuff for unslumping_home_obsolete() **/
+            .deleted_hide,
+            .spam_hide,
+            .anonymous_hide {
+                display: none;
+            }
+            input:disabled + label {
+                color: #AAAAAA;
+            }
+            /* THANKS:  Disabled label, https://stackoverflow.com/a/19363036/673991 */
+        \n''')
 
         with html.body() as body:
             with body.div(id='login-prompt') as div_login:

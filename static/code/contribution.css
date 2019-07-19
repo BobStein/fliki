@@ -1,13 +1,8 @@
-/* css for the unslumping application - contributions and categories. */
+/* css for the contribution.js. */
 
 #login-prompt {
     text-align: right;
     font: menu;
-}
-
-h1, h2, h3, h4 {
-    margin-bottom: 0;
-    margin-top: 0;
 }
 
 .sup-category {
@@ -22,23 +17,37 @@ h1, h2, h3, h4 {
     margin-top: 0;
 }
 
-.category {
-    padding: 0.9em 0.5em 0.9em 0.5em;
+.sup-category h2 {
+    color: #AAAAAA;
+    font: 1.5em 'Arial Black', sans-serif;
+    margin-bottom: 0;
+    margin-top: 0;
 }
 
-#text_ump,
-#caption_ump,
+.sup-category h2 .how-many {
+    font-family: 'Arial', sans-serif;
+    font-weight: normal;
+}
+
+.category {
+    padding: 0.9em 0.5em 0.9em 0.5em;
+    display: flex;
+    flex-wrap: wrap;
+}
+
+#enter_some_text,
+#enter_a_caption,
 .contribution {
     font-family: 'Literata', serif;
 }
 
-#text_ump,
-#caption_ump,
-#enter_ump {
+#enter_some_text,
+#enter_a_caption,
+#post_it_button {
     display: block;
     margin: 0;
 }
-#text_ump {
+#enter_some_text {
     width: 18em;
     height: 5em;
 }
@@ -50,7 +59,7 @@ h1, h2, h3, h4 {
     padding: 0.3em 0.5em 0.3em 0.5em;
 }
 .contribution,
-#text_ump {
+#enter_some_text {
     -webkit-border-top-left-radius: 0.5em;
             border-top-left-radius: 0.5em;
         -moz-border-radius-topleft: 0.5em;
@@ -81,91 +90,18 @@ h1, h2, h3, h4 {
     padding: 0 0.666em 0.1em 0.666em;
     /* THANKS:  Ellipsis requirements, https://stackoverflow.com/a/17783233/673991 */
 }
-
-.anonymous .contribution {
-    border-color: #C00000;
-    background-color: #F4ECEC;
-}
-
-.anonymous .caption {
-    background-color: #B8A0A0;
-}
-
-/** Vestigial stuff for unslumping_home_obsolete() **/
-.deleted_hide,
-.spam_hide,
-.anonymous_hide {
-    display: none;
-}
-input:disabled + label {
-    color: #AAAAAA;
-}
-/* THANKS:  Disabled label, https://stackoverflow.com/a/19363036/673991 */
-
-/** qoolbar stuff **/
-.contribution.drop-hover,
-.contribution.drop-hover.anonymous {
-    background-color: white;
-    border-width: 2px;
-    margin: -1px;
-}
-.caption + .qool-bling,
-.contribution + .qool-bling {
-    margin-top: 0.1em;
-    display: block;
-}
-
-.anon-blurb {
-    font-family:  'Georgia', 'Garamond', serif;
-    font-style: italic;
-}
-
 .grip {
     cursor: move;
     padding-right: 0.3em;
 }
 
-.sup-category h2 {
-    color: #AAAAAA;
-    font: 1.5em 'Arial Black', sans-serif;
+.was-submitted-anonymous .contribution {
+    border-color: #C00000;
+    background-color: #F4ECEC;
 }
 
-.sup-category h2 .how-many {
-    font-family: 'Arial', sans-serif;
-    font-weight: normal;
-}
-
-.ghost > div,
-.ghost > span {
-    visibility: hidden;
-}
-.ghost {
-    border: dashed #AAAAAA;
-}
-.category .ghost      { /*width: 2em; height: 1.5em;*/ border-width: 0.25em; }   /* rel to body font */
-.frou-category .ghost { width: 1em; height: 0.7em; border-width: 0.17em; }   /* rel to H2 font */
-
-.how-many + .ghost {
-    margin-left: 1em;
-}
-
-.valve {
-    cursor: pointer;
-    -webkit-user-select: none;    /*noinspection CssUnknownProperty*/
-     -khtml-user-select: none;
-       -moz-user-select: none;
-        -ms-user-select: none;
-
-}
-.valve-closed .closer,
-.valve-opened .opener,
-.valve-hidden {
-    display: none;
-}
-.closer,
-.opener {
-    width: 1em;
-    display: inline-block;
+.was-submitted-anonymous .caption {
+    background-color: #B8A0A0;
 }
 
 .double-anon {
@@ -174,4 +110,55 @@ input:disabled + label {
                                                -khtml-opacity: 0.50;   /* Safari 1.x */
                                                  -moz-opacity: 0.50;   /* Firefox */
                                                       opacity: 0.50;   /* Good browsers */
+}
+.double-anon-blurb {
+    font-family:  'Georgia', 'Garamond', serif;
+    font-style: italic;
+}
+
+/** qoolbar stuff **/
+.contribution.drop-hover,
+.contribution.drop-hover.anonymous {
+    background-color: white;
+    border-width: 2px;
+    margin: -1px;
+}
+.caption      + .qool-bling,
+.contribution + .qool-bling {
+    margin-top: 0.1em;
+    display: block;
+}
+
+.drop-hint > div,
+.drop-hint > span {
+    visibility: hidden;
+}
+.drop-hint {
+    border: dashed #AAAAAA;
+}
+     .category .drop-hint {                            border-width: 0.25em; }   /* rel to body font */
+.frou-category .drop-hint { width: 1em; height: 0.7em; border-width: 0.17em; }   /* rel to H2 font */
+
+.how-many + .drop-hint {
+    margin-left: 1em;
+}
+
+.closer,
+.opener {
+    width: 1em;
+    display: inline-block;
+}
+.valve-closed .closer,
+.valve-opened .opener,
+.valve-hidden {
+    display: none;
+}
+.valve {
+    cursor: pointer;
+    -webkit-user-select: none;    /*noinspection CssUnknownProperty*/
+     -khtml-user-select: none;
+       -moz-user-select: none;
+        -ms-user-select: none;
+            user-select: none;
+    /* NOTE:  Prevent inadvertent text-selection of triangles. */
 }

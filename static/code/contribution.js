@@ -1,7 +1,7 @@
 
 // noinspection JSUnusedGlobalSymbols
 /**
- * JavaScript for contributions, a slightly more general-purpose unslumping implementation.
+ * JavaScript for qiki contributions, an attempt at generalizing the features of unslumping.org
  *
  * @param window
  * @param $
@@ -27,6 +27,7 @@
  * @param MONTY.me_txt
  * @param MONTY.order.cat
  * @param MONTY.order.cont
+ * @param MONTY.WHAT_IS_THIS_THING
  * @param MONTY.words.cat
  * @param MONTY.words.cont
  *
@@ -66,9 +67,9 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
         me_name = MONTY.me_txt;
         me_possessive = me_name + "'s";
     }
-    var me_title = me_possessive + " unslumping ";
+    var me_title = me_possessive + " " + MONTY.WHAT_IS_THIS_THING;
 
-    // Aux outputs of build_ump(), which puts the (orphan) DOM objects it creates here.
+    // Aux outputs of build_category(), which puts the (orphan) DOM objects it creates here.
     var $sup_categories = {};  // outer category divs:  div.sup-category
                                //                       includes h2 header and triangle valve
     var $categories = {};      // inner category divs:  div.category
@@ -81,83 +82,37 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
                                //     $categories[cat].find('.contribution')[n].id
                                //     MONTY.order.cont[cat][n]
 
+    // Config options for size_adjust()
     var WIDTH_MAX_EM = {
         soft: 15,         // below the hard-max, display as is.
         hard: 20,         // between hard and extreme-max, limit to hard-max.
         extreme: 25       // above extreme-max, display at soft-max.
     };
-
     var HEIGHT_MAX_EM = {
         soft: 7,         // below the hard-max, display as is.
         hard: 10,         // between hard and extreme-max, limit to hard-max.
         extreme: 15       // above extreme-max, display at soft-max.
     };
 
-    function size_adjust($element, dimension, max_em) {
-        var natural_px = $element[dimension]();
-        var natural_em = em_from_px(natural_px, $element);
-        var adjust_em;
-        if (natural_em <= max_em.hard) {
-            adjust_em = null;
-        } else if (natural_em < max_em.extreme) {
-            adjust_em = max_em.hard;
-        } else {
-            adjust_em = max_em.soft;
-        }
-        if (adjust_em !== null) {
-            var initial_px = px_from_em(adjust_em, $element);
-            console.log("Adjust", first_word($element.text()), dimension, natural_em, "to", adjust_em, "em");
-            $element[dimension](initial_px);
-        }
-    }
-    function px_from_em(em, $element) {
-        $element = $element || $('body');
-        return em * parseFloat($element.css('font-size'));
-    }
-    function em_from_px(px, $element) {
-        $element = $element || $('body');
-        return px / parseFloat($element.css('font-size'));
-    }
-    function initialize_contribution_size() {
-        $('.size-adjust-once:visible').each(function () {
-            var $element = $(this);
-            $element.removeClass('size-adjust-once');
-            size_adjust($element, 'width', WIDTH_MAX_EM);
-            size_adjust($element, 'height', HEIGHT_MAX_EM);
-        });
-    }
-    function some_contributions_might_be_visible_for_the_first_time() {
-        initialize_contribution_size();
-    }
     $(document).ready(function() {
         qoolbar.ajax_url(MONTY.AJAX_URL);
 
-        build();
+        build_dom();
 
-        caption_should_track_text_width();
-
-        $('#text_ump, #caption_ump')
-            .on('keyup', function text_or_caption_keyup() {
-                enter_ump_disability();
-            })
-            .on('drop', function (evt) {
-                text_or_caption_drop(evt);
-            })
-            .on('paste', function (evt) {
-                text_or_caption_drop(evt);
-            })
+        $('#enter_some_text, #enter_a_caption')
+            .on('keyup', post_it_button_disabled_or_not)
+            .on('drop', text_or_caption_drop)
+            .on('paste', text_or_caption_drop)
         ;
-
-        enter_ump_disability();
+        caption_should_track_text_width();
+        post_it_button_disabled_or_not();
+        $('#post_it_button').on('click', post_it_click);
 
         $('.category, .frou-category')
             .sortable(sortable_options())
         ;
-
-        initialize_contribution_size();
-
+        initialize_contribution_sizes();
         settle_down();
-        $('#enter_ump').on('click', enter_ump_click);
     });
 
     function text_or_caption_drop(evt) {
@@ -205,7 +160,7 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
             animation: 150,
             group: 'contributions',
             handle: '.grip',
-            ghostClass: 'ghost',
+            ghostClass: 'drop-hint',
             draggable: '.sup-contribution',
             onMove: function sortable_dragging(evt) {
                 if (is_in_frou(evt.related)) {
@@ -239,7 +194,7 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
                         "where cont", $movee[0].id,
                         "goes into cat", to_cat_idn
                     );
-                    move_instead_to_left_edge_of_category($cat_of(evt.to), $movee);
+                    relocate_contribution_to_category_left_edge($cat_of(evt.to), $movee);
                 }
 
                 // NOTE:  buttee means the contribution shoved over to the right, if any
@@ -277,7 +232,44 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
         };
     }
 
-    function move_instead_to_left_edge_of_category($cat, $movee) {
+    function contributions_becoming_visible_for_the_first_time_maybe() {
+        initialize_contribution_sizes();
+    }
+    function initialize_contribution_sizes() {
+        $('.size-adjust-once:visible').each(function () {
+            var $element = $(this);
+            $element.removeClass('size-adjust-once');
+            size_adjust($element, 'width', WIDTH_MAX_EM);
+            size_adjust($element, 'height', HEIGHT_MAX_EM);
+        });
+    }
+    function size_adjust($element, dimension, max_em) {
+        var natural_px = $element[dimension]();
+        var natural_em = em_from_px(natural_px, $element);
+        var adjust_em;
+        if (natural_em <= max_em.hard) {
+            adjust_em = null;
+        } else if (natural_em < max_em.extreme) {
+            adjust_em = max_em.hard;
+        } else {
+            adjust_em = max_em.soft;
+        }
+        if (adjust_em !== null) {
+            var initial_px = px_from_em(adjust_em, $element);
+            // console.log("Adjust", first_word($element.text()), dimension, natural_em, "to", adjust_em, "em");
+            $element[dimension](initial_px);
+        }
+    }
+    function px_from_em(em, $element) {
+        $element = $element || $('body');
+        return em * parseFloat($element.css('font-size'));
+    }
+    function em_from_px(px, $element) {
+        $element = $element || $('body');
+        return px / parseFloat($element.css('font-size'));
+    }
+
+    function relocate_contribution_to_category_left_edge($cat, $movee) {
         if ($cat.find('.container-entry').length > 0) {
             // Drop after contribution entry form (the one in 'my' category))
             $cat.find('.container-entry').last().after($movee);
@@ -303,8 +295,8 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
     /**
      * What's the div.category element for this element?
      *
-     * @param element
-     * @return {?string}
+     * @param element - any element inside div.sup-category
+     * @return {jQuery} - the div.category element
      */
     function $cat_of(element) {
         var $sup_category = $(element).closest('.sup-category');
@@ -317,7 +309,7 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
     }
 
     /**
-     * Is the element inside the frou-frou part of a category?
+     * Is this element inside the frou-frou part of a category (h2 header)?
      *
      * This is part of the shenanigans for allowing a drop into a closed category.
      *
@@ -330,24 +322,27 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
         //          https://stackoverflow.com/a/17084912/673991
     }
 
+    /**
+     * Console log the first words of each contribution, in each category.
+     */
     function console_order_report() {
         console.log("order", order_report(MONTY.order));
     }
 
-    /**
-     * Should the "post it" button be disabled or not?
-     */
-    function enter_ump_disability() {
-        if ($('#text_ump').val().length === 0 || $('#caption_ump').val().length === 0) {
-            $('#enter_ump').attr('disabled', 'disabled');
+    function post_it_button_disabled_or_not() {
+        if (
+            $('#enter_some_text').val().length === 0 ||
+            $('#enter_a_caption').val().length === 0
+        ) {
+            $('#post_it_button').attr('disabled', 'disabled');
         } else {
-            $('#enter_ump').removeAttr('disabled');
+            $('#post_it_button').removeAttr('disabled');
         }
     }
 
-    function enter_ump_click() {
-        var $text = $('#text_ump');
-        var $caption = $('#caption_ump');
+    function post_it_click() {
+        var $text = $('#enter_some_text');
+        var $caption = $('#enter_a_caption');
         var text = $text.val();
         var caption = $caption.val();
         if (text.length === 0) {
@@ -361,13 +356,13 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
                 vrb_idn: MONTY.IDN.CONTRIBUTE,
                 obj_idn: MONTY.IDN.QUOTE,
                 txt: text
-            }, function enter_ump_done_1(contribute_word) {
+            }, function post_it_done_1(contribute_word) {
                 console.log("contribution", contribute_word);
                 qoolbar.sentence({
                     vrb_idn: MONTY.IDN.CAPTION,
                     obj_idn: contribute_word.idn,
                     txt: caption
-                }, function enter_ump_done_2(caption_word) {
+                }, function post_it_done_2(caption_word) {
                     console.log("caption", caption_word);
                     contribute_word.jbo = [caption_word];
                     MONTY.words.cont.push(contribute_word);
@@ -386,7 +381,7 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
     /**
      * Build the body from scratch.
      */
-    function build() {
+    function build_dom() {
         $(document.body).empty();
 
         var $login_prompt = $('<div>', {id: 'login-prompt'});
@@ -400,13 +395,13 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
         $sup_categories[MONTY.IDN.CAT_MY].addClass('sup-category-first');
 
         var $entry = $('<div>', {class: 'container-entry'});
-        $entry.append($('<textarea>', {id: 'text_ump', placeholder: "enter a quote"}));
-        $entry.append($('<input>', {id: 'caption_ump', placeholder: "and a caption"}));
-        $entry.append($('<button>', {id: 'enter_ump'}).text("post it"));
+        $entry.append($('<textarea>', {id: 'enter_some_text', placeholder: "enter a quote"}));
+        $entry.append($('<input>', {id: 'enter_a_caption', placeholder: "and a caption"}));
+        $entry.append($('<button>', {id: 'post_it'}).text("post it"));
         $categories[MONTY.IDN.CAT_MY].append($entry);
 
         if (MONTY.is_anonymous) {
-            var $anon_blurb = $('<p>', {class: 'anon-blurb'}).text(ANON_V_ANON_BLURB);
+            var $anon_blurb = $('<p>', {class: 'double-anon-blurb'}).text(ANON_V_ANON_BLURB);
             $categories[MONTY.IDN.CAT_ANON].append($anon_blurb);
             $sup_categories[MONTY.IDN.CAT_ANON].addClass('double-anon');
             // Anonymous users see a faded anonymous category with explanation.
@@ -489,16 +484,22 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
         if (caption_txt !== undefined) {
             $caption.append(caption_txt);
         }
+        if (contribution_word.was_submitted_anonymous) {
+            $sup_contribution.addClass('was-submitted-anonymous');
+        }
         return $sup_contribution;
     }
 
+    /**
+     * Replace each line's leading spaces with non-breaking en-spaces.
+     */
     function leading_spaces_indent(text) {
         if ( ! is_laden(text)) {
             return "";
         }
         return text.replace(/^[ \t]+/gm, function(spaces) {
             return new Array(spaces.length + 1).join(UNICODE.EN_SPACE);
-            // NOTE:  UNICODE.NBSP is narrow and UNICODE.EM_SPACE is very wide.
+            // NOTE:  UNICODE.NBSP is too narrow and UNICODE.EM_SPACE is too wide.
         });
         // THANKS:  leading spaces to nbsp, https://stackoverflow.com/a/4522228/673991
     }
@@ -518,7 +519,8 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
     }
 
     /**
-     * Make a string of category and contribution idns in order, ready to compare with order from another source.
+     * Make a string of category and contribution idns in order,
+     * ready to compare with order from another source.
      *
      * EXAMPLE return:
      *     "0q83_059F:0q83_05B0,0q83_0598,0q83_03B3,0q83_03BC,0q83_0372 " +
@@ -577,10 +579,8 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
         return string.trim().split(' ')[0];
     }
     console.assert("foo" === first_word(" foo bar "));
-    console.assert("foo" === first_word("foo"));
     console.assert("" === first_word(""));
 
-    var first_mismatch = true;   // Only report order mismatch once, to server and to user with an alert.
 
     /**
      * After major changes:
@@ -589,6 +589,7 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
      * 2. Update MONTY.order if so.
      * 3. Refresh the how-many numbers in anti-valved fields (stuff that shows when closed).
      */
+    var first_mismatch = true;   // Only report order mismatch once, to server and to user with an alert.
     function settle_down() {
         var recon = reconstitute_order_from_dom();
         var recon_order = order_idns(recon);
@@ -650,6 +651,9 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
     }
 
     // noinspection JSUnusedLocalSymbols
+    /**
+     * Report some kerfuffle to the server.
+     */
     function flub(report) {
         qoolbar.sentence({
             vrb_idn: MONTY.IDN.FIELD_FLUB,
@@ -682,6 +686,54 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
     }
 
     /**
+     * Try to keep the caption input and textarea same width.  If not, no sweat.
+     */
+    function caption_should_track_text_width() {
+        if (typeof window.MutationObserver === 'function') {
+            var $enter_some_text = $('#enter_some_text');
+            var enter_a_caption = $('#enter_a_caption');
+            function caption_tracks_text() {
+                enter_a_caption.width($enter_some_text.width());
+            }
+            new MutationObserver(caption_tracks_text).observe(
+                $enter_some_text[0],
+                {
+                    attributes: true,
+                    attributeFilter: ['style']
+                }
+            );
+            caption_tracks_text();
+
+            // function cap_tracks_cont(mutation_list, ob) {
+            //     // console.log("observe", this, mutation_list, ob);
+            //     looper(mutation_list, function (index, mutation) {
+            //         var $cont = $(mutation.target);
+            //         var $caption = $cont.nextAll('.caption');
+            //         // console.log("observe", $cont.attr('id'), first_word($caption.text()));
+            //         $caption.width($cont.width());
+            //     });
+            // }
+            // $('.contribution').each(function () {
+            //     var each_contribution = this;
+            //     new MutationObserver(cap_tracks_cont).observe(
+            //         each_contribution,
+            //         {
+            //             attributes: true,
+            //             attributeFilter: ['style']
+            //         }
+            //     );
+            // });
+            // TODO:  Contribution and caption should track width
+            //        in .sup-contribution containers too.
+            //        Not just the entry fields in div.container-entry
+        }
+    }
+
+    ///////////////////////////////////////////////
+    ////// valve() - click to open / click to close
+    ///////////////////////////////////////////////
+
+    /**
      * Hide or show stuff.
      *
      * valve('foo') generates the DOM controls for a valve called 'foo'.  Append this somewhere.
@@ -709,7 +761,7 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
             set_valve($valve, new_open);
             if (new_open) {
                 setTimeout(function () {
-                    some_contributions_might_be_visible_for_the_first_time();
+                    contributions_becoming_visible_for_the_first_time_maybe();
                 });
             }
         });
@@ -742,52 +794,13 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
         var name = $valve.data('name');
         $valve.toggleClass('valve-opened',   should_be_open);
         $valve.toggleClass('valve-closed', ! should_be_open);
-        $_from_class(name + '-valved').toggleClass('valve-hidden', ! should_be_open);
-        $_from_class(name + '-anti-valved').toggleClass('valve-hidden', should_be_open);
+        $_from_class(name +      '-valved').toggleClass('valve-hidden', ! should_be_open);
+        $_from_class(name + '-anti-valved').toggleClass('valve-hidden',   should_be_open);
     }
 
-    /**
-     * Try to keep the caption input and textarea same width.  If not, no sweat.
-     */
-    function caption_should_track_text_width() {
-        if (typeof window.MutationObserver === 'function') {
-            var $text_ump = $('#text_ump');
-            var $caption_ump = $('#caption_ump');
-            function caption_tracks_text() {
-                $caption_ump.width($text_ump.width());
-            }
-            new MutationObserver(caption_tracks_text).observe(
-                $text_ump[0],
-                {
-                    attributes: true,
-                    attributeFilter: ['style']
-                }
-            );
-            caption_tracks_text();
-
-            // function cap_tracks_cont(mlist, ob) {
-            //     // console.log("observe", this, mlist, ob);
-            //     looper(mlist, function (index, mutation) {
-            //         var $cont = $(mutation.target);
-            //         var $caption = $cont.nextAll('.caption');
-            //         // console.log("observe", $cont.attr('id'), first_word($caption.text()));
-            //         $caption.width($cont.width());
-            //     });
-            // }
-            // $('.contribution').each(function () {
-            //     var each_contribution = this;
-            //     new MutationObserver(cap_tracks_cont).observe(
-            //         each_contribution,
-            //         {
-            //             attributes: true,
-            //             attributeFilter: ['style']
-            //         }
-            //     );
-            // });
-            // TODO:  Contribution and caption should track in .sup-contribution containers too.
-            //        Not just the entry fields in div.container-entry
-        }
-    }
+    ////////////////////////////
+    ////// Generic stuff follows
+    ////////////////////////////
 
     function $_from_class(class_) {
         return $(selector_from_class(class_));
@@ -807,7 +820,7 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
             if (object.hasOwnProperty(key)) {
                 var return_value = callback.call(
                     object,       // <-- 'this' is the container object
-                    key,          // <-- 1st parameter - key or property name
+                    key,          // <-- 1st parameter - object property name, or array index
                     object[key]   // <-- 2nd parameter - value
                 );
                 if (false === return_value) {
