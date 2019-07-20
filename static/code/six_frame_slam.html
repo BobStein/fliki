@@ -1,0 +1,22 @@
+<!--
+This is a crude way to get six web hits, and six lex inserts, in quick succession.
+In response to 500 errors and duplicate-entry MySQL errors in the log files
+from an apparent cascade of home-page hits,
+which triggered multiple near-simultaneous session_new() calls.
+-->
+<!--suppress HtmlDeprecatedTag, HtmlDeprecatedAttribute, HtmlUnknownTarget, HtmlUnknownAttribute -->
+<title>Six Frame Slam</title>
+<frameset cols="34%,33%,33%">
+    <frameset rows="50%,50%">
+        <frame src="/frog" />
+        <frame src="/frog" />
+    </frameset>
+    <frameset rows="50%,50%">
+        <frame src="/frog" />
+        <frame src="/frog" />
+    </frameset>
+    <frameset rows="50%,50%">
+        <frame src="/frog" />
+        <frame src="/frog" />
+    </frameset>
+</frameset>
