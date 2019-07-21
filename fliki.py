@@ -93,8 +93,8 @@ class WorkingIdns(object):
     #        LexFliki, except we don't want the lookups here to run every
     #        session.  For a given lex (database) these idns will never change.
     #        The instantiation of LexFliki actually represents a *connection* to the lex,
-    #        which comes and goes every session.  What object can better represent the
-    #        lex itself, including these idns?
+    #        which comes and goes every session (i.e. every HTTP request-response cycle.
+    #        What object can better represent the lex itself, including these idns?
     def __init__(self, lex):
         with flask_app.app_context():
             # setup_lex()
@@ -167,17 +167,374 @@ class WorkingIdns(object):
         return of_qstrings
 
 
+class GoogleFlaskUser(flask_login.UserMixin):
+    """Flask_login model for a Google user."""
+    # TODO:  Merge this with GoogleQikiUser somehow
+
+    def __init__(self, google_user_id):
+        self.id = google_user_id
+
+
+# class GoogleQikiUser(qiki.WordListed):
+#     is_anonymous = False
+#
+#
+# class GoogleQikiListing(qiki.Listing):
+#
+#     def __init__(self, meta_word, word_class=None, **kwargs):
+#         if word_class is None:
+#             word_class = GoogleQikiUser
+#         super(GoogleQikiListing, self).__init__(meta_word=meta_word, word_class=word_class, **kwargs)
+#
+#     def lookup(self, google_user_id):
+#         """
+#         Qiki model for a Google user.
+#
+#         :param google_user_id:  a qiki.Number for the google user-id
+#         """
+#         idn = self.composite_idn(google_user_id)
+#         # EXAMPLE:  0q82_A7__8A059E058E6A6308C8B0_1D0B00
+#
+#         namings = self.meta_word.lex.find_words(
+#             sbj=self.meta_word.lex[self.meta_word.lex],
+#             vrb=IDN.NAME,   # Ooh, will this bubble out of Listing to LexMySQL?
+#             obj=idn,
+#         )
+#         try:
+#             latest_naming = namings[0]   # FIXME:  This appears to get the EARLIEST naming.
+#         except IndexError:
+#             the_name = "(unnamed googloid {})".format(idn)
+#         else:
+#             the_name = latest_naming.txt
+#         return the_name, qiki.Number(1)
+#
+#
+# class AnonymousQikiUser(qiki.WordListed):
+#     is_anonymous = True
+#
+#
+# class AnonymousQikiListing(qiki.Listing):
+#
+#     def __init__(self, meta_word, word_class=None, **kwargs):
+#         if word_class is None:
+#             word_class = AnonymousQikiUser
+#         super(AnonymousQikiListing, self).__init__(meta_word=meta_word, word_class=word_class, **kwargs)
+#
+#     def lookup(self, session_verb_idn):
+#         parts = []
+#         anon_user = self.composite_idn(session_verb_idn)
+#
+#         ips = self.root_lex.find_words(
+#             sbj=anon_user,
+#             vrb=IDN.IP_ADDRESS_TAG,
+#             obj=session_verb_idn,
+#         )
+#         try:
+#             parts.append(str(ips[-1].txt))
+#         except IndexError:
+#             '''session was never ip-address-tagged'''
+#
+#         parts.append("session #" + render_num(session_verb_idn))
+#
+#         uas = self.root_lex.find_words(
+#             sbj=anon_user,
+#             vrb=IDN.USER_AGENT_TAG,
+#             obj=session_verb_idn,
+#         )
+#         try:
+#             user_agent_str = str(uas[-1].txt)
+#         except IndexError:
+#             '''session was never user-agent-tagged'''
+#         else:
+#             try:
+#                 user_agent_object = werkzeug.useragents.UserAgent(user_agent_str)
+#             except AttributeError:
+#                 parts.append("(indeterminate user agent)")
+#             else:
+#                 parts.append(user_agent_object.browser)   # "(browser?)")
+#                 parts.append(user_agent_object.platform)   # "(platform?)")
+#
+#         # TODO:  Make ip address, user agent, browser, platform
+#         #        available to logged-in users too.
+#
+#         parts_not_null = (p for p in parts if p is not None)
+#         txt = qiki.Text(" ".join(parts_not_null))
+#         return txt, qiki.Number(1)
+
+
+# class WordFliki(qiki.Word):
+#     pass
+    # def __init__(self, content=None, **kwargs):
+    #     if isinstance(content, qiki.Number) and content.is_suffixed():
+    #         try:
+    #             meta_idn = content.unsuffixed
+    #             index = content.suffix(qiki.Suffix.Type.LISTING)
+    #         except (AttributeError, ValueError) as e:
+    #             raise ValueError("Expecting a listing, not {qstring}, {error}".format(
+    #                 qstring=content.qstring(),
+    #                 error=str(e),
+    #             ))
+    #         else:
+    #             assert self._is_inchoate
+    #
+    #     else:
+    #         super(WordFliki, self).__init__(content, **kwargs)
+
+        # if isinstance(self.sbj, AnonymousQikiUser):
+        #     d['was_submitted_anonymous'] = True
+        #     # NOTE:  Not bothering to clutter up other words with anon False
+
+
 class LexFliki(qiki.LexMySQL):
+
+    _IDNS_READ_ONCE_AT_STARTUP = None
 
     def __init__(self, **kwargs):
         self.query_count = 0
         # NOTE:  lex.IDN is made for use by e.g. cat_cont_order(),
         #        and therefore for spoofing by test_fliki.py which would test cat_cont_order()
-        super(LexFliki, self).__init__(**kwargs)
+
+        class WordFlikiSentence(qiki.Word):
+
+            def to_json(self):
+                d = super(WordFlikiSentence, self).to_json()
+                if isinstance(self.sbj, self.lex.word_anon_class):
+                    d['was_submitted_anonymous'] = True
+                return d
+
+            # TODO:  @property is_anonymous() too ?
+
+        lex_fliki_instance = self
+
+        class WordFlikiUser(qiki.Word):
+            lex = lex_fliki_instance
+
+            def __init__(self, user_id, meta_idn):
+                self.index = qiki.Number(user_id)
+                self.meta_idn = meta_idn
+                idn = qiki.Number(
+                    self.meta_idn,
+                    qiki.Suffix(qiki.Suffix.Type.LISTING, self.index)
+                )
+                super(WordFlikiUser, self).__init__(idn)
+
+        class WordGoogle(WordFlikiUser):
+            is_anonymous = False
+
+            def __init__(self, google_id):
+                assert self.lex.IDN is not None
+                super(WordGoogle, self).__init__(google_id, self.lex.IDN.GOOGLE_LISTING)
+
+        class WordAnon(WordFlikiUser):
+            is_anonymous = True
+
+            def __init__(self, session_id):
+                assert self.lex.IDN is not None
+                super(WordAnon, self).__init__(session_id, self.lex.IDN.ANONYMOUS_LISTING)
+
+        self.word_google_class = WordGoogle
+        self.word_anon_class = WordAnon
+        self.word_user_class = WordFlikiUser
+
+        self.IDN = None
+        # NOTE:  Shouldn't need self.IDN, and can't have it, until this Lex is initialized.
+        #        One way this may break is if read_word() for a suffixed word
+        #        were somehow called by the Lex initialization.
+        super(LexFliki, self).__init__(word_class=WordFlikiSentence, **kwargs)
+
+        if LexFliki._IDNS_READ_ONCE_AT_STARTUP is None:
+            LexFliki._IDNS_READ_ONCE_AT_STARTUP = WorkingIdns(self)
+        self.IDN = LexFliki._IDNS_READ_ONCE_AT_STARTUP
 
     def _execute(self, cursor, query, parameters=()):
         self.query_count += 1
         return super(LexFliki, self)._execute(cursor, query, parameters)
+
+    @classmethod
+    def split_listing_idn(cls, idn):
+        """Return (meta_idn, index) from a listing word's idn.  Or raise ValueError."""
+        try:
+            return idn.unsuffixed, idn.suffix(qiki.Suffix.Type.LISTING).number
+        except (AttributeError, ValueError) as e:
+            raise ValueError("Not a Listing idn: " + repr(idn) + " - " + six.text_type(e))
+
+    # def google_user_word_factory(self, google_id):
+    #     idn = qiki.Number(
+    #         self.IDN.GOOGLE_LISTING,
+    #         qiki.Suffix(qiki.Suffix.Type.LISTING, qiki.Number(google_id))
+    #     )
+    #     word = self.word_google_class(idn)
+    #     word.lex = self
+    #     return word
+
+        # namings = self.find_words(
+        #     sbj=self,
+        #     vrb=self.IDN.NAME,   # Ooh, will this bubble out of Listing to LexMySQL?
+        #     obj=idn,
+        # )
+        # try:
+        #     latest_naming = namings[0]   # FIXME:  This appears to get the EARLIEST naming.
+        # except IndexError:
+        #     the_name = "(unnamed googloid {})".format(idn)
+        # else:
+        #     the_name = latest_naming.txt
+        # word.populate_from_num_txt(qiki.Number(1), the_name)
+        # return word
+
+    def google_txt_from_idn(self, idn):
+        namings = self.find_words(
+            sbj=self.IDN_LEX,   # TODO:  sbj=meta_idn?  Meaning the listing tags the user with their name.
+            vrb=self.IDN.NAME,
+            obj=idn,
+        )
+        try:
+            latest_naming = namings[0]   # FIXME:  This appears to get the EARLIEST naming.
+        except IndexError:
+            user_name = "(unnamed googloid {})".format(idn)
+        else:
+            user_name = latest_naming.txt
+        return user_name
+
+    # def anon_user_word_factory(self, session_id):
+    #     idn = qiki.Number(
+    #         self.IDN.ANONYMOUS_LISTING,
+    #         qiki.Suffix(qiki.Suffix.Type.LISTING, qiki.Number(session_id))
+    #     )
+    #     word = self.word_google_class(idn)
+    #     word.lex = self
+    #     return word
+
+        # parts = []
+        # ips = self.find_words(
+        #     sbj=idn,
+        #     vrb=self.IDN.IP_ADDRESS_TAG,
+        #     obj=session_id,
+        # )
+        # try:
+        #     parts.append(six.text_type(ips[-1].txt))
+        # except IndexError:
+        #     '''session was never ip-address-tagged'''
+        #
+        # parts.append("session #" + render_num(session_id))
+        #
+        # uas = self.root_lex.find_words(
+        #     sbj=idn,
+        #     vrb=self.IDN.USER_AGENT_TAG,
+        #     obj=session_id,
+        # )
+        # try:
+        #     user_agent_str = six.text_type(uas[-1].txt)
+        # except IndexError:
+        #     '''session was never user-agent-tagged'''
+        # else:
+        #     try:
+        #         user_agent_object = werkzeug.useragents.UserAgent(user_agent_str)
+        #     except AttributeError:
+        #         parts.append("(indeterminate user agent)")
+        #     else:
+        #         parts.append(user_agent_object.browser)   # "(browser?)")
+        #         parts.append(user_agent_object.platform)   # "(platform?)")
+        #
+        #
+        # parts_not_null = (p for p in parts if p is not None)
+        # txt = qiki.Text(" ".join(parts_not_null))
+        #
+        # word.populate_from_num_txt(qiki.Number(1), txt)
+        # return word
+
+    def anon_txt_from_idn(self, idn):
+        # TODO:  move this logic to WordAnon._from_idn() or something.
+        _, session_id = self.split_listing_idn(idn)
+        parts = []
+        ips = self.find_words(
+            sbj=idn,   # TODO:  sbj=meta_idn here too?
+            vrb=self.IDN.IP_ADDRESS_TAG,
+            obj=session_id,
+        )
+        try:
+            parts.append(six.text_type(ips[-1].txt))
+            # TODO:  Not just the latest IP address EVER, but the latest one tagged
+            #        in the context this txt will be USED.  (Somehow.)
+            #        This would depend on the sentence_word.whn for which
+            #        the idn passed to this function == sentence_word.sbj.idn
+            #        So above lex.find_words(idn_max = sentence_word.sbj.idn) or something.
+        except IndexError:
+            '''session was never ip-address-tagged'''
+
+        parts.append("session #" + render_num(session_id))
+
+        uas = self.root_lex.find_words(
+            sbj=idn,
+            vrb=self.IDN.USER_AGENT_TAG,
+            obj=session_id,
+            # TODO:  Combine these two find_words() calls.
+        )
+        try:
+            user_agent_str = six.text_type(uas[-1].txt)
+        except IndexError:
+            '''session was never user-agent-tagged'''
+        else:
+            try:
+                user_agent_object = werkzeug.useragents.UserAgent(user_agent_str)
+            except AttributeError:
+                parts.append("(indeterminate user agent)")
+            else:
+                parts.append(user_agent_object.browser)   # "(browser?)")
+                parts.append(user_agent_object.platform)   # "(platform?)")
+
+        # TODO:  Make ip address, user agent, browser, platform
+        #        separately available in anon and google word instances too.
+
+        parts_not_null = (p for p in parts if p is not None)
+        session_description = " ".join(parts_not_null)
+        txt = qiki.Text(session_description)
+        return txt
+
+    def read_word(self, idn_ish):
+        if idn_ish is None:
+            return super(LexFliki, self).read_word(None)
+
+        idn = self.idn_ify(idn_ish)
+        if idn is None:
+            return super(LexFliki, self).read_word(idn_ish)
+
+        if idn.is_suffixed():
+            meta_idn, index = self.split_listing_idn(idn)
+
+            assert self.IDN is not None
+            # NOTE:  Should never have to read a user word before LexFliki is instantiated.
+
+            if meta_idn == self.IDN.ANONYMOUS_LISTING:
+                the_word = self.word_anon_class(index)
+            elif meta_idn == self.IDN.GOOGLE_LISTING:
+                the_word = self.word_google_class(index)
+            else:
+                raise ValueError("Unexpected Listing meta-idn " + repr(meta_idn) + " from " + repr(idn))
+
+            # noinspection PyProtectedMember
+            assert the_word._is_inchoate, repr(idn_ish) + ", " + repr(idn)
+            # NOTE:  read_word() going choate here means infinite recursion.
+            #        So all members but idn are verboten until populate_word_from_idn().
+            return the_word
+
+        return super(LexFliki, self).read_word(idn)
+
+    def populate_word_from_idn(self, word, idn):
+        if idn.is_suffixed():
+            # meta_idn, _ = self.split_listing_idn(idn)
+            assert self.IDN is not None
+            if word.meta_idn == self.IDN.ANONYMOUS_LISTING:
+                txt = self.anon_txt_from_idn(idn)
+            elif word.meta_idn == self.IDN.GOOGLE_LISTING:
+                txt = self.google_txt_from_idn(idn)
+            else:
+                # raise ValueError("Unexpected Listing meta-idn " + repr(meta_idn) + " from " + repr(idn))
+                txt = "goof user"   # return False
+
+            word.populate_from_num_txt(qiki.Number(1), txt)
+        else:
+            super(LexFliki, self).populate_word_from_idn(word, idn)
+        return True
 
 
 def connect_lex():
@@ -198,7 +555,7 @@ def setup_lex():
         print("WHOOPS, ALREADY SETUP WITH A LEX")
 
     flask.g.lex = connect_lex()
-    flask.g.lex.IDN = IDN   # these lookups were done once at startup, now reused by this session
+    # flask.g.lex.IDN = IDN   # these lookups were done once at startup, now reused by this session
     flask.g.is_online = flask.g.lex is not None
 
 
@@ -229,98 +586,6 @@ class UNICODE(object):
     VERTICAL_FOUR_DOTS = u'\u205E'   # 4 vertical dots
 
 
-class GoogleFlaskUser(flask_login.UserMixin):
-    """Flask_login model for a Google user."""
-
-    def __init__(self, google_user_id):
-        self.id = google_user_id
-
-
-class GoogleQikiListing(qiki.Listing):
-
-    class GoogleQikiUser(qiki.WordListed):
-        is_anonymous = False
-
-    def __init__(self, meta_word, word_class=None, **kwargs):
-        if word_class is None:
-            word_class = self.GoogleQikiUser
-        super(GoogleQikiListing, self).__init__(meta_word=meta_word, word_class=word_class, **kwargs)
-
-    def lookup(self, google_user_id):
-        """
-        Qiki model for a Google user.
-
-        :param google_user_id:  a qiki.Number for the google user-id
-        """
-        idn = self.composite_idn(google_user_id)
-        # EXAMPLE:  0q82_A7__8A059E058E6A6308C8B0_1D0B00
-
-        namings = self.meta_word.lex.find_words(
-            sbj=self.meta_word.lex[self.meta_word.lex],
-            vrb=IDN.NAME,   # Ooh, will this bubble out of Listing to LexMySQL?
-            obj=idn,
-        )
-        try:
-            latest_naming = namings[0]
-        except IndexError:
-            the_name = "(unnamed googloid {})".format(idn)
-        else:
-            the_name = latest_naming.txt
-        return the_name, qiki.Number(1)
-
-
-class AnonymousQikiListing(qiki.Listing):
-
-    class AnonymousQikiUser(qiki.WordListed):
-        is_anonymous = True
-
-    def __init__(self, meta_word, word_class=None, **kwargs):
-        if word_class is None:
-            word_class = self.AnonymousQikiUser
-        super(AnonymousQikiListing, self).__init__(meta_word=meta_word, word_class=word_class, **kwargs)
-
-    def lookup(self, session_verb_idn):
-        parts = []
-        anon_user = self.composite_idn(session_verb_idn)
-
-        ips = self.root_lex.find_words(
-            sbj=anon_user,
-            vrb=IDN.IP_ADDRESS_TAG,
-            obj=session_verb_idn,
-        )
-        try:
-            parts.append(str(ips[-1].txt))
-        except IndexError:
-            '''session was never ip-address-tagged'''
-
-        parts.append("session #" + render_num(session_verb_idn))
-
-        uas = self.root_lex.find_words(
-            sbj=anon_user,
-            vrb=IDN.USER_AGENT_TAG,
-            obj=session_verb_idn,
-        )
-        try:
-            user_agent_str = str(uas[-1].txt)
-        except IndexError:
-            '''session was never user-agent-tagged'''
-        else:
-            try:
-                user_agent_object = werkzeug.useragents.UserAgent(user_agent_str)
-            except AttributeError:
-                parts.append("(indeterminate user agent)")
-            else:
-                parts.append(user_agent_object.browser)   # "(browser?)")
-                parts.append(user_agent_object.platform)   # "(platform?)")
-
-        # TODO:  Make ip address, user agent, browser, platform
-        #        available to logged-in users too.
-
-        parts_not_null = (p for p in parts if p is not None)
-        txt = qiki.Text(" ".join(parts_not_null))
-        return txt, qiki.Number(1)
-
-
 # TODO:  Combine classes, e.g. GoogleUser(flask_login.UserMixin, qiki.Listing)
 #        But this causes JSON errors because json can't encode qiki.Number.
 #        But there are so many layers to the serialization for sessions there's probably a way.
@@ -349,8 +614,8 @@ def setup_application_context():
 
         lex.duplicate_definition_notify(report_dup_def)
 
-        flask.g.google_qiki_listing = GoogleQikiListing(meta_word=lex[IDN.GOOGLE_LISTING])
-        flask.g.anonymous_qiki_listing = AnonymousQikiListing(meta_word=lex[IDN.ANONYMOUS_LISTING])
+        # flask.g.google_qiki_listing = GoogleQikiListing(meta_word=lex[IDN.GOOGLE_LISTING])
+        # flask.g.anonymous_qiki_listing = AnonymousQikiListing(meta_word=lex[IDN.ANONYMOUS_LISTING])
 
 
 @flask_app.teardown_appcontext
@@ -424,13 +689,15 @@ class Auth(object):
                     self.session_new()
 
         if self.is_authenticated:
-            self.qiki_user = flask.g.google_qiki_listing[self.authenticated_id()]
+            # self.qiki_user = flask.g.google_qiki_listing[self.authenticated_id()]
+            self.qiki_user = self.lex.word_google_class(self.authenticated_id())
             # TODO:  tag session_verb with google user, or vice versa
             #        if they haven't been paired yet,
             #        or aren't the most recent pairing
             #        (or remove that last thing, could churn if user is on two devices at once)
         elif self.is_anonymous:
-            self.qiki_user = flask.g.anonymous_qiki_listing[self.session_verb.idn]
+            # self.qiki_user = flask.g.anonymous_qiki_listing[self.session_verb.idn]
+            self.qiki_user = self.lex.word_anon_class(self.session_verb.idn)
             # TODO:  Tag the anonymous user with the session (like authenticated user)
             #        rather than embedding the session ID so prominently
             #        although, that session ID is the only way to identify anonymous users
@@ -753,7 +1020,11 @@ class AuthFliki(Auth):
 
 
 def is_qiki_user_anonymous(user_word):
-    return isinstance(user_word.lex, AnonymousQikiListing)
+    # return isinstance(user_word, AnonymousQikiUser)
+    try:
+        return user_word.is_anonymous
+    except AttributeError:
+        return False
 
 
 class SessionVariableName(object):
@@ -848,7 +1119,8 @@ def login():
             if hasattr(login_result, 'user') and login_result.user is not None:
                 login_result.user.update()
                 flask_user = GoogleFlaskUser(login_result.user.id)
-                qiki_user = flask.g.google_qiki_listing[login_result.user.id]
+                # qiki_user = flask.g.google_qiki_listing[login_result.user.id]
+                qiki_user = lex.google_user_word_factory(login_result.user.id)
                 picture_parts = urllib.parse.urlsplit(login_result.user.picture)
                 picture_dict = urllib.parse.parse_qs(picture_parts.query)
                 # THANKS:  Parse URL query-string, http://stackoverflow.com/a/21584580/673991
@@ -1182,7 +1454,7 @@ def cat_cont_order(auth):
         if word.vrb.idn in (auth.lex.IDN.CONTRIBUTE, auth.lex.IDN.UNSLUMP_OBSOLETE):
             if word.sbj == auth.qiki_user:
                 add_cont(auth.lex.IDN.CAT_MY, word, 0)
-            elif isinstance(word.sbj, AnonymousQikiListing.AnonymousQikiUser):
+            elif isinstance(word.sbj, auth.lex.word_anon_class):
                 add_cont(auth.lex.IDN.CAT_ANON, word, 0)
             else:
                 add_cont(auth.lex.IDN.CAT_THEIR, word, 0)
@@ -1399,9 +1671,9 @@ def short_long_description(user_word):
 
     short_description = user_naming_txt
 
-    if isinstance(user_word.lex, AnonymousQikiListing):
+    if is_qiki_user_anonymous(user_word):
         long_description = "Anonymous user {ip_address}".format(ip_address=user_naming_txt)
-    elif isinstance(user_word.lex, GoogleQikiListing):
+    elif isinstance(user_word, user_word.lex.word_google_class):
         long_description = "Google user {googly_name}".format(googly_name=user_naming_txt)
     else:
         long_description = "User lex class {lex_class} user {user_txt}".format(
@@ -1441,11 +1713,9 @@ def meta_raw():
     response = valid_response('words', words)
     t_end = time.time()
     print(
-        "RAW LEX TIMING,",
-        auth.lex.query_count - qc_start,
-        "queries,",
-        len(words),
-        "words,",
+        "RAW LEX,",
+        auth.lex.query_count - qc_start, "queries,",
+        len(words), "words,",
         "{:.3f} + {:.3f} + {:.3f} = {:.3f}".format(
             t_find - t_start,
             t_loop - t_find,
@@ -1453,14 +1723,10 @@ def meta_raw():
             t_end - t_start,
         ),
         "sec,",
-        len(response) // 1000,
-        "Kbytes,",
-        num_suffixed,
-        "suffixed",
-        num_anon,
-        "anon",
-        num_google,
-        "google",
+        len(response) // 1000, "Kbytes,",
+        num_suffixed, "suffixed",
+        num_anon, "anon",
+        num_google, "google",
     )
     return flask.Response(response, mimetype='application/json')
     # THANKS:  Flask mime type, https://stackoverflow.com/a/11774026/673991
@@ -1534,13 +1800,14 @@ def meta_lex():
                         if word.num != 1:
                             li(**{'data-num': render_num(word.num)})
 
-                    if isinstance(word.sbj.lex, qiki.Listing):
+                    # if isinstance(word.sbj.lex, qiki.Listing):
+                    if isinstance(word.sbj, word.sbj.lex.word_user_class):
                         listing_log(
                             word.sbj,
-                            meta_idn=word.sbj.lex.meta_word.idn.qstring(),
+                            meta_idn=word.sbj.meta_idn.qstring(),
                             is_anonymous=word.sbj.is_anonymous,
                             lex_class=type_name(word.sbj.lex),
-                            word_class=word.sbj.lex.word_class.__name__,
+                            word_class=type_name(word.sbj),
                             index=word.sbj.index.qstring(),
                             index_number=native_num(word.sbj.index),
                         )
@@ -1726,7 +1993,8 @@ def meta_all():
                         # NOTE:  w.__class__.__name__ == 'WordDerivedJustForThisListing'
                     else:
                         classes = ['named']
-                        if isinstance(w.lex, AnonymousQikiListing):
+                        # if isinstance(w.lex, AnonymousQikiListing):
+                        if is_qiki_user_anonymous(w):
                             classes.append('anonymous')
                         elif w.idn == IDN.LEX:
                             classes.append('lex')
@@ -2141,8 +2409,8 @@ def answer_qiki(url_suffix):
     )
     # TODO:  Alternatives to find_words()?
     #        answers = lex.find(vrb=answer, obj=auth.this_path,
-    for a in answers:
-        a.jbo_json = json_from_words(a.jbo)
+    for answer in answers:
+        answer.jbo_json = json_from_words(answer.jbo)
         # print("Answer", repr(a), a.jbo_json)
         # EXAMPLE:  Answer Word(102) [
         #    {"sbj": "0q82_A7__8A059E058E6A6308C8B0_1D0B00", "vrb": "0q82_86", "txt": "", "num": 1, "idn": "0q82_CF"},
@@ -2152,19 +2420,23 @@ def answer_qiki(url_suffix):
         #    {"sbj": "0q82_A7__8A059E058E6A6308C8B0_1D0B00", "vrb": "0q82_86", "txt": "", "num": 3, "idn": "0q83_017F"},
         #    {"sbj": "0q82_A7__8A059E058E6A6308C8B0_1D0B00", "vrb": "0q82_86", "txt": "", "num": 1, "idn": "0q83_0180"}
         # ]
-        pictures = lex.find_words(vrb=IDN.ICONIFY, obj=a.sbj)
-        picture = pictures[0] if len(pictures) >= 1 else None
-        names = lex.find_words(vrb=IDN.NAME, obj=a.sbj)
-        name = names[-1] if len(names) >= 1 else a.sbj.txt
+        picture_words = lex.find_words(vrb=IDN.ICONIFY, obj=answer.sbj)
+        picture_word = picture_words[0] if len(picture_words) >= 1 else None
+        name_words = lex.find_words(vrb=IDN.NAME, obj=answer.sbj)
+        name_word = name_words[-1] if len(name_words) >= 1 else answer.sbj
+        name_txt = name_word.txt
         # TODO:  Get latest name instead of earliest name
-        if picture is not None:
-            author_img = "<img src='{url}' title='{name}' class='answer-author'>".format(url=picture.txt, name=name)
-        elif name:
-            author_img = "({name})".format(name=name)
+        if picture_word is not None:
+            author_img = "<img src='{url}' title='{name}' class='answer-author'>".format(
+                url=picture_word.txt,
+                name=name_txt,
+            )
+        elif name_txt:
+            author_img = "({name})".format(name=name_txt)
         else:
             author_img = ""
 
-        a.author = author_img
+        answer.author = author_img
     question_words = lex.find_words(vrb=IDN.QUESTION_OBSOLETE, obj=auth.path_word)   # old hits
     session_words = lex.find_words(obj=IDN.BROWSE)
     hit_words = lex.find_words(vrb=session_words, obj=auth.path_word)   # new hits
@@ -2215,6 +2487,8 @@ def youtube_render(url_suffix):
 
 def json_from_words(words):
     """Convert a Python list of words to a JavaScript (json) array of word-like objects."""
+    # TODO:  Replace with json_encode()
+    #        Obviously that function has to support lists, etc. first.
     dicts = []
     for word in words:
         dicts.append(dict(
@@ -2327,6 +2601,8 @@ def ajax():
                 txt=txt,
                 use_already=use_already,
             )
+            # assert json_from_words([new_word]) == json_encode([new_word]), \
+            #     "\n" + json_from_words([new_word]) + "\n" + json_encode([new_word])
             return valid_response('new_words', json_from_words([new_word]))
         elif action == 'new_verb':
             new_verb_name = auth.form('name')
@@ -2413,48 +2689,6 @@ def ajax():
         )
 
 
-class WordEncoder(json.JSONEncoder):
-    """Support JSON of qiki Word instances."""
-    # TODO:  Unify with json_from_words()
-    def default(self, w):
-        if isinstance(w, qiki.WordListed):
-            return dict(
-                idn=w.idn.qstring(),
-                index=w.index,
-                txt=w.txt,
-            )
-        elif isinstance(w, qiki.Word):
-            d = dict(
-                idn=w.idn.qstring(),
-                sbj=w.sbj.idn.qstring(),
-                vrb=w.vrb.idn.qstring(),
-                obj=w.obj.idn.qstring(),
-                whn=float(w.whn),
-            )
-
-            if w.txt != "":
-                d['txt'] = w.txt
-
-            if w.num != 1:
-                d['num'] = native_num(w.num)
-
-            if isinstance(w.sbj, AnonymousQikiListing.AnonymousQikiUser):
-                d['was_submitted_anonymous'] = True
-                # NOTE:  Not bothering to clutter up other words with anon False
-
-            if hasattr(w, 'jbo') and len(w.jbo) > 0:
-                d['jbo'] = w.jbo
-
-            return d
-        elif isinstance(w, qiki.Number):
-            return w.qstring()
-        else:
-            try:
-                return super(WordEncoder, self).default(w)
-            except TypeError:
-                raise
-
-
 def valid_response(name, value):
     return json_encode(dict([
         ('is_valid', True),
@@ -2462,10 +2696,45 @@ def valid_response(name, value):
     ]))
 
 
+def invalid_response(error_message):
+    return json.dumps(dict(
+        is_valid=False,
+        error_message=error_message,
+    ))
+
+
 JSON_SEPARATORS_NO_SPACES = (',', ':')
 
 
+def json_encode(dictionary, **kwargs):
+    """JSON encoding a dict, including custom objects with to_json() methods."""
+    # TODO:  Support encoding list, etc.
+    return json.dumps(
+        dict(fix_dict(dictionary)),
+        cls=WordEncoder,
+        separators=JSON_SEPARATORS_NO_SPACES,
+        allow_nan=False,
+        **kwargs
+        # NOTE:  If there APPEAR to be newlines when viewed in a browser,
+        #        it may just be the browser wrapping lines on the commas.
+    )
+
+
+class WordEncoder(json.JSONEncoder):
+    """Custom converter for json_encode()."""
+    def default(self, w):
+        if hasattr(w, 'to_json'):
+            return w.to_json()
+        else:
+            return super(WordEncoder, self).default(w)
+            # NOTE:  Raises a TypeError, unless a multi-derived class
+            #        calls a sibling class.  (If that's even how multiple
+            #        inheritance works.)
+
+
 def fix_dict(thing):
+    """Replace qiki Number keys with qstrings in nested dictionaries."""
+    # TODO:  use "to_json" methods instead.
     if isinstance(thing, dict):
         for key, value in thing.items():
             if isinstance(key, qiki.Number):
@@ -2484,25 +2753,6 @@ def fix_dict(thing):
             yield value
     else:
         yield thing
-
-
-def json_encode(dictionary, **kwargs):
-    return json.dumps(
-        dict(fix_dict(dictionary)),
-        cls=WordEncoder,
-        separators=JSON_SEPARATORS_NO_SPACES,
-        allow_nan=False,
-        **kwargs
-        # NOTE:  If there APPEAR to be newlines when viewed in a browser,
-        #        it may just be the browser wrapping lines on the commas.
-    )
-
-
-def invalid_response(error_message):
-    return json.dumps(dict(
-        is_valid=False,
-        error_message=error_message,
-    ))
 
 
 def version_report():
