@@ -1047,7 +1047,7 @@ def cache_bust(s):
 
 @flask_app.route('/', methods=('GET', 'HEAD'))
 def home_or_root_directory():
-    return contribution_home()
+    return contribution_home(secure.credentials.Options.home_page_title)
 
 
 @flask_app.route('/home', methods=('GET', 'HEAD'))
@@ -1057,16 +1057,16 @@ def home_subdirectory():
 
 @flask_app.route('/meta/contrib', methods=('GET', 'HEAD'))
 def meta_contrib():
-    return contribution_home()
+    return contribution_home(secure.credentials.Options.home_page_title)
 
 
-def contribution_home():
+def contribution_home(home_page_title):
     t_start = time.time()
     auth = AuthFliki()
     # auth.hit(auth.current_path)   Commented out to suppress early churn
     if auth.is_enough_anonymous_patience(MINIMUM_SECONDS_BETWEEN_ANONYMOUS_QUESTIONS):
         with FlikiHTML('html') as html:
-            with html.header("Unslumping") as head:
+            with html.header(home_page_title) as head:
                 head.css_stamped(auth.static_url('code/contribution.css'))
                 head.css('https://fonts.googleapis.com/css?family=Literata&display=swap')
             html.body("Loading...")
@@ -1085,7 +1085,8 @@ def contribution_home():
                         NOW=float(time_lex.now_word().num),
                         login_html=auth.login_html(),
                         order=cat_cont_order(auth),
-                        WHAT_IS_THIS_THING="unslumping",
+                        WHAT_IS_THIS_THING=secure.credentials.Options.what_is_this_thing,
+
                         # order.cat - list of categories in order
                         # order.cont - dict by category of lists of contributions in order
                         words=cat_cont_words(auth),
@@ -2181,6 +2182,10 @@ def answer_qiki(url_suffix):
         return qiki_javascript(filename=url_suffix)
         # SEE:  favicon.ico in root, https://realfavicongenerator.net/faq#why_icons_in_root
 
+    if not secure.credentials.Options.enable_answer_qiki:
+        flask.abort(404)
+
+
     auth = AuthFliki()
     if not auth.is_online:
         return "answers offline"
@@ -2396,6 +2401,8 @@ def ajax():
             )
             # assert json_from_words([new_word]) == json_encode([new_word]), \
             #     "\n" + json_from_words([new_word]) + "\n" + json_encode([new_word])
+            # TODO:  replace with json_encode().
+            #        Now it gives TypeError: cannot convert dictionary update sequence element #0 to a sequence
             return valid_response('new_words', json_from_words([new_word]))
         elif action == 'new_verb':
             new_verb_name = auth.form('name')
