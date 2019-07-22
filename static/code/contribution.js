@@ -388,7 +388,13 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
                     contribute_word.jbo = [caption_word];
                     MONTY.words.cont.push(contribute_word);
                     var $new_sup = build_contribution_dom(contribute_word);
-                    $categories[MONTY.IDN.CAT_MY].find('.sup-contribution').first().before($new_sup);
+                    var $cat = $categories[MONTY.IDN.CAT_MY];
+                    var $first_old_sup = $cat.find('.sup-contribution').first();
+                    // if ($first_old_sup.length === 1) {
+                        $first_old_sup.before($new_sup);
+                    // } else {
+                    //     $cat.append($new_sup);
+                    // }
                     // NOTE:  New .sup-contribution goes before leftmost .sup-contribution, if any.
                     safe_prepend(MONTY.order.cont, MONTY.IDN.CAT_MY, contribute_word.idn);
                     $text.val("");
@@ -399,6 +405,23 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
         }
     }
 
+    /**
+     * Prepend an element into an array, that's itself inside an associative array.
+     *
+     * And it (the inner array) may not even be there!  It may need to be inserted.
+     *
+     * Example:
+     *
+     *      var o = {prime: [3,5,7]};
+     *      assert_json('{"prime":[3,5,7]}', o);
+     *      safe_prepend(o, 'prime', 2);
+     *      safe_prepend(o, 'perfect', 496);
+     *      assert_json('{"prime":[2,3,5,7],"perfect":[496]}', o);
+     *
+     * @param associative_array
+     * @param key
+     * @param element
+     */
     function safe_prepend(associative_array, key, element) {
         if (has(associative_array, key)) {
             associative_array[key].unshift(element);
@@ -407,8 +430,9 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
         }
     }
     var a = {};
-    safe_prepend(a, 'a', 99);  assert_json('{"a":[99]}', a);
-    safe_prepend(a, 'a', 98);  assert_json('{"a":[98,99]}', a);
+    safe_prepend(a, 'a', 99);   assert_json('{"a":[99]}', a);
+    safe_prepend(a, 'a', 98);   assert_json('{"a":[98,99]}', a);
+    safe_prepend(a, 'a', 97);   assert_json('{"a":[97,98,99]}', a);
 
     function assert_json(json, object) {
         var json_actual = JSON.stringify(object);
@@ -508,7 +532,8 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
     }
 
     /**
-     * Build the div.sup-contribution for a contribution, containing its div.contribution and div.caption.
+     * Build the div.sup-contribution for a contribution,
+     * containing its div.contribution and div.caption.
      *
      * @param contribution_word
      * @return {jQuery}

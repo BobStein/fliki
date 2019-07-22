@@ -102,7 +102,7 @@ class WorkingIdns(object):
     #        which comes and goes every session (i.e. every HTTP request-response cycle.
     #        What object can better represent the lex itself, including these idns?
     def __init__(self, lex):
-        with flask_app.app_context():
+        with flask_app.app_context():   # FIXME:  WTF is this called??
             # setup_lex()
             # if flask.g.is_online:
             #     lex = flask.g.lex
@@ -308,8 +308,7 @@ class LexFliki(qiki.LexMySQL):
 
         parts_not_null = (p for p in parts if p is not None)
         session_description = " ".join(parts_not_null)
-        txt = qiki.Text(session_description)
-        return txt
+        return session_description
 
     def read_word(self, idn_ish):
         if idn_ish is None:
@@ -352,7 +351,7 @@ class LexFliki(qiki.LexMySQL):
                 # raise ValueError("Unexpected Listing meta-idn " + repr(meta_idn) + " from " + repr(idn))
                 txt = "goof user"   # return False
 
-            word.populate_from_num_txt(qiki.Number(1), txt)
+            word.populate_from_num_txt(qiki.Number(1), qiki.Text(txt))
         else:
             super(LexFliki, self).populate_word_from_idn(word, idn)
         return True
