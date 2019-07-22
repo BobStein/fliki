@@ -135,6 +135,8 @@ class WorkingIdns(object):
                 self.CAT_TRASH         = lex.define(self.CATEGORY, u'trash').idn
                 self.FENCE_POST_RIGHT  = lex.noun(u'fence post right').idn
 
+                self.LURCHING          = lex.noun(u'lurching').idn
+
                 # lex[lex](self.EXPLAIN, use_already=True)[self.FENCE_POST_RIGHT] = \
                 #     u"Represent the contribution to the right of the right-most contribution in a category.", 2
                 # lex[lex](self.EXPLAIN, use_already=True)[self.FENCE_POST_RIGHT] = \
@@ -491,7 +493,10 @@ class Auth(object):
                 print("BAD SESSION IDENTIFIER", session_idn_qstring)
                 self.session_new()
             else:
-                if self.session_verb.obj.idn == IDN.BROWSE:
+                if not self.session_verb.exists():
+                    print("NOT A RECOGNIZED IDENTIFIER", session_idn_qstring)
+                    self.session_new()
+                elif self.session_verb.obj.idn == IDN.BROWSE:
                     '''old session word is good, keep it'''
                 else:
                     print("NOT A SESSION IDENTIFIER", session_idn_qstring)
