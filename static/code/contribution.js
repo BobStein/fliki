@@ -390,11 +390,11 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
                     var $new_sup = build_contribution_dom(contribute_word);
                     var $cat = $categories[MONTY.IDN.CAT_MY];
                     var $first_old_sup = $cat.find('.sup-contribution').first();
-                    // if ($first_old_sup.length === 1) {
+                    if ($first_old_sup.length === 1) {
                         $first_old_sup.before($new_sup);
-                    // } else {
-                    //     $cat.append($new_sup);
-                    // }
+                    } else {
+                        $cat.append($new_sup);
+                    }
                     // NOTE:  New .sup-contribution goes before leftmost .sup-contribution, if any.
                     safe_prepend(MONTY.order.cont, MONTY.IDN.CAT_MY, contribute_word.idn);
                     $text.val("");

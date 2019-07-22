@@ -123,8 +123,8 @@ class WorkingIdns(object):
                 self.USER_AGENT_TAG    = lex.define(self.TAG, u'user agent tag').idn
                 self.REFERRER          = lex.verb(u'referrer').idn
                 self.ICONIFY           = lex.verb(u'iconify').idn
-                self.GOOGLE_LISTING    = lex.define(self.LISTING, u'google user').idn
                 self.ANONYMOUS_LISTING = lex.define(self.LISTING, u'anonymous').idn
+                self.GOOGLE_LISTING    = lex.define(self.LISTING, u'google user').idn
                 self.QOOL              = lex.verb(u'qool').idn
                 self.UNSLUMP_OBSOLETE  = lex.verb(u'unslump').idn
 
@@ -203,6 +203,7 @@ class LexFliki(qiki.LexMySQL):
             def __init__(self, user_id, meta_idn):
                 self.index = qiki.Number(user_id)
                 self.meta_idn = meta_idn
+                self.is_named = False
                 idn = qiki.Number(
                     self.meta_idn,
                     qiki.Suffix(qiki.Suffix.Type.LISTING, self.index)
@@ -216,12 +217,95 @@ class LexFliki(qiki.LexMySQL):
                 assert self.lex.IDN is not None
                 super(WordGoogle, self).__init__(google_id, self.lex.IDN.GOOGLE_LISTING)
 
+            def _from_idn(self, idn):
+                assert self.idn.is_suffixed()
+                assert isinstance(self.meta_idn, qiki.Number)
+                assert isinstance(self.index, qiki.Number)
+                namings = self.lex.find_words(
+                    sbj=self.lex.IDN_LEX,   # TODO:  sbj=meta_idn?  Meaning the listing tags the user with their name.
+                    vrb=self.lex.IDN.NAME,
+                    obj=idn,
+                )
+                try:
+                    latest_naming = namings[-1]
+                    # DONE:  This used to get the EARLIEST naming.
+                except IndexError:
+                    user_name = "(unnamed googloid {})".format(int(self.index))
+                    # EXAMPLE:  (unnamed googloid 0q82_12__8A059E058E6A6308C8B0_1D0B00)
+                    # FIXME:  Log out here
+                    #         This can happen when switching the MySQL table,
+                    #         flask session remembers the qiki user id
+                    #         (idn shown in example above -- google id is inside the suffix)
+                    #         but the new table has never named that idn.
+                    #         Oh wow, big coincidence that the meta_idn is the same in both tables!
+                    #         That sure can't be relied upon.
+                    #         If it doesn't happen, then something else breaks.
+                    #         Anyway, here we need to GTF out.
+                    #         This is perhaps a small skirmish in the overall war
+                    #         against ever giving data control over code.
+                else:
+                    user_name = latest_naming.txt
+                    self.is_named = True
+                txt = qiki.Text(user_name)
+                num = qiki.Number(1)
+                self.populate_from_num_txt(num, txt)
+
         class WordAnon(WordFlikiUser):
             is_anonymous = True
 
             def __init__(self, session_id):
                 assert self.lex.IDN is not None
                 super(WordAnon, self).__init__(session_id, self.lex.IDN.ANONYMOUS_LISTING)
+
+            def _from_idn(self, idn):
+                assert self.idn.is_suffixed()
+                assert isinstance(self.meta_idn, qiki.Number)
+                assert isinstance(self.index, qiki.Number)
+                parts = []
+                ips = self.lex.find_words(
+                    sbj=idn,   # TODO:  sbj=meta_idn here instead of composite_idn too?
+                    vrb=self.lex.IDN.IP_ADDRESS_TAG,
+                    obj=self.index,
+                )
+                try:
+                    parts.append(six.text_type(ips[-1].txt))
+                    # TODO:  Not just the latest IP address EVER, but the latest one tagged
+                    #        in the context this txt will be USED.  (Somehow.)
+                    #        This would depend on the sentence_word.whn for which
+                    #        the idn passed to this function == sentence_word.sbj.idn
+                    #        So above lex.find_words(idn_max = sentence_word.sbj.idn) or something.
+                except IndexError:
+                    '''session was never ip-address-tagged'''
+
+                parts.append("session #" + render_num(self.index))
+
+                uas = self.lex.find_words(
+                    sbj=idn,
+                    vrb=self.lex.IDN.USER_AGENT_TAG,
+                    obj=self.index,
+                    # TODO:  Combine these two find_words() calls.
+                )
+                try:
+                    user_agent_str = six.text_type(uas[-1].txt)
+                except IndexError:
+                    '''session was never user-agent-tagged'''
+                else:
+                    try:
+                        user_agent_object = werkzeug.useragents.UserAgent(user_agent_str)
+                    except AttributeError:
+                        parts.append("(indeterminate user agent)")
+                    else:
+                        parts.append(user_agent_object.browser)   # "(browser?)")
+                        parts.append(user_agent_object.platform)   # "(platform?)")
+
+                # TODO:  Make ip address, user agent, browser, platform
+                #        separately available in anon and google word instances too.
+
+                parts_not_null = (p for p in parts if p is not None)
+                session_description = " ".join(parts_not_null)
+                txt = qiki.Text(session_description)
+                num = qiki.Number(1)
+                self.populate_from_num_txt(num, txt)
 
         self.word_google_class = WordGoogle
         self.word_anon_class = WordAnon
@@ -249,66 +333,66 @@ class LexFliki(qiki.LexMySQL):
         except (AttributeError, ValueError) as e:
             raise ValueError("Not a Listing idn: " + repr(idn) + " - " + six.text_type(e))
 
-    def google_txt_from_idn(self, idn):
-        namings = self.find_words(
-            sbj=self.IDN_LEX,   # TODO:  sbj=meta_idn?  Meaning the listing tags the user with their name.
-            vrb=self.IDN.NAME,
-            obj=idn,
-        )
-        try:
-            latest_naming = namings[0]   # FIXME:  This appears to get the EARLIEST naming.
-        except IndexError:
-            user_name = "(unnamed googloid {})".format(idn)
-        else:
-            user_name = latest_naming.txt
-        return user_name
-
-    def anon_txt_from_idn(self, idn):
-        # TODO:  move this logic to WordAnon._from_idn() or something.
-        _, session_id = self.split_listing_idn(idn)
-        parts = []
-        ips = self.find_words(
-            sbj=idn,   # TODO:  sbj=meta_idn here too?
-            vrb=self.IDN.IP_ADDRESS_TAG,
-            obj=session_id,
-        )
-        try:
-            parts.append(six.text_type(ips[-1].txt))
-            # TODO:  Not just the latest IP address EVER, but the latest one tagged
-            #        in the context this txt will be USED.  (Somehow.)
-            #        This would depend on the sentence_word.whn for which
-            #        the idn passed to this function == sentence_word.sbj.idn
-            #        So above lex.find_words(idn_max = sentence_word.sbj.idn) or something.
-        except IndexError:
-            '''session was never ip-address-tagged'''
-
-        parts.append("session #" + render_num(session_id))
-
-        uas = self.root_lex.find_words(
-            sbj=idn,
-            vrb=self.IDN.USER_AGENT_TAG,
-            obj=session_id,
-            # TODO:  Combine these two find_words() calls.
-        )
-        try:
-            user_agent_str = six.text_type(uas[-1].txt)
-        except IndexError:
-            '''session was never user-agent-tagged'''
-        else:
-            try:
-                user_agent_object = werkzeug.useragents.UserAgent(user_agent_str)
-            except AttributeError:
-                parts.append("(indeterminate user agent)")
-            else:
-                parts.append(user_agent_object.browser)   # "(browser?)")
-                parts.append(user_agent_object.platform)   # "(platform?)")
-
-        # TODO:  Make ip address, user agent, browser, platform
-        #        separately available in anon and google word instances too.
-
-        parts_not_null = (p for p in parts if p is not None)
-        session_description = " ".join(parts_not_null)
-        return session_description
+    # def google_txt_from_idn(self, idn):
+    #     namings = self.find_words(
+    #         sbj=self.IDN_LEX,   # TODO:  sbj=meta_idn?  Meaning the listing tags the user with their name.
+    #         vrb=self.IDN.NAME,
+    #         obj=idn,
+    #     )
+    #     try:
+    #         latest_naming = namings[0]   # FIXME:  This appears to get the EARLIEST naming.
+    #     except IndexError:
+    #         user_name = "(unnamed googloid {})".format(idn)
+    #     else:
+    #         user_name = latest_naming.txt
+    #     return user_name
+    #
+    # def anon_txt_from_idn(self, idn):
+    #     # TODO:  move this logic to WordAnon._from_idn() or something.
+    #     _, session_id = self.split_listing_idn(idn)
+    #     parts = []
+    #     ips = self.find_words(
+    #         sbj=idn,   # TODO:  sbj=meta_idn here too?
+    #         vrb=self.IDN.IP_ADDRESS_TAG,
+    #         obj=session_id,
+    #     )
+    #     try:
+    #         parts.append(six.text_type(ips[-1].txt))
+    #         # TODO:  Not just the latest IP address EVER, but the latest one tagged
+    #         #        in the context this txt will be USED.  (Somehow.)
+    #         #        This would depend on the sentence_word.whn for which
+    #         #        the idn passed to this function == sentence_word.sbj.idn
+    #         #        So above lex.find_words(idn_max = sentence_word.sbj.idn) or something.
+    #     except IndexError:
+    #         '''session was never ip-address-tagged'''
+    #
+    #     parts.append("session #" + render_num(session_id))
+    #
+    #     uas = self.root_lex.find_words(
+    #         sbj=idn,
+    #         vrb=self.IDN.USER_AGENT_TAG,
+    #         obj=session_id,
+    #         # TODO:  Combine these two find_words() calls.
+    #     )
+    #     try:
+    #         user_agent_str = six.text_type(uas[-1].txt)
+    #     except IndexError:
+    #         '''session was never user-agent-tagged'''
+    #     else:
+    #         try:
+    #             user_agent_object = werkzeug.useragents.UserAgent(user_agent_str)
+    #         except AttributeError:
+    #             parts.append("(indeterminate user agent)")
+    #         else:
+    #             parts.append(user_agent_object.browser)   # "(browser?)")
+    #             parts.append(user_agent_object.platform)   # "(platform?)")
+    #
+    #     # TODO:  Make ip address, user agent, browser, platform
+    #     #        separately available in anon and google word instances too.
+    #
+    #     parts_not_null = (p for p in parts if p is not None)
+    #     session_description = " ".join(parts_not_null)
+    #     return session_description
 
     def read_word(self, idn_ish):
         if idn_ish is None:
@@ -339,22 +423,22 @@ class LexFliki(qiki.LexMySQL):
 
         return super(LexFliki, self).read_word(idn)
 
-    def populate_word_from_idn(self, word, idn):
-        if idn.is_suffixed():
-            # meta_idn, _ = self.split_listing_idn(idn)
-            assert self.IDN is not None
-            if word.meta_idn == self.IDN.ANONYMOUS_LISTING:
-                txt = self.anon_txt_from_idn(idn)
-            elif word.meta_idn == self.IDN.GOOGLE_LISTING:
-                txt = self.google_txt_from_idn(idn)
-            else:
-                # raise ValueError("Unexpected Listing meta-idn " + repr(meta_idn) + " from " + repr(idn))
-                txt = "goof user"   # return False
-
-            word.populate_from_num_txt(qiki.Number(1), qiki.Text(txt))
-        else:
-            super(LexFliki, self).populate_word_from_idn(word, idn)
-        return True
+    # def populate_word_from_idn(self, word, idn):
+    #     if idn.is_suffixed():
+    #         # meta_idn, _ = self.split_listing_idn(idn)
+    #         assert self.IDN is not None
+    #         if word.meta_idn == self.IDN.ANONYMOUS_LISTING:
+    #             txt = self.anon_txt_from_idn(idn)
+    #         elif word.meta_idn == self.IDN.GOOGLE_LISTING:
+    #             txt = self.google_txt_from_idn(idn)
+    #         else:
+    #             # raise ValueError("Unexpected Listing meta-idn " + repr(meta_idn) + " from " + repr(idn))
+    #             txt = "goof user"   # return False
+    #
+    #         word.populate_from_num_txt(qiki.Number(1), qiki.Text(txt))
+    #     else:
+    #         super(LexFliki, self).populate_word_from_idn(word, idn)
+    #     return True
 
 
 def connect_lex():
@@ -487,28 +571,44 @@ class Auth(object):
         self.ip_address_txt = ip_address_txt
 
         try:
-            session_idn_qstring = self.session_idn_qstring
+            session_qstring = self.session_qstring
+            session_uuid = self.session_uuid
         except (KeyError, IndexError, AttributeError):
             self.session_new()
         else:
             try:
-                session_idn = qiki.Number.from_qstring(session_idn_qstring)
+                session_idn = qiki.Number.from_qstring(session_qstring)
                 self.session_verb = self.lex[session_idn]
             except ValueError:
-                print("BAD SESSION IDENTIFIER", session_idn_qstring)
+                print("BAD SESSION IDENTIFIER", session_qstring)
                 self.session_new()
             else:
                 if not self.session_verb.exists():
-                    print("NOT A RECOGNIZED IDENTIFIER", session_idn_qstring)
+                    print("NO SUCH SESSION IDENTIFIER", session_qstring)
                     self.session_new()
-                elif self.session_verb.obj.idn == IDN.BROWSE:
-                    '''old session word is good, keep it'''
+                elif (
+                    self.session_verb.sbj.idn != IDN.LEX or
+                    self.session_verb.vrb.idn != IDN.DEFINE or
+                    self.session_verb.obj.idn != IDN.BROWSE
+                ):
+                    print("NOT A SESSION IDENTIFIER", session_qstring)
+                    self.session_new()
+                elif self.session_verb.txt != session_uuid:
+                    print("NOT A RECOGNIZED SESSION", session_qstring)
+                    self.session_new()
                 else:
-                    print("NOT A SESSION IDENTIFIER", session_idn_qstring)
-                    self.session_new()
+                    '''old session word is good, keep it'''
 
         if self.is_authenticated:
             self.qiki_user = self.lex.word_google_class(self.authenticated_id())
+
+            # if not self.qiki_user.is_named:
+            #     print("NOT A NAMED USER", self.qiki_user.idn)
+            #     self.is_authenticated = False
+            #     flask_login.logout_user()
+            # FIXME:  The above means the user NEVER gets their name.
+            #         Maybe they need to be authenticated and unnamed for a bit at the beginning.
+
             # TODO:  tag session_verb with google user, or vice versa
             #        if they haven't been paired yet,
             #        or aren't the most recent pairing
@@ -549,6 +649,7 @@ class Auth(object):
             self.qiki_user(IDN.USER_AGENT_TAG, use_already=False)[self.session_verb] = user_agent_txt
 
     def session_new(self):
+        self.session_uuid = self.unique_session_identifier()
         self.session_verb = self.lex.create_word(
             # sbj=self.qiki_user,
             # NOTE:  Subject can't be user, when the user depends
@@ -559,10 +660,10 @@ class Auth(object):
             sbj=IDN.LEX,
             vrb=IDN.DEFINE,
             obj=IDN.BROWSE,
-            txt=self.unique_session_identifier(),
+            txt=self.session_uuid,
             use_already=False
         )
-        self.session_idn_qstring = self.session_verb.idn.qstring()
+        self.session_qstring = self.session_verb.idn.qstring()
         print("New session", self.session_verb.idn.qstring(), self.ip_address_txt)
 
     @abc.abstractmethod
@@ -581,12 +682,22 @@ class Auth(object):
 
     @property
     @abc.abstractmethod
-    def session_idn_qstring(self):
+    def session_qstring(self):
         raise NotImplementedError
 
-    @session_idn_qstring.setter
+    @session_qstring.setter
     @abc.abstractmethod
-    def session_idn_qstring(self, qstring):
+    def session_qstring(self, qstring):
+        raise NotImplementedError
+
+    @property
+    @abc.abstractmethod
+    def session_uuid(self):
+        raise NotImplementedError
+
+    @session_uuid.setter
+    @abc.abstractmethod
+    def session_uuid(self, qstring):
         raise NotImplementedError
 
     def session_get(self):
@@ -755,7 +866,8 @@ class AuthFliki(Auth):
                 use_already=False,   # TODO:  Could be True?  obj should be unique.
             )
 
-    SESSION_VARIABLE_NAME = 'qiki_user'   # where we store the session verb's idn
+    SESSION_QSTRING = 'qiki_session_qstring'   # where we store the session verb's idn
+    SESSION_UUID = 'qiki_session_uuid'   # where we store the session verb's idn
 
     def unique_session_identifier(self):
         return str(uuid.uuid4())
@@ -764,21 +876,29 @@ class AuthFliki(Auth):
         #        See https://stackoverflow.com/a/43505668/673991
 
     @property
-    def session_idn_qstring(self):
-        return flask.session[self.SESSION_VARIABLE_NAME]
+    def session_qstring(self):
+        return flask.session[self.SESSION_QSTRING]
 
-    @session_idn_qstring.setter
-    def session_idn_qstring(self, qstring):
-        flask.session[self.SESSION_VARIABLE_NAME] = qstring
+    @session_qstring.setter
+    def session_qstring(self, qstring):
+        flask.session[self.SESSION_QSTRING] = qstring
+
+    @property
+    def session_uuid(self):
+        return flask.session[self.SESSION_UUID]
+
+    @session_uuid.setter
+    def session_uuid(self, the_uuid):
+        flask.session[self.SESSION_UUID] = the_uuid
 
     def session_get(self):
         try:
-            return flask.session[self.SESSION_VARIABLE_NAME]
+            return flask.session[self.SESSION_QSTRING]
         except KeyError:
             return None
 
     def session_set(self, session_string):
-        flask.session[self.SESSION_VARIABLE_NAME] = session_string
+        flask.session[self.SESSION_QSTRING] = session_string
 
     def authenticated_id(self):
         return self.flask_user.get_id()
@@ -1073,6 +1193,7 @@ def meta_contrib():
 def contribution_home(home_page_title):
     t_start = time.time()
     auth = AuthFliki()
+    q_start = auth.lex.query_count
     # auth.hit(auth.current_path)   Commented out to suppress early churn
     if auth.is_enough_anonymous_patience(MINIMUM_SECONDS_BETWEEN_ANONYMOUS_QUESTIONS):
         with FlikiHTML('html') as html:
@@ -1112,7 +1233,11 @@ def contribution_home(home_page_title):
                     ))
                     script.raw_text('js_for_contribution(window, jQuery, qoolbar, MONTY);\n')
     t_end = time.time()
-    print("/meta/contrib {:.3f} sec".format(t_end - t_start))
+    q_end = auth.lex.query_count
+    print("/meta/contrib {q:d} queries, {t:.3f} sec".format(
+        q=q_end - q_start,
+        t=t_end - t_start,
+    ))
     return html.doctype_plus_html()
 
 
@@ -1545,7 +1670,7 @@ def meta_lex():
     auth = AuthFliki()
     if not auth.is_online:
         return "lex offline"
-    if auth.is_anonymous:
+    if not auth.is_authenticated:
         return auth.login_html()   # anonymous viewing not allowed, just show "login" link
         # TODO:  Omit anonymous content for anonymous users (except their own).
 
@@ -1687,7 +1812,7 @@ def meta_all():
     auth = AuthFliki()
     if not auth.is_online:
         return "meta offline"
-    if auth.is_anonymous:
+    if not auth.is_authenticated:
         return auth.login_html()   # anonymous viewing not allowed, just show "login" link
         # TODO:  Instead of rejecting all anonymous-user viewing,
         #        maybe just omit anonymous-content.
@@ -2086,7 +2211,7 @@ def legacy_meta_all_words():
     auth = AuthFliki()
     if not auth.is_online:
         return "words offline"
-    if auth.is_anonymous:
+    if not auth.is_authenticated:
         return auth.login_html()   # anonymous viewing not allowed, just show "login" link
 
     lex = auth.lex
