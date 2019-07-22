@@ -921,7 +921,7 @@ def login():
             if hasattr(login_result, 'user') and login_result.user is not None:
                 login_result.user.update()
                 flask_user = GoogleFlaskUser(login_result.user.id)
-                qiki_user = lex.google_user_word_factory(login_result.user.id)
+                qiki_user = lex.word_google_class(login_result.user.id)
                 picture_parts = urllib.parse.urlsplit(login_result.user.picture)
                 picture_dict = urllib.parse.parse_qs(picture_parts.query)
                 # THANKS:  Parse URL query-string, http://stackoverflow.com/a/21584580/673991
