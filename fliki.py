@@ -79,6 +79,12 @@ flask_app = flask.Flask(
     static_url_path='/meta/static',
     static_folder='static'
 )
+flask_app.config.update(
+    SESSION_COOKIE_DOMAIN = secure.credentials.Options.session_domain
+    # NOTE:  Without this, two different fliki servers running on different subdomains
+    #        could share the same set of session variables.
+    # SEE:  Session domain, https://flask.palletsprojects.com/en/1.1.x/config/#SESSION_COOKIE_DOMAIN
+)
 flask_app.secret_key = secure.credentials.flask_secret_key
 
 
@@ -135,8 +141,6 @@ class WorkingIdns(object):
                 self.CAT_TRASH         = lex.define(self.CATEGORY, u'trash').idn
                 self.FENCE_POST_RIGHT  = lex.noun(u'fence post right').idn
 
-                self.LURCHING          = lex.noun(u'lurching').idn
-
                 # lex[lex](self.EXPLAIN, use_already=True)[self.FENCE_POST_RIGHT] = \
                 #     u"Represent the contribution to the right of the right-most contribution in a category.", 2
                 # lex[lex](self.EXPLAIN, use_already=True)[self.FENCE_POST_RIGHT] = \
@@ -180,10 +184,12 @@ class LexFliki(qiki.LexMySQL):
         #        and therefore for spoofing by test_fliki.py which would test cat_cont_order()
 
         class WordFlikiSentence(qiki.Word):
+            is_anonymous = False
 
             def to_json(self):
                 d = super(WordFlikiSentence, self).to_json()
-                if isinstance(self.sbj, self.lex.word_anon_class):
+                # if isinstance(self.sbj, self.lex.word_anon_class):
+                if self.sbj.is_anonymous:
                     d['was_submitted_anonymous'] = True
                 return d
 
@@ -1255,7 +1261,7 @@ def cat_cont_order(auth):
         if word.vrb.idn in (auth.lex.IDN.CONTRIBUTE, auth.lex.IDN.UNSLUMP_OBSOLETE):
             if word.sbj == auth.qiki_user:
                 add_cont(auth.lex.IDN.CAT_MY, word, 0)
-            elif isinstance(word.sbj, auth.lex.word_anon_class):
+            elif word.sbj.is_anonymous:
                 add_cont(auth.lex.IDN.CAT_ANON, word, 0)
             else:
                 add_cont(auth.lex.IDN.CAT_THEIR, word, 0)

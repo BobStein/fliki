@@ -2,6 +2,7 @@ from __future__ import unicode_literals
 
 # noinspection PyUnresolvedReferences
 import re
+import six.moves
 import unittest
 
 from fliki import *
@@ -75,6 +76,23 @@ class TestFliki(unittest.TestCase):
                 (qiki.Number(3), 4),
             )))
         )
+
+    # noinspection PyUnresolvedReferences
+    def test_github_not_getting_credentials(self):
+        safety_url = 'https://github.com/BobStein/fliki/tree/master/static'
+        danger_url = 'https://github.com/BobStein/fliki/tree/master/secure'
+
+        if six.PY3:
+            self.assertEqual(200, urllib.request.urlopen(safety_url).status)
+            with self.assertRaises(urllib.error.HTTPError):
+                urllib.request.urlopen(danger_url)
+
+            # SEE:  This code posted, https://stackoverflow.com/a/57145789/673991
+
+        self.assertEqual(200, six.moves.urllib.request.urlopen(safety_url).status)
+        with self.assertRaises(six.moves.urllib.error.HTTPError):
+            six.moves.urllib.request.urlopen(danger_url)
+
 
 
 class WordSimple(qiki.Word):
