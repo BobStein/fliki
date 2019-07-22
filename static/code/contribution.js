@@ -389,13 +389,35 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
                     MONTY.words.cont.push(contribute_word);
                     var $new_sup = build_contribution_dom(contribute_word);
                     $categories[MONTY.IDN.CAT_MY].find('.sup-contribution').first().before($new_sup);
-                    // NOTE:  New .sup-contribution goes before the leftmost .sup-contribution
-                    MONTY.order.cont[MONTY.IDN.CAT_MY].unshift(contribute_word.idn);
+                    // NOTE:  New .sup-contribution goes before leftmost .sup-contribution, if any.
+                    safe_prepend(MONTY.order.cont, MONTY.IDN.CAT_MY, contribute_word.idn);
                     $text.val("");
                     $caption.val("");
                     settle_down();
                 });
             });
+        }
+    }
+
+    function safe_prepend(associative_array, key, element) {
+        if (has(associative_array, key)) {
+            associative_array[key].unshift(element);
+        } else {
+            associative_array[key] = [element];
+        }
+    }
+    var a = {};
+    safe_prepend(a, 'a', 99);  assert_json('{"a":[99]}', a);
+    safe_prepend(a, 'a', 98);  assert_json('{"a":[98,99]}', a);
+
+    function assert_json(json, object) {
+        var json_actual = JSON.stringify(object);
+        if (json !== json_actual) {
+            console.error(
+                "assert oops: \n" +
+                "\t`" + json + "' was expected, but \n" +
+                "\t`" + json_actual + "' was the result"
+            );
         }
     }
 
