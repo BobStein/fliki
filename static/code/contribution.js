@@ -102,7 +102,7 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
         $('#enter_some_text, #enter_a_caption')
             .on('keyup', post_it_button_disabled_or_not)
             .on('drop', text_or_caption_drop)
-            .on('paste', text_or_caption_drop)
+            .on('paste', text_or_caption_paste)
         ;
         caption_should_track_text_width();
         post_it_button_disabled_or_not();
@@ -115,42 +115,63 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
         settle_down();
     });
 
-    function text_or_caption_drop(evt) {
-        var data = evt.originalEvent.dataTransfer;
-        console.log("Dropped something", evt, data);
-        console.log("dropEffect", data.dropEffect);
-        console.log("effectAllowed", data.effectAllowed);
-        // EXAMPLE (dropping YouTube link)
-        //     Chrome:  dropEffect none, effectAllowed copyLink
-        //     Opera:  dropEffect none, effectAllowed copyLink
-        //     Firefox:  dropEffect copy, effectAllowed uninitialized
-        //     IE11:  dropEffect none, (((Unexpected call to method or property access.))) <Permission denied>
+    function text_or_caption_paste(evt) {
+        try {
+            console.assert(evt.type === 'paste');
+            var data = evt.originalEvent.clipboardData || window.clipboardData;
+            if (is_defined(data)) {
+                var pasted_text = data.getData('Text');
+                // THANKS:  Getting pasted text, https://stackoverflow.com/a/6804718/673991
+                console.log("Pasted string: `" + pasted_text + "'");
+            }
+        } catch (e) {
+            console.error("Oops, trying to handle drop:", e.message);
+        }
+    }
 
-        //
-        var items = data.items;
-        if (is_laden(items)) {
-            looper(items, function (index, item) {
-                console.log(index.toString() + ".", item.kind, item.type);
-                item.getAsString(function (s) {
-                    console.log("...", index, JSON.stringify(s));
-                });
-                // THANKS:  Dropped link, getting the actual URL,
-                //          https://developer.mozilla.org/en-US/docs/Web/API/DataTransferItemList/DataTransferItem#Example_Drag_and_Drop
-                // TODO:  Drop anything, https://developer.mozilla.org/en-US/docs/Web/API/HTML_Drag_and_Drop_API/Recommended_drag_types
-                // SEE:  Drop link, https://stackoverflow.com/q/11124320/673991
-            });
-            // EXAMPLE (Chrome, Edge, Opera):
-            //     0. string text/plain
-            //     1. string text/uri-list
-            //     ... 0 "https://www.youtube.com/watch?v=o9tDO3HK20Q"
-            //     ... 1 "https://www.youtube.com/watch?v=o9tDO3HK20Q"
-            // EXAMPLE (Firefox):
-            //     0. string text/x-moz-url
-            //     1. string text/plain
-            //     ... 0 "https://www.youtube.com/watch?v=o9tDO3HK20Q\nEarth - The Pale Blue Dot - YouTube"
-            //     ... 1 "https://www.youtube.com/watch?v=o9tDO3HK20Q"
-            // EXAMPLE (IE11):
-            //     (data.items is undefined)
+    function text_or_caption_drop(evt) {
+        try {
+            console.assert(evt.type === 'drop');
+            var data = evt.originalEvent.dataTransfer;
+            console.log("Dropped something", evt, data);
+            if (is_defined(data)) {
+                console.log("dropEffect", data.dropEffect);
+                console.log("effectAllowed", data.effectAllowed);
+                // EXAMPLE (dropping YouTube link)
+                //     Chrome:  dropEffect none, effectAllowed copyLink
+                //     Opera:  dropEffect none, effectAllowed copyLink
+                //     Firefox:  dropEffect copy, effectAllowed uninitialized
+                //     IE11:  dropEffect none, (((Unexpected call to method or property access.))) <Permission denied>
+
+                //
+                var items = data.items;
+                if (is_laden(items)) {
+                    looper(items, function (index, item) {
+                        console.log(index.toString() + ".", item.kind, item.type);
+                        item.getAsString(function (s) {
+                            console.log("...", index, JSON.stringify(s));
+                        });
+                        // THANKS:  Dropped link, getting the actual URL,
+                        //          https://developer.mozilla.org/en-US/docs/Web/API/DataTransferItemList/DataTransferItem#Example_Drag_and_Drop
+                        // TODO:  Drop anything, https://developer.mozilla.org/en-US/docs/Web/API/HTML_Drag_and_Drop_API/Recommended_drag_types
+                        // SEE:  Drop link, https://stackoverflow.com/q/11124320/673991
+                    });
+                    // EXAMPLE (Chrome, Edge, Opera):
+                    //     0. string text/plain
+                    //     1. string text/uri-list
+                    //     ... 0 "https://www.youtube.com/watch?v=o9tDO3HK20Q"
+                    //     ... 1 "https://www.youtube.com/watch?v=o9tDO3HK20Q"
+                    // EXAMPLE (Firefox):
+                    //     0. string text/x-moz-url
+                    //     1. string text/plain
+                    //     ... 0 "https://www.youtube.com/watch?v=o9tDO3HK20Q\nEarth - The Pale Blue Dot - YouTube"
+                    //     ... 1 "https://www.youtube.com/watch?v=o9tDO3HK20Q"
+                    // EXAMPLE (IE11):
+                    //     (data.items is undefined)
+                }
+            }
+        } catch (e) {
+            console.error("Oops, trying to handle drop:", e.message);
         }
     }
 
@@ -397,7 +418,7 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
         var $entry = $('<div>', {class: 'container-entry'});
         $entry.append($('<textarea>', {id: 'enter_some_text', placeholder: "enter a quote"}));
         $entry.append($('<input>', {id: 'enter_a_caption', placeholder: "and a caption"}));
-        $entry.append($('<button>', {id: 'post_it'}).text("post it"));
+        $entry.append($('<button>', {id: 'post_it_button'}).text("post it"));
         $categories[MONTY.IDN.CAT_MY].append($entry);
 
         if (MONTY.is_anonymous) {
