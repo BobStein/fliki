@@ -80,6 +80,10 @@
     min-width: 4em;
     min-height: 2em;
     box-sizing: border-box;
+    margin: 0.1em 0.1em 0 0.1em;
+}
+
+.contribution + .caption-span {
 }
 
 .contribution + .caption {
@@ -88,8 +92,30 @@
     color: white;
     font: small-caption;
     padding: 0 0.666em 0.1em 0.666em;
-    /* THANKS:  Ellipsis requirements, https://stackoverflow.com/a/17783233/673991 */
 }
+.contribution + .caption + .savebar {
+    clear: left;
+    background-color: transparent;
+    display: none;
+}
+.contribution.contribution-edit + .caption + .savebar {
+    display: block;
+}
+.contribution                   + .caption { margin-bottom: 1.75em; }
+.contribution.contribution-edit + .caption { margin-bottom: 0; }
+/* NOTE:  1.75 was empirically obtained i.e. fudged to be the same as the disappeared savebar. */
+/*        So it probably represents savebar-button height in terms of caption font. */
+
+.savebar {
+    text-align: right;
+}
+.savebar button {
+    font: small-caption;
+}
+.savebar.abandon-alert button {
+    border-color: red;
+}
+
 .grip {
     cursor: move;
     padding-right: 0.3em;
@@ -161,4 +187,11 @@
         -ms-user-select: none;
             user-select: none;
     /* NOTE:  Prevent inadvertent text-selection of triangles. */
+}
+
+.contribution.contribution-edit,
+.contribution.contribution-edit.was-submitted-anonymous {
+    background-color: white;
+    border: 0.2em inset;
+    padding: 0.5em 0.3em 0.5em 0.3em;
 }

@@ -68,14 +68,29 @@ class TestFliki(unittest.TestCase):
             dict(fix_dict(dict(deeper=( dict(((qiki.Number(1), 2), (qiki.Number(3), 4))), )))),
         )
 
-    def test_json_encode_number_keys(self):
+    def test_json_encode_qstring_keys(self):
         self.assertEqual(
             '{"0q82_01":2,"0q82_03":4}',
+            json_encode(dict((
+                (qiki.Number(1).qstring(), 2),
+                (qiki.Number(3).qstring(), 4),
+            )))
+        )
+
+    def test_json_encode_number_keys_not_supported(self):
+        # NOTE:  Problems with fix_dict(), and its complicated, and slow, and not needed.
+        # self.assertEqual(
+        #     '{"0q82_01":2,"0q82_03":4}',
+        #     json_encode(dict((
+        #         (qiki.Number(1), 2),
+        #         (qiki.Number(3), 4),
+        #     )))
+        # )
+        with self.assertRaises(TypeError):
             json_encode(dict((
                 (qiki.Number(1), 2),
                 (qiki.Number(3), 4),
             )))
-        )
 
     # noinspection PyUnresolvedReferences
     def test_github_not_getting_credentials(self):
@@ -101,19 +116,96 @@ class WordSimple(qiki.Word):
 
 class LexSimple(qiki.LexInMemory):
 
+    FAKE_UUID = 'pretend this is a uuid'
+
     def __init__(self):
         super(LexSimple, self).__init__(word_class=WordSimple)
         self.IDN = WorkingIdns(self)
         # NOTE:  Unlike live WSGI fliki sessions, the IDN lookups here are redone every test run
         self.anna = self.define(u'agent', u'anna')
+        self.my_session = self.define(self.IDN.BROWSE, self.FAKE_UUID)
+
+        class WordGoogle(WordSimple):
+            is_anonymous = False
+            lex = self
+            pass
+
+        class WordAnon(WordSimple):
+            is_anonymous = True
+            lex = self
+            pass
+
+        self.word_google_class = WordGoogle
+        self.word_anon_class = WordAnon
 
 
-class FakeAuth(object):
+class FakeAuth(Auth):
+
+    def unique_session_identifier(self):
+        pass
+
+    @property
+    def session_qstring(self):
+        return self.lex.my_session.idn.qstring()
+
+    @session_qstring.setter
+    def session_qstring(self, qstring):
+        pass
+
+    @property
+    def session_uuid(self):
+        return self.lex.FAKE_UUID
+
+    @session_uuid.setter
+    def session_uuid(self, the_uuid):
+        pass
+
+    def session_get(self):
+        pass
+
+    def session_set(self, session_string):
+        pass
+
+    def authenticated_id(self):
+        return self.lex.anna.idn
+
+    @property
+    def current_url(self):
+        return "url goes here"
+
+    @property
+    def current_path(self):
+        return "path goes here"
+
+    @property
+    def current_host(self):
+        return "host goes here"
+
+    @property
+    def login_url(self):
+        return "login url goes here"
+
+    @property
+    def logout_url(self):
+        return "logout url goes here"
+
+    @property
+    def then_url(self):
+        return "then-url goes here"
+
+    def static_url(self, relative_path):
+        pass
+
+    def form(self, variable_name):
+        pass
 
     def __init__(self, lex, user):
         self.lex = lex
         self.is_anonymous = True
         self.qiki_user = user
+        super(FakeAuth, self).__init__(self.lex, True, False, "ip", "user agent")
+        self.my_session = self.lex.define(u'noun', u"Pretend this is a session")
+
 
     def idn(self, word_or_idn):
         return self.lex.idn_ify(word_or_idn)
@@ -125,7 +217,7 @@ class TestAuthenticatedFeatures(unittest.TestCase):
 
         self.lex = LexSimple()
 
-        self.anna = self.lex.define(u'agent', u'anna')
+        self.anna = self.lex.word_google_class(u'anna')
         self.anna.is_anonymous = False
 
         self.bart = self.lex.define(u'agent', u'bart')
@@ -179,7 +271,7 @@ class TestCatContOrder(TestAuthenticatedFeatures):
 
     def assert_order(self, auth, expected_order):
         expected_order = dict(fix_dict(expected_order))
-        actual_order = cat_cont_order(auth)
+        actual_order = auth.cat_cont_order()
         actual_order = dict(fix_dict(actual_order))
         self.assertEqual(
             expected_order,
@@ -191,7 +283,7 @@ class TestCatContOrder(TestAuthenticatedFeatures):
         )
 
     def assert_disorder(self, auth, regex=None):
-        order = cat_cont_order(auth)
+        order = auth.cat_cont_order()
         self.assertIn('error_messages', order, "Missing error message")
         self.assertEqual(1, len(order['error_messages']), repr(order))
         if regex is not None:
@@ -205,8 +297,13 @@ class TestCatContOrder(TestAuthenticatedFeatures):
         auth = FakeAuth(self.lex, self.anna)
         self.assertEqual(
             '{"cat":["0q82_1B","0q82_1C","0q82_1D","0q82_1E"],"cont":{}}',
-            json_encode(cat_cont_order(auth))
+            json_encode(auth.cat_cont_order())
         )
+
+    def print_all_words(self):
+        for word in self.lex.find_words():
+            # noinspection PyStringFormat,SpellCheckingInspection
+            print("Word {w:itsvo}".format(w=word))
 
     def test_contributions(self):
         auth = FakeAuth(self.lex, self.anna)

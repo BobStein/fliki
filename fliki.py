@@ -141,6 +141,9 @@ class WorkingIdns(object):
                 self.CAT_TRASH         = lex.define(self.CATEGORY, u'trash').idn
                 self.FENCE_POST_RIGHT  = lex.noun(u'fence post right').idn
 
+                self.EDIT_TXT          = lex.verb(u'edit txt').idn
+                self.CONTRIBUTE_EDIT   = lex.define(self.EDIT_TXT, u'contribute edit').idn
+
                 # lex[lex](self.EXPLAIN, use_already=True)[self.FENCE_POST_RIGHT] = \
                 #     u"Represent the contribution to the right of the right-most contribution in a category.", 2
                 # lex[lex](self.EXPLAIN, use_already=True)[self.FENCE_POST_RIGHT] = \
@@ -159,11 +162,21 @@ class WorkingIdns(object):
         of_idns = dict_from_object(self)
         assert \
             all(isinstance(idn, qiki.Number) for idn in of_idns.values()), \
-            "Expecting Numbers.  These members are not: " + repr(
+            "Expecting Numbers.  These are not: " + repr(
                 {n: type_name(x) for n, x in of_idns.items() if not isinstance(x, qiki.Number)}
-            )
+            ) + "  Did you forget `.idn` at the end?"
         of_qstrings = {name: idn.qstring() for name, idn in of_idns.items()}
         return of_qstrings
+
+
+def dict_from_object(o):
+    properties_and_functions_and_underscores = vars(o)
+    properties = [
+        p for p in properties_and_functions_and_underscores
+        if not p.startswith('_') and not callable(p)
+    ]
+    the_dict = {p: getattr(o, p) for p in properties}
+    return the_dict
 
 
 class GoogleFlaskUser(flask_login.UserMixin):
@@ -451,8 +464,10 @@ def connect_lex():
         return lex
 
 
-IDN = WorkingIdns(connect_lex())   # TODO:  Call this only via WSGI, not test_fliki.py
+_ = WorkingIdns(connect_lex()).dictionary_of_qstrings()  # catch missing ".idn"
 
+
+# IDN = WorkingIdns(connect_lex())   # TODO:  Call this only via WSGI, not test_fliki.py
 
 def setup_lex():
     if hasattr(flask.g, 'lex'):
@@ -495,16 +510,6 @@ class UNICODE(object):
 #        Never found a way to do that in qiki.Number only, darn.
 #        All the methods have to be fudged in the json.dumps() caller(s).  Yuck.
 # SEE:  http://stackoverflow.com/questions/3768895/how-to-make-a-class-json-serializable
-
-
-def dict_from_object(o):
-    properties_and_underscores = vars(o)
-    properties = [
-        p for p in properties_and_underscores
-        if not p.startswith('__')
-    ]
-    the_dict = {p: getattr(o, p) for p in properties}
-    return the_dict
 
 
 def setup_application_context():
@@ -574,6 +579,8 @@ class Auth(object):
             session_qstring = self.session_qstring
             session_uuid = self.session_uuid
         except (KeyError, IndexError, AttributeError):
+            '''Missing qstring and/or uuid session variable.  Start over.'''
+            # TODO:  Remark if this was NOT starting from scratch?
             self.session_new()
         else:
             try:
@@ -587,14 +594,21 @@ class Auth(object):
                     print("NO SUCH SESSION IDENTIFIER", session_qstring)
                     self.session_new()
                 elif (
-                    self.session_verb.sbj.idn != IDN.LEX or
-                    self.session_verb.vrb.idn != IDN.DEFINE or
-                    self.session_verb.obj.idn != IDN.BROWSE
+                    self.session_verb.sbj.idn != self.lex.IDN.LEX or
+                    self.session_verb.vrb.idn != self.lex.IDN.DEFINE or
+                    self.session_verb.obj.idn != self.lex.IDN.BROWSE
                 ):
                     print("NOT A SESSION IDENTIFIER", session_qstring)
                     self.session_new()
                 elif self.session_verb.txt != session_uuid:
-                    print("NOT A RECOGNIZED SESSION", session_qstring)
+                    print(
+                        "NOT A RECOGNIZED SESSION",
+                        session_qstring,
+                        "is the idn, but",
+                        self.session_verb.txt,
+                        "!=",
+                        session_uuid
+                    )
                     self.session_new()
                 else:
                     '''old session word is good, keep it'''
@@ -622,15 +636,16 @@ class Auth(object):
         else:
             self.qiki_user = None
             print("User is neither authenticated nor anonymous.")
+            return
 
         ip_words = self.lex.find_words(
             sbj=self.qiki_user,
-            vrb=IDN.IP_ADDRESS_TAG,
+            vrb=self.lex.IDN.IP_ADDRESS_TAG,
             obj=self.session_verb,
             idn_ascending=True,
         )
         if len(ip_words) == 0 or ip_words[-1].txt != ip_address_txt:
-            self.qiki_user(IDN.IP_ADDRESS_TAG, use_already=False)[self.session_verb] = ip_address_txt
+            self.qiki_user(self.lex.IDN.IP_ADDRESS_TAG, use_already=False)[self.session_verb] = ip_address_txt
             # TODO:  How could this get a duplicate key?
             #        mysql.connector.errors.IntegrityError: 1062 (23000): Duplicate entry '\x821' for key 'PRIMARY'
             #        '\x821' === Number('0q82_31').raw, which is the idn for session_verb
@@ -641,12 +656,12 @@ class Auth(object):
 
         ua_words = self.lex.find_words(
             sbj=self.qiki_user,
-            vrb=IDN.USER_AGENT_TAG,
+            vrb=self.lex.IDN.USER_AGENT_TAG,
             obj=self.session_verb,
             idn_ascending=True,
         )
         if len(ua_words) == 0 or ua_words[-1].txt != user_agent_txt:
-            self.qiki_user(IDN.USER_AGENT_TAG, use_already=False)[self.session_verb] = user_agent_txt
+            self.qiki_user(self.lex.IDN.USER_AGENT_TAG, use_already=False)[self.session_verb] = user_agent_txt
 
     def session_new(self):
         self.session_uuid = self.unique_session_identifier()
@@ -657,9 +672,9 @@ class Auth(object):
             #        (It's the payload in the suffix of the anon user idn.)
             #        Or can it?!  That would be a feat.
             #        Would require some shenanigans inside the max_idn_lock.
-            sbj=IDN.LEX,
-            vrb=IDN.DEFINE,
-            obj=IDN.BROWSE,
+            sbj=self.lex.IDN.LEX,
+            vrb=self.lex.IDN.DEFINE,
+            obj=self.lex.IDN.BROWSE,
             txt=self.session_uuid,
             use_already=False
         )
@@ -697,7 +712,7 @@ class Auth(object):
 
     @session_uuid.setter
     @abc.abstractmethod
-    def session_uuid(self, qstring):
+    def session_uuid(self, the_uuid):
         raise NotImplementedError
 
     def session_get(self):
@@ -811,6 +826,239 @@ class Auth(object):
         return self.lex.idn_ify(word_or_idn)
 
 
+    def get_category_idns_in_order(self):
+        """The order the categories should appear on the site."""
+        # TODO:  Support custom user categories
+        return [
+            self.lex.IDN.CAT_MY,
+            self.lex.IDN.CAT_THEIR,
+            self.lex.IDN.CAT_ANON,
+            self.lex.IDN.CAT_TRASH,
+        ]
+
+
+    def cat_cont_words(self):
+        """
+        Get all the category and contribution words, plus objectifiers.
+
+        Verbs we're interested in:
+            'contribute'
+            'unslump'
+
+        Objectifying (*1) verbs we're interested in:
+            category verbs, i.e. [lex](define)[category]
+            'caption'
+
+        Return dictionary:
+            cat:  dictionary of category words, keyed by their idn qstring
+            cont:  list of contribution words, in chronological order
+
+        A word is represented in JSON as an object with properties idn, sbj, vrb, obj, etc.
+
+        (*1) Contribution objectifiers are words whose obj is a contribution.
+             They're tagged onto each contribution they objectify through its jbo field.
+             Get it?  jbo is obj backwards.
+        """
+        lex = self.lex
+
+        category_verb_list = lex.find_words(idn=self.get_category_idns_in_order())
+
+        # objectifying_verbs = category_verb_list + [lex[lex.IDN.CAPTION]]
+        # FIXME:  Gasp!  We (and contribution.js) never use the categorizing verbs here!
+        #         Only cat_cont_order() uses them, and not via this return value!
+        #         This should cut down a lot on bytes transferred, if there's a lot of rearranging.
+
+        objectifying_verbs = [lex.IDN.CAPTION]
+
+        # resource_nouns = lex.find_words(obj=lex.IDN.RESOURCE)
+        # print("Resources", json_encode(resource_nouns))
+        # EXAMPLE:  Resources [{
+        #               "idn":"0q83_058C",
+        #               "sbj":"0q80",
+        #               "vrb":"0q82_01",
+        #               "obj":"0q83_058B",
+        #               "whn":1562431607.118508,
+        #               "txt":"quote"
+        #           }]
+
+        contributed_resources = []
+
+        do_grandfather_in_obsolete_unslump_verb = True
+
+        if do_grandfather_in_obsolete_unslump_verb:
+            contributed_resources += lex.find_words(
+                vrb=lex.IDN.UNSLUMP_OBSOLETE,
+                # The object of all unslump verbs was the lex itself.
+                jbo_vrb=objectifying_verbs,
+                jbo_ascending=True,
+            )
+
+        contributed_resources += lex.find_words(
+            vrb=lex.IDN.CONTRIBUTE,
+            # obj=resource_nouns,     # Why was I afraid resource_nouns would be huge?
+            #                         # There's just one now:  quote.
+            #                         # Does it help or hinder to limit by these?
+            #                         # It could allow other resources to be added someday.
+            #                         # They wouldn't show because we don't know how to render them
+            #                         # Though we could just render
+            #                         # "some kinda unfamiliar resource, here's the text..."
+            jbo_vrb=objectifying_verbs,
+            jbo_ascending=True,
+        )
+
+        vetted_contributions = self.vet(contributed_resources)
+
+        category_words_by_qstring = {w.idn.qstring() : w for w in category_verb_list}
+        # TODO:  All contribute.js needs from the category words
+        #        (i.e. return-value.cat) is their txt.
+        #        {w.idn.qstring() : w.txt for w in category_verb_list}
+        #        {i.qstring() : self.lex[i].txt for i in self.get_category_idns_in_order()}
+
+        # TODO:  Heck all it needs from return-value.cont is its txt and its jbo[].txt.
+        #        And then only once at startup.
+        #        So that could come down by ajax, and perhaps be better garbage collected.
+        #        Or come in pieces, see https://stackoverflow.com/a/18964123/673991
+
+        return dict(
+            cat=category_words_by_qstring,
+            cont=vetted_contributions,
+        )
+
+    def cat_cont_order(self):
+        """
+        Determine the order of categories and contributions.
+
+        All contributions are included,
+        except anonymous users don't see contributions from other anonymous users,
+        but only a users's own reordering is included.
+
+        Verbs we're interested in:
+            'contribute'
+            'unslump'
+            category verbs, i.e. [lex](define)[category]
+
+        (*2) error messages marked may be untestable
+
+        Return dictionary:
+            cat:  list of category idns, in chronological order
+            cont:  dictionary keyed by category idn qstring,
+                   of lists of contribution idns,
+                   in the order they should appear
+
+        An idn is represented in JSON by its qstring.
+        """
+        # TODO:  Should this and cat_cont_words() create one ordered dictionary instead?
+        cat_order = self.get_category_idns_in_order()
+        cont_order = dict()   # dictionary of contribution lists, keyed by category
+        cat_from_cont = dict()  # current category of each contribution
+        error_messages = list()
+
+        words = self.vet(self.lex.find_words())
+        # TODO:  Restrict verbs
+
+        def error(*args):
+            error_messages.append(" ".join(str(arg) for arg in args))
+
+        def cat_room(cat):
+            cat = self.idn(cat)
+            if cat not in cont_order:
+                cont_order[cat] = []
+
+        def add_cont(cat, cont, into):
+            cat = self.idn(cat)
+            cont = self.idn(cont)
+            if cat not in cat_order:
+                error("CAT", cat, "unknown")   # (*2)
+                return
+            cat_from_cont[cont] = cat
+            cat_room(cat)
+            if not 0 <= into <= len(cont_order[cat]):
+                error("CAT insert", into, "not in", len(cont_order[cat]))   # (*2)
+                return
+            cont_order[cat].insert(into, cont)
+
+        def remove_cont(cont):
+            cont = self.idn(cont)
+            if cont not in cat_from_cont:
+                error("CAT unrecorded for", cont)
+                return
+            old_cat = cat_from_cont[cont]
+            if old_cat not in cont_order:
+                error("CAT", old_cat, "has no contribution list")   # (*2)
+                return
+            if cont not in cont_order[old_cat]:
+                error("CAT", old_cat, "lost", cont)   # (*2)
+                return
+            cont_order[old_cat].remove(cont)
+
+        def index_cont(cat, cont):
+            cat = self.idn(cat)
+            cont = self.idn(cont)
+            cat_room(cat)
+            if cont == self.lex.IDN.FENCE_POST_RIGHT:
+                return len(cont_order[cat])
+            try:
+                return cont_order[cat].index(cont)
+            except ValueError:
+                error("Reorder point", cont, "missing from", cat)
+                return 0   # desperate fallback to leftmost position, when reorder location makes no sense
+
+        for word in words:
+
+            if word.vrb.idn in (self.lex.IDN.CONTRIBUTE, self.lex.IDN.UNSLUMP_OBSOLETE):
+                if word.sbj == self.qiki_user:
+                    add_cont(self.lex.IDN.CAT_MY, word, 0)
+                elif word.sbj.is_anonymous:
+                    add_cont(self.lex.IDN.CAT_ANON, word, 0)
+                else:
+                    add_cont(self.lex.IDN.CAT_THEIR, word, 0)
+            elif word.vrb.idn in cat_order:
+                if word.sbj == self.qiki_user:
+                    remove_cont(word.obj)
+                    add_cont(word.vrb, word.obj, index_cont(word.vrb, word.num))
+
+        cont_order_qstring_keys = {cat.qstring(): order for cat, order in cont_order.items()}
+        order_dict = dict(
+            cat=cat_order,
+            cont=cont_order_qstring_keys
+        )
+        if len(error_messages) > 0:
+            order_dict['error_messages'] = error_messages
+        return order_dict
+
+    def vet(self, words):
+        """Filter out anonymous contributions from other anonymous users."""
+        sbj_warnings = set()
+
+        if self.is_anonymous:
+
+            def allowed_word(word):
+                try:
+                    is_logged_in = not word.sbj.is_anonymous
+                except AttributeError:
+                    if word.sbj.idn == self.lex.IDN.LEX:
+                        # NOTE:  This test is buried because sbj=lex words are expected to be rare.
+                        return True
+                    sbj = self.idn(word.sbj)
+                    if sbj not in sbj_warnings:
+                        sbj_warnings.add(sbj)
+                        print("sbj", sbj, "is neither user nor lex, starting with", repr(word))
+                    return False
+
+                return is_logged_in or word.sbj == self.qiki_user
+
+            vetted_words = [w for w in words if allowed_word(w)]
+            n_removed = len(words) - len(vetted_words)
+            if n_removed > 0:
+                print("Vetting removed", n_removed, "words")
+        else:
+            vetted_words = words
+        return vetted_words
+
+    def all_vetted_words(self):
+        return self.vet(self.lex.find_words())
+
+
 class AuthFliki(Auth):
     """Fliki / Authomatic specific implementation of logging in"""
     def __init__(self):
@@ -847,7 +1095,7 @@ class AuthFliki(Auth):
         #     path_str = path_str[1 : ]
         #     # NOTE:  Strip leading slash so old hits still count
         self.path_word = self.lex.define(
-            IDN.PATH,
+            self.lex.IDN.PATH,
             qiki.Text.decode_if_you_must(path_str)
         )
         self.browse_word = self.lex.create_word(
@@ -860,7 +1108,7 @@ class AuthFliki(Auth):
         if this_referrer is not None:
             self.lex.create_word(
                 sbj=self.qiki_user,
-                vrb=IDN.REFERRER,
+                vrb=self.lex.IDN.REFERRER,
                 obj=self.browse_word,
                 txt=qiki.Text.decode_if_you_must(this_referrer),
                 use_already=False,   # TODO:  Could be True?  obj should be unique.
@@ -1056,8 +1304,8 @@ def login():
                 display_name = login_result.user.name
                 print("Logging in", qiki_user.index, qiki_user.idn.qstring())
                 # EXAMPLE:   Logging in 0q8A_059E058E6A6308C8B0 0q82_15__8A059E058E6A6308C8B0_1D0B00
-                lex[lex](IDN.ICONIFY, use_already=True)[qiki_user.idn] = avatar_width, avatar_url
-                lex[lex](IDN.NAME, use_already=True)[qiki_user.idn] = display_name
+                lex[lex](lex.IDN.ICONIFY, use_already=True)[qiki_user.idn] = avatar_width, avatar_url
+                lex[lex](lex.IDN.NAME, use_already=True)[qiki_user.idn] = display_name
                 flask_login.login_user(flask_user)
                 return flask.redirect(get_then_url())
                 # TODO:  Why does Chrome put a # on the end of this URL (empty fragment)?
@@ -1212,17 +1460,18 @@ def contribution_home(home_page_title):
                         is_anonymous=auth.is_anonymous,
                         URL_HERE=auth.current_url,
                         AJAX_URL=AJAX_URL,
-                        IDN=IDN.dictionary_of_qstrings(),
+                        IDN=auth.lex.IDN.dictionary_of_qstrings(),
                         NOW=float(time_lex.now_word().num),
                         login_html=auth.login_html(),
-                        order=cat_cont_order(auth),
+                        order=auth.cat_cont_order(),
                         WHAT_IS_THIS_THING=secure.credentials.Options.what_is_this_thing,
 
                         # order.cat - list of categories in order
                         # order.cont - dict by category of lists of contributions in order
-                        words=cat_cont_words(auth),
+                        words=auth.cat_cont_words(),
                         # words.cat - dict by category of category words
                         # words.cont - list of contribution words
+                        w=auth.all_vetted_words(),
                     )
                     script.raw_text('var MONTY = {json};\n'.format(
                         json=json_encode(
@@ -1249,155 +1498,6 @@ def contribution_home(home_page_title):
 #        trash
 #        spam
 #        |____| (your category name here)
-
-
-def cat_cont_words(auth):
-    lex = auth.lex
-
-    lex_category_verbs = lex.find_words(
-        idn = (IDN.CAT_MY, IDN.CAT_THEIR, IDN.CAT_ANON, IDN.CAT_TRASH),
-        # sbj=IDN.LEX,   # but this may include obsolete mine, thine
-        # vrb=IDN.DEFINE,
-        # obj=IDN.CATEGORY
-    )
-    user_category_verbs = lex.find_words(
-        sbj=auth.qiki_user,
-        vrb=IDN.DEFINE,
-        obj=IDN.CATEGORY,
-    )
-    category_verbs = lex_category_verbs + user_category_verbs
-    interesting_verbs = category_verbs + [lex[IDN.CAPTION]]
-
-    # resource_nouns = lex.find_words(obj=IDN.RESOURCE)
-    contributed_resources = lex.find_words(
-        vrb=IDN.CONTRIBUTE,
-        # obj=resource_nouns,   # this could be huge, so not helpful
-        jbo_vrb=interesting_verbs,
-        jbo_ascending=True,
-    )
-
-    do_grandfathering = True
-    if do_grandfathering:
-        contributed_resources += lex.find_words(
-            vrb=IDN.UNSLUMP_OBSOLETE,
-            jbo_vrb=interesting_verbs,
-            jbo_ascending=True,
-        )
-
-    vetted_words = vet(contributed_resources, auth)
-
-    # vetted_words.sort(key=lambda word: -word.idn)   (order handled elsewhere
-
-    return dict(
-        cat={w.idn.qstring() : w for w in category_verbs},
-        cont=vetted_words,
-    )
-
-
-def vet(words, auth):
-    """Filter out illicit words:  anonymous contributions from other anonymous users."""
-    sbj_warnings = set()
-
-    if auth.is_anonymous:
-
-        def allowed_word(word):
-            try:
-                is_logged_in = not word.sbj.is_anonymous
-            except AttributeError:
-                if word.sbj.idn == IDN.LEX:
-                    # NOTE:  This test is buried because sbj=lex words are expected to be rare.
-                    return True
-                sbj = auth.idn(word.sbj)
-                if sbj not in sbj_warnings:
-                    sbj_warnings.add(sbj)
-                    print("sbj", sbj, "is neither user nor lex, starting with", repr(word))
-                return False
-
-            return is_logged_in or word.sbj == auth.qiki_user
-
-        vetted_words = [w for w in words if allowed_word(w)]
-        n_removed = len(words) - len(vetted_words)
-        if n_removed > 0:
-            print("Vetting removed", n_removed, "words")
-    else:
-        vetted_words = words
-    return vetted_words
-
-
-def cat_cont_order(auth):
-    """
-    Determine order of categories and contributions.
-
-    (1) error messages marked may be untestable
-    """
-
-    cat_order = [
-        auth.lex.IDN.CAT_MY,
-        auth.lex.IDN.CAT_THEIR,
-        auth.lex.IDN.CAT_ANON,
-        auth.lex.IDN.CAT_TRASH,
-        # TODO:  user-defined categories
-    ]
-    cont_order = dict()   # dictionary of contribution lists, keyed by category
-    cat_from_cont = dict()  # current category of each contribution
-    error_messages = list()
-
-    words = vet(auth.lex.find_words(), auth)
-
-    for word in words:
-
-        def error(*args):
-            error_messages.append(" ".join(str(arg) for arg in args))
-
-        def cat_room(cat):
-            cat = auth.idn(cat)
-            if cat not in cont_order:
-                cont_order[cat] = []
-
-        def add_cont(cat, cont, insert_index):
-            cat = auth.idn(cat)
-            cont = auth.idn(cont)
-            if cat not in cat_order:  error("CAT", cat, "unknown"); return   # (1)
-            cat_from_cont[cont] = cat
-            cat_room(cat)
-            cont_order[cat].insert(insert_index, cont)
-
-        def remove_cont(cont):
-            cont = auth.idn(cont)
-            if cont not in cat_from_cont:  error("CAT unrecorded for", cont); return
-            old_cat = cat_from_cont[cont]
-            if old_cat not in cont_order:  error("CAT", old_cat, "has no contribution list"); return   # (1)
-            if cont not in cont_order[old_cat]:  error("CAT", old_cat, "lost", cont); return   # (1)
-            cont_order[old_cat].remove(cont)
-
-        def index_cont(cat, cont):
-            cat = auth.idn(cat)
-            cont = auth.idn(cont)
-            cat_room(cat)
-            if cont == auth.lex.IDN.FENCE_POST_RIGHT:
-                return len(cont_order[cat])
-            try:
-                return cont_order[cat].index(cont)
-            except ValueError:
-                error("Reorder point", cont, "missing from", cat)
-                return 0   # desperate fallback to leftmost position, when reorder location makes no sense
-
-        if word.vrb.idn in (auth.lex.IDN.CONTRIBUTE, auth.lex.IDN.UNSLUMP_OBSOLETE):
-            if word.sbj == auth.qiki_user:
-                add_cont(auth.lex.IDN.CAT_MY, word, 0)
-            elif word.sbj.is_anonymous:
-                add_cont(auth.lex.IDN.CAT_ANON, word, 0)
-            else:
-                add_cont(auth.lex.IDN.CAT_THEIR, word, 0)
-        elif word.vrb.idn in cat_order:
-            if word.sbj == auth.qiki_user:
-                remove_cont(word.obj)
-                add_cont(word.vrb, word.obj, index_cont(word.vrb, word.num))
-
-    order_dict = dict(cat=cat_order, cont=cont_order)
-    if len(error_messages) > 0:
-        order_dict['error_messages'] = error_messages
-    return order_dict
 
 
 def unslumping_home_obsolete():
@@ -1484,7 +1584,7 @@ def unslumping_home_obsolete():
                         # anon_input(checked='checked')
                         # NOTE:  authenticated user, checkbox to see anonymous content defaults OFF
 
-                unslumps = lex.find_words(vrb=IDN.DEFINE, txt=u'unslump')
+                unslumps = lex.find_words(vrb=lex.IDN.DEFINE, txt=u'unslump')
                 uns_words = lex.find_words(
                     vrb=unslumps,
                     jbo_vrb=auth.qoolbar.get_verbs(),
@@ -1636,9 +1736,9 @@ def meta_raw():
         if word.sbj.idn.is_suffixed():
             num_suffixed += 1
             meta_idn, index = qiki.Listing.split_compound_idn(word.sbj.idn)
-            if meta_idn == IDN.ANONYMOUS_LISTING:
+            if meta_idn == auth.lex.IDN.ANONYMOUS_LISTING:
                 num_anon += 1
-            elif meta_idn == IDN.GOOGLE_LISTING:
+            elif meta_idn == auth.lex.IDN.GOOGLE_LISTING:
                 num_google += 1
     t_loop = time.time()
     response = valid_response('words', words)
@@ -1702,10 +1802,10 @@ def meta_lex():
                 return idn.raw       # to compare bytes
 
             class Z(object):
-                IP_ADDRESS_TAG = z(IDN.IP_ADDRESS_TAG)
-                NAME           = z(IDN.NAME)
-                ICONIFY        = z(IDN.ICONIFY)
-                USER_AGENT_TAG = z(IDN.USER_AGENT_TAG)
+                IP_ADDRESS_TAG = z(auth.lex.IDN.IP_ADDRESS_TAG)
+                NAME           = z(auth.lex.IDN.NAME)
+                ICONIFY        = z(auth.lex.IDN.ICONIFY)
+                USER_AGENT_TAG = z(auth.lex.IDN.USER_AGENT_TAG)
 
             with body.ol(class_='lex-list') as ol:
                 for word in words:
@@ -1766,7 +1866,7 @@ def meta_lex():
                 with foot.script() as script:
                     script.raw_text('\n')
                     monty = dict(
-                        IDN=IDN.dictionary_of_qstrings(),
+                        IDN=auth.lex.IDN.dictionary_of_qstrings(),
                         LISTING_WORDS=listing_dict,
                         NOW=float(time_lex.now_word().num),
                         URL_HERE=auth.current_url,
@@ -1819,7 +1919,7 @@ def meta_all():
         #        That is, where sbj.lex.meta_word.txt == 'anonymous'
 
     lex = auth.lex
-    browse_verb = lex[IDN.BROWSE]
+    browse_verb = lex[lex.IDN.BROWSE]
 
     with FlikiHTML('html') as html:
         html.header("Lex all")
@@ -1873,7 +1973,7 @@ def meta_all():
 
 
             def latest_iconifier_or_none(s):
-                iconifiers = lex.find_words(obj=s, vrb=IDN.ICONIFY)
+                iconifiers = lex.find_words(obj=s, vrb=lex.IDN.ICONIFY)
                 try:
                     return iconifiers[-1]
                 except IndexError:
@@ -1931,7 +2031,7 @@ def meta_all():
                         # if isinstance(w.lex, AnonymousQikiListing):
                         if is_qiki_user_anonymous(w):
                             classes.append('anonymous')
-                        elif w.idn == IDN.LEX:
+                        elif w.idn == lex.IDN.LEX:
                             classes.append('lex')
                         with inner.span(classes=classes) as span_named:
                             span_named(w_txt, title=title_prefix + word_identification(w))
@@ -1987,7 +2087,7 @@ def meta_all():
 
             def show_txt(element, word):
                 if word.txt != '':
-                    if word.vrb == auth.lex[IDN.REFERRER]:
+                    if word.vrb == lex[lex.IDN.REFERRER]:
                         if word.txt == url_from_question(word.obj.obj.txt):
                             with element.span(class_='referrer', title="was referred from itself") as ref_span:
                                 ref_span.text(" (self)")
@@ -2038,7 +2138,7 @@ def meta_all():
 
                         if word.vrb.txt == 'iconify':
                             show_iconify_obj(li, word, title_prefix="obj = ")
-                        elif word.vrb == auth.lex[IDN.QUESTION_OBSOLETE]:
+                        elif word.vrb == lex[lex.IDN.QUESTION_OBSOLETE]:
                             show_question_obj(li, word, title_prefix="obj = ")
                         elif word.vrb.obj == browse_verb:
                             show_question_obj(li, word, title_prefix="obj = ")
@@ -2335,7 +2435,7 @@ def answer_qiki(url_suffix):
     ))
 
     answers = lex.find_words(
-        vrb=IDN.ANSWER,
+        vrb=lex.IDN.ANSWER,
         obj=auth.path_word,
         jbo_vrb=qoolbar_verbs,
         idn_ascending=False,
@@ -2354,9 +2454,9 @@ def answer_qiki(url_suffix):
         #    {"sbj": "0q82_A7__8A059E058E6A6308C8B0_1D0B00", "vrb": "0q82_86", "txt": "", "num": 3, "idn": "0q83_017F"},
         #    {"sbj": "0q82_A7__8A059E058E6A6308C8B0_1D0B00", "vrb": "0q82_86", "txt": "", "num": 1, "idn": "0q83_0180"}
         # ]
-        picture_words = lex.find_words(vrb=IDN.ICONIFY, obj=answer.sbj)
+        picture_words = lex.find_words(vrb=lex.IDN.ICONIFY, obj=answer.sbj)
         picture_word = picture_words[0] if len(picture_words) >= 1 else None
-        name_words = lex.find_words(vrb=IDN.NAME, obj=answer.sbj)
+        name_words = lex.find_words(vrb=lex.IDN.NAME, obj=answer.sbj)
         name_word = name_words[-1] if len(name_words) >= 1 else answer.sbj
         name_txt = name_word.txt
         # TODO:  Get latest name instead of earliest name
@@ -2371,8 +2471,8 @@ def answer_qiki(url_suffix):
             author_img = ""
 
         answer.author = author_img
-    question_words = lex.find_words(vrb=IDN.QUESTION_OBSOLETE, obj=auth.path_word)   # old hits
-    session_words = lex.find_words(obj=IDN.BROWSE)
+    question_words = lex.find_words(vrb=lex.IDN.QUESTION_OBSOLETE, obj=auth.path_word)   # old hits
+    session_words = lex.find_words(obj=lex.IDN.BROWSE)
     hit_words = lex.find_words(vrb=session_words, obj=auth.path_word)   # new hits
     # TODO:  browses = lex.words(vrb_obj=WORD.BROWSE)
     # TODO:  browses = lex.jbo(session_words)
@@ -2485,8 +2585,8 @@ def ajax():
         if action == 'answer':
             question_path = auth.form('question')
             answer_txt = auth.form('answer')
-            question_word = lex.define(IDN.PATH, question_path)
-            auth.qiki_user(IDN.ANSWER)[question_word] = 1, answer_txt
+            question_word = lex.define(lex.IDN.PATH, question_path)
+            auth.qiki_user(lex.IDN.ANSWER)[question_word] = 1, answer_txt
             return valid_response('message', "Question {q} answer {a}".format(
                 q=question_path,
                 a=answer_txt,
@@ -2539,18 +2639,19 @@ def ajax():
             # TODO:  replace with json_encode().
             #        Now it gives TypeError: cannot convert dictionary update sequence element #0 to a sequence
             return valid_response('new_words', json_from_words([new_word]))
+            # TODO:  Maybe exclude txt form new_word to save bandwidth?
         elif action == 'new_verb':
             new_verb_name = auth.form('name')
             new_verb = lex.create_word(
                 sbj=auth.qiki_user,
-                vrb=IDN.DEFINE,
-                obj=IDN.VERB,
+                vrb=lex.IDN.DEFINE,
+                obj=lex.IDN.VERB,
                 txt=new_verb_name,
                 use_already=True,
             )
             lex.create_word(
                 sbj=auth.qiki_user,
-                vrb=IDN.QOOL,
+                vrb=lex.IDN.QOOL,
                 obj=new_verb,
                 num=NUM_QOOL_VERB_NEW,
                 use_already=True,
@@ -2562,7 +2663,7 @@ def ajax():
 
             lex.create_word(
                 sbj=auth.qiki_user,
-                vrb=IDN.QOOL,
+                vrb=lex.IDN.QOOL,
                 obj=old_verb_idn,
                 num=NUM_QOOL_VERB_DELETE,
                 use_already=True,
@@ -2570,7 +2671,7 @@ def ajax():
             return valid_response('idn', old_verb_idn.qstring())
 
         elif action == 'contribution_order':
-            return valid_response('order', cat_cont_order(auth))
+            return valid_response('order', auth.cat_cont_order())
 
         elif action == 'anon_question':
             return valid_response('seconds', float(seconds_until_anonymous_question()))
@@ -2641,11 +2742,13 @@ def invalid_response(error_message):
 JSON_SEPARATORS_NO_SPACES = (',', ':')
 
 
-def json_encode(dictionary, **kwargs):
+def json_encode(x, **kwargs):
     """JSON encoding a dict, including custom objects with to_json() methods."""
     # TODO:  Support encoding list, etc.
+    # if isinstance(x, dict):
+    #     x = dict(fix_dict(x))
     return json.dumps(
-        dict(fix_dict(dictionary)),
+        x,
         cls=WordEncoder,
         separators=JSON_SEPARATORS_NO_SPACES,
         allow_nan=False,
@@ -2665,15 +2768,17 @@ class WordEncoder(json.JSONEncoder):
             # NOTE:  Raises a TypeError, unless a multi-derived class
             #        calls a sibling class.  (If that's even how multiple
             #        inheritance works.)
+            # NOTE:  This is not the same TypeError as the one that
+            #        complains about custom dictionary keys.
 
 
 def fix_dict(thing):
-    """Replace qiki Number keys with qstrings in nested dictionaries."""
-    # TODO:  use "to_json" methods instead.
+    """Replace qiki Number keys with qstrings in dictionaries, recursively."""
     if isinstance(thing, dict):
         for key, value in thing.items():
             if isinstance(key, qiki.Number):
                 key = key.qstring()
+                # TODO:  use "to_json" method instead.
             if isinstance(value, dict):
                 value = dict(fix_dict(value))
             elif isinstance(value, list):

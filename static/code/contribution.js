@@ -18,6 +18,7 @@
  * @param MONTY.IDN.CAT_ANON
  * @param MONTY.IDN.CAT_TRASH
  * @param MONTY.IDN.CONTRIBUTE
+ * @param MONTY.IDN.CONTRIBUTE_EDIT
  * @param MONTY.IDN.FIELD_FLUB
  * @param MONTY.IDN.QUOTE
  * @param MONTY.IDN.REORDER
@@ -27,7 +28,9 @@
  * @param MONTY.me_txt
  * @param MONTY.order.cat
  * @param MONTY.order.cont
+ * @param MONTY.order.error_messages
  * @param MONTY.WHAT_IS_THIS_THING
+ * @param MONTY.w
  * @param MONTY.words.cat
  * @param MONTY.words.cont
  *
@@ -55,7 +58,10 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
         MOVE_CANCEL = false;
     // SEE:  SelectJS options, https://github.com/SortableJS/Sortable#user-content-options
 
-    var ANON_V_ANON_BLURB = "Log in to see anonymous contributions (other than yours).";
+    var ANON_V_ANON_BLURB = (
+        "You're here anonymously. " +
+        "Log in to see anonymous contributions other than yours."
+    );
 
     var me_name;
     var me_possessive;
@@ -94,7 +100,12 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
         extreme: 15       // above extreme-max, display at soft-max.
     };
 
-    $(document).ready(function() {
+    var is_editing_some_contribution = false;
+    var is_dirty = false;
+    var $cont_editing = null;
+    var original_text = null;
+
+    $(window.document).ready(function() {
         qoolbar.ajax_url(MONTY.AJAX_URL);
 
         build_dom();
@@ -104,16 +115,194 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
             .on('drop', text_or_caption_drop)
             .on('paste', text_or_caption_paste)
         ;
-        caption_should_track_text_width();
-        post_it_button_disabled_or_not();
         $('#post_it_button').on('click', post_it_click);
 
         $('.category, .frou-category')
             .sortable(sortable_options())
         ;
+
+        $(window.document)
+            .on('click', '.contribution', contribution_click)
+            .on('input', '.contribution', contribution_input)
+            .on('click', '.caption, .savebar', function (evt) {evt.stopPropagation();})
+            .on('click', '.savebar .cancel', contribution_cancel)
+            .on('click', '.savebar .save', contribution_save)
+            .on('click', function () { attempt_content_edit_abandon(); })
+        ;
+        // TODO:  Prevent mousedown inside .contribution, and mouseup outside, from
+        //        triggering a document click in Chrome.  (But not in Firefox.)
+        //        Makes it hard to select text in a contentEditable .contribution,
+        //        when the swiping happens to stray outside the div.contribution.
+
+        $(window).on('beforeunload', function() { return is_dirty ? "Discard?" : undefined; });
+        caption_should_track_text_width();
+        post_it_button_disabled_or_not();
         initialize_contribution_sizes();
         settle_down();
     });
+
+    function contribution_input() {
+        // var $cont = $(this);
+        // var cont_idn = $cont.attr('id');
+        if (!is_dirty) {
+            $savebar_from_cont($cont_editing).find('.cancel').text('discard')
+        }
+        is_dirty = true;
+    }
+    function contribution_cancel() {
+        console.assert(is_editing_some_contribution);   // If not editing, how was the cancel button visible?
+        if (is_editing_some_contribution) {
+            if (is_dirty) {
+                $cont_editing.text(original_text);
+            }
+            contribution_edit_end();
+        }
+    }
+    function contribution_save() {
+        var cont_idn = $cont_editing.attr('id');
+        if (is_editing_some_contribution) {
+            var new_text = $cont_editing.text();
+            if (original_text !== new_text) {
+                console.assert(
+                    is_dirty,
+                    "Different but not dirty? " +
+                    original_text +
+                    " != " +
+                    new_text
+                );
+                qoolbar.sentence({
+                    vrb_idn: MONTY.IDN.CONTRIBUTE,
+                    obj_idn: cont_idn,
+                    txt: new_text
+                }, function contribution_save_done(edit_word) {
+                    console.assert(is_editing_some_contribution);
+                    console.log("Edit saved.", edit_word.idn);
+                    contribution_edit_end();
+                    // TODO:  Update MONTY.words.cont[?].idn to edit_word.idn
+                    //        Update MONTY.words.cont[?].txt to new_text
+                    //        Update MONTY.order.cont[cat][?] to edit_word.idn, not cont_idn
+                });
+            } else {
+                console.log("(skipping save, contribution wasn't changed)", $cont_editing);
+                contribution_edit_end();
+            }
+        } else {
+            console.error("Save but we weren't editing?", $cont_editing);
+        }
+    }
+    function contribution_click(evt) {
+        if (is_click_on_the_resizer(evt, this)) {
+            return;
+        }
+        var $cont = $(this);
+        var was_editing_this_contribution = $cont.hasClass('contribution-edit');
+        if (was_editing_this_contribution) {
+            // Leave it alone, might be selecting text to replace, or just giving focus.
+        } else {
+            contribution_edit_begin($cont);
+            $cont.focus();
+            // NOTE:  Luckily .focus() allows the click that began editing to also place the caret.
+            //        Except it doesn't do that in IE11, requiring another click.
+        }
+        evt.stopPropagation();   // Don't let the document get it, and end the editing.
+    }
+
+    /**
+     * Get the position of a click, relative to the top-left corner of the element.
+     *
+     * THANKS:  click position, element-relative, https://stackoverflow.com/a/33378989/673991
+     *          Paulo Bueno's code works well in Chrome, Firefox, IE11.
+     *
+     * @param evt - click or other mouse event
+     * @param element - target of the event
+     * @return {{x: number, y: number}} - in pixels from the top-left corner of the target element
+     */
+    function getXY(evt, element) {
+        var rect = element.getBoundingClientRect();
+        var scrollTop = document.documentElement.scrollTop?
+                        document.documentElement.scrollTop:document.body.scrollTop;
+        var scrollLeft = document.documentElement.scrollLeft?
+                        document.documentElement.scrollLeft:document.body.scrollLeft;
+        var elementLeft = rect.left+scrollLeft;
+        var elementTop = rect.top+scrollTop;
+
+        var x = evt.pageX-elementLeft;
+        var y = evt.pageY-elementTop;
+        return {x:x, y:y};
+    }
+
+    /**
+     * Is the click on the div resize handle?  I.e. (crudely) with 20px of the bottom-right corner.
+     *
+     * THANKS:  Idea of using click-coordinates for this, https://stackoverflow.com/q/49136251/673991
+     *          Brett DeWoody calls this his "final, and last, last, last resort
+     *          ... ludicrous and unreliable."  Cool!
+     *
+     * CAVEAT:  IE11 has no div resize, so there's a little dead-zone there.
+     *
+     * @param evt - click or other mouse event
+     * @param element - target of the event
+     * @return {boolean}
+     */
+    function is_click_on_the_resizer(evt, element) {
+        var xy = getXY(evt, element);
+        var r = element.offsetWidth - xy.x;
+        var b = element.offsetHeight - xy.y;
+        return (
+            0 <= r && r <= 20 &&
+            0 <= b && b <= 20
+        );
+    }
+
+    function contribution_edit_begin($cont) {
+        if (attempt_content_edit_abandon()) {
+            contribution_edit_show($cont);
+            is_editing_some_contribution = true;
+            original_text = $cont.text();
+            $cont_editing = $cont;
+        }
+    }
+
+    function attempt_content_edit_abandon() {
+        if (is_editing_some_contribution) {
+            if (is_dirty) {
+                $savebar_from_cont($cont_editing).addClass('abandon-alert');
+                return false;
+            } else {
+                contribution_edit_end();
+                return true;
+            }
+        } else {
+            return true;
+        }
+    }
+
+    function contribution_edit_end() {
+        if (is_editing_some_contribution) {
+            is_editing_some_contribution = false;
+            contribution_edit_hide($cont_editing);
+            $cont_editing = null;
+            is_dirty = false;
+            original_text = null;
+        }
+    }
+
+    function contribution_edit_show($cont) {
+        $cont.addClass('contribution-edit');
+        $cont.prop('contentEditable', true);
+    }
+
+    function contribution_edit_hide($cont) {
+        $cont.removeClass('contribution-edit');
+        $cont.prop('contentEditable', false);
+        var $savebar = $savebar_from_cont($cont);
+        $savebar.removeClass('abandon-alert');
+        $savebar.find('.cancel').text('cancel');
+    }
+
+    function $savebar_from_cont($cont) {
+        return $cont.closest('.sup-contribution').find('.savebar');
+    }
 
     function text_or_caption_paste(evt) {
         try {
@@ -277,7 +466,6 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
         }
         if (adjust_em !== null) {
             var initial_px = px_from_em(adjust_em, $element);
-            // console.log("Adjust", first_word($element.text()), dimension, natural_em, "to", adjust_em, "em");
             $element[dimension](initial_px);
         }
     }
@@ -348,6 +536,11 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
      */
     function console_order_report() {
         console.log("order", order_report(MONTY.order));
+        if (has(MONTY.order, 'error_messages')) {
+            looper(MONTY.order.error_messages, function (_, error_message) {
+                console.warn("Monty order error:", error_message);
+            });
+        }
     }
 
     function post_it_button_disabled_or_not() {
@@ -449,11 +642,11 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
      * Build the body from scratch.
      */
     function build_dom() {
-        $(document.body).empty();
+        $(window.document.body).empty();
 
         var $login_prompt = $('<div>', {id: 'login-prompt'});
         $login_prompt.html(MONTY.login_html);
-        $(document.body).append($login_prompt);
+        $(window.document.body).append($login_prompt);
 
         build_category_dom(me_title,    MONTY.IDN.CAT_MY,    true, true);
         build_category_dom("others",    MONTY.IDN.CAT_THEIR, true, true);
@@ -474,6 +667,24 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
             // Anonymous users see a faded anonymous category with explanation.
         }
 
+        // var $sup_contributions = {};
+        // looper(MONTY.w, function (_, word) {
+        //     switch (word.vrb) {
+        //     case MONTY.IDN.CONTRIBUTE:
+        //         $sup_contributions[word.idn] = build_contribution_dom(word);
+        //         break;
+        //     case MONTY.IDN.CAPTION:
+        //         if (has($sup_contributions, word.obj)) {
+        //             var $sup_cont = $sup_contributions[word.obj];
+        //             replace_caption($sup_cont, word.txt);
+        //         }
+        //         break;
+        //     }
+        // });
+        // looper($sup_contributions, function (_, $sup_cont) {
+        //     $categories[MONTY.IDN.CAT_MY].append($sup_cont);
+        // });
+
         var $sup_contributions = {};
         looper(MONTY.words.cont, function (_, word) {
             $sup_contributions[word.idn] = build_contribution_dom(word);
@@ -485,9 +696,13 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
         });
 
         looper(MONTY.order.cat, function (_, idn) {
-            $(document.body).append($sup_categories[idn]);
+            $(window.document.body).append($sup_categories[idn]);
         });
     }
+
+    // function replace_caption($sup_cont, caption) {
+    //     $sup_cont.find('.caption-span').text(caption);
+    // }
 
     /**
      * Build the div.sup-category ($sup_category) for a category.  Contributions will go in later.
@@ -535,6 +750,8 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
      * Build the div.sup-contribution for a contribution,
      * containing its div.contribution and div.caption.
      *
+     * It's returned free-range, not inserted in the DOM.
+     *
      * @param contribution_word
      * @return {jQuery}
      */
@@ -544,13 +761,19 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
         $sup_contribution.append($contribution);
         $contribution.text(leading_spaces_indent(contribution_word.txt));
         var $caption = $('<div>', {class: 'caption'});
+        var $savebar = $('<div>', {class: 'savebar'});
+        $savebar.append($('<button>', {class: 'cancel'}).text('cancel'));
+        $savebar.append($('<button>', {class: 'save'}).text('save'));
         $sup_contribution.append($caption);
+        $sup_contribution.append($savebar);
         var $grip = $('<span>', {class: 'grip'});
         $caption.append($grip);
         $grip.text(UNICODE.VERTICAL_ELLIPSIS + UNICODE.VERTICAL_ELLIPSIS);
+        var $caption_span = $('<span>', {class: 'caption-span'});
+        $caption.append($caption_span);
         var caption_txt = latest_txt(contribution_word.jbo, MONTY.IDN.CAPTION);
         if (caption_txt !== undefined) {
-            $caption.append(caption_txt);
+            $caption_span.append(caption_txt);
         }
         if (contribution_word.was_submitted_anonymous) {
             $sup_contribution.addClass('was-submitted-anonymous');
@@ -667,6 +890,7 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
                 var ajax_order = order_idns(response.order);
                 if (recon_order === ajax_order) {
                     MONTY.order = response.order;
+                    // NOTE:  We don't update MONTY.words.  Guess it's only used at startup.
                     console_order_report();
                     refresh_how_many();
                 } else {
