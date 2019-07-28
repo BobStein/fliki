@@ -9,6 +9,8 @@
  * @param MONTY
  *
  * @param MONTY.AJAX_URL
+ * @param MONTY.cat.order
+ * @param MONTY.cat.txt
  * @param MONTY.FENCE_POST_RIGHT
  * @param MONTY.IDN
  * @param MONTY.IDN.CAPTION
@@ -17,22 +19,28 @@
  * @param MONTY.IDN.CAT_THEIR
  * @param MONTY.IDN.CAT_ANON
  * @param MONTY.IDN.CAT_TRASH
+ * @param MONTY.IDN.CAT_ABOUT
  * @param MONTY.IDN.CONTRIBUTE
- * @param MONTY.IDN.CONTRIBUTE_EDIT
+ * @param MONTY.IDN.EDIT
  * @param MONTY.IDN.FIELD_FLUB
  * @param MONTY.IDN.QUOTE
  * @param MONTY.IDN.REORDER
+ * @param MONTY.IDN.UNSLUMP_OBSOLETE
  * @param MONTY.is_anonymous
  * @param MONTY.login_html
  * @param MONTY.me_idn
  * @param MONTY.me_txt
- * @param MONTY.order.cat
- * @param MONTY.order.cont
- * @param MONTY.order.error_messages
  * @param MONTY.WHAT_IS_THIS_THING
+ * @param MONTY.u
+ * @param MONTY.u.is_admin
+ * @param MONTY.u.name_short
  * @param MONTY.w
- * @param MONTY.words.cat
- * @param MONTY.words.cont
+ * @param MONTY.w.idn
+ * @param MONTY.w.sbj
+ * @param MONTY.w.vrb
+ * @param MONTY.w.obj
+ * @param MONTY.w.txt
+ * @param MONTY.w.num
  *
  * @property word
  * @property word.sbj
@@ -171,14 +179,15 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
                     new_text
                 );
                 qoolbar.sentence({
-                    vrb_idn: MONTY.IDN.CONTRIBUTE,
+                    vrb_idn: MONTY.IDN.EDIT,
                     obj_idn: cont_idn,
                     txt: new_text
                 }, function contribution_save_done(edit_word) {
                     console.assert(is_editing_some_contribution);
                     console.log("Edit saved.", edit_word.idn);
+                    $cont_editing.attr('id', edit_word.idn);
                     contribution_edit_end();
-                    // TODO:  Update MONTY.words.cont[?].idn to edit_word.idn
+                    // NOPE:  Update MONTY.words.cont[?].idn to edit_word.idn
                     //        Update MONTY.words.cont[?].txt to new_text
                     //        Update MONTY.order.cont[cat][?] to edit_word.idn, not cont_idn
                 });
@@ -395,8 +404,10 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
 
                 var from_cat_idn = $(evt.from).attr('id');
                 var to_cat_idn = $cat_of(evt.to).attr('id');   // whether frou or category
-                var from_cat_txt = MONTY.words.cat[from_cat_idn].txt;
-                var to_cat_txt = MONTY.words.cat[to_cat_idn].txt;
+                var from_cat_txt = MONTY.cat.txt[from_cat_idn];
+                var to_cat_txt = MONTY.cat.txt[to_cat_idn];
+                // var from_cat_txt = MONTY.words.cat[from_cat_idn].txt;
+                // var to_cat_txt = MONTY.words.cat[to_cat_idn].txt;
 
                 if (is_in_frou(evt.to)) {   // drop into a closed category
                     console.log(
@@ -496,7 +507,7 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
      */
     function is_open_drop(element) {
         var cat_idn = $cat_of(element).attr('id');
-        var cat_txt = MONTY.words.cat[cat_idn].txt;
+        var cat_txt = MONTY.cat.txt[cat_idn];
         var is_open = get_valve($_from_id(id_valve(cat_txt)));
         return is_open;
     }
@@ -535,19 +546,21 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
      * Console log the first words of each contribution, in each category.
      */
     function console_order_report() {
-        console.log("order", order_report(MONTY.order));
-        if (has(MONTY.order, 'error_messages')) {
-            looper(MONTY.order.error_messages, function (_, error_message) {
-                console.warn("Monty order error:", error_message);
-            });
-        }
+        // console.log("monty", order_report(MONTY.order));
+        console.log(order_report(reconstitute_order_from_dom()));
+        // if (has(MONTY.order, 'error_messages')) {
+        //     looper(MONTY.order.error_messages, function (_, error_message) {
+        //         console.warn("Monty order error:", error_message);
+        //     });
+        // }
     }
 
     function post_it_button_disabled_or_not() {
-        if (
-            $('#enter_some_text').val().length === 0 ||
-            $('#enter_a_caption').val().length === 0
-        ) {
+        // if (
+        //     $('#enter_some_text').val().length === 0 ||
+        //     $('#enter_a_caption').val().length === 0
+        // ) {
+        if ($('#enter_some_text').val().length === 0) {
             $('#post_it_button').attr('disabled', 'disabled');
         } else {
             $('#post_it_button').removeAttr('disabled');
@@ -562,9 +575,9 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
         if (text.length === 0) {
             $text.focus();
             console.warn("Enter a quote.");
-        } else if (caption.length === 0) {
-            $caption.focus();
-            console.warn("Enter a caption.");
+        // } else if (caption.length === 0) {
+        //     $caption.focus();
+        //     console.warn("Enter a caption.");
         } else {
             qoolbar.sentence({
                 vrb_idn: MONTY.IDN.CONTRIBUTE,
@@ -572,14 +585,23 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
                 txt: text
             }, function post_it_done_1(contribute_word) {
                 console.log("contribution", contribute_word);
-                qoolbar.sentence({
-                    vrb_idn: MONTY.IDN.CAPTION,
-                    obj_idn: contribute_word.idn,
-                    txt: caption
-                }, function post_it_done_2(caption_word) {
-                    console.log("caption", caption_word);
-                    contribute_word.jbo = [caption_word];
-                    MONTY.words.cont.push(contribute_word);
+                var caption_sentence;
+                if (caption.length === 0) {
+                    caption_sentence = null;
+                } else {
+                    caption_sentence = {
+                        vrb_idn: MONTY.IDN.CAPTION,
+                        obj_idn: contribute_word.idn,
+                        txt: caption
+                    };
+                }
+                qoolbar.sentence(caption_sentence, function post_it_done_2(caption_word) {
+                    if (is_specified(caption_word)) {
+                        console.log("caption", caption_word);
+                        contribute_word.jbo = [caption_word];
+                    }
+                    // MONTY.words.cont.push(contribute_word);
+                    // Another good thing, that we don't have to do this.
                     var $new_sup = build_contribution_dom(contribute_word);
                     var $cat = $categories[MONTY.IDN.CAT_MY];
                     var $first_old_sup = $cat.find('.sup-contribution').first();
@@ -589,7 +611,8 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
                         $cat.append($new_sup);
                     }
                     // NOTE:  New .sup-contribution goes before leftmost .sup-contribution, if any.
-                    safe_prepend(MONTY.order.cont, MONTY.IDN.CAT_MY, contribute_word.idn);
+                    // safe_prepend(MONTY.order.cont, MONTY.IDN.CAT_MY, contribute_word.idn);
+                    // Is it a good thing we don't have to do this now?  Let the DOM be the (digested) database?
                     $text.val("");
                     $caption.val("");
                     settle_down();
@@ -652,6 +675,7 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
         build_category_dom("others",    MONTY.IDN.CAT_THEIR, true, true);
         build_category_dom("anonymous", MONTY.IDN.CAT_ANON,  true, false);
         build_category_dom("trash",     MONTY.IDN.CAT_TRASH, true, false);
+        build_category_dom("about",     MONTY.IDN.CAT_ABOUT, true, false);
         $sup_categories[MONTY.IDN.CAT_MY].addClass('sup-category-first');
 
         var $entry = $('<div>', {class: 'container-entry'});
@@ -667,42 +691,253 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
             // Anonymous users see a faded anonymous category with explanation.
         }
 
-        // var $sup_contributions = {};
-        // looper(MONTY.w, function (_, word) {
-        //     switch (word.vrb) {
-        //     case MONTY.IDN.CONTRIBUTE:
-        //         $sup_contributions[word.idn] = build_contribution_dom(word);
-        //         break;
-        //     case MONTY.IDN.CAPTION:
-        //         if (has($sup_contributions, word.obj)) {
-        //             var $sup_cont = $sup_contributions[word.obj];
-        //             replace_caption($sup_cont, word.txt);
-        //         }
-        //         break;
-        //     }
-        // });
-        // looper($sup_contributions, function (_, $sup_cont) {
-        //     $categories[MONTY.IDN.CAT_MY].append($sup_cont);
+        var $sup_contributions = {};
+        var cat_of_cont = {};   // maps contribution idn to category idn
+        var conts_in_cat = {};   // for each category id, an array of contribution idns in order
+        looper(MONTY.cat.order, function (_, cat) {
+            conts_in_cat[cat] = [];
+        });
+
+        function consistent_cat_cont() {
+            looper(cat_of_cont, function (cont, cat) {
+                cont = parseInt(cont);
+                console.assert(conts_in_cat[cat].indexOf(cont) !== -1, cont, cat);
+                if (conts_in_cat[cat].indexOf(cont) === -1) {
+                    console.debug(JSON.stringify(cat_of_cont), JSON.stringify(conts_in_cat));
+                    return false;
+                }
+            });
+            looper(conts_in_cat, function (cat, conts) {
+                cat = parseInt(cat);
+                looper(conts, function (_, cont) {
+                    console.assert(cat_of_cont[cont] === cat, cat, cont);
+                });
+            });
+        }
+        consistent_cat_cont();
+
+        function renumber_cont(old_idn, new_idn) {
+            var cat = cat_of_cont[old_idn];
+            console.assert(is_defined(cat), old_idn);
+            var i = conts_in_cat[cat].indexOf(old_idn);
+            console.assert(i !== -1, old_idn);
+            conts_in_cat[cat][i] = new_idn;
+            cat_of_cont[new_idn] = cat;
+            delete cat_of_cont[old_idn];
+            // NOTE:  Only deleting old so consistent_cat_cont() passes.
+        }
+
+        function insert_cont(cat, cont_idn, i_position) {
+            if (i_position === MONTY.IDN.FENCE_POST_RIGHT) {
+                conts_in_cat[cat].push(cont_idn);
+            } else {
+                var i = conts_in_cat[cat].indexOf(i_position);
+                if (i === -1) {
+                    console.error("insert_cont", cat, cont_idn, i_position, JSON.stringify(conts_in_cat));
+                    // NOTE:  Whatever was in there to anchor the rearranging is gone now.
+                    //        Oh well, stick it in with the "latest" stuff (probably on the left).
+                    //        This was happening when I wasn't processing obsolete unslump verbs.
+                    conts_in_cat[cat].unshift(cont_idn);
+                } else {
+                    conts_in_cat[cat].splice(i, 0, cont_idn);
+                }
+            }
+        }
+
+        looper(MONTY.w, function (_, word) {
+            var $sup;
+            var $cont;
+            var $caption;
+            if (word !== null) {
+                switch (word.vrb) {
+                    case MONTY.IDN.CONTRIBUTE:
+                    case MONTY.IDN.UNSLUMP_OBSOLETE:
+                        $sup = build_contribution_dom(word);
+                        $cont = $sup.find('.contribution');
+                        $caption = $sup.find('.caption');
+                        $cont.attr('data-owner', word.sbj);
+                        $caption.attr('data-owner', word.sbj);
+                        $sup_contributions[word.idn] = $sup;
+                        var cat = original_cat(word);
+                        conts_in_cat[cat].unshift(word.idn);
+                        cat_of_cont[word.idn] = cat;
+                        break;
+                    case MONTY.IDN.CAPTION:
+                        if (has($sup_contributions, word.obj)) {
+                            $sup = $sup_contributions[word.obj];
+                            $caption = $sup.find('.caption');
+                            if (is_authorized(word, $caption.attr('data-owner'), "caption")) {
+                                $caption.attr('id', word.idn);
+                                $caption.attr('data-owner', word.sbj);
+                                $caption.find('.caption-span').text(word.txt);
+                            }
+                        } else {
+                            console.log("Caption unknown word", word.obj);
+                        }
+                        break;
+                    case MONTY.IDN.EDIT:
+                        if (has($sup_contributions, word.obj)) {
+                            $sup = $sup_contributions[word.obj];
+                            $cont = $sup.find('.contribution');
+                            if (is_authorized(word, $cont.attr('data-owner'), "edit")) {
+                                var old_idn = word.obj;
+                                var new_idn = word.idn;
+                                $cont.attr('id', new_idn);
+                                $cont.attr('data-owner', word.sbj);
+                                $cont.text(word.txt);
+                                delete $sup_contributions[old_idn];
+                                // TODO:  Instead of deleting, just flag it as overrode or something?
+                                //        That would prevent vacuous "unknown word" situations.
+                                $sup_contributions[new_idn] = $sup;
+                                renumber_cont(old_idn, new_idn);
+                                // TODO:  add new cat_of_cont[] index,
+                                //        and change number in conts_in_cat[][]
+                                consistent_cat_cont();
+                            }
+                            // NOTE:  This does reorder the edited contribution
+                            //        But maybe that's good, it does get a new idn,
+                            //        and likewise moves to the more recent end.
+                        } else {
+                            // TODO:  Editable captions.
+                            console.log("Edit unknown word", word.obj);
+                            // NOTE:  One harmless way this could come about,
+                            //        A logged-in user could edit an anonymous user's contribution.
+                            //        Other anon users will see the edit, but not the original cont.
+                            //
+                            //        Another is if user A then B edits contribution x (by a third user).
+                            //        A will get this message when it see's B's edit word,
+                            //        because that edit word will refer to the original x's idn,
+                            //        but by then x will have been displaced by A's edit word.
+                        }
+                        break;
+                    default:
+                        if (has(MONTY.cat.order, word.vrb)) {
+                            var new_cat = word.vrb;
+                            var cont_idn = word.obj;
+                            var i_position = word.num;
+                            var post;
+                            if (i_position === MONTY.IDN.FENCE_POST_RIGHT) {
+                                post = "[right edge]";
+                            } else {
+                                post = i_position.toString();
+                            }
+                            console.log("Cat move", cont_idn, "to", MONTY.cat.txt[new_cat], "before", post);
+                            var old_cat = cat_of_cont[cont_idn];
+                            if (is_defined(old_cat)) {
+                                var i_cont = conts_in_cat[old_cat].indexOf(cont_idn);
+                                if (i_cont === -1) {
+                                    console.error("Can't find cont in order_cont", old_cat, conts_in_cat);
+                                } else {
+                                    conts_in_cat[old_cat].splice(i_cont, 1);
+                                    // conts_in_cat[new_cat].unshift(cont_idn);
+                                    // TODO:  Insert before i_position
+                                    insert_cont(new_cat, cont_idn, i_position);
+                                    cat_of_cont[cont_idn] = new_cat;
+                                    consistent_cat_cont();
+                                }
+                                consistent_cat_cont();
+                            } else {
+                                console.warn("Lost track of cat", cont_idn.toString(), cat_of_cont);
+                                // NOTE:  Will happen for obsolete unslump verbs.
+                            }
+                        }
+                        break;
+                }
+            }
+        });
+
+        console.log("order_cont", conts_in_cat, cat_of_cont);
+
+        // looper($sup_contributions, function (cont_idn, $sup_cont) {
+        //     var cat = cat_of_cont[cont_idn];
+        //     console.assert(is_defined(cat), cont_idn);
+        //     $categories[cat].append($sup_cont);
         // });
 
-        var $sup_contributions = {};
-        looper(MONTY.words.cont, function (_, word) {
-            $sup_contributions[word.idn] = build_contribution_dom(word);
-        });
-        looper(MONTY.order.cat, function (_, cat) {
-            looper(MONTY.order.cont[cat], function (_, cont) {
+        // var $sup_contributions = {};
+        // looper(MONTY.words.cont, function (_, word) {
+        //     $sup_contributions[word.idn] = build_contribution_dom(word);
+        // });
+        // looper(MONTY.order.cat, function (_, cat) {
+        //     looper(MONTY.order.cont[cat], function (_, cont) {
+        //         $categories[cat].append($sup_contributions[cont]);
+        //     });
+        // });
+
+        looper(conts_in_cat, function (cat, conts) {
+            looper(conts, function (_, cont) {
                 $categories[cat].append($sup_contributions[cont]);
             });
         });
 
-        looper(MONTY.order.cat, function (_, idn) {
+        looper(MONTY.cat.order, function (_, idn) {
             $(window.document.body).append($sup_categories[idn]);
         });
     }
 
-    // function replace_caption($sup_cont, caption) {
-    //     $sup_cont.find('.caption-span').text(caption);
-    // }
+    function original_cat(word) {
+        if (word.sbj === MONTY.me_idn) {
+            return MONTY.IDN.CAT_MY;
+        } else if (word.was_submitted_anonymous) {
+            return MONTY.IDN.CAT_ANON;
+        } else {
+            return MONTY.IDN.CAT_THEIR;
+        }
+    }
+
+    function user_name_short(user_idn) {
+        if (has(MONTY.u, user_idn)) {
+            return MONTY.u[user_idn].name_short;
+        } else {
+            return user_idn;
+        }
+    }
+
+    function is_admin(user_idn) {
+        if (has(MONTY.u, user_idn)) {
+            return MONTY.u[user_idn].is_admin;
+        } else {
+            return false;
+        }
+    }
+
+    /**
+     * Should we let this change affect a contribution?
+     *
+     * The hierarchy of changes to a contribution:
+     *     original contributor < system admin < me (browsing user)
+     *
+     * So once I change a contribution, I will ignore changes by others.
+     *
+     * @param word - the changing word (e.g. edit or re-categorization or rearrangement)
+     *               word.sbj is the idn of the user who initiated this change.
+     * @param owner - tricky - this is last person we authorized to change this contribution.
+     *                It starts off as the original contributor.
+     *                But then if I (the browsing user) moved it or edited it, then I'm the owner.
+     *                But before that if the system admin moved or edited it,
+     *                then they became the owner.
+     *                This field comes from the data-owner attribute.  But if we return true,
+     *                then we expect data-owner to be overridden by whoever initiated this change!
+     * @param verb - text describing the change.
+     *               (This is probably word.verb.txt, as if that were accessible in JS)
+     * @return {boolean}
+     */
+    function is_authorized(word, owner, verb) {
+        var is_change_mine = word.sbj === MONTY.me_idn;
+        var is_change_admin = is_admin(word.sbj);
+        var is_change_owner = word.sbj === owner;
+        var did_i_change_last = owner === MONTY.me_idn;
+        var did_admin_change_last = is_admin(owner);
+        var let_admin_change = ! did_i_change_last && is_change_admin;
+        var let_owner_change = ! did_i_change_last && ! did_admin_change_last && is_change_owner;
+        var ok = is_change_mine || let_admin_change || let_owner_change;
+        if (ok) {
+            console.log(word.idn + ". Yes " + user_name_short(word.sbj) + " may " + verb + " " + word.obj + ", work of " + user_name_short(owner));
+        } else {
+            console.log(word.idn + ". Nope " + user_name_short(word.sbj) + " won't " + verb + " " + word.obj + ", work of " + user_name_short(owner));
+        }
+        return ok;
+    }
 
     /**
      * Build the div.sup-category ($sup_category) for a category.  Contributions will go in later.
@@ -722,7 +957,7 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
      * @param is_valve_open - initially open?
      */
     function build_category_dom(title, cat_idn, do_valve, is_valve_open) {
-        var name = MONTY.words.cat[cat_idn].txt;
+        var name = MONTY.cat.txt[cat_idn];
         var $sup_category = $('<div>', {class: 'sup-category'});
         var $title = $('<h2>', {class: 'frou-category'});
         // NOTE:  "frou" refers to the decorative stuff associated with a category.
@@ -809,6 +1044,7 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
         return order;
     }
 
+    // noinspection JSUnusedLocalSymbols
     /**
      * Make a string of category and contribution idns in order,
      * ready to compare with order from another source.
@@ -837,9 +1073,9 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
         var cont_strings = cont_nonempty.map(function(cat) {
             var first_words = order.cont[cat].map(function (cont) {
                 console.assert(is_laden(cont), cat, "`" + cont + "`", order.cont[cat]);
-                return first_word_from_cont(cont);
+                return JSON.stringify(first_word_from_cont(cont));
             });
-            return MONTY.words.cat[cat].txt + ":" + first_words.join(",");
+            return MONTY.cat.txt[cat] + ":" + first_words.join(",");
         });
         return cont_strings.join(" ");
     }
@@ -856,7 +1092,7 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
     function first_word_from_cont(cont) {
         var $cont = $_from_id(cont);   // actually the div.sup-contribution#idn containing the div.contribution
         if ($cont.length !== 1) {
-            console.error("Missing contribution element, id =", cont);
+            // console.error("Missing contribution element, id =", cont);
             return "[" + cont + "?]";
         }
         var txt = $cont/*.find('.contribution')*/.text().trim();
@@ -880,66 +1116,130 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
      * 2. Update MONTY.order if so.
      * 3. Refresh the how-many numbers in anti-valved fields (stuff that shows when closed).
      */
-    var first_mismatch = true;   // Only report order mismatch once, to server and to user with an alert.
+    // var first_mismatch = true;   // Only report order mismatch once, to server and to user with an alert.
     function settle_down() {
-        var recon = reconstitute_order_from_dom();
-        var recon_order = order_idns(recon);
+        console_order_report();
+        refresh_how_many();
 
-        qoolbar.post('contribution_order', {}, function (response) {
-            if (response.is_valid) {
-                var ajax_order = order_idns(response.order);
-                if (recon_order === ajax_order) {
-                    MONTY.order = response.order;
-                    // NOTE:  We don't update MONTY.words.  Guess it's only used at startup.
-                    console_order_report();
-                    refresh_how_many();
-                } else {
-                    // FIXME:  This might mean legitimate changes on another window.
-                    //         Contributions by any other user, or
-                    //         rearrangements by the same user.
-                    // TODO:  Rebuild??
-                    //        We also need to download MONTY.words,
-                    //        But then, yea, just call build()!
-                    var mismatch_report = "Ajax contribution order does not agree:\n" +
-                        recon_order + " <-- reconstitute_order_from_dom()\n" +
-                        ajax_order + " <-- ajax order\n" +
-                        order_report(recon) + " <-- reconstitute_order_from_dom()\n" +
-                        order_report(response.order) + " <-- ajax order";
-                    console.warn(mismatch_report);
-                    if (first_mismatch) {
-                        first_mismatch = false;
-                        // flub(mismatch_report);
-                        if (confirm("Might be a little mixed up about the order here. Okay to reload the page?")) {
-                            qoolbar.page_reload();
-                        }
-                    }
-                    // TODO:  Ajax this warning somewhere and just reload the page?
-                }
-                // if (monty_order !== ajax_order) {
-                //     console.warn(
-                //         "Ajax contribution order does not agree:\n" +
-                //         monty_order + " == MONTY.order\n" +
-                //         ajax_order + " == ajax order\n" +
-                //         order_report(MONTY.order) + " == MONTY.order\n" +
-                //         order_report(response.order) + " == ajax order"
-                //     )
-                // }
-            } else {
-                console.error("ajax reconstituted_order bust", response.error_message);
-            }
-        });
+
+        // order_verification(function () {
+        //     console_order_report();
+        //     refresh_how_many();
+        // });
+
+        // var recon = reconstitute_order_from_dom();
+        // var recon_order = order_idns(recon);
+        //
+        // qoolbar.post('contribution_order', {}, function (response) {
+        //     if (response.is_valid) {
+        //         var ajax_order = order_idns(response.order);
+        //         if (recon_order === ajax_order) {
+        //             MONTY.order = response.order;
+        //             // NOTE:  We don't update MONTY.words.  Guess it's only used at startup.
+        //             console_order_report();
+        //             refresh_how_many();
+        //         } else {
+        //             // FIXME:  This might mean legitimate changes on another window.
+        //             //         Contributions by any other user, or
+        //             //         rearrangements by the same user.
+        //             // TODO:  Rebuild??
+        //             //        We also need to download MONTY.words,
+        //             //        But then, yea, just call build()!
+        //             var mismatch_report = "Ajax contribution order does not agree:\n" +
+        //                 recon_order + " <-- reconstitute_order_from_dom()\n" +
+        //                 ajax_order + " <-- ajax order\n" +
+        //                 order_report(recon) + " <-- reconstitute_order_from_dom()\n" +
+        //                 order_report(response.order) + " <-- ajax order";
+        //             console.warn(mismatch_report);
+        //             if (first_mismatch) {
+        //                 first_mismatch = false;
+        //                 // flub(mismatch_report);
+        //                 if (confirm("Might be a little mixed up about the order here. Okay to reload the page?")) {
+        //                     qoolbar.page_reload();
+        //                 }
+        //             }
+        //             // TODO:  Ajax this warning somewhere and just reload the page?
+        //         }
+        //         // if (monty_order !== ajax_order) {
+        //         //     console.warn(
+        //         //         "Ajax contribution order does not agree:\n" +
+        //         //         monty_order + " == MONTY.order\n" +
+        //         //         ajax_order + " == ajax order\n" +
+        //         //         order_report(MONTY.order) + " == MONTY.order\n" +
+        //         //         order_report(response.order) + " == ajax order"
+        //         //     )
+        //         // }
+        //     } else {
+        //         console.error("ajax reconstituted_order bust", response.error_message);
+        //     }
+        // });
     }
 
+    // // noinspection JSUnusedLocalSymbols
+    // function order_verification(then) {
+    //     var recon = reconstitute_order_from_dom();
+    //     var recon_order = order_idns(recon);
+    //     qoolbar.post('contribution_order', {}, function (response) {
+    //         var ajax_order = order_idns(response.order);
+    //         if (recon_order === ajax_order) {
+    //             MONTY.order = response.order;
+    //             // NOTE:  We don't update MONTY.words.  Guess it's only used at startup.
+    //             then();
+    //         } else {
+    //             // FIXME:  This might mean legitimate changes from same user on another window,
+    //             //         or contributions by any other user,
+    //             //         or rearrangements by the same user.
+    //             // TODO:  Rebuild??
+    //             //        We also need to download MONTY.words,
+    //             //        But then, yea, maybe we should just call build()!
+    //             var mismatch_report = "Ajax contribution order does not agree:\n" +
+    //                 recon_order + " <-- reconstitute_order_from_dom()\n" +
+    //                 ajax_order + " <-- ajax order\n" +
+    //                 order_report(recon) + " <-- reconstitute_order_from_dom()\n" +
+    //                 order_report(response.order) + " <-- ajax order";
+    //             console.warn(mismatch_report);
+    //             if (first_mismatch) {
+    //                 first_mismatch = false;
+    //                 // flub(mismatch_report);
+    //                 if (confirm("Might be a little mixed up about the order here. Okay to reload the page?")) {
+    //                     qoolbar.page_reload();
+    //                 }
+    //             }
+    //             // TODO:  Ajax this warning somewhere and just reload the page?
+    //         }
+    //         // if (monty_order !== ajax_order) {
+    //         //     console.warn(
+    //         //         "Ajax contribution order does not agree:\n" +
+    //         //         monty_order + " == MONTY.order\n" +
+    //         //         ajax_order + " == ajax order\n" +
+    //         //         order_report(MONTY.order) + " == MONTY.order\n" +
+    //         //         order_report(response.order) + " == ajax order"
+    //         //     )
+    //         // }
+    //     });
+    // }
+
     function refresh_how_many() {
-        looper(MONTY.order.cont, function recompute_category_anti_valves(cat, contribution_idns) {
+        looper(MONTY.cat.order, function recompute_category_anti_valves(_, cat) {
             var how_many;
-            if (contribution_idns.length === 0) {
+            var $cat = $_from_id(cat);
+            var n_contributions = $cat.find('.contribution').length;
+            if (n_contributions === 0) {
                 how_many = "";
             } else {
-                how_many = " (" + contribution_idns.length.toString() + ")";
+                how_many = " (" + n_contributions.toString() + ")";
             }
             $sup_categories[cat].find('.how-many').text(how_many);
         });
+        // looper(MONTY.order.cont, function recompute_category_anti_valves(cat, contribution_idns) {
+        //     var how_many;
+        //     if (contribution_idns.length === 0) {
+        //         how_many = "";
+        //     } else {
+        //         how_many = " (" + contribution_idns.length.toString() + ")";
+        //     }
+        //     $sup_categories[cat].find('.how-many').text(how_many);
+        // });
     }
 
     // noinspection JSUnusedLocalSymbols
@@ -983,9 +1283,11 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
     function caption_should_track_text_width() {
         if (typeof window.MutationObserver === 'function') {
             var $enter_some_text = $('#enter_some_text');
-            var enter_a_caption = $('#enter_a_caption');
+            var $enter_a_caption = $('#enter_a_caption');
+            console.assert($enter_some_text.length === 1, $enter_some_text.length);
+            console.assert($enter_a_caption.length === 1, $enter_a_caption);
             function caption_tracks_text() {
-                enter_a_caption.width($enter_some_text.width());
+                $enter_a_caption.width($enter_some_text.width());
             }
             new MutationObserver(caption_tracks_text).observe(
                 $enter_some_text[0],

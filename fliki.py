@@ -139,10 +139,15 @@ class WorkingIdns(object):
                 self.CAT_THEIR         = lex.define(self.CATEGORY, u'their').idn
                 self.CAT_ANON          = lex.define(self.CATEGORY, u'anon').idn
                 self.CAT_TRASH         = lex.define(self.CATEGORY, u'trash').idn
+                self.CAT_ABOUT         = lex.define(self.CATEGORY, u'about').idn
                 self.FENCE_POST_RIGHT  = lex.noun(u'fence post right').idn
+                # TODO:  Rename FENCE_POST_END?
+                #        Because order could be vertical, e.g. categories,
+                #        not to mention right-to-left in arabic/hebrew.
 
-                self.EDIT_TXT          = lex.verb(u'edit txt').idn
-                self.CONTRIBUTE_EDIT   = lex.define(self.EDIT_TXT, u'contribute edit').idn
+                # self.EDIT_TXT          = lex.verb(u'edit txt').idn
+                # self.CONTRIBUTE_EDIT   = lex.define(self.EDIT_TXT, u'contribute edit').idn
+                self.EDIT              = lex.verb(u'edit').idn
 
                 # lex[lex](self.EXPLAIN, use_already=True)[self.FENCE_POST_RIGHT] = \
                 #     u"Represent the contribution to the right of the right-most contribution in a category.", 2
@@ -167,6 +172,16 @@ class WorkingIdns(object):
             ) + "  Did you forget `.idn` at the end?"
         of_qstrings = {name: idn.qstring() for name, idn in of_idns.items()}
         return of_qstrings
+
+    def dictionary_of_ints(self):
+        of_idns = dict_from_object(self)
+        assert \
+            all(isinstance(idn, qiki.Number) for idn in of_idns.values()), \
+            "Expecting Numbers.  These are not: " + repr(
+                {n: type_name(x) for n, x in of_idns.items() if not isinstance(x, qiki.Number)}
+            ) + "  Did you forget `.idn` at the end?"
+        of_ints = {name: int(idn) for name, idn in of_idns.items()}
+        return of_ints
 
 
 def dict_from_object(o):
@@ -262,6 +277,7 @@ class LexFliki(qiki.LexMySQL):
                 txt = qiki.Text(user_name)
                 num = qiki.Number(1)
                 self.populate_from_num_txt(num, txt)
+                self.name = user_name
 
         class WordAnon(WordFlikiUser):
             is_anonymous = True
@@ -319,6 +335,7 @@ class LexFliki(qiki.LexMySQL):
                 txt = qiki.Text(session_description)
                 num = qiki.Number(1)
                 self.populate_from_num_txt(num, txt)
+                self.name = "anon#" + render_num(self.index)
 
         self.word_google_class = WordGoogle
         self.word_anon_class = WordAnon
@@ -332,7 +349,10 @@ class LexFliki(qiki.LexMySQL):
 
         if LexFliki._IDNS_READ_ONCE_AT_STARTUP is None:
             LexFliki._IDNS_READ_ONCE_AT_STARTUP = WorkingIdns(self)
+            idns = dict_from_object(LexFliki._IDNS_READ_ONCE_AT_STARTUP).values()
+            LexFliki._txt_from_idn = {idn: self[idn].txt for idn in idns}
         self.IDN = LexFliki._IDNS_READ_ONCE_AT_STARTUP
+        self.txt_from_idn = LexFliki._txt_from_idn
 
     def _execute(self, cursor, query, parameters=()):
         self.query_count += 1
@@ -464,7 +484,7 @@ def connect_lex():
         return lex
 
 
-_ = WorkingIdns(connect_lex()).dictionary_of_qstrings()  # catch missing ".idn"
+_ = WorkingIdns(connect_lex()).dictionary_of_ints()  # catch missing ".idn"
 
 
 # IDN = WorkingIdns(connect_lex())   # TODO:  Call this only via WSGI, not test_fliki.py
@@ -826,6 +846,15 @@ class Auth(object):
         return self.lex.idn_ify(word_or_idn)
 
 
+    def monty_cat(self):
+        idns_in_order = self.get_category_idns_in_order()
+        txt_from_cat_idn = {int(idn): self.lex.txt_from_idn[idn] for idn in idns_in_order}
+        return dict(
+            order=idns_in_order,
+            txt=txt_from_cat_idn,
+        )
+
+
     def get_category_idns_in_order(self):
         """The order the categories should appear on the site."""
         # TODO:  Support custom user categories
@@ -834,6 +863,7 @@ class Auth(object):
             self.lex.IDN.CAT_THEIR,
             self.lex.IDN.CAT_ANON,
             self.lex.IDN.CAT_TRASH,
+            self.lex.IDN.CAT_ABOUT,
         ]
 
 
@@ -908,7 +938,8 @@ class Auth(object):
 
         vetted_contributions = self.vet(contributed_resources)
 
-        category_words_by_qstring = {w.idn.qstring() : w for w in category_verb_list}
+        # category_words_by_qstring = {w.idn.qstring() : w for w in category_verb_list}
+        category_words_by_int = {int(w.idn) : w for w in category_verb_list}
         # TODO:  All contribute.js needs from the category words
         #        (i.e. return-value.cat) is their txt.
         #        {w.idn.qstring() : w.txt for w in category_verb_list}
@@ -920,7 +951,7 @@ class Auth(object):
         #        Or come in pieces, see https://stackoverflow.com/a/18964123/673991
 
         return dict(
-            cat=category_words_by_qstring,
+            cat=category_words_by_int,
             cont=vetted_contributions,
         )
 
@@ -1017,10 +1048,11 @@ class Auth(object):
                     remove_cont(word.obj)
                     add_cont(word.vrb, word.obj, index_cont(word.vrb, word.num))
 
-        cont_order_qstring_keys = {cat.qstring(): order for cat, order in cont_order.items()}
+        # cont_order_qstring_keys = {cat.qstring(): order for cat, order in cont_order.items()}
+        cont_order_int_keys = {int(cat): order for cat, order in cont_order.items()}
         order_dict = dict(
             cat=cat_order,
-            cont=cont_order_qstring_keys
+            cont=cont_order_int_keys
         )
         if len(error_messages) > 0:
             order_dict['error_messages'] = error_messages
@@ -1055,8 +1087,43 @@ class Auth(object):
             vetted_words = words
         return vetted_words
 
-    def all_vetted_words(self):
-        return self.vet(self.lex.find_words())
+    def vetted_find_by_verbs(self, verbs):
+        qc = list()
+        qc.append(self.lex.query_count)
+        vetted_list = self.vet(self.lex.find_words(vrb=verbs))
+        qc.append(self.lex.query_count)
+        if len(vetted_list) > 0:
+            max_idn = vetted_list[-1].idn
+        else:
+            max_idn = 0
+        max_idint = int(max_idn)
+        vetted_array = [None] * (max_idint + 1)
+        user_table = dict()
+        for word in vetted_list:
+            idint = int(word.idn)
+            assert 0 <= idint <= max_idint, str(idint)
+            vetted_array[idint] = word
+
+            user_qstring = word.sbj.idn.qstring()
+            if user_qstring not in user_table:   # conserves number of queries
+                word.sbj.exists()
+                is_admin = user_qstring in secure.credentials.Options.system_administrator_users
+                user_info = dict(
+                    name_short=word.sbj.name,
+                    name_long=word.sbj.txt,
+                    is_admin=is_admin,
+                )
+                user_table[user_qstring] = user_info
+        qc.append(self.lex.query_count)
+        qc_delta = [qc[i+1] - qc[i] for i in range(len(qc)-1)]   # TODO:  Bake this into multi-inherited class
+        print("Vetted deltas", ",".join(str(x) for x in qc_delta))
+        return dict(
+            u=user_table,
+            w=vetted_array,
+        )
+        # TODO:  Do this some other way without so many holes?
+        #        Could provide a dict by idn, and a list of idns in chronological order
+        #        or just the dict, and let js sort the idns.
 
 
 class AuthFliki(Auth):
@@ -1453,6 +1520,15 @@ def contribution_home(home_page_title):
                 foot.js('https://cdn.jsdelivr.net/npm/sortablejs@1.9.0/Sortable.js')
                 foot.js('https://cdn.jsdelivr.net/npm/jquery-sortablejs@1.0.0/jquery-sortable.js')
                 foot.js_stamped(auth.static_url('code/contribution.js'))
+                verbs = []
+                verbs += auth.get_category_idns_in_order()
+                verbs += [
+                    auth.lex.IDN.CONTRIBUTE,
+                    auth.lex.IDN.UNSLUMP_OBSOLETE,
+                    auth.lex.IDN.CAPTION,
+                    auth.lex.IDN.EDIT,
+                ]
+                words_for_js = auth.vetted_find_by_verbs(verbs)
                 with foot.script() as script:
                     monty = dict(
                         me_idn=auth.qiki_user.idn.qstring(),
@@ -1460,19 +1536,21 @@ def contribution_home(home_page_title):
                         is_anonymous=auth.is_anonymous,
                         URL_HERE=auth.current_url,
                         AJAX_URL=AJAX_URL,
-                        IDN=auth.lex.IDN.dictionary_of_qstrings(),
+                        IDN=auth.lex.IDN.dictionary_of_ints(),
                         NOW=float(time_lex.now_word().num),
                         login_html=auth.login_html(),
-                        order=auth.cat_cont_order(),
+                        cat=auth.monty_cat(),
                         WHAT_IS_THIS_THING=secure.credentials.Options.what_is_this_thing,
 
+                        # order=auth.cat_cont_order(),
                         # order.cat - list of categories in order
                         # order.cont - dict by category of lists of contributions in order
-                        words=auth.cat_cont_words(),
+
+                        # words=auth.cat_cont_words(),
                         # words.cat - dict by category of category words
                         # words.cont - list of contribution words
-                        w=auth.all_vetted_words(),
                     )
+                    monty.update(words_for_js)
                     script.raw_text('var MONTY = {json};\n'.format(
                         json=json_encode(
                             monty,
@@ -2638,7 +2716,8 @@ def ajax():
             #     "\n" + json_from_words([new_word]) + "\n" + json_encode([new_word])
             # TODO:  replace with json_encode().
             #        Now it gives TypeError: cannot convert dictionary update sequence element #0 to a sequence
-            return valid_response('new_words', json_from_words([new_word]))
+            # return valid_response('new_words', json_from_words([new_word]))
+            return valid_response('new_words', [new_word])
             # TODO:  Maybe exclude txt form new_word to save bandwidth?
         elif action == 'new_verb':
             new_verb_name = auth.form('name')
