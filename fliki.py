@@ -1107,7 +1107,10 @@ class Auth(object):
             user_qstring = word.sbj.idn.qstring()
             if user_qstring not in user_table:   # conserves number of queries
                 word.sbj.exists()
-                is_admin = user_qstring in secure.credentials.Options.system_administrator_users
+                try:
+                    is_admin = user_qstring in secure.credentials.Options.system_administrator_users
+                except AttributeError:
+                    is_admin = False
                 user_info = dict(
                     name_short=word.sbj.name,
                     name_long=word.sbj.txt,
