@@ -456,6 +456,10 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
     function contributions_becoming_visible_for_the_first_time_maybe() {
         initialize_contribution_sizes();
     }
+
+    function new_contribution_just_created() {
+        initialize_contribution_sizes();
+    }
     function initialize_contribution_sizes() {
         $('.size-adjust-once:visible').each(function () {
             var $element = $(this);
@@ -616,6 +620,9 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
                     $text.val("");
                     $caption.val("");
                     settle_down();
+                    setTimeout(function () {  // Give rendering some airtime.
+                        new_contribution_just_created();
+                    });
                 });
             });
         }
@@ -729,15 +736,24 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
 
         function insert_cont(cat, cont_idn, i_position) {
             if (i_position === MONTY.IDN.FENCE_POST_RIGHT) {
-                conts_in_cat[cat].push(cont_idn);
+                conts_in_cat[cat].push(cont_idn);   // Stick it on the right end.
             } else {
                 var i = conts_in_cat[cat].indexOf(i_position);
                 if (i === -1) {
-                    console.error("insert_cont", cat, cont_idn, i_position, JSON.stringify(conts_in_cat));
+                    // console.error("insert_cont", cat, cont_idn, i_position, JSON.stringify(conts_in_cat));
+                    console.log(
+                        "(Can't insert", cont_idn,
+                        "before", i_position,
+                        "so it's going on the left end of", MONTY.cat.txt[cat],
+                        "instead.)"
+                    );
                     // NOTE:  Whatever was in there to anchor the rearranging is gone now.
                     //        Oh well, stick it in with the "latest" stuff (probably on the left).
                     //        This was happening when I wasn't processing obsolete unslump verbs.
-                    conts_in_cat[cat].unshift(cont_idn);
+                    //        It could also happen for anonymous users because the following
+                    //        cont was from ANOTHER anonymous user so they don't see it.
+                    //        Consequence is it's just out of order, no biggie.
+                    conts_in_cat[cat].unshift(cont_idn);   // Stick it on the left end.
                 } else {
                     conts_in_cat[cat].splice(i, 0, cont_idn);
                 }
@@ -772,7 +788,7 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
                                 $caption.find('.caption-span').text(word.txt);
                             }
                         } else {
-                            console.log("Caption unknown word", word.obj);
+                            console.log("(Can't caption " + word.obj + ")");
                         }
                         break;
                     case MONTY.IDN.EDIT:
@@ -799,7 +815,7 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
                             //        and likewise moves to the more recent end.
                         } else {
                             // TODO:  Editable captions.
-                            console.log("Edit unknown word", word.obj);
+                            console.log("(Can't edit " + word.obj + ")");
                             // NOTE:  One harmless way this could come about,
                             //        A logged-in user could edit an anonymous user's contribution.
                             //        Other anon users will see the edit, but not the original cont.
@@ -812,33 +828,44 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
                         break;
                     default:
                         if (has(MONTY.cat.order, word.vrb)) {
-                            var new_cat = word.vrb;
-                            var cont_idn = word.obj;
-                            var i_position = word.num;
-                            var post;
-                            if (i_position === MONTY.IDN.FENCE_POST_RIGHT) {
-                                post = "[right edge]";
-                            } else {
-                                post = i_position.toString();
-                            }
-                            console.log("Cat move", cont_idn, "to", MONTY.cat.txt[new_cat], "before", post);
-                            var old_cat = cat_of_cont[cont_idn];
-                            if (is_defined(old_cat)) {
-                                var i_cont = conts_in_cat[old_cat].indexOf(cont_idn);
-                                if (i_cont === -1) {
-                                    console.error("Can't find cont in order_cont", old_cat, conts_in_cat);
-                                } else {
-                                    conts_in_cat[old_cat].splice(i_cont, 1);
-                                    // conts_in_cat[new_cat].unshift(cont_idn);
-                                    // TODO:  Insert before i_position
-                                    insert_cont(new_cat, cont_idn, i_position);
-                                    cat_of_cont[cont_idn] = new_cat;
-                                    consistent_cat_cont();
+                            if (has($sup_contributions, word.obj)) {
+                                var new_cat = word.vrb;
+                                var cont_idn = word.obj;
+                                var i_position = word.num;
+                                // CAUTION:  Don't $_from_id(cont_idn) because it's not in the DOM yet.
+                                $sup = $sup_contributions[cont_idn];
+                                $cont = $sup.find('.contribution');
+                                var where = i_position === MONTY.IDN.FENCE_POST_RIGHT ? "right" : i_position.toString();
+                                var action = "drag to " + MONTY.cat.txt[new_cat] + "." + where + ",";
+                                if (is_authorized(word, $cont.attr('data-owner'), action)) {
+                                    var post;
+                                    if (i_position === MONTY.IDN.FENCE_POST_RIGHT) {
+                                        post = "[right edge]";
+                                    } else {
+                                        post = i_position.toString();
+                                    }
+                                    // console.log(word.idn.toString() + ". Cat move", cont_idn, "to", MONTY.cat.txt[new_cat], "before", post);
+                                    var old_cat = cat_of_cont[cont_idn];
+                                    if (is_defined(old_cat)) {
+                                        var i_cont = conts_in_cat[old_cat].indexOf(cont_idn);
+                                        if (i_cont === -1) {
+                                            console.error("Can't find cont in order_cont", old_cat, conts_in_cat);
+                                        } else {
+                                            conts_in_cat[old_cat].splice(i_cont, 1);
+                                            // conts_in_cat[new_cat].unshift(cont_idn);
+                                            // TODO:  Insert before i_position
+                                            insert_cont(new_cat, cont_idn, i_position);
+                                            cat_of_cont[cont_idn] = new_cat;
+                                            $cont.attr('data-owner', word.sbj);
+                                            consistent_cat_cont();
+                                        }
+                                    } else {
+                                        console.warn("Lost track of cat", cont_idn.toString(), cat_of_cont);
+                                        // NOTE:  Will happen for obsolete unslump verbs.
+                                    }
                                 }
-                                consistent_cat_cont();
                             } else {
-                                console.warn("Lost track of cat", cont_idn.toString(), cat_of_cont);
-                                // NOTE:  Will happen for obsolete unslump verbs.
+                                console.log("(Can't drag " + word.obj + ")");
                             }
                         }
                         break;
@@ -886,10 +913,14 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
     }
 
     function user_name_short(user_idn) {
-        if (has(MONTY.u, user_idn)) {
-            return MONTY.u[user_idn].name_short;
+        if (is_defined(user_idn)) {
+            if (has(MONTY.u, user_idn)) {
+                return MONTY.u[user_idn].name_short;
+            } else {
+                return user_idn;
+            }
         } else {
-            return user_idn;
+            return "(unowned)";
         }
     }
 
@@ -918,11 +949,11 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
      *                then they became the owner.
      *                This field comes from the data-owner attribute.  But if we return true,
      *                then we expect data-owner to be overridden by whoever initiated this change!
-     * @param verb - text describing the change.
+     * @param action - text describing the change.
      *               (This is probably word.verb.txt, as if that were accessible in JS)
      * @return {boolean}
      */
-    function is_authorized(word, owner, verb) {
+    function is_authorized(word, owner, action) {
         var is_change_mine = word.sbj === MONTY.me_idn;
         var is_change_admin = is_admin(word.sbj);
         var is_change_owner = word.sbj === owner;
@@ -932,9 +963,9 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
         var let_owner_change = ! did_i_change_last && ! did_admin_change_last && is_change_owner;
         var ok = is_change_mine || let_admin_change || let_owner_change;
         if (ok) {
-            console.log(word.idn + ". Yes " + user_name_short(word.sbj) + " may " + verb + " " + word.obj + ", work of " + user_name_short(owner));
+            console.log(word.idn + ". Yes " + user_name_short(word.sbj) + " may " + action + " " + word.obj + ", work of " + user_name_short(owner));
         } else {
-            console.log(word.idn + ". Nope " + user_name_short(word.sbj) + " won't " + verb + " " + word.obj + ", work of " + user_name_short(owner));
+            console.log(word.idn + ". Nope " + user_name_short(word.sbj) + " won't " + action + " " + word.obj + ", work of " + user_name_short(owner));
         }
         return ok;
     }
