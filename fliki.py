@@ -215,11 +215,11 @@ class LexFliki(qiki.LexMySQL):
             is_anonymous = False
 
             def to_json(self):
-                d = super(WordFlikiSentence, self).to_json()
+                dictionary = super(WordFlikiSentence, self).to_json()
                 # if isinstance(self.sbj, self.lex.word_anon_class):
                 if self.sbj.is_anonymous:
-                    d['was_submitted_anonymous'] = True
-                return d
+                    dictionary['was_submitted_anonymous'] = True
+                return dictionary
 
             # TODO:  @property is_anonymous() too ?
 
@@ -232,11 +232,24 @@ class LexFliki(qiki.LexMySQL):
                 self.index = qiki.Number(user_id)
                 self.meta_idn = meta_idn
                 self.is_named = False
+                self.is_admin = False
+                self._name = None
                 idn = qiki.Number(
                     self.meta_idn,
                     qiki.Suffix(qiki.Suffix.Type.LISTING, self.index)
                 )
                 super(WordFlikiUser, self).__init__(idn)
+
+            @property
+            def name(self):
+                """
+                Short name for the user.
+
+                NOTE:  This has to be a decorated method, not a property variable,
+                       because self._name is determined when the word becomes choate.
+                """
+                self._choate()
+                return self._name
 
         class WordGoogle(WordFlikiUser):
             is_anonymous = False
@@ -244,6 +257,8 @@ class LexFliki(qiki.LexMySQL):
             def __init__(self, google_id):
                 assert self.lex.IDN is not None
                 super(WordGoogle, self).__init__(google_id, self.lex.IDN.GOOGLE_LISTING)
+                self.is_admin = self.idn in secure.credentials.Options.system_administrator_users
+                # TODO:  Find a (much) better way to elevate user powers.
 
             def _from_idn(self, idn):
                 assert self.idn.is_suffixed()
@@ -277,7 +292,7 @@ class LexFliki(qiki.LexMySQL):
                 txt = qiki.Text(user_name)
                 num = qiki.Number(1)
                 self.populate_from_num_txt(num, txt)
-                self.name = user_name
+                self._name = user_name
 
         class WordAnon(WordFlikiUser):
             is_anonymous = True
@@ -335,7 +350,7 @@ class LexFliki(qiki.LexMySQL):
                 txt = qiki.Text(session_description)
                 num = qiki.Number(1)
                 self.populate_from_num_txt(num, txt)
-                self.name = "anon#" + render_num(self.index)
+                self._name = "anon#" + render_num(self.index)
 
         self.word_google_class = WordGoogle
         self.word_anon_class = WordAnon
@@ -546,8 +561,9 @@ def setup_application_context():
 @flask_app.teardown_appcontext
 def teardown_application_context(exc=None):
     if hasattr(flask.g, 'lex'):
-        flask.g.lex.disconnect()
-        flask.g.pop('lex')
+        if flask.g.is_online:
+            flask.g.lex.disconnect()
+            flask.g.pop('lex')
     if exc is not None:
         print("teardown exception", type_name(exc), str(exc))
 
@@ -815,6 +831,9 @@ class Auth(object):
         #        before passing it to Authomatic.login().
 
         if self.is_authenticated:
+            display_name = self.qiki_user.name
+            if self.qiki_user.is_admin:
+                display_name += " (admin)"
             return (
                 u"<a href='{logout_link}'>"
                 u"logout"
@@ -822,7 +841,7 @@ class Auth(object):
                 u" "
                 u"{display_name}"
             ).format(
-                display_name=self.qiki_user.txt,
+                display_name=display_name,
                 logout_link=self.logout_url,
             )
         elif self.is_anonymous:
@@ -1106,19 +1125,15 @@ class Auth(object):
 
             user_qstring = word.sbj.idn.qstring()
             if user_qstring not in user_table:   # conserves number of queries
-                word.sbj.exists()
-                try:
-                    is_admin = user_qstring in secure.credentials.Options.system_administrator_users
-                except AttributeError:
-                    is_admin = False
-                user_info = dict(
+                user_table[user_qstring] = dict(
                     name_short=word.sbj.name,
                     name_long=word.sbj.txt,
-                    is_admin=is_admin,
+                    is_admin=word.sbj.is_admin,
                 )
-                user_table[user_qstring] = user_info
         qc.append(self.lex.query_count)
-        qc_delta = [qc[i+1] - qc[i] for i in range(len(qc)-1)]   # TODO:  Bake this into multi-inherited class
+        qc_delta = [qc[i+1] - qc[i] for i in range(len(qc)-1)]
+        # TODO:  Bake this timing and query-counting into multi-inherited class
+
         print("Vetted deltas", ",".join(str(x) for x in qc_delta))
         return dict(
             u=user_table,
@@ -1127,6 +1142,15 @@ class Auth(object):
         # TODO:  Do this some other way without so many holes?
         #        Could provide a dict by idn, and a list of idns in chronological order
         #        or just the dict, and let js sort the idns.
+
+    def may_create_word(self, word_dict):
+        if word_dict['vrb'].idn == self.lex.IDN.CAT_ABOUT:
+            ok = word_dict['sbj'].is_admin
+        else:
+            ok = True
+        return ok
+
+
 
 
 class AuthFliki(Auth):
@@ -1147,8 +1171,8 @@ class AuthFliki(Auth):
             # SEE:  https://werkzeug.palletsprojects.com/en/0.15.x/utils/#module-werkzeug.useragents
 
             auth_anon = (
-                " logged in" if self.is_authenticated else "" +
-                " anonymous" if self.is_anonymous else ""
+                "logged in" if self.is_authenticated else "" +
+                "anonymous" if self.is_anonymous else ""
             )
             print(
                 "AUTH",
@@ -2706,7 +2730,7 @@ def ajax():
             num_str = auth.form('num', None)
             num_add = None if num_add_str is None else qiki.Number(num_add_str)
             num = None if num_str is None else qiki.Number(num_str)
-            new_word = lex.create_word(
+            new_word_kwargs = dict(
                 sbj=auth.qiki_user,
                 vrb=vrb,
                 obj=obj,
@@ -2715,13 +2739,18 @@ def ajax():
                 txt=txt,
                 use_already=use_already,
             )
-            # assert json_from_words([new_word]) == json_encode([new_word]), \
-            #     "\n" + json_from_words([new_word]) + "\n" + json_encode([new_word])
-            # TODO:  replace with json_encode().
-            #        Now it gives TypeError: cannot convert dictionary update sequence element #0 to a sequence
-            # return valid_response('new_words', json_from_words([new_word]))
-            return valid_response('new_words', [new_word])
-            # TODO:  Maybe exclude txt form new_word to save bandwidth?
+            if auth.may_create_word(new_word_kwargs):
+                new_word = lex.create_word(**new_word_kwargs)
+                # assert json_from_words([new_word]) == json_encode([new_word]), \
+                #     "\n" + json_from_words([new_word]) + "\n" + json_encode([new_word])
+                # TODO:  replace with json_encode().
+                #        Now it gives TypeError: cannot convert dictionary update sequence element #0 to a sequence
+                # return valid_response('new_words', json_from_words([new_word]))
+                return valid_response('new_words', [new_word])
+                # TODO:  Maybe exclude txt form new_word to save bandwidth?
+            else:
+                return invalid_response("not authorized")
+
         elif action == 'new_verb':
             new_verb_name = auth.form('name')
             new_verb = lex.create_word(
@@ -2752,8 +2781,8 @@ def ajax():
             )
             return valid_response('idn', old_verb_idn.qstring())
 
-        elif action == 'contribution_order':
-            return valid_response('order', auth.cat_cont_order())
+        # elif action == 'contribution_order':
+        #     return valid_response('order', auth.cat_cont_order())
 
         elif action == 'anon_question':
             return valid_response('seconds', float(seconds_until_anonymous_question()))

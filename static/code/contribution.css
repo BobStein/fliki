@@ -93,28 +93,40 @@
     font: small-caption;
     padding: 0 0.666em 0.1em 0.666em;
 }
-.contribution + .caption + .savebar {
+.sup-contribution .savebar {
     clear: left;
     background-color: transparent;
-    display: none;
+    visibility: hidden;
 }
-.contribution.contribution-edit + .caption + .savebar {
-    display: block;
+               .sup-contribution.contribution-edit .savebar,
+.dirty-nowhere .sup-contribution:hover             .savebar {
+    visibility: visible;
 }
-.contribution                   + .caption { margin-bottom: 1.75em; }
-.contribution.contribution-edit + .caption { margin-bottom: 0; }
+/*.sup-contribution                   .caption { margin-bottom: 1.75em; }*/
+/*.sup-contribution.contribution-edit .caption { margin-bottom: 0; }*/
 /* NOTE:  1.75 was empirically obtained i.e. fudged to be the same as the disappeared savebar. */
 /*        So it probably represents savebar-button height in terms of caption font. */
 
 .savebar {
-    text-align: right;
+    /*text-align: right;*/
 }
-.savebar button {
+.savebar .edit,
+.savebar .cancel,
+.savebar .discard,
+.savebar .save {
     font: small-caption;
+    float: right;
 }
-.savebar.abandon-alert button {
+.savebar.abandon-alert .discard,
+.savebar.abandon-alert .save {
     border-color: red;
 }
+
+.sup-contribution.contribution-edit       .savebar .edit    { display: none; }
+.sup-contribution:not(.contribution-edit) .savebar .cancel  { display: none; }
+.sup-contribution.edit-dirty              .savebar .cancel  { display: none; }
+.sup-contribution:not(.edit-dirty)        .savebar .save    { display: none; }
+.sup-contribution:not(.edit-dirty)        .savebar .discard { display: none; }
 
 .grip {
     cursor: move;
@@ -189,8 +201,7 @@
     /* NOTE:  Prevent inadvertent text-selection of triangles. */
 }
 
-.contribution.contribution-edit,
-.contribution.contribution-edit.was-submitted-anonymous {
+.contribution-edit .contribution {
     background-color: white;
     border: 0.2em inset;
     padding: 0.5em 0.3em 0.5em 0.3em;

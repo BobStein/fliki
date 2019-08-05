@@ -61,10 +61,12 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
     };
 
     // noinspection JSUnusedLocalSymbols
-    var MOVE_AFTER_TARGET = 1,
+    var MOVE_AFTER_TARGET = 1,   // SortableJS shoulda defined these
         MOVE_BEFORE_TARGET = -1,
         MOVE_CANCEL = false;
     // SEE:  SelectJS options, https://github.com/SortableJS/Sortable#user-content-options
+    var MOUSE_BUTTON_LEFT = 1;   // jQuery shoulda defined this
+    // SEE:  jQuery event.which, https://api.jquery.com/event.which/
 
     var ANON_V_ANON_BLURB = (
         "You're here anonymously. " +
@@ -108,12 +110,12 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
         extreme: 15       // above extreme-max, display at soft-max.
     };
 
-    var is_editing_some_contribution = false;
-    var is_dirty = false;
-    var $cont_editing = null;
-    var original_text = null;
+    var is_editing_some_contribution = false;   // TODO:  $(window.document.body).hasClass('edit-somewhere')
+    // var is_dirty = false;
+    var $cont_editing = null;   // TODO:  $('.contribution-edit').find('.contribution')
+    // var original_text = null;
 
-    $(window.document).ready(function() {
+    $(window.document).ready(function document_ready() {
         qoolbar.ajax_url(MONTY.AJAX_URL);
 
         build_dom();
@@ -130,38 +132,94 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
         ;
 
         $(window.document)
-            .on('click', '.contribution', contribution_click)
+            // .on('click', '.contribution', contribution_click)
             .on('input', '.contribution', contribution_input)
-            .on('click', '.caption, .savebar', function (evt) {evt.stopPropagation();})
+            .on('click', '.contribution', stop_propagation)
+            .on('click', '.caption, .savebar', stop_propagation)
+            .on('click', '.savebar .edit', contribution_edit)
             .on('click', '.savebar .cancel', contribution_cancel)
+            .on('click', '.savebar .discard', contribution_cancel)
             .on('click', '.savebar .save', contribution_save)
-            .on('click', function () { attempt_content_edit_abandon(); })
+            .on('click', attempt_content_edit_abandon)
         ;
+
+        long_press('.contribution', contribution_edit);
+
         // TODO:  Prevent mousedown inside .contribution, and mouseup outside, from
         //        triggering a document click in Chrome.  (But not in Firefox.)
         //        Makes it hard to select text in a contentEditable .contribution,
         //        when the swiping happens to stray outside the div.contribution.
 
-        $(window).on('beforeunload', function() { return is_dirty ? "Discard?" : undefined; });
+        $(window).on('beforeunload', function hesitate_to_unload_if_dirty_edit() {
+            return attempt_content_edit_abandon() ? undefined : "Discard?";
+        });
         caption_should_track_text_width();
         post_it_button_disabled_or_not();
         initialize_contribution_sizes();
         settle_down();
     });
 
-    function contribution_input() {
-        // var $cont = $(this);
-        // var cont_idn = $cont.attr('id');
-        if (!is_dirty) {
-            $savebar_from_cont($cont_editing).find('.cancel').text('discard')
-        }
-        is_dirty = true;
+    /**
+     * Handler to e.g. avoid document click immediately undoing long-press
+     */
+    function stop_propagation(evt) {
+        evt.stopPropagation();
     }
+
+    function long_press(selector, handler, enough_milliseconds) {
+        enough_milliseconds = enough_milliseconds || 1000;
+        $(window.document)
+            .on('mousedown touchstart', selector, function (evt) {
+                var element = this;
+                if (evt.type === 'mousedown' && evt.which !== MOUSE_BUTTON_LEFT) {
+                    return;
+                    // NOTE:  Ignore long right or middle mouse button press.
+                }
+                if (is_defined($(element).data('long_press_timer'))) {
+                    // THANKS:  Avoid double timer when both events fire on Android,
+                    //          https://stackoverflow.com/q/2625210/673991#comment52547525_27413909
+                    //          Might also help if long_press() were called twice on the same
+                    //          element, e.g. from overlapping classes.
+                    return;
+                }
+                var timer = setTimeout(function () {
+                    $(element).removeData('long_press_timer');
+                    handler.call(element, evt);
+                }, enough_milliseconds);
+                $(element).data('long_press_timer', timer);
+            })
+            .on('mouseup mouseout mouseleave touchend touchleave touchcancel', selector, function () {
+                var element = this;
+                var timer = $(element).data('long_press_timer');
+                if (is_defined(timer)) {
+                    clearTimeout(timer);
+                    $(element).removeData('long_press_timer');
+                }
+            })
+            // TODO:  setInterval check?   https://stackoverflow.com/questions/7448468/
+            //        why-cant-i-reliably-capture-a-mouseout-event
+        ;
+    }
+
+    function contribution_input() {
+        var $cont = $(this);
+        var $sup_cont = $cont.closest('.sup-contribution');
+        // var cont_idn = $cont.attr('id');
+        if ( ! $sup_cont.hasClass('edit-dirty')) {
+            $sup_cont.addClass('edit-dirty');
+            $(window.document.body).removeClass('dirty-nowhere');
+            // $savebar_from_cont($cont_editing).find('.cancel').text('discard')
+        }
+    }
+
     function contribution_cancel() {
+        var $cont = $(this);
+        var $sup_cont = $cont.closest('.sup-contribution');
         console.assert(is_editing_some_contribution);   // If not editing, how was the cancel button visible?
         if (is_editing_some_contribution) {
-            if (is_dirty) {
-                $cont_editing.text(original_text);
+            if ($sup_cont.hasClass('edit-dirty')) {
+                // $cont_editing.text(original_text);
+                $cont_editing.text($cont_editing.data('original_text'));
             }
             contribution_edit_end();
         }
@@ -170,14 +228,15 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
         var cont_idn = $cont_editing.attr('id');
         if (is_editing_some_contribution) {
             var new_text = $cont_editing.text();
-            if (original_text !== new_text) {
-                console.assert(
-                    is_dirty,
-                    "Different but not dirty? " +
-                    original_text +
-                    " != " +
-                    new_text
-                );
+            if ($cont_editing.data('original_text') !== new_text) {
+            // if (original_text !== new_text) {
+                // console.assert(
+                //     is_dirty,
+                //     "Different but not dirty? " +
+                //     original_text +
+                //     " != " +
+                //     new_text
+                // );
                 qoolbar.sentence({
                     vrb_idn: MONTY.IDN.EDIT,
                     obj_idn: cont_idn,
@@ -192,19 +251,28 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
                     //        Update MONTY.order.cont[cat][?] to edit_word.idn, not cont_idn
                 });
             } else {
-                console.log("(skipping save, contribution wasn't changed)", $cont_editing);
+                console.log("(skipping save, no change detected to", new_text.length, "characters)");
                 contribution_edit_end();
             }
         } else {
             console.error("Save but we weren't editing?", $cont_editing);
         }
     }
-    function contribution_click(evt) {
-        if (is_click_on_the_resizer(evt, this)) {
+    function contribution_edit(evt) {
+        // var $cont = $(this);
+        if ($(this).is('.contribution') && is_click_on_the_resizer(evt, this)) {
+            console.log("contribution_click nope, just resizing");
             return;
         }
-        var $cont = $(this);
-        var was_editing_this_contribution = $cont.hasClass('contribution-edit');
+        var $cont = $cont_of(this);   // whether `this` is .contribution or .savebar.edit
+        var $sup_cont = $cont.closest('.sup-contribution');
+        var was_editing_this_contribution = $sup_cont.hasClass('contribution-edit');
+        console.assert(
+            was_editing_this_contribution === ($cont === $cont_editing),
+            was_editing_this_contribution,
+            $cont,
+            $cont_editing
+        );
         if (was_editing_this_contribution) {
             // Leave it alone, might be selecting text to replace, or just giving focus.
         } else {
@@ -213,7 +281,7 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
             // NOTE:  Luckily .focus() allows the click that began editing to also place the caret.
             //        Except it doesn't do that in IE11, requiring another click.
         }
-        evt.stopPropagation();   // Don't let the document get it, and end the editing.
+        evt.stopPropagation();   // Don't let the document get it, which would end the editing.
     }
 
     /**
@@ -267,15 +335,30 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
         if (attempt_content_edit_abandon()) {
             contribution_edit_show($cont);
             is_editing_some_contribution = true;
-            original_text = $cont.text();
+            // original_text = $cont.text();
+            $cont.data('original_text', $cont.text());
             $cont_editing = $cont;
         }
     }
 
+    /**
+     * Are we able to abandon any other edit in progress?
+     *
+     * @return {boolean} - true if no edit, or it wasn't dirty. false if dirty edit in progress.
+     */
     function attempt_content_edit_abandon() {
         if (is_editing_some_contribution) {
-            if (is_dirty) {
-                $savebar_from_cont($cont_editing).addClass('abandon-alert');
+            var $sup_cont = $cont_editing.closest('.sup-contribution');
+            if ($sup_cont.hasClass('edit-dirty')) {
+                var $savebar = $savebar_from_cont($cont_editing);
+                if ( ! $savebar.hasClass('abandon-alert')) {
+                    $savebar.addClass('abandon-alert');
+                    ignore_exception(function () {
+                        $cont_editing[0].scrollIntoView({block: 'nearest', inline: 'nearest'});
+                    });
+                }
+                // NOTE:  Scroll the red buttons into view.
+                //        But only do that once because we don't want a dirty edit to be modal.
                 return false;
             } else {
                 contribution_edit_end();
@@ -286,27 +369,39 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
         }
     }
 
+    function ignore_exception(nonessential_function_that_may_not_be_supported) {
+        try {
+            nonessential_function_that_may_not_be_supported();
+        } catch (_) {
+        }
+    }
+
     function contribution_edit_end() {
         if (is_editing_some_contribution) {
             is_editing_some_contribution = false;
+            $('.edit-dirty').removeClass('edit-dirty');
+            $(window.document.body).addClass('dirty-nowhere');
             contribution_edit_hide($cont_editing);
+            $cont_editing.removeData('original_text');
+            // is_dirty = false;
+            // original_text = null;
             $cont_editing = null;
-            is_dirty = false;
-            original_text = null;
         }
     }
 
     function contribution_edit_show($cont) {
-        $cont.addClass('contribution-edit');
+        var $sup_cont = $cont.closest('.sup-contribution');
+        $sup_cont.addClass('contribution-edit');
         $cont.prop('contentEditable', true);
     }
 
     function contribution_edit_hide($cont) {
-        $cont.removeClass('contribution-edit');
+        var $sup_cont = $cont.closest('.sup-contribution');
+        $sup_cont.removeClass('contribution-edit');
         $cont.prop('contentEditable', false);
         var $savebar = $savebar_from_cont($cont);
         $savebar.removeClass('abandon-alert');
-        $savebar.find('.cancel').text('cancel');
+        // $savebar.find('.cancel').text('cancel');
     }
 
     function $savebar_from_cont($cont) {
@@ -385,7 +480,7 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
                 if (is_in_frou(evt.related)) {
                     if (is_open_drop(evt.related)) {
                         // NOTE:  This category is open (triangle points down).
-                        //        So user would also be able to drop on the contributions there.
+                        //        So user can drop on the (visible) contributions there.
                         //        So don't let them drop on the "frou" (header),
                         //        because it's confusing being droppable next to the title
                         //        as well as among the contributions.
@@ -393,6 +488,20 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
                         //        but the drop-hint would appear at the
                         //        left-most position among the contributions.
                         //        That's where it would go when dropping on a closed category.
+                        return MOVE_CANCEL;
+                    }
+                }
+                if (is_in_about(evt.related)) {
+                    if (!is_admin(MONTY.me_idn)) {
+                        // NOTE:  Only the admin can move TO the about section.
+                        return MOVE_CANCEL;
+                    }
+                }
+                if (is_in_anon(evt.related)) {
+                    // TODO:  Instead of this clumsiness, don't make the anon category
+                    //        into a functional .category.  Just make it look like one with info.
+                    if (MONTY.is_anonymous) {
+                        // NOTE:  Anonymous users can't interact with other anonymous content.
                         return MOVE_CANCEL;
                     }
                 }
@@ -447,7 +556,22 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
                         txt: ""
                     }, function () {
                         settle_down();
+                    }, function (message) {
+                        revert_drag();
                     });
+                }
+
+                function revert_drag() {
+                    var $from_cat = $(evt.from);
+                    var $from_neighbor = $from_cat.find('.sup-contribution').eq(evt.oldDraggableIndex);
+                    if ($from_neighbor.length === 1) {
+                        console.debug("Revert to before", first_word($from_neighbor.text()));
+                        $from_neighbor.before($movee);
+                    } else {
+                        console.debug("Revert to end of category", from_cat_idn);
+                        $from_cat.append($movee);
+                    }
+
                 }
             }
         };
@@ -485,11 +609,11 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
         }
     }
     function px_from_em(em, $element) {
-        $element = $element || $('body');
+        $element = $element || $(window.document.body);
         return em * parseFloat($element.css('font-size'));
     }
     function em_from_px(px, $element) {
-        $element = $element || $('body');
+        $element = $element || $(window.document.body);
         return px / parseFloat($element.css('font-size'));
     }
 
@@ -517,7 +641,7 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
     }
 
     /**
-     * What's the div.category element for this element?
+     * What's the div.category element for this element inside it?
      *
      * @param element - any element inside div.sup-category
      * @return {jQuery} - the div.category element
@@ -533,6 +657,22 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
     }
 
     /**
+     * What's the div.contribution element for this element inside it?
+     *
+     * @param element - any element inside div.sup-contribution
+     * @return {jQuery} - the div.contribution element
+     */
+    function $cont_of(element) {
+        var $sup_cont = $(element).closest('.sup-contribution');
+        if ($sup_cont.length === 0) {
+            console.error("How can it not be in a sup-contribution!?", element);
+            return null;
+        }
+        var $cont = $sup_cont.find('.contribution');
+        return $cont;
+    }
+
+    /**
      * Is this element inside the frou-frou part of a category (h2 header)?
      *
      * This is part of the shenanigans for allowing a drop into a closed category.
@@ -542,8 +682,14 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
      */
     function is_in_frou(element) {
         return $(element).closest('.frou-category').length > 0;
-        // THANKS:  Does element or any parent have a class?
-        //          https://stackoverflow.com/a/17084912/673991
+    }
+
+    function is_in_about(element) {
+        return $cat_of(element).attr('id') === MONTY.IDN.CAT_ABOUT.toString();
+    }
+
+    function is_in_anon(element) {
+        return $cat_of(element).attr('id') === MONTY.IDN.CAT_ANON.toString();
     }
 
     /**
@@ -673,6 +819,7 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
      */
     function build_dom() {
         $(window.document.body).empty();
+        $(window.document.body).addClass('dirty-nowhere');
 
         var $login_prompt = $('<div>', {id: 'login-prompt'});
         $login_prompt.html(MONTY.login_html);
@@ -698,7 +845,7 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
             // Anonymous users see a faded anonymous category with explanation.
         }
 
-        var $sup_contributions = {};
+        var $sup_contributions = {};   // table of super-contribution DOM objects
         var cat_of_cont = {};   // maps contribution idn to category idn
         var conts_in_cat = {};   // for each category id, an array of contribution idns in order
         looper(MONTY.cat.order, function (_, cat) {
@@ -710,7 +857,7 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
                 cont = parseInt(cont);
                 console.assert(conts_in_cat[cat].indexOf(cont) !== -1, cont, cat);
                 if (conts_in_cat[cat].indexOf(cont) === -1) {
-                    console.debug(JSON.stringify(cat_of_cont), JSON.stringify(conts_in_cat));
+                    console.error("inconsistency:", JSON.stringify(cat_of_cont), JSON.stringify(conts_in_cat));
                     return false;
                 }
             });
@@ -766,109 +913,114 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
             var $caption;
             if (word !== null) {
                 switch (word.vrb) {
-                    case MONTY.IDN.CONTRIBUTE:
-                    case MONTY.IDN.UNSLUMP_OBSOLETE:
-                        $sup = build_contribution_dom(word);
-                        $cont = $sup.find('.contribution');
+                case MONTY.IDN.CONTRIBUTE:
+                case MONTY.IDN.UNSLUMP_OBSOLETE:
+                    $sup = build_contribution_dom(word);
+                    $cont = $sup.find('.contribution');
+                    $caption = $sup.find('.caption');
+                    $cont.attr('data-owner', word.sbj);
+                    $caption.attr('data-owner', word.sbj);
+                    $sup_contributions[word.idn] = $sup;
+                    var cat = original_cat(word);
+                    conts_in_cat[cat].unshift(word.idn);
+                    cat_of_cont[word.idn] = cat;
+                    break;
+                case MONTY.IDN.CAPTION:
+                    if (has($sup_contributions, word.obj)) {
+                        $sup = $sup_contributions[word.obj];
                         $caption = $sup.find('.caption');
-                        $cont.attr('data-owner', word.sbj);
-                        $caption.attr('data-owner', word.sbj);
-                        $sup_contributions[word.idn] = $sup;
-                        var cat = original_cat(word);
-                        conts_in_cat[cat].unshift(word.idn);
-                        cat_of_cont[word.idn] = cat;
-                        break;
-                    case MONTY.IDN.CAPTION:
-                        if (has($sup_contributions, word.obj)) {
-                            $sup = $sup_contributions[word.obj];
-                            $caption = $sup.find('.caption');
-                            if (is_authorized(word, $caption.attr('data-owner'), "caption")) {
-                                $caption.attr('id', word.idn);
-                                $caption.attr('data-owner', word.sbj);
-                                $caption.find('.caption-span').text(word.txt);
-                            }
-                        } else {
-                            console.log("(Can't caption " + word.obj + ")");
+                        if (is_authorized(word, $caption.attr('data-owner'), "caption")) {
+                            $caption.attr('id', word.idn);
+                            $caption.attr('data-owner', word.sbj);
+                            $caption.find('.caption-span').text(word.txt);
                         }
-                        break;
-                    case MONTY.IDN.EDIT:
+                    } else {
+                        console.log("(Can't caption " + word.obj + ")");
+                    }
+                    break;
+                case MONTY.IDN.EDIT:
+                    if (has($sup_contributions, word.obj)) {
+                        $sup = $sup_contributions[word.obj];
+                        $cont = $sup.find('.contribution');
+                        if (is_authorized(word, $cont.attr('data-owner'), "edit")) {
+                            var old_idn = word.obj;
+                            var new_idn = word.idn;
+                            $cont.attr('id', new_idn);
+                            $cont.attr('data-owner', word.sbj);
+                            $cont.text(word.txt);
+                            delete $sup_contributions[old_idn];
+                            // TODO:  Instead of deleting, just flag it as overrode or something?
+                            //        That would prevent vacuous "unknown word" situations.
+                            $sup_contributions[new_idn] = $sup;
+                            renumber_cont(old_idn, new_idn);
+                            // TODO:  add new cat_of_cont[] index,
+                            //        and change number in conts_in_cat[][]
+                            consistent_cat_cont();
+                        }
+                        // NOTE:  This does reorder the edited contribution
+                        //        But maybe that's good, it does get a new idn,
+                        //        and likewise moves to the more recent end.
+                    } else {
+                        // TODO:  Editable captions.
+                        console.log("(Can't edit " + word.obj + ")");
+                        // NOTE:  One harmless way this could come about,
+                        //        A logged-in user could edit an anonymous user's contribution.
+                        //        Other anon users will see the edit, but not the original cont.
+                        //
+                        //        Another is if user A then B edits contribution x (by a third user).
+                        //        A will get this message when it see's B's edit word,
+                        //        because that edit word will refer to the original x's idn,
+                        //        but by then x will have been displaced by A's edit word.
+                    }
+                    break;
+                default:
+                    if (has(MONTY.cat.order, word.vrb)) {
                         if (has($sup_contributions, word.obj)) {
-                            $sup = $sup_contributions[word.obj];
+                            var new_cat = word.vrb;
+                            var cont_idn = word.obj;
+                            var i_position = word.num;
+                            // CAUTION:  Don't $_from_id(cont_idn) because it's not in the DOM yet.
+                            $sup = $sup_contributions[cont_idn];
                             $cont = $sup.find('.contribution');
-                            if (is_authorized(word, $cont.attr('data-owner'), "edit")) {
-                                var old_idn = word.obj;
-                                var new_idn = word.idn;
-                                $cont.attr('id', new_idn);
-                                $cont.attr('data-owner', word.sbj);
-                                $cont.text(word.txt);
-                                delete $sup_contributions[old_idn];
-                                // TODO:  Instead of deleting, just flag it as overrode or something?
-                                //        That would prevent vacuous "unknown word" situations.
-                                $sup_contributions[new_idn] = $sup;
-                                renumber_cont(old_idn, new_idn);
-                                // TODO:  add new cat_of_cont[] index,
-                                //        and change number in conts_in_cat[][]
-                                consistent_cat_cont();
-                            }
-                            // NOTE:  This does reorder the edited contribution
-                            //        But maybe that's good, it does get a new idn,
-                            //        and likewise moves to the more recent end.
-                        } else {
-                            // TODO:  Editable captions.
-                            console.log("(Can't edit " + word.obj + ")");
-                            // NOTE:  One harmless way this could come about,
-                            //        A logged-in user could edit an anonymous user's contribution.
-                            //        Other anon users will see the edit, but not the original cont.
-                            //
-                            //        Another is if user A then B edits contribution x (by a third user).
-                            //        A will get this message when it see's B's edit word,
-                            //        because that edit word will refer to the original x's idn,
-                            //        but by then x will have been displaced by A's edit word.
-                        }
-                        break;
-                    default:
-                        if (has(MONTY.cat.order, word.vrb)) {
-                            if (has($sup_contributions, word.obj)) {
-                                var new_cat = word.vrb;
-                                var cont_idn = word.obj;
-                                var i_position = word.num;
-                                // CAUTION:  Don't $_from_id(cont_idn) because it's not in the DOM yet.
-                                $sup = $sup_contributions[cont_idn];
-                                $cont = $sup.find('.contribution');
-                                var where = i_position === MONTY.IDN.FENCE_POST_RIGHT ? "right" : i_position.toString();
-                                var action = "drag to " + MONTY.cat.txt[new_cat] + "." + where + ",";
-                                if (is_authorized(word, $cont.attr('data-owner'), action)) {
-                                    var post;
-                                    if (i_position === MONTY.IDN.FENCE_POST_RIGHT) {
-                                        post = "[right edge]";
-                                    } else {
-                                        post = i_position.toString();
-                                    }
-                                    // console.log(word.idn.toString() + ". Cat move", cont_idn, "to", MONTY.cat.txt[new_cat], "before", post);
-                                    var old_cat = cat_of_cont[cont_idn];
-                                    if (is_defined(old_cat)) {
-                                        var i_cont = conts_in_cat[old_cat].indexOf(cont_idn);
-                                        if (i_cont === -1) {
-                                            console.error("Can't find cont in order_cont", old_cat, conts_in_cat);
-                                        } else {
-                                            conts_in_cat[old_cat].splice(i_cont, 1);
-                                            // conts_in_cat[new_cat].unshift(cont_idn);
-                                            // TODO:  Insert before i_position
-                                            insert_cont(new_cat, cont_idn, i_position);
-                                            cat_of_cont[cont_idn] = new_cat;
-                                            $cont.attr('data-owner', word.sbj);
-                                            consistent_cat_cont();
-                                        }
-                                    } else {
-                                        console.warn("Lost track of cat", cont_idn.toString(), cat_of_cont);
-                                        // NOTE:  Will happen for obsolete unslump verbs.
-                                    }
+                            var is_right = i_position === MONTY.IDN.FENCE_POST_RIGHT;
+                            var where = is_right ? "right" : i_position.toString();
+                            var action = "drag to " + MONTY.cat.txt[new_cat] + "." + where + ",";
+                            if (is_authorized(word, $cont.attr('data-owner'), action)) {
+                                var post;
+                                if (i_position === MONTY.IDN.FENCE_POST_RIGHT) {
+                                    post = "[right edge]";
+                                } else {
+                                    post = i_position.toString();
                                 }
-                            } else {
-                                console.log("(Can't drag " + word.obj + ")");
+                                var old_cat = cat_of_cont[cont_idn];
+                                if (is_defined(old_cat)) {
+                                    var i_cont = conts_in_cat[old_cat].indexOf(cont_idn);
+                                    if (i_cont === -1) {
+                                        console.error(
+                                            "Can't find cont in order_cont",
+                                            old_cat,
+                                            conts_in_cat
+                                        );
+                                    } else {
+                                        conts_in_cat[old_cat].splice(i_cont, 1);
+                                        insert_cont(new_cat, cont_idn, i_position);
+                                        cat_of_cont[cont_idn] = new_cat;
+                                        $cont.attr('data-owner', word.sbj);
+                                        consistent_cat_cont();
+                                    }
+                                } else {
+                                    console.warn(
+                                        "Lost track of cat for",
+                                        cont_idn.toString(),
+                                        cat_of_cont
+                                    );
+                                }
                             }
+                        } else {
+                            console.log("(Can't drag " + word.obj + ")");
                         }
-                        break;
+                    }
+                    break;
                 }
             }
         });
@@ -1014,7 +1166,7 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
 
     /**
      * Build the div.sup-contribution for a contribution,
-     * containing its div.contribution and div.caption.
+     * containing its div.contribution and div.caption and div.footer.
      *
      * It's returned free-range, not inserted in the DOM.
      *
@@ -1028,8 +1180,10 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
         $contribution.text(leading_spaces_indent(contribution_word.txt));
         var $caption = $('<div>', {class: 'caption'});
         var $savebar = $('<div>', {class: 'savebar'});
+        $savebar.append($('<button>', {class: 'edit'}).text('edit'));
         $savebar.append($('<button>', {class: 'cancel'}).text('cancel'));
         $savebar.append($('<button>', {class: 'save'}).text('save'));
+        $savebar.append($('<button>', {class: 'discard'}).text('discard'));
         $sup_contribution.append($caption);
         $sup_contribution.append($savebar);
         var $grip = $('<span>', {class: 'grip'});
@@ -1041,6 +1195,7 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
         if (caption_txt !== undefined) {
             $caption_span.append(caption_txt);
         }
+
         if (contribution_word.was_submitted_anonymous) {
             $sup_contribution.addClass('was-submitted-anonymous');
         }
@@ -1466,6 +1621,7 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
         return object;
     }
 
+    // noinspection DuplicatedCode,DuplicatedCode
     /**
      * Not undefined, not null, not the empty string.
      */
@@ -1493,6 +1649,7 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
     console.assert(is_defined(42));
     console.assert( ! is_defined(undefined));
 
+    // noinspection DuplicatedCode,DuplicatedCode,DuplicatedCode,DuplicatedCode,DuplicatedCode
     function has(collection, thing) {
         if (typeof collection === 'undefined') {
             return false;
