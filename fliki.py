@@ -257,7 +257,10 @@ class LexFliki(qiki.LexMySQL):
             def __init__(self, google_id):
                 assert self.lex.IDN is not None
                 super(WordGoogle, self).__init__(google_id, self.lex.IDN.GOOGLE_LISTING)
-                self.is_admin = self.idn in secure.credentials.Options.system_administrator_users
+                try:
+                    self.is_admin = self.idn in secure.credentials.Options.system_administrator_users
+                except AttributeError:
+                    self.is_admin = False
                 # TODO:  Find a (much) better way to elevate user powers.
 
             def _from_idn(self, idn):
