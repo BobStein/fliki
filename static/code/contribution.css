@@ -68,7 +68,6 @@
     border-color: black;
     border-style: solid;
 
-    padding: 0.7em 0.5em 0.7em 0.5em;
     white-space: pre-line;
     background-color: #EEEEEE;
     border-width: 1px;
@@ -81,65 +80,75 @@
     min-height: 2em;
     box-sizing: border-box;
     margin: 0.1em 0.1em 0 0.1em;
+    padding: 0.7em 0.5em 0.7em 0.5em;
+    line-height: 1.25em;   /* slightly closer together */
+}
+.was-submitted-anonymous .contribution {
+    border-color: #C00000;
+    background-color: #F4ECEC;
+}
+.contribution-edit .contribution {
+    /* NOTE:  This should come after was-submitted-anonymous, so as to override it. */
+    background-color: white;
+    border: 0.2em inset;
+    padding: 0.5em 0.3em 0.5em 0.3em;
+    display: inline-block;
+    /* THANKS:  Avoid Chrome linefeed-to-div, https://stackoverflow.com/a/24689420/673991 */
+    /* NOTE:  This inserts an unsightly gap between contribution and caption,
+              but it fixes Chrome's dumb habit of changing Enter keystrokes to <div> blocks.
+              Hope it doesn't mess up the flow in some other circumstance. */
 }
 
-.contribution + .caption-span {
-}
-
-.contribution + .caption {
+.sup-contribution .caption-bar {
     clear: left;
     background-color: #AAAAAA;
     color: white;
     font: small-caption;
     padding: 0 0.666em 0.1em 0.666em;
 }
-.sup-contribution .savebar {
+.was-submitted-anonymous .caption-bar {
+    background-color: #B8A0A0;
+}
+.sup-contribution.contribution-edit .caption-bar {
+    /* NOTE:  This should come after was-submitted-anonymous, so as to override it. */
+    background-color: #666666;
+    border: 0.1em inset;
+    padding: -0.1em 0.566em 0 0.566em;
+}
+.sup-contribution .save-bar {
     clear: left;
     background-color: transparent;
     visibility: hidden;
 }
-               .sup-contribution.contribution-edit .savebar,
-.dirty-nowhere .sup-contribution:hover             .savebar {
+               .sup-contribution.contribution-edit .save-bar,
+.dirty-nowhere .sup-contribution:hover             .save-bar {
     visibility: visible;
 }
-/*.sup-contribution                   .caption { margin-bottom: 1.75em; }*/
-/*.sup-contribution.contribution-edit .caption { margin-bottom: 0; }*/
-/* NOTE:  1.75 was empirically obtained i.e. fudged to be the same as the disappeared savebar. */
-/*        So it probably represents savebar-button height in terms of caption font. */
 
-.savebar {
+.save-bar {
     /*text-align: right;*/
 }
-.savebar .edit,
-.savebar .cancel,
-.savebar .discard,
-.savebar .save {
+.save-bar .edit,
+.save-bar .cancel,
+.save-bar .discard,
+.save-bar .save {
     font: small-caption;
     float: right;
 }
-.savebar.abandon-alert .discard,
-.savebar.abandon-alert .save {
+.save-bar.abandon-alert .discard,
+.save-bar.abandon-alert .save {
     border-color: red;
 }
 
-.sup-contribution.contribution-edit       .savebar .edit    { display: none; }
-.sup-contribution:not(.contribution-edit) .savebar .cancel  { display: none; }
-.sup-contribution.edit-dirty              .savebar .cancel  { display: none; }
-.sup-contribution:not(.edit-dirty)        .savebar .save    { display: none; }
-.sup-contribution:not(.edit-dirty)        .savebar .discard { display: none; }
+.sup-contribution.contribution-edit       .save-bar .edit    { display: none; }
+.sup-contribution:not(.contribution-edit) .save-bar .cancel  { display: none; }
+.sup-contribution.edit-dirty              .save-bar .cancel  { display: none; }
+.sup-contribution:not(.edit-dirty)        .save-bar .save    { display: none; }
+.sup-contribution:not(.edit-dirty)        .save-bar .discard { display: none; }
 
 .grip {
     cursor: move;
     padding-right: 0.3em;
-}
-
-.was-submitted-anonymous .contribution {
-    border-color: #C00000;
-    background-color: #F4ECEC;
-}
-
-.was-submitted-anonymous .caption {
-    background-color: #B8A0A0;
 }
 
 .double-anon {
@@ -161,7 +170,7 @@
     border-width: 2px;
     margin: -1px;
 }
-.caption      + .qool-bling,
+.caption-bar  + .qool-bling,
 .contribution + .qool-bling {
     margin-top: 0.1em;
     display: block;
@@ -199,10 +208,4 @@
         -ms-user-select: none;
             user-select: none;
     /* NOTE:  Prevent inadvertent text-selection of triangles. */
-}
-
-.contribution-edit .contribution {
-    background-color: white;
-    border: 0.2em inset;
-    padding: 0.5em 0.3em 0.5em 0.3em;
 }

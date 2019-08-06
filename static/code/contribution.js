@@ -135,11 +135,11 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
             // .on('click', '.contribution', contribution_click)
             .on('input', '.contribution', contribution_input)
             .on('click', '.contribution', stop_propagation)
-            .on('click', '.caption, .savebar', stop_propagation)
-            .on('click', '.savebar .edit', contribution_edit)
-            .on('click', '.savebar .cancel', contribution_cancel)
-            .on('click', '.savebar .discard', contribution_cancel)
-            .on('click', '.savebar .save', contribution_save)
+            .on('click', '.caption-bar, .save-bar', stop_propagation)
+            .on('click', '.save-bar .edit', contribution_edit)
+            .on('click', '.save-bar .cancel', contribution_cancel)
+            .on('click', '.save-bar .discard', contribution_cancel)
+            .on('click', '.save-bar .save', contribution_save)
             .on('click', attempt_content_edit_abandon)
         ;
 
@@ -204,75 +204,95 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
     function contribution_input() {
         var $cont = $(this);
         var $sup_cont = $cont.closest('.sup-contribution');
-        // var cont_idn = $cont.attr('id');
         if ( ! $sup_cont.hasClass('edit-dirty')) {
             $sup_cont.addClass('edit-dirty');
             $(window.document.body).removeClass('dirty-nowhere');
-            // $savebar_from_cont($cont_editing).find('.cancel').text('discard')
         }
     }
 
     function contribution_cancel() {
         var $cont = $(this);
         var $sup_cont = $cont.closest('.sup-contribution');
+        var $caption_span = $sup_cont.find('.caption-span');
         console.assert(is_editing_some_contribution);   // If not editing, how was the cancel button visible?
         if (is_editing_some_contribution) {
             if ($sup_cont.hasClass('edit-dirty')) {
                 // $cont_editing.text(original_text);
                 $cont_editing.text($cont_editing.data('original_text'));
+                $caption_span.text($caption_span.data('original_text'));
             }
             contribution_edit_end();
         }
     }
+
     function contribution_save() {
-        var cont_idn = $cont_editing.attr('id');
         if (is_editing_some_contribution) {
-            var new_text = $cont_editing.text();
-            if ($cont_editing.data('original_text') !== new_text) {
-            // if (original_text !== new_text) {
-                // console.assert(
-                //     is_dirty,
-                //     "Different but not dirty? " +
-                //     original_text +
-                //     " != " +
-                //     new_text
-                // );
-                qoolbar.sentence({
-                    vrb_idn: MONTY.IDN.EDIT,
-                    obj_idn: cont_idn,
-                    txt: new_text
-                }, function contribution_save_done(edit_word) {
-                    console.assert(is_editing_some_contribution);
-                    console.log("Edit saved.", edit_word.idn);
-                    $cont_editing.attr('id', edit_word.idn);
-                    contribution_edit_end();
-                    // NOPE:  Update MONTY.words.cont[?].idn to edit_word.idn
-                    //        Update MONTY.words.cont[?].txt to new_text
-                    //        Update MONTY.order.cont[cat][?] to edit_word.idn, not cont_idn
-                });
-            } else {
-                console.log("(skipping save, no change detected to", new_text.length, "characters)");
+            edit_submit($cont_editing, "contribution", function () {
+                // var $caption_span = $cont_editing.closest('.sup-contribution').find('caption-span');
+                console.assert(is_editing_some_contribution);
+                // TODO:  edit_submit($caption_span, "caption", ...
                 contribution_edit_end();
-            }
+            });
+
+            // if ($caption_span.data('original_text') !== $caption_span.text()) {
+            //     qoolbar.sentence({
+            //         vrb_idn: MONTY.IDN.EDIT,
+            //         obj_idn: cont_idn,
+            //         txt: new_text
+            //     }, function contribution_save_done(edit_word) {
+            //         console.assert(is_editing_some_contribution);
+            //         console.log("Edit saved.", edit_word.idn);
+            //         $cont_editing.attr('id', edit_word.idn);
+            //         contribution_edit_end();
+            //         // NOPE:  Update MONTY.words.cont[?].idn to edit_word.idn
+            //         //        Update MONTY.words.cont[?].txt to new_text
+            //         //        Update MONTY.order.cont[cat][?] to edit_word.idn, not cont_idn
+            //     });
+            // }
+            // if ( ! any_changes) {
+            //     console.log("(skipping save, no change detected to", new_text.length, "characters)");
+            //     contribution_edit_end();
+            // }
         } else {
             console.error("Save but we weren't editing?", $cont_editing);
         }
     }
+
+    function edit_submit($div, what, then) {
+        var new_text = $div.text();
+        if ($div.data('original_text') === new_text) {
+            console.log("(skipping", what, "save,", new_text.length, "characters unchanged)");
+            then(null);
+        } else {
+            var old_idn = $div.attr('id');
+            qoolbar.sentence({
+                vrb_idn: MONTY.IDN.EDIT,
+                obj_idn: old_idn,
+                txt: new_text
+            }, function contribution_save_done(edit_word) {
+                console.log("Saved", what, edit_word.idn, JSON.stringify(new_text), JSON.stringify(edit_word.txt));
+                $div.attr('id', edit_word.idn);
+                then(edit_word);
+            });
+        }
+    }
+
     function contribution_edit(evt) {
         // var $cont = $(this);
         if ($(this).is('.contribution') && is_click_on_the_resizer(evt, this)) {
             console.log("contribution_click nope, just resizing");
             return;
         }
-        var $cont = $cont_of(this);   // whether `this` is .contribution or .savebar.edit
+        var $cont = $cont_of(this);   // whether `this` is .contribution or .save-bar.edit
         var $sup_cont = $cont.closest('.sup-contribution');
         var was_editing_this_contribution = $sup_cont.hasClass('contribution-edit');
-        console.assert(
-            was_editing_this_contribution === ($cont === $cont_editing),
-            was_editing_this_contribution,
-            $cont,
-            $cont_editing
-        );
+        // var was_editing_this_contribution_2 = eq$($cont, $cont_editing);
+        // console.assert(
+        //     was_editing_this_contribution === was_editing_this_contribution_2,
+        //     was_editing_this_contribution,
+        //     $cont,
+        //     $cont_editing
+        // );
         if (was_editing_this_contribution) {
             // Leave it alone, might be selecting text to replace, or just giving focus.
         } else {
@@ -283,6 +303,13 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
         }
         evt.stopPropagation();   // Don't let the document get it, which would end the editing.
     }
+
+    // function eq$($element1, $element2) {
+    //     console.assert($element1.length === 1);
+    //     console.assert($element2.length === 1);
+    //     // NOTE:  If this should support multi-element jQuery objects, then it can't use .is()
+    //     return $element1.is($element2);
+    // }
 
     /**
      * Get the position of a click, relative to the top-left corner of the element.
@@ -337,6 +364,8 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
             is_editing_some_contribution = true;
             // original_text = $cont.text();
             $cont.data('original_text', $cont.text());
+            var $caption_span = $cont.closest('.sup-contribution').find('caption-span');
+            $caption_span.data('original_text', $caption_span.text());
             $cont_editing = $cont;
         }
     }
@@ -350,9 +379,9 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
         if (is_editing_some_contribution) {
             var $sup_cont = $cont_editing.closest('.sup-contribution');
             if ($sup_cont.hasClass('edit-dirty')) {
-                var $savebar = $savebar_from_cont($cont_editing);
-                if ( ! $savebar.hasClass('abandon-alert')) {
-                    $savebar.addClass('abandon-alert');
+                var $save_bar = $save_bar_from_cont($cont_editing);
+                if ( ! $save_bar.hasClass('abandon-alert')) {
+                    $save_bar.addClass('abandon-alert');
                     ignore_exception(function () {
                         $cont_editing[0].scrollIntoView({block: 'nearest', inline: 'nearest'});
                     });
@@ -382,30 +411,33 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
             $('.edit-dirty').removeClass('edit-dirty');
             $(window.document.body).addClass('dirty-nowhere');
             contribution_edit_hide($cont_editing);
+            var $caption_span = $cont_editing.closest('.sup-contribution').find('caption-span');
             $cont_editing.removeData('original_text');
-            // is_dirty = false;
-            // original_text = null;
+            $caption_span.removeData('original_text');
             $cont_editing = null;
         }
     }
 
     function contribution_edit_show($cont) {
         var $sup_cont = $cont.closest('.sup-contribution');
+        var $caption_span = $sup_cont.find('.caption-span');
         $sup_cont.addClass('contribution-edit');
         $cont.prop('contentEditable', true);
+        $caption_span.prop('contentEditable', true);
     }
 
     function contribution_edit_hide($cont) {
         var $sup_cont = $cont.closest('.sup-contribution');
+        var $caption_span = $sup_cont.find('.caption-span');
         $sup_cont.removeClass('contribution-edit');
         $cont.prop('contentEditable', false);
-        var $savebar = $savebar_from_cont($cont);
-        $savebar.removeClass('abandon-alert');
-        // $savebar.find('.cancel').text('cancel');
+        $caption_span.prop('contentEditable', false);
+        var $save_bar = $save_bar_from_cont($cont);
+        $save_bar.removeClass('abandon-alert');
     }
 
-    function $savebar_from_cont($cont) {
-        return $cont.closest('.sup-contribution').find('.savebar');
+    function $save_bar_from_cont($cont) {
+        return $cont.closest('.sup-contribution').find('.save-bar');
     }
 
     function text_or_caption_paste(evt) {
@@ -554,9 +586,9 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
                         obj_idn: movee_idn,
                         num: buttee_idn,
                         txt: ""
-                    }, function () {
+                    }, function sortable_done() {
                         settle_down();
-                    }, function (message) {
+                    }, function sortable_fail() {
                         revert_drag();
                     });
                 }
@@ -719,15 +751,12 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
 
     function post_it_click() {
         var $text = $('#enter_some_text');
-        var $caption = $('#enter_a_caption');
+        var $caption_input = $('#enter_a_caption');
         var text = $text.val();
-        var caption = $caption.val();
+        var caption = $caption_input.val();
         if (text.length === 0) {
             $text.focus();
             console.warn("Enter a quote.");
-        // } else if (caption.length === 0) {
-        //     $caption.focus();
-        //     console.warn("Enter a caption.");
         } else {
             qoolbar.sentence({
                 vrb_idn: MONTY.IDN.CONTRIBUTE,
@@ -764,7 +793,7 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
                     // safe_prepend(MONTY.order.cont, MONTY.IDN.CAT_MY, contribute_word.idn);
                     // Is it a good thing we don't have to do this now?  Let the DOM be the (digested) database?
                     $text.val("");
-                    $caption.val("");
+                    $caption_input.val("");
                     settle_down();
                     setTimeout(function () {  // Give rendering some airtime.
                         new_contribution_just_created();
@@ -910,16 +939,16 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
         looper(MONTY.w, function (_, word) {
             var $sup;
             var $cont;
-            var $caption;
+            var $caption_span;
             if (word !== null) {
                 switch (word.vrb) {
                 case MONTY.IDN.CONTRIBUTE:
                 case MONTY.IDN.UNSLUMP_OBSOLETE:
                     $sup = build_contribution_dom(word);
                     $cont = $sup.find('.contribution');
-                    $caption = $sup.find('.caption');
+                    $caption_span = $sup.find('.caption-span');
                     $cont.attr('data-owner', word.sbj);
-                    $caption.attr('data-owner', word.sbj);
+                    $caption_span.attr('data-owner', word.sbj);
                     $sup_contributions[word.idn] = $sup;
                     var cat = original_cat(word);
                     conts_in_cat[cat].unshift(word.idn);
@@ -928,11 +957,11 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
                 case MONTY.IDN.CAPTION:
                     if (has($sup_contributions, word.obj)) {
                         $sup = $sup_contributions[word.obj];
-                        $caption = $sup.find('.caption');
-                        if (is_authorized(word, $caption.attr('data-owner'), "caption")) {
-                            $caption.attr('id', word.idn);
-                            $caption.attr('data-owner', word.sbj);
-                            $caption.find('.caption-span').text(word.txt);
+                        $caption_span = $sup.find('.caption-span');
+                        if (is_authorized(word, $caption_span.attr('data-owner'), "caption")) {
+                            $caption_span.attr('id', word.idn);
+                            $caption_span.attr('data-owner', word.sbj);
+                            $caption_span.text(word.txt);
                         }
                     } else {
                         console.log("(Can't caption " + word.obj + ")");
@@ -965,9 +994,11 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
                         console.log("(Can't edit " + word.obj + ")");
                         // NOTE:  One harmless way this could come about,
                         //        A logged-in user could edit an anonymous user's contribution.
-                        //        Other anon users will see the edit, but not the original cont.
+                        //        Other anon user would get this edit-word, but not the original word.
+                        //        TODO:  They should see this edit.   Now they won't.
                         //
                         //        Another is if user A then B edits contribution x (by a third user).
+                        //        B won't see A's edit, so he'll be modifying the original.
                         //        A will get this message when it see's B's edit word,
                         //        because that edit word will refer to the original x's idn,
                         //        but by then x will have been displaced by A's edit word.
@@ -1166,7 +1197,7 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
 
     /**
      * Build the div.sup-contribution for a contribution,
-     * containing its div.contribution and div.caption and div.footer.
+     * containing its div.contribution and div.caption-bar and div.save-bar.
      *
      * It's returned free-range, not inserted in the DOM.
      *
@@ -1178,19 +1209,19 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
         var $contribution = $('<div>', {class: 'contribution size-adjust-once', id: contribution_word.idn});
         $sup_contribution.append($contribution);
         $contribution.text(leading_spaces_indent(contribution_word.txt));
-        var $caption = $('<div>', {class: 'caption'});
-        var $savebar = $('<div>', {class: 'savebar'});
-        $savebar.append($('<button>', {class: 'edit'}).text('edit'));
-        $savebar.append($('<button>', {class: 'cancel'}).text('cancel'));
-        $savebar.append($('<button>', {class: 'save'}).text('save'));
-        $savebar.append($('<button>', {class: 'discard'}).text('discard'));
-        $sup_contribution.append($caption);
-        $sup_contribution.append($savebar);
+        var $caption_bar = $('<div>', {class: 'caption-bar'});
+        var $save_bar = $('<div>', {class: 'save-bar'});
+        $save_bar.append($('<button>', {class: 'edit'}).text('edit'));
+        $save_bar.append($('<button>', {class: 'cancel'}).text('cancel'));
+        $save_bar.append($('<button>', {class: 'save'}).text('save'));
+        $save_bar.append($('<button>', {class: 'discard'}).text('discard'));
+        $sup_contribution.append($caption_bar);
+        $sup_contribution.append($save_bar);
         var $grip = $('<span>', {class: 'grip'});
-        $caption.append($grip);
+        $caption_bar.append($grip);
         $grip.text(UNICODE.VERTICAL_ELLIPSIS + UNICODE.VERTICAL_ELLIPSIS);
         var $caption_span = $('<span>', {class: 'caption-span'});
-        $caption.append($caption_span);
+        $caption_bar.append($caption_span);
         var caption_txt = latest_txt(contribution_word.jbo, MONTY.IDN.CAPTION);
         if (caption_txt !== undefined) {
             $caption_span.append(caption_txt);
@@ -1483,29 +1514,6 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
                 }
             );
             caption_tracks_text();
-
-            // function cap_tracks_cont(mutation_list, ob) {
-            //     // console.log("observe", this, mutation_list, ob);
-            //     looper(mutation_list, function (index, mutation) {
-            //         var $cont = $(mutation.target);
-            //         var $caption = $cont.nextAll('.caption');
-            //         // console.log("observe", $cont.attr('id'), first_word($caption.text()));
-            //         $caption.width($cont.width());
-            //     });
-            // }
-            // $('.contribution').each(function () {
-            //     var each_contribution = this;
-            //     new MutationObserver(cap_tracks_cont).observe(
-            //         each_contribution,
-            //         {
-            //             attributes: true,
-            //             attributeFilter: ['style']
-            //         }
-            //     );
-            // });
-            // TODO:  Contribution and caption should track width
-            //        in .sup-contribution containers too.
-            //        Not just the entry fields in div.container-entry
         }
     }
 
@@ -1621,7 +1629,6 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
         return object;
     }
 
-    // noinspection DuplicatedCode,DuplicatedCode
     /**
      * Not undefined, not null, not the empty string.
      */
@@ -1649,7 +1656,6 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
     console.assert(is_defined(42));
     console.assert( ! is_defined(undefined));
 
-    // noinspection DuplicatedCode,DuplicatedCode,DuplicatedCode,DuplicatedCode,DuplicatedCode
     function has(collection, thing) {
         if (typeof collection === 'undefined') {
             return false;

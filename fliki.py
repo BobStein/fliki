@@ -2733,6 +2733,7 @@ def ajax():
             num_str = auth.form('num', None)
             num_add = None if num_add_str is None else qiki.Number(num_add_str)
             num = None if num_str is None else qiki.Number(num_str)
+            print("Sentence", json.dumps(txt))
             new_word_kwargs = dict(
                 sbj=auth.qiki_user,
                 vrb=vrb,
