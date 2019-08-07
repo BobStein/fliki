@@ -738,6 +738,7 @@ class Auth(object):
     @abc.abstractmethod
     def session_qstring(self):
         raise NotImplementedError
+        # CAUTION:  May raise KeyError
 
     @session_qstring.setter
     @abc.abstractmethod
@@ -754,11 +755,11 @@ class Auth(object):
     def session_uuid(self, the_uuid):
         raise NotImplementedError
 
-    def session_get(self):
-        raise NotImplementedError
-
-    def session_set(self, session_string):
-        raise NotImplementedError
+    # def session_get(self):
+    #     raise NotImplementedError
+    #
+    # def session_set(self, session_string):
+    #     raise NotImplementedError
 
     def authenticated_id(self):
         raise NotImplementedError
@@ -1154,8 +1155,6 @@ class Auth(object):
         return ok
 
 
-
-
 class AuthFliki(Auth):
     """Fliki / Authomatic specific implementation of logging in"""
     def __init__(self):
@@ -1223,6 +1222,7 @@ class AuthFliki(Auth):
     @property
     def session_qstring(self):
         return flask.session[self.SESSION_QSTRING]
+        # CAUTION:  May raise KeyError
 
     @session_qstring.setter
     def session_qstring(self, qstring):
@@ -1236,14 +1236,14 @@ class AuthFliki(Auth):
     def session_uuid(self, the_uuid):
         flask.session[self.SESSION_UUID] = the_uuid
 
-    def session_get(self):
-        try:
-            return flask.session[self.SESSION_QSTRING]
-        except KeyError:
-            return None
-
-    def session_set(self, session_string):
-        flask.session[self.SESSION_QSTRING] = session_string
+    # def session_get(self):
+    #     try:
+    #         return flask.session[self.SESSION_QSTRING]
+    #     except KeyError:
+    #         return None
+    #
+    # def session_set(self, session_string):
+    #     flask.session[self.SESSION_QSTRING] = session_string
 
     def authenticated_id(self):
         return self.flask_user.get_id()
@@ -1488,6 +1488,7 @@ class FlikiHTML(web_html.WebHTML):
         with self.head(newlines=True) as head:
             head.title(title)
             head.meta(charset='utf-8')
+            head.meta(name='viewport', content='width=device-width, initial-scale=0.7')
             head.link(
                 rel='shortcut icon',
                 href=flask.url_for('qiki_javascript', filename='favicon.ico')
