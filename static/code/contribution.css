@@ -80,8 +80,7 @@
     min-height: 2em;
     box-sizing: border-box;
     margin: 0.1em 0.1em 0 0.1em;
-    padding: 0.7em 0.5em 0.7em 0.5em;
-    line-height: 1.25em;   /* slightly closer together */
+    line-height: 1.3em;   /* slightly closer together */
 }
 .was-submitted-anonymous .contribution {
     border-color: #C00000;
@@ -90,8 +89,6 @@
 .contribution-edit .contribution {
     /* NOTE:  This should come after was-submitted-anonymous, so as to override it. */
     background-color: white;
-    border: 0.2em inset;
-    padding: 0.5em 0.3em 0.5em 0.3em;
     display: inline-block;
     /* THANKS:  Avoid Chrome linefeed-to-div, https://stackoverflow.com/a/24689420/673991 */
     /* NOTE:  This inserts an unsightly gap between contribution and caption,
@@ -99,22 +96,25 @@
               Hope it doesn't mess up the flow in some other circumstance. */
 }
 
-.sup-contribution .caption-bar {
+                   .contribution { padding: 0.5em 0.5em 0.7em 0.5em; }
+.contribution-edit .contribution { padding: 0.3em 0.3em 0.5em 0.3em; border: 0.2em inset; }
+
+.caption-bar {
     clear: left;
     background-color: #AAAAAA;
     color: white;
     font: small-caption;
-    padding: 0 0.666em 0.1em 0.666em;
 }
 .was-submitted-anonymous .caption-bar {
     background-color: #B8A0A0;
 }
-.sup-contribution.contribution-edit .caption-bar {
+.contribution-edit .caption-bar {
     /* NOTE:  This should come after was-submitted-anonymous, so as to override it. */
     background-color: #666666;
-    border: 0.1em inset;
-    padding: -0.1em 0.566em 0 0.566em;
 }
+                   .caption-bar { padding:  0     0.666em 0.1em 0.666em; }
+.contribution-edit .caption-bar { padding: -0.1em 0.566em 0     0.566em; border: 0.1em inset; }
+
 .sup-contribution .save-bar {
     clear: left;
     background-color: transparent;

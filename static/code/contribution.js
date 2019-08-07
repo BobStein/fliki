@@ -133,7 +133,7 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
 
         $(window.document)
             // .on('click', '.contribution', contribution_click)
-            .on('input', '.contribution', contribution_input)
+            .on('input', '.contribution, .caption-span', contribution_dirty)
             .on('click', '.contribution', stop_propagation)
             .on('click', '.caption-bar, .save-bar', stop_propagation)
             .on('click', '.save-bar .edit', contribution_edit)
@@ -143,7 +143,7 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
             .on('click', attempt_content_edit_abandon)
         ;
 
-        long_press('.contribution', contribution_edit);
+        long_press('.sup-contribution', contribution_edit);
 
         // TODO:  Prevent mousedown inside .contribution, and mouseup outside, from
         //        triggering a document click in Chrome.  (But not in Firefox.)
@@ -159,55 +159,30 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
         settle_down();
     });
 
-    /**
-     * Handler to e.g. avoid document click immediately undoing long-press
-     */
-    function stop_propagation(evt) {
-        evt.stopPropagation();
-    }
-
-    function long_press(selector, handler, enough_milliseconds) {
-        enough_milliseconds = enough_milliseconds || 1000;
-        $(window.document)
-            .on('mousedown touchstart', selector, function (evt) {
-                var element = this;
-                if (evt.type === 'mousedown' && evt.which !== MOUSE_BUTTON_LEFT) {
-                    return;
-                    // NOTE:  Ignore long right or middle mouse button press.
-                }
-                if (is_defined($(element).data('long_press_timer'))) {
-                    // THANKS:  Avoid double timer when both events fire on Android,
-                    //          https://stackoverflow.com/q/2625210/673991#comment52547525_27413909
-                    //          Might also help if long_press() were called twice on the same
-                    //          element, e.g. from overlapping classes.
-                    return;
-                }
-                var timer = setTimeout(function () {
-                    $(element).removeData('long_press_timer');
-                    handler.call(element, evt);
-                }, enough_milliseconds);
-                $(element).data('long_press_timer', timer);
-            })
-            .on('mouseup mouseout mouseleave touchend touchleave touchcancel', selector, function () {
-                var element = this;
-                var timer = $(element).data('long_press_timer');
-                if (is_defined(timer)) {
-                    clearTimeout(timer);
-                    $(element).removeData('long_press_timer');
-                }
-            })
-            // TODO:  setInterval check?   https://stackoverflow.com/questions/7448468/
-            //        why-cant-i-reliably-capture-a-mouseout-event
-        ;
-    }
-
-    function contribution_input() {
-        var $cont = $(this);
-        var $sup_cont = $cont.closest('.sup-contribution');
-        if ( ! $sup_cont.hasClass('edit-dirty')) {
-            $sup_cont.addClass('edit-dirty');
-            $(window.document.body).removeClass('dirty-nowhere');
+    function contribution_edit(evt) {
+        var $cont = $cont_of(this);
+        var $clicked_on = $(evt.target);
+        // SEE:  this vs evt.target, https://stackoverflow.com/a/21667010/673991
+        if ($clicked_on.is('.contribution') && is_click_on_the_resizer(evt, $clicked_on[0])) {
+            console.log("contribution_click nope, just resizing");
+            return;
         }
+        var $sup_cont = $cont.closest('.sup-contribution');
+        var was_already_editing_this_same_contribution = $sup_cont.hasClass('contribution-edit');
+        if (was_already_editing_this_same_contribution) {
+            // Leave it alone, might be selecting text to replace, or just giving focus.
+        } else {
+            contribution_edit_begin($cont);
+            console.log("edit clicked", $clicked_on[0].className, $clicked_on[0].id);
+            if ($clicked_on.is('.contribution')) {
+                $cont.focus();
+            } else if ($clicked_on.closest('.caption-bar').length > 0) {
+                $sup_cont.find('.caption-span').focus();
+            }
+            // NOTE:  Luckily .focus() allows the click that began editing to also place the caret.
+            //        Except it doesn't do that in IE11, requiring another click.
+        }
+        evt.stopPropagation();   // Don't let the document get it, which would end the editing.
     }
 
     function contribution_cancel() {
@@ -225,148 +200,46 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
         }
     }
 
+    function contribution_dirty() {
+        var $entry = $(this);
+        var $sup_cont = $entry.closest('.sup-contribution');
+        if ( ! $sup_cont.hasClass('edit-dirty')) {
+            $sup_cont.addClass('edit-dirty');
+            $(window.document.body).removeClass('dirty-nowhere');
+            console.log("Dirty", $entry[0].className, $entry.attr('id'));
+        }
+    }
+
     function contribution_save() {
         if (is_editing_some_contribution) {
-            edit_submit($cont_editing, "contribution", function () {
-                // var $caption_span = $cont_editing.closest('.sup-contribution').find('caption-span');
-                console.assert(is_editing_some_contribution);
-                // TODO:  edit_submit($caption_span, "caption", ...
-                contribution_edit_end();
+            var cont_idn_old = $cont_editing.attr('id');
+            edit_submit($cont_editing, "contribution", MONTY.IDN.EDIT, cont_idn_old, function () {
+                var $caption_span = $cont_editing.closest('.sup-contribution').find('.caption-span');
+                var cont_idn_new = $cont_editing.attr('id');
+                edit_submit($caption_span, "caption", MONTY.IDN.CAPTION, cont_idn_new, function () {
+                    contribution_edit_end();
+                });
             });
-
-            // if ($caption_span.data('original_text') !== $caption_span.text()) {
-            //     qoolbar.sentence({
-            //         vrb_idn: MONTY.IDN.EDIT,
-            //         obj_idn: cont_idn,
-            //         txt: new_text
-            //     }, function contribution_save_done(edit_word) {
-            //         console.assert(is_editing_some_contribution);
-            //         console.log("Edit saved.", edit_word.idn);
-            //         $cont_editing.attr('id', edit_word.idn);
-            //         contribution_edit_end();
-            //         // NOPE:  Update MONTY.words.cont[?].idn to edit_word.idn
-            //         //        Update MONTY.words.cont[?].txt to new_text
-            //         //        Update MONTY.order.cont[cat][?] to edit_word.idn, not cont_idn
-            //     });
-            // }
-            // if ( ! any_changes) {
-            //     console.log("(skipping save, no change detected to", new_text.length, "characters)");
-            //     contribution_edit_end();
-            // }
         } else {
             console.error("Save but we weren't editing?", $cont_editing);
         }
     }
 
-    function edit_submit($div, what, then) {
+    function edit_submit($div, what, vrb, obj, then) {
         var new_text = $div.text();
         if ($div.data('original_text') === new_text) {
             console.log("(skipping", what, "save,", new_text.length, "characters unchanged)");
             then(null);
         } else {
-            var old_idn = $div.attr('id');
             qoolbar.sentence({
-                vrb_idn: MONTY.IDN.EDIT,
-                obj_idn: old_idn,
+                vrb_idn: vrb,
+                obj_idn: obj,
                 txt: new_text
             }, function contribution_save_done(edit_word) {
-                console.log("Saved", what, edit_word.idn, JSON.stringify(new_text), JSON.stringify(edit_word.txt));
+                console.log("Saved", what, edit_word.idn);
                 $div.attr('id', edit_word.idn);
                 then(edit_word);
             });
-        }
-    }
-
-    function contribution_edit(evt) {
-        // var $cont = $(this);
-        if ($(this).is('.contribution') && is_click_on_the_resizer(evt, this)) {
-            console.log("contribution_click nope, just resizing");
-            return;
-        }
-        var $cont = $cont_of(this);   // whether `this` is .contribution or .save-bar.edit
-        var $sup_cont = $cont.closest('.sup-contribution');
-        var was_editing_this_contribution = $sup_cont.hasClass('contribution-edit');
-        // var was_editing_this_contribution_2 = eq$($cont, $cont_editing);
-        // console.assert(
-        //     was_editing_this_contribution === was_editing_this_contribution_2,
-        //     was_editing_this_contribution,
-        //     $cont,
-        //     $cont_editing
-        // );
-        if (was_editing_this_contribution) {
-            // Leave it alone, might be selecting text to replace, or just giving focus.
-        } else {
-            contribution_edit_begin($cont);
-            $cont.focus();
-            // NOTE:  Luckily .focus() allows the click that began editing to also place the caret.
-            //        Except it doesn't do that in IE11, requiring another click.
-        }
-        evt.stopPropagation();   // Don't let the document get it, which would end the editing.
-    }
-
-    // function eq$($element1, $element2) {
-    //     console.assert($element1.length === 1);
-    //     console.assert($element2.length === 1);
-    //     // NOTE:  If this should support multi-element jQuery objects, then it can't use .is()
-    //     return $element1.is($element2);
-    // }
-
-    /**
-     * Get the position of a click, relative to the top-left corner of the element.
-     *
-     * THANKS:  click position, element-relative, https://stackoverflow.com/a/33378989/673991
-     *          Paulo Bueno's code works well in Chrome, Firefox, IE11.
-     *
-     * @param evt - click or other mouse event
-     * @param element - target of the event
-     * @return {{x: number, y: number}} - in pixels from the top-left corner of the target element
-     */
-    function getXY(evt, element) {
-        var rect = element.getBoundingClientRect();
-        var scrollTop = document.documentElement.scrollTop?
-                        document.documentElement.scrollTop:document.body.scrollTop;
-        var scrollLeft = document.documentElement.scrollLeft?
-                        document.documentElement.scrollLeft:document.body.scrollLeft;
-        var elementLeft = rect.left+scrollLeft;
-        var elementTop = rect.top+scrollTop;
-
-        var x = evt.pageX-elementLeft;
-        var y = evt.pageY-elementTop;
-        return {x:x, y:y};
-    }
-
-    /**
-     * Is the click on the div resize handle?  I.e. (crudely) with 20px of the bottom-right corner.
-     *
-     * THANKS:  Idea of using click-coordinates for this, https://stackoverflow.com/q/49136251/673991
-     *          Brett DeWoody calls this his "final, and last, last, last resort
-     *          ... ludicrous and unreliable."  Cool!
-     *
-     * CAVEAT:  IE11 has no div resize, so there's a little dead-zone there.
-     *
-     * @param evt - click or other mouse event
-     * @param element - target of the event
-     * @return {boolean}
-     */
-    function is_click_on_the_resizer(evt, element) {
-        var xy = getXY(evt, element);
-        var r = element.offsetWidth - xy.x;
-        var b = element.offsetHeight - xy.y;
-        return (
-            0 <= r && r <= 20 &&
-            0 <= b && b <= 20
-        );
-    }
-
-    function contribution_edit_begin($cont) {
-        if (attempt_content_edit_abandon()) {
-            contribution_edit_show($cont);
-            is_editing_some_contribution = true;
-            // original_text = $cont.text();
-            $cont.data('original_text', $cont.text());
-            var $caption_span = $cont.closest('.sup-contribution').find('caption-span');
-            $caption_span.data('original_text', $caption_span.text());
-            $cont_editing = $cont;
         }
     }
 
@@ -398,10 +271,62 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
         }
     }
 
-    function ignore_exception(nonessential_function_that_may_not_be_supported) {
-        try {
-            nonessential_function_that_may_not_be_supported();
-        } catch (_) {
+    /**
+     * Is the click on the div resize handle?  I.e. (crudely) with 20px of the bottom-right corner.
+     *
+     * THANKS:  Idea of using click-coordinates for this, https://stackoverflow.com/q/49136251/673991
+     *          Brett DeWoody calls this his "final, and last, last, last resort
+     *          ... ludicrous and unreliable."  Cool!
+     *
+     * CAVEAT:  IE11 has no div resize, so there's a little dead-zone there.
+     *
+     * @param evt - click or other mouse event
+     * @param element - target of the event
+     * @return {boolean}
+     */
+    function is_click_on_the_resizer(evt, element) {
+        var xy = getXY(evt, element);
+        var r = element.offsetWidth - xy.x;
+        var b = element.offsetHeight - xy.y;
+        return (
+            0 <= r && r <= 20 &&
+            0 <= b && b <= 20
+        );
+    }
+
+    /**
+     * Get the position of a click, relative to the top-left corner of the element.
+     *
+     * THANKS:  click position, element-relative, https://stackoverflow.com/a/33378989/673991
+     *          Paulo Bueno's code works well in Chrome, Firefox, IE11.
+     *
+     * @param evt - click or other mouse event
+     * @param element - target of the event
+     * @return {{x: number, y: number}} - in pixels from the top-left corner of the target element
+     */
+    function getXY(evt, element) {
+        var rect = element.getBoundingClientRect();
+        var scrollTop = document.documentElement.scrollTop?
+                        document.documentElement.scrollTop:document.body.scrollTop;
+        var scrollLeft = document.documentElement.scrollLeft?
+                        document.documentElement.scrollLeft:document.body.scrollLeft;
+        var elementLeft = rect.left+scrollLeft;
+        var elementTop = rect.top+scrollTop;
+
+        var x = evt.pageX-elementLeft;
+        var y = evt.pageY-elementTop;
+        return {x:x, y:y};
+    }
+
+    function contribution_edit_begin($cont) {
+        if (attempt_content_edit_abandon()) {
+            contribution_edit_show($cont);
+            is_editing_some_contribution = true;
+            // original_text = $cont.text();
+            $cont.data('original_text', $cont.text());
+            var $caption_span = $cont.closest('.sup-contribution').find('.caption-span');
+            $caption_span.data('original_text', $caption_span.text());
+            $cont_editing = $cont;
         }
     }
 
@@ -411,7 +336,7 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
             $('.edit-dirty').removeClass('edit-dirty');
             $(window.document.body).addClass('dirty-nowhere');
             contribution_edit_hide($cont_editing);
-            var $caption_span = $cont_editing.closest('.sup-contribution').find('caption-span');
+            var $caption_span = $cont_editing.closest('.sup-contribution').find('.caption-span');
             $cont_editing.removeData('original_text');
             $caption_span.removeData('original_text');
             $cont_editing = null;
@@ -998,7 +923,8 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
                         //        TODO:  They should see this edit.   Now they won't.
                         //
                         //        Another is if user A then B edits contribution x (by a third user).
-                        //        B won't see A's edit, so he'll be modifying the original.
+                        //        B won't enforce A's edit, so although B's edit is later,
+                        //        it will refer back to the original contribution.
                         //        A will get this message when it see's B's edit word,
                         //        because that edit word will refer to the original x's idn,
                         //        but by then x will have been displaced by A's edit word.
@@ -1312,7 +1238,7 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
             // console.error("Missing contribution element, id =", cont);
             return "[" + cont + "?]";
         }
-        var txt = $cont/*.find('.contribution')*/.text().trim();
+        var txt = $cont.text().trim();
         if ( ! is_laden(txt)) {
             return "[blank]";
         }
@@ -1448,15 +1374,6 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
             }
             $sup_categories[cat].find('.how-many').text(how_many);
         });
-        // looper(MONTY.order.cont, function recompute_category_anti_valves(cat, contribution_idns) {
-        //     var how_many;
-        //     if (contribution_idns.length === 0) {
-        //         how_many = "";
-        //     } else {
-        //         how_many = " (" + contribution_idns.length.toString() + ")";
-        //     }
-        //     $sup_categories[cat].find('.how-many').text(how_many);
-        // });
     }
 
     // noinspection JSUnusedLocalSymbols
@@ -1600,6 +1517,46 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
     ////// Generic stuff follows
     ////////////////////////////
 
+    /**
+     * Handler to e.g. avoid document click immediately undoing long-press
+     */
+    function stop_propagation(evt) {
+        evt.stopPropagation();
+    }
+
+    var long_press_timer = null;
+    function long_press(selector, handler, enough_milliseconds) {
+        enough_milliseconds = enough_milliseconds || 1000;
+        $(window.document)
+            .on('mousedown touchstart', selector, function (evt) {
+                var element = this;
+                if (evt.type === 'mousedown' && evt.which !== MOUSE_BUTTON_LEFT) {
+                    return;
+                    // NOTE:  Ignore long right or middle mouse button press.
+                }
+                if (long_press_timer !== null) {
+                    // THANKS:  Avoid double timer when both events fire on Android,
+                    //          https://stackoverflow.com/q/2625210/673991#comment52547525_27413909
+                    //          Might also help if long_press() were called twice on the same
+                    //          element, e.g. for overlapping classes.
+                    return;
+                }
+                long_press_timer = setTimeout(function () {
+                    long_press_timer = null;
+                    handler.call(element, evt);
+                }, enough_milliseconds);
+            })
+            .on('mouseup mouseout mouseleave touchend touchleave touchcancel', selector, function () {
+                if (long_press_timer !== null) {
+                    clearTimeout(long_press_timer);
+                    long_press_timer = null;
+                }
+            })
+            // TODO:  setInterval check?   https://stackoverflow.com/questions/7448468/
+            //        why-cant-i-reliably-capture-a-mouseout-event
+        ;
+    }
+
     function $_from_class(class_) {
         return $(selector_from_class(class_));
     }
@@ -1627,6 +1584,13 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
             }
         }
         return object;
+    }
+
+    function ignore_exception(nonessential_function_that_may_not_be_supported) {
+        try {
+            nonessential_function_that_may_not_be_supported();
+        } catch (_) {
+        }
     }
 
     /**
