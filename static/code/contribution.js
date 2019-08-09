@@ -65,6 +65,8 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
         MOVE_BEFORE_TARGET = -1,
         MOVE_CANCEL = false;
     // SEE:  SelectJS options, https://github.com/SortableJS/Sortable#user-content-options
+
+    // noinspection JSUnusedLocalSymbols
     var MOUSE_BUTTON_LEFT = 1;   // jQuery shoulda defined this
     // SEE:  jQuery event.which, https://api.jquery.com/event.which/
 
@@ -143,7 +145,11 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
             .on('click', attempt_content_edit_abandon)
         ;
 
-        long_press('.sup-contribution', contribution_edit);
+        var DO_LONG_PRESS_EDIT = false;
+        // NOTE:  Long press was too easy a way to trigger an edit.
+        if (DO_LONG_PRESS_EDIT) {
+            long_press('.sup-contribution', contribution_edit);
+        }
 
         // TODO:  Prevent mousedown inside .contribution, and mouseup outside, from
         //        triggering a document click in Chrome.  (But not in Firefox.)
@@ -1259,108 +1265,10 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
      * 2. Update MONTY.order if so.
      * 3. Refresh the how-many numbers in anti-valved fields (stuff that shows when closed).
      */
-    // var first_mismatch = true;   // Only report order mismatch once, to server and to user with an alert.
     function settle_down() {
         console_order_report();
         refresh_how_many();
-
-
-        // order_verification(function () {
-        //     console_order_report();
-        //     refresh_how_many();
-        // });
-
-        // var recon = reconstitute_order_from_dom();
-        // var recon_order = order_idns(recon);
-        //
-        // qoolbar.post('contribution_order', {}, function (response) {
-        //     if (response.is_valid) {
-        //         var ajax_order = order_idns(response.order);
-        //         if (recon_order === ajax_order) {
-        //             MONTY.order = response.order;
-        //             // NOTE:  We don't update MONTY.words.  Guess it's only used at startup.
-        //             console_order_report();
-        //             refresh_how_many();
-        //         } else {
-        //             // FIXME:  This might mean legitimate changes on another window.
-        //             //         Contributions by any other user, or
-        //             //         rearrangements by the same user.
-        //             // TODO:  Rebuild??
-        //             //        We also need to download MONTY.words,
-        //             //        But then, yea, just call build()!
-        //             var mismatch_report = "Ajax contribution order does not agree:\n" +
-        //                 recon_order + " <-- reconstitute_order_from_dom()\n" +
-        //                 ajax_order + " <-- ajax order\n" +
-        //                 order_report(recon) + " <-- reconstitute_order_from_dom()\n" +
-        //                 order_report(response.order) + " <-- ajax order";
-        //             console.warn(mismatch_report);
-        //             if (first_mismatch) {
-        //                 first_mismatch = false;
-        //                 // flub(mismatch_report);
-        //                 if (confirm("Might be a little mixed up about the order here. Okay to reload the page?")) {
-        //                     qoolbar.page_reload();
-        //                 }
-        //             }
-        //             // TODO:  Ajax this warning somewhere and just reload the page?
-        //         }
-        //         // if (monty_order !== ajax_order) {
-        //         //     console.warn(
-        //         //         "Ajax contribution order does not agree:\n" +
-        //         //         monty_order + " == MONTY.order\n" +
-        //         //         ajax_order + " == ajax order\n" +
-        //         //         order_report(MONTY.order) + " == MONTY.order\n" +
-        //         //         order_report(response.order) + " == ajax order"
-        //         //     )
-        //         // }
-        //     } else {
-        //         console.error("ajax reconstituted_order bust", response.error_message);
-        //     }
-        // });
     }
-
-    // // noinspection JSUnusedLocalSymbols
-    // function order_verification(then) {
-    //     var recon = reconstitute_order_from_dom();
-    //     var recon_order = order_idns(recon);
-    //     qoolbar.post('contribution_order', {}, function (response) {
-    //         var ajax_order = order_idns(response.order);
-    //         if (recon_order === ajax_order) {
-    //             MONTY.order = response.order;
-    //             // NOTE:  We don't update MONTY.words.  Guess it's only used at startup.
-    //             then();
-    //         } else {
-    //             // FIXME:  This might mean legitimate changes from same user on another window,
-    //             //         or contributions by any other user,
-    //             //         or rearrangements by the same user.
-    //             // TODO:  Rebuild??
-    //             //        We also need to download MONTY.words,
-    //             //        But then, yea, maybe we should just call build()!
-    //             var mismatch_report = "Ajax contribution order does not agree:\n" +
-    //                 recon_order + " <-- reconstitute_order_from_dom()\n" +
-    //                 ajax_order + " <-- ajax order\n" +
-    //                 order_report(recon) + " <-- reconstitute_order_from_dom()\n" +
-    //                 order_report(response.order) + " <-- ajax order";
-    //             console.warn(mismatch_report);
-    //             if (first_mismatch) {
-    //                 first_mismatch = false;
-    //                 // flub(mismatch_report);
-    //                 if (confirm("Might be a little mixed up about the order here. Okay to reload the page?")) {
-    //                     qoolbar.page_reload();
-    //                 }
-    //             }
-    //             // TODO:  Ajax this warning somewhere and just reload the page?
-    //         }
-    //         // if (monty_order !== ajax_order) {
-    //         //     console.warn(
-    //         //         "Ajax contribution order does not agree:\n" +
-    //         //         monty_order + " == MONTY.order\n" +
-    //         //         ajax_order + " == ajax order\n" +
-    //         //         order_report(MONTY.order) + " == MONTY.order\n" +
-    //         //         order_report(response.order) + " == ajax order"
-    //         //     )
-    //         // }
-    //     });
-    // }
 
     function refresh_how_many() {
         looper(MONTY.cat.order, function recompute_category_anti_valves(_, cat) {

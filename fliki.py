@@ -103,9 +103,6 @@ class WorkingIdns(object):
     #        What object can better represent the lex itself, including these idns?
     def __init__(self, lex):
         with flask_app.app_context():   # FIXME:  WTF is this called??
-            # setup_lex()
-            # if flask.g.is_online:
-            #     lex = flask.g.lex
             if lex is not None:
                 self.LEX               = lex.noun(u'lex').idn
                 self.VERB              = lex.noun(u'verb').idn
@@ -507,13 +504,6 @@ _ = WorkingIdns(connect_lex()).dictionary_of_ints()  # catch missing ".idn"
 
 # IDN = WorkingIdns(connect_lex())   # TODO:  Call this only via WSGI, not test_fliki.py
 
-def setup_lex():
-    if hasattr(flask.g, 'lex'):
-        print("WHOOPS, ALREADY SETUP WITH A LEX")
-
-    flask.g.lex = connect_lex()
-    flask.g.is_online = flask.g.lex is not None
-
 
 def seconds_until_anonymous_question():
     # TODO:  This feature should be its own lex, or word, or something.
@@ -551,7 +541,11 @@ class UNICODE(object):
 
 
 def setup_application_context():
-    setup_lex()
+    if hasattr(flask.g, 'lex'):
+        print("WHOOPS, ALREADY SETUP WITH A LEX")
+
+    flask.g.lex = connect_lex()
+    flask.g.is_online = flask.g.lex is not None
     if flask.g.is_online:
         lex = flask.g.lex
 
@@ -1873,6 +1867,63 @@ def meta_raw():
     # THANKS:  JSON mime type, https://stackoverflow.com/a/477819/673991
 
 
+@flask_app.route('/slam_test', methods=('GET', 'HEAD'))
+@flask_login.login_required
+def slam_test():
+    """
+    Test frequent lex create_word()'s.
+    """
+
+    auth = AuthFliki()
+    if not auth.is_online:
+        return "lex offline"
+    if auth.is_anonymous:
+        return auth.login_html()   # anonymous viewing not allowed, just show "login" link
+
+    slam_verb = auth.lex.verb('slam')
+
+    with FlikiHTML('html') as html:
+        html.header(title="Slam Test")
+        with html.body(class_='test-container', newlines=True) as body:
+            body.button("go", id='go')
+        with html.footer() as foot:
+            foot.script('''
+                $(document).ready(function () {
+                    qoolbar.ajax_url("'''  + AJAX_URL + '''");
+                    var in_process = false;
+                    var counter = 0;
+                    $('#go').on('click', function () {
+                        in_process = true;
+                        slam();
+                        slam();
+                        slam();
+                        slam();
+                        slam();
+                        slam();
+                        slam();
+                        slam();
+                        slam();
+                        slam();
+                    });
+                    
+                    function slam() {
+                        var string = "slam " + window.location.search + " " + counter.toString();
+                        qoolbar.sentence({
+                            vrb_idn: "''' + slam_verb.idn.qstring() + '''",
+                            obj_idn: "''' + auth.lex.IDN.LEX.qstring() + '''",
+                            txt: string
+                        }, function (new_word) {
+                            console.log("done", string, new_word.idn);
+                        }, function () {
+                            console.warn("FAIL", string);
+                        });
+                        counter++;
+                    }
+                });
+            \n''')
+            return html.doctype_plus_html()
+
+
 @flask_app.route('/meta/lex', methods=('GET', 'HEAD'))
 def meta_lex():
 
@@ -2797,10 +2848,11 @@ def ajax():
         else:
             return invalid_response("Unknown action " + action)
 
-    except (KeyError, IndexError, ValueError) as e:
+    except (KeyError, IndexError, ValueError, qiki.word.LexMySQL.QueryError) as e:
         # EXAMPLE:  werkzeug.exceptions.BadRequestKeyError
-        # EXAMPLE:  qiki.word.LexSentence.CreateWordError
         # EXAMPLE:  fliki.AuthFliki.FormVariableMissing
+        # EXAMPLE:  qiki.word.LexSentence.CreateWordError
+        # EXAMPLE:  qiki.word.LexMySQL.QueryError
 
         print("AJAX ERROR", type_name(e), str(e))
         traceback.print_exc()

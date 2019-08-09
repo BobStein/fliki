@@ -140,7 +140,8 @@ class WebHTML(richard_jones_html.HTML):
             self.script.raw_text('''
                 if (typeof {litmus_function} !== "function") {{
                     console.warn("Remote site down. Reverting to {local_file}");
-                    document.write('<script src="{local_file}">\x3C/script>');
+                    document.write('\\x3C' + 'script src="{local_file}"\\x3E');
+                    document.write('\\x3C' + '/script\\x3E');
                 }}
             \n'''.format(
                 local_file=local_file_maybe_minified,
