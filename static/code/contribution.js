@@ -1269,7 +1269,8 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
         var $iframe = $('<iframe>', {
             id: 'iframe_' + cont_idn,
             style: 'width: 300px;',   // This becomes the minimum render-bar width.
-            src: MONTY.OEMBED_PREFIX + encodeURIComponent(url)
+            src: MONTY.OEMBED_PREFIX + encodeURIComponent(url),
+            allowfullscreen: 'allowfullscreen'
         });
         $render_bar.html($iframe);
 

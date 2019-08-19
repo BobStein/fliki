@@ -2641,10 +2641,13 @@ def noembed_render(url):
                             fit_height(400, $grandchild);
                             
                             $child.css('margin', '0');
-                            // NOTE:  Remove margins in e.g. <twitter-widget>
+                            // NOTE:  Remove top & bottom margins
+                            //        in e.g. a twitter-widget element.
+                            //        But this doesn't work in IE11.  Shocked I am.
                                                         
                             $('body > a').attr('target', '_blank');
-                            // NOTE:  This fixes a boneheaded flickr / Chrome issue.
+                            // NOTE:  This fixes a boneheaded flickr issue.
+                            //        (Which may foul up only in Chrome, didn't check.)
                             //        Without it, when you click on a flickr embed,
                             //        you see a sad-faced paper emoji.
                             //        Hovering over that you see below it:
@@ -2653,6 +2656,8 @@ def noembed_render(url):
                             //        Refused to display 'https://www.flickr.com/...' 
                             //        in a frame because it set 'X-Frame-Options' 
                             //        to 'sameorigin'.
+                            //        Twitter, Dropbox, Instagram already do this
+                            //        target=_blank which pops up a new browser tab.
                             
                         }, 1000);   
                         // NOTE:  If this delay is not enough, the fancy-pants embedded html
