@@ -1090,6 +1090,12 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
         }
     }
 
+    function iframe_src_from_url(url) {
+        return MONTY.OEMBED_PREFIX + "?" + $.param({url:url});
+        // THANKS:  jQuery query string, https://stackoverflow.com/a/31599255/673991
+    }
+
+
     function original_cat(word) {
         if (word.sbj === MONTY.me_idn) {
             return MONTY.IDN.CAT_MY;
@@ -1269,7 +1275,7 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
         var $iframe = $('<iframe>', {
             id: 'iframe_' + cont_idn,
             style: 'width: 300px;',   // This becomes the minimum render-bar width.
-            src: MONTY.OEMBED_PREFIX + encodeURIComponent(url),
+            src: iframe_src_from_url(url),
             allowfullscreen: 'allowfullscreen'
         });
         $render_bar.html($iframe);

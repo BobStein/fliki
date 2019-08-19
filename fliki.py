@@ -2574,9 +2574,18 @@ INSTAGRAM_PATTERNS = [
 ]
 
 
-@flask_app.route('/meta/oembed/<path:url>', methods=('GET', 'HEAD'))
-def oembed_html(url):
-    """Serve the iframe contents for embedded media."""
+@flask_app.route(secure.credentials.Options.oembed_prefix, methods=('GET', 'HEAD'))
+def oembed_html():
+    """
+    Serve the iframe contents for embedded media.
+
+    Pass the url for the media as a user might browse it.
+
+    EXAMPLE:  url=https://www.youtube.com/watch?v=o9tDO3HK20Q
+    EXAMPLE:  url=https://www.instagram.com/p/BkVQRWuDigy/
+    """
+    print("oembed_html", json.dumps(flask.request.full_path))
+    url = flask.request.args.get('url')
     if matcher(url, NOEMBED_PATTERNS):
         return noembed_render(url)
     elif matcher(url, INSTAGRAM_PATTERNS):
