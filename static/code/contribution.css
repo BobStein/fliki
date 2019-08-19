@@ -87,10 +87,11 @@
     background-color: #F4ECEC;
 }
 .contribution-edit .contribution {
-    /* NOTE:  This should come after was-submitted-anonymous, so as to override it. */
+    /* NOTE:  This should come after was-submitted-anonymous, to override it. */
     background-color: white;
+
     display: inline-block;
-    /* THANKS:  Avoid Chrome linefeed-to-div, https://stackoverflow.com/a/24689420/673991 */
+    /* THANKS:  Avoid Chrome LF-to-div conversion, https://stackoverflow.com/a/24689420/673991 */
     /* NOTE:  This inserts an unsightly gap between contribution and caption,
               but it fixes Chrome's dumb habit of changing Enter keystrokes to <div> blocks.
               Hope it doesn't mess up the flow in some other circumstance. */
@@ -208,4 +209,20 @@
         -ms-user-select: none;
             user-select: none;
     /* NOTE:  Prevent inadvertent text-selection of triangles. */
+}
+
+.sup-contribution                                .contribution { display:block; }
+.sup-contribution.render-video                   .contribution { display:none; }
+.sup-contribution.render-video.contribution-edit .contribution { display:inline-block; }
+
+.sup-contribution                                .render-bar { display:none; }
+.sup-contribution.render-video                   .render-bar { display:block; }
+.sup-contribution.render-video.contribution-edit .render-bar { display:none; }
+
+iframe { display:block; }
+/* THANKS:  Remove space at bottom of a div with an iframe in it,
+            https://stackoverflow.com/a/21025344/673991 */
+
+.render-bar iframe {
+    border: 1px solid black;
 }

@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>Fat iframe demo</title>
+</head>
+<body>
+
+1<iframe src="fat_iframe_content.html" id="iframe1" allowfullscreen="allowfullscreen">'></iframe>
+2<iframe src="fat_iframe_content.html" id="iframe2" allowfullscreen="allowfullscreen"> ></iframe>
+3<iframe src="fat_iframe_content.html" id="iframe3" allowfullscreen="allowfullscreen"> ></iframe>
+4<iframe src="fat_iframe_content.html" id="iframe4" allowfullscreen="allowfullscreen"> ></iframe>
+5<iframe src="fat_iframe_content.html" id="iframe5" allowfullscreen="allowfullscreen"> ></iframe>
+
+<script src="/meta/static/code/iframeResizer.min.js"></script>
+<script>
+iFrameResize({log:true},                                                              '#iframe2');
+iFrameResize({log:true, sizeWidth: true},                                             '#iframe3');
+iFrameResize({log:true, sizeWidth: true, widthCalculationMethod: 'rightMostElement'}, '#iframe4');
+iFrameResize({log:true, sizeWidth: true, widthCalculationMethod: 'taggedElement'},    '#iframe5');
+</script>
+</body>
+</html>

@@ -139,6 +139,15 @@ ol.lex-list > li.srend:before {
     width: 52px;
 }
 
+/* TODO:  Positioning deltas BELOW each word makes them not look great for lines that wrap.
+          What's the solution?
+          Associate each delta with the word BELOW.
+          Associate each word with the delta ABOVE.
+          Then figure out what to do with the LAST delta, between the last word and NOW.
+          Maybe make space for a pseudo "now" word.
+          The page kinda does hug the bottom margin a little close anyway.
+*/
+
 .whn-label {
     font-family: 'Arial Narrow', sans-serif;
     font-size: 0.6em;

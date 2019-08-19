@@ -84,6 +84,7 @@ flask_app.config.update(
     # NOTE:  Without this, two different fliki servers running on different subdomains
     #        could share the same set of session variables.
     # SEE:  Session domain, https://flask.palletsprojects.com/en/1.1.x/config/#SESSION_COOKIE_DOMAIN
+    # SEE:  Host-only cookie, set to False, https://stackoverflow.com/a/28320172/673991
 )
 flask_app.secret_key = secure.credentials.flask_secret_key
 
@@ -1291,7 +1292,8 @@ class AuthFliki(Auth):
         else:
             return value
 
-    def static_url(self, relative_path):
+    @classmethod
+    def static_url(cls, relative_path):
         return flask.url_for('static', filename=relative_path)
 
 
@@ -1543,7 +1545,11 @@ def contribution_home(home_page_title):
             html.body("Loading...")
             with html.footer() as foot:
                 foot.js('https://cdn.jsdelivr.net/npm/sortablejs@1.9.0/Sortable.js')
+                foot.comment("SEE:  /meta/static/code/Sortable-LICENSE.txt")
                 foot.js('https://cdn.jsdelivr.net/npm/jquery-sortablejs@1.0.0/jquery-sortable.js')
+                foot.comment("SEE:  /meta/static/code/jquery-sortable-LICENSE.txt")
+                foot.js(auth.static_url('code/iframeResizer.js'))
+                foot.comment("SEE:  /meta/static/code/iframe-resizer-LICENSE.txt")
                 foot.js_stamped(auth.static_url('code/contribution.js'))
                 verbs = []
                 verbs += auth.get_category_idns_in_order()
@@ -1566,6 +1572,7 @@ def contribution_home(home_page_title):
                         login_html=auth.login_html(),
                         cat=auth.monty_cat(),
                         WHAT_IS_THIS_THING=secure.credentials.Options.what_is_this_thing,
+                        OEMBED_PREFIX=secure.credentials.Options.oembed_prefix,
 
                         # order=auth.cat_cont_order(),
                         # order.cat - list of categories in order
@@ -1577,11 +1584,7 @@ def contribution_home(home_page_title):
                     )
                     monty.update(words_for_js)
                     script.raw_text('var MONTY = {json};\n'.format(
-                        json=json_encode(
-                            monty,
-                            indent=4,
-                            sort_keys=True,
-                        )
+                        json=json_pretty(monty)
                     ))
                     script.raw_text('js_for_contribution(window, jQuery, qoolbar, MONTY);\n')
     t_end = time.time()
@@ -1787,11 +1790,7 @@ def unslumping_home_obsolete():
                         AJAX_URL=AJAX_URL,
                         IDN_LEX=lex[lex].idn.qstring(),
                     )
-                    script.raw_text('var MONTY = {json};\n'.format(json=json.dumps(
-                        monty,
-                        sort_keys=True,
-                        indent=4,
-                    )))
+                    script.raw_text('var MONTY = {json};\n'.format(json=json_pretty(monty)))
                     script.raw_text('js_for_unslumping(window, window.$, MONTY);\n')
 
     return html.doctype_plus_html()
@@ -1872,6 +1871,9 @@ def meta_raw():
 def slam_test():
     """
     Test frequent lex create_word()'s.
+
+    This revealed that Lex.insert_word() was not thread-safe without SQL command
+    SET TRANSACTION ISOLATION LEVEL READ COMMITTED.
     """
 
     auth = AuthFliki()
@@ -2022,6 +2024,9 @@ def meta_lex():
             qc_foot = auth.lex.query_count
             with body.footer() as foot:
                 foot.js_stamped(auth.static_url('code/d3.js'))
+                # TODO:  Is d3.js here just to draw delta-time triangles?  If so replace it.
+                #        Or use it for cool stuff.
+                #        Like better drawn words or links between words!
                 foot.js_stamped(auth.static_url('code/meta_lex.js'))
                 with foot.script() as script:
                     script.raw_text('\n')
@@ -2032,11 +2037,7 @@ def meta_lex():
                         URL_HERE=auth.current_url,
                         URL_PREFIX_QUESTION=url_from_question(''),
                     )
-                    script.raw_text('var MONTY = {json};\n'.format(json=json.dumps(
-                        monty,
-                        sort_keys=True,
-                        indent=4,
-                    )))
+                    script.raw_text('var MONTY = {json};\n'.format(json=json_pretty(monty)))
                     script.raw_text('js_for_meta_lex(window, window.$, MONTY);\n')
     t_render = time.time()
     response = html.doctype_plus_html()
@@ -2545,6 +2546,186 @@ def safe_txt(w):
         return "[non-listing {}]".format(w.idn.qstring())
 
 
+NOEMBED_PATTERNS = [
+    "https?://(?:[^\\.]+\\.)?youtube\\.com/watch/?\\?(?:.+&)?v=([^&]+)",
+    "https?://(?:[^\\.]+\\.)?(?:youtu\\.be|youtube\\.com/embed)/([a-zA-Z0-9_-]+)",
+
+    "https?://(?:www\\.)?vimeo\\.com/.+",
+
+    "https?://(?:www|mobile\\.)?twitter\\.com/(?:#!/)?([^/]+)/status(?:es)?/(\\d+)",
+    "https?://twitter\\.com/.*/status/.*",
+
+    "https?://.*\\.flickr\\.com/photos/.*",
+    "https?://flic\\.kr/p/.*",
+
+    "https?://www\\.(dropbox\\.com/s/.+\\.(?:jpg|png|gif))",
+    "https?://db\\.tt/[a-zA-Z0-9]+",
+]
+
+INSTAGRAM_PATTERNS = [
+    "https?://instagram\\.com/p/.*",
+    "https?://instagr\\.am/p/.*",
+    "https?://www\\.instagram\\.com/p/.*",
+    "https?://www\\.instagr\\.am/p/.*",
+    "https?://instagram\\.com/p/.*",
+    "https?://instagr\\.am/p/.*",
+    "https?://www\\.instagram\\.com/p/.*",
+    "https?://www\\.instagr\\.am/p/.*",
+]
+
+
+@flask_app.route('/meta/oembed/<path:url>', methods=('GET', 'HEAD'))
+def oembed_html(url):
+    """Serve the iframe contents for embedded media."""
+    if matcher(url, NOEMBED_PATTERNS):
+        return noembed_render(url)
+    elif matcher(url, INSTAGRAM_PATTERNS):
+        return instagram_render(url)
+    else:
+        oembed_dict = noembed_get(url)
+        domain_stuff = urllib.parse.urlsplit(url).netloc
+        domain_printable = json.dumps(domain_stuff)
+        if 'html' in oembed_dict:
+            provider_name = oembed_dict.get('provider_name', "((unspecified))")
+            but_noembed = "Though noembed may support it. Provider: " + provider_name
+        else:
+            error = oembed_dict.get('error', "((for some reason))")
+            but_noembed = "Anyway noembed says: " + error
+        print("Unauthorized", json.dumps(url), but_noembed)
+        return error_render(
+            message="Unauthorized embed for domain {domain}.  {but_noembed}".format(
+                domain=domain_printable,
+                but_noembed=but_noembed,
+            )
+        )
+
+
+def noembed_render(url):
+    """Render and wrangle noembed-supplied html.  For use by an iframe of embedded media."""
+    oembed_dict = noembed_get(url)
+    try:
+        embeddable_html = oembed_dict['html']
+    except KeyError:
+        try:
+            return flask.Response("Noembed error: " + oembed_dict['error'], status=404)
+        except KeyError:
+            return flask.Response("Unknown response:" + json_pretty(oembed_dict), status=404)
+    else:
+        with FlikiHTML('html') as html:
+            with html.head(newlines=True) as head:
+                head.jquery(JQUERY_VERSION)
+                head.js(AuthFliki.static_url('code/iframeResizer.contentWindow.js'))
+                head.style().raw_text('''
+                    body *:first-child { display: block; }  /* avoid dumb gap at bottom of iframes */
+                    body { margin: 0; }
+                \n''')
+                head.script(type='text/javascript').raw_text('''
+                    $(document).ready(function () {
+                        setTimeout(function () {
+                            var $body = $(document.body);
+                            var $child = $body.children().first();
+                            var $grandchild = $child.children().first();
+                            
+                            $child.attr('data-iframe-width', 300);
+                            $grandchild.attr('data-iframe-width', 300);
+                            
+                            fit_width(300, $body);
+                            fit_width(300, $child);
+                            fit_width(300, $grandchild);
+                            // NOTE:  flickr.com needs the $grandchild fit,
+                            //        which is an img-tag inside an a-tag.
+                            //        Dropbox images may have the same need.
+                            
+                            fit_height(400, $body);
+                            fit_height(400, $child);
+                            fit_height(400, $grandchild);
+                            
+                            $child.css('margin', '0');
+                            // NOTE:  Remove margins in e.g. <twitter-widget>
+                                                        
+                            $('body > a').attr('target', '_blank');
+                            // NOTE:  This fixes a boneheaded flickr / Chrome issue.
+                            //        Without it, when you click on a flickr embed,
+                            //        you see a sad-faced paper emoji.
+                            //        Hovering over that you see below it:
+                            //        www.flickr.com refused to connect
+                            //        and in the javascript console you can see:
+                            //        Refused to display 'https://www.flickr.com/...' 
+                            //        in a frame because it set 'X-Frame-Options' 
+                            //        to 'sameorigin'.
+                            
+                        }, 1000);   
+                        // NOTE:  If this delay is not enough, the fancy-pants embedded html
+                        //        from the provider may not have enough time to transmogrify
+                        //        itself into whatever elements it's going to become.
+                    });
+                    
+                    function fit_width(outer_width, $inner) {
+                        if (outer_width < $inner.width()) {
+                            var new_width = outer_width;
+                            var new_height = $inner.height() * outer_width / $inner.width()
+                            $inner.height(new_height);
+                            $inner.width(new_width);   
+                            // NOTE:  Once thought I saw a clue that order matters.
+                            //        Or maybe I was just desperately trying stuff.
+                        }
+                    }
+                    
+                    function fit_height(outer_height, $inner) {
+                        if (outer_height < $inner.height()) {
+                            var new_height = outer_height;
+                            var new_width = $inner.width() * outer_height / $inner.height()
+                            $inner.width(new_width);
+                            $inner.height(new_height);
+                        }
+                    }
+                \n''')
+            with html.body(newlines=True) as body:
+                body.raw_text(embeddable_html)
+
+            return html.doctype_plus_html()
+
+
+def noembed_get(url):
+    """Get the noembed scoop on an embedded url."""
+    noembed_request = 'https://noembed.com/embed?url=' + url
+    oembed_dict =  json_get(noembed_request)
+    return oembed_dict
+
+
+def instagram_render(url):
+    """Render instagram-supplied html.  For use by an iframe of embedded media."""
+    matched = re.search(r'/p/(.*)', url)
+    if matched:
+        code = matched.group(1)
+        code = code.rstrip('/')
+        thumbnail_url = 'https://instagram.com/p/{code}/media/?size=t'.format(code=code)
+        with FlikiHTML('html') as html:
+            with html.head(newlines=True) as head:
+                head.js(AuthFliki.static_url('code/iframeResizer.contentWindow.js'))
+                head.style().raw_text('''
+                    body { margin: 0; }
+                    img { display: block; }   /* Prevents unsightly space below image. */
+                \n''')
+            with html.body(style='margin:0', newlines=True) as body:
+                thumbnail_escaped = FlikiHTML.escape(thumbnail_url)
+                with body.a(style='border:0', href=url, target='_blank') as a:
+                    a.img(src=thumbnail_escaped, **{'data-iframe-width': '300'})
+            return html.doctype_plus_html()
+    else:
+        return "Unable to decode " + json.dumps(url)
+
+
+def error_render(message):
+    """Explain why this url can't be embedded."""
+    with FlikiHTML('html') as html:
+        with html.head(newlines=True) as head:
+            head.js(AuthFliki.static_url('code/iframeResizer.contentWindow.js'))
+        with html.body(newlines=True) as body:
+            body.p(message, style='margin:0; min-width: 10em;', **{'data-iframe-width': '300'})
+        return html.doctype_plus_html()
+
+
 @flask_app.route('/<path:url_suffix>', methods=('GET', 'HEAD'))
 # SEE:  Wildcard custom converter, https://stackoverflow.com/a/33296155/673991
 # TODO:  Study HEAD-to-GET mapping, http://stackoverflow.com/q/22443245/673991
@@ -2845,6 +3026,27 @@ def ajax():
         elif action == 'anon_answer':
             return valid_response('seconds', float(seconds_until_anonymous_answer()))
 
+        # elif action == 'embed':
+        #     url = auth.form('url')
+        #     noembed_request = 'https://noembed.com/embed?url=' + url
+        #     oembed_dict = json_get(noembed_request)
+        #     if not authorized_embed(url):
+        #         domain_stuff = urllib.parse.urlsplit(url).netloc
+        #         domain_printable = json.dumps(domain_stuff)
+        #         if 'html' in oembed_dict:
+        #             provider_name = oembed_dict.get('provider_name', "((unspecified))")
+        #             but_noembed = "though noembed supports provider " + provider_name
+        #         else:
+        #             error = oembed_dict.get('error', "((for some reason))")
+        #             but_noembed = "anyway noembed says: " + error
+        #         return invalid_response(
+        #             "Unauthorized embed for {domain} {but_noembed}".format(
+        #                 domain=domain_printable,
+        #                 but_noembed=but_noembed,
+        #             )
+        #         )
+        #     return valid_response('oembed', oembed_dict)
+
         else:
             return invalid_response("Unknown action " + action)
 
@@ -2892,6 +3094,45 @@ def ajax():
         )
 
 
+def json_get(url):
+    """HTTP get a json resource.  Decode to unicode.  Output dict, list, or whatever."""
+    with urllib.request.urlopen(url) as response:
+        response_headers = dict(response.info())
+        # EXAMPLE:  {
+        #     'Server': 'nginx/1.10.3',
+        #     'Content-Type': 'text/javascript; charset=utf-8',
+        #     'Via': '1.1 varnish',
+        #     'Content-Length': '608',
+        #     'Accept-Ranges': 'bytes',
+        #     'Date': 'Sun, 11 Aug 2019 15:58:37 GMT',
+        #     'Age': '13952',
+        #     'Connection': 'close',
+        #     'X-Served-By': 'cache-mdw17338-MDW, cache-dfw18648-DFW',
+        #     'X-Cache': 'MISS, HIT',
+        #     'X-Cache-Hits': '0, 1',
+        #     'X-Timer': 'S1565539118.670819,VS0,VE2',
+        #     'Access-Control-Allow-Headers': 'Origin, Accept, Content-Type',
+        #     'Access-Control-Allow-Methods': 'GET',
+        #     'Access-Control-Allow-Origin': '*'
+        # }
+        try:
+            content_type = response_headers['Content-Type']   # possible KeyError
+            charset_match = re.search(r'charset=(.*)', content_type)
+            charset = charset_match.group(1)   # possible AttributeError or IndexError
+        except (KeyError, AttributeError, IndexError):
+            charset = 'utf-8'
+        response_json = response.read().decode(charset)
+        # THANKS:  Bytes read, Unicode json'ed, https://stackoverflow.com/q/6862770/673991
+
+    response_native = json.loads(response_json)
+    return response_native
+
+
+def matcher(url, pattern_list):
+    any_pattern_matched = any(re.search(p, url) for p in pattern_list)
+    return any_pattern_matched
+
+
 def valid_response(name, value):
     return json_encode(dict([
         ('is_valid', True),
@@ -2922,6 +3163,14 @@ def json_encode(x, **kwargs):
         **kwargs
         # NOTE:  If there APPEAR to be newlines when viewed in a browser,
         #        it may just be the browser wrapping lines on the commas.
+    )
+
+
+def json_pretty(x):
+    return json_encode(
+        x,
+        sort_keys=True,
+        indent=4,
     )
 
 

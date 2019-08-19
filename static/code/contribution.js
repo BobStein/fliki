@@ -30,6 +30,7 @@
  * @param MONTY.login_html
  * @param MONTY.me_idn
  * @param MONTY.me_txt
+ * @param MONTY.OEMBED_PREFIX
  * @param MONTY.WHAT_IS_THIS_THING
  * @param MONTY.u
  * @param MONTY.u.is_admin
@@ -50,15 +51,17 @@
  */
 function js_for_contribution(window, $, qoolbar, MONTY) {
 
-    var UNICODE = {
-        NBSP: '\u00A0',
-        EN_SPACE: '\u2002',
-        EM_SPACE: '\u2003',
-        VERTICAL_ELLIPSIS: '\u22EE',
-        BLACK_RIGHT_POINTING_TRIANGLE: '\u25B6',
-        BLACK_DOWN_POINTING_TRIANGLE: '\u25BC'
-        // THANKS:  https://www.fileformat.info/info/unicode/char/
-    };
+    var DO_LONG_PRESS_EDIT = false;
+    // NOTE:  Long press seems like too easy a way to trigger an edit.
+
+    var DO_DOCUMENT_CLICK_ENDS_CLEAN_EDIT = false;
+    // NOTE:  Clicking on the document background ends a non-dirty edit.
+    //        Makes more sense with DO_LONG_PRESS_EDIT.  Less so without it.
+
+    var ANON_V_ANON_BLURB = (
+        "You're here anonymously. " +
+        "Log in to see anonymous contributions other than yours."
+    );
 
     // noinspection JSUnusedLocalSymbols
     var MOVE_AFTER_TARGET = 1,   // SortableJS shoulda defined these
@@ -70,10 +73,15 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
     var MOUSE_BUTTON_LEFT = 1;   // jQuery shoulda defined this
     // SEE:  jQuery event.which, https://api.jquery.com/event.which/
 
-    var ANON_V_ANON_BLURB = (
-        "You're here anonymously. " +
-        "Log in to see anonymous contributions other than yours."
-    );
+    var UNICODE = {
+        NBSP: '\u00A0',
+        EN_SPACE: '\u2002',
+        EM_SPACE: '\u2003',
+        VERTICAL_ELLIPSIS: '\u22EE',
+        BLACK_RIGHT_POINTING_TRIANGLE: '\u25B6',
+        BLACK_DOWN_POINTING_TRIANGLE: '\u25BC'
+        // THANKS:  https://www.fileformat.info/info/unicode/char/
+    };
 
     var me_name;
     var me_possessive;
@@ -104,13 +112,17 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
     var WIDTH_MAX_EM = {
         soft: 15,         // below the hard-max, display as is.
         hard: 20,         // between hard and extreme-max, limit to hard-max.
+                          // (good reason to have a gap here: minimize wrapping)
         extreme: 25       // above extreme-max, display at soft-max.
     };
     var HEIGHT_MAX_EM = {
-        soft: 7,         // below the hard-max, display as is.
-        hard: 10,         // between hard and extreme-max, limit to hard-max.
+        soft: 7,          // below the hard-max, display as is.
+        hard: 15,         // between hard and extreme-max, limit to hard-max.
+                          // (no good reason to have a gap here: it's just
+                          // annoying to show a tiny bit scrolled out of view)
         extreme: 15       // above extreme-max, display at soft-max.
     };
+    // var WIDTH_TARGET_EM = 20;
 
     var is_editing_some_contribution = false;   // TODO:  $(window.document.body).hasClass('edit-somewhere')
     // var is_dirty = false;
@@ -142,11 +154,14 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
             .on('click', '.save-bar .cancel', contribution_cancel)
             .on('click', '.save-bar .discard', contribution_cancel)
             .on('click', '.save-bar .save', contribution_save)
-            .on('click', attempt_content_edit_abandon)
         ;
 
-        var DO_LONG_PRESS_EDIT = false;
-        // NOTE:  Long press was too easy a way to trigger an edit.
+        if (DO_DOCUMENT_CLICK_ENDS_CLEAN_EDIT) {
+            $(window.document)
+                .on('click', attempt_content_edit_abandon)
+            ;
+        }
+
         if (DO_LONG_PRESS_EDIT) {
             long_press('.sup-contribution', contribution_edit);
         }
@@ -157,13 +172,58 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
         //        when the swiping happens to stray outside the div.contribution.
 
         $(window).on('beforeunload', function hesitate_to_unload_if_dirty_edit() {
-            return attempt_content_edit_abandon() ? undefined : "Discard?";
+            return is_page_dirty() ? "Discard?" : undefined;
         });
+        // NOTE:  This helps prevent a user from losing work by inadvertently closing the page
+        //        while in the middle of an entry or edit.
+
         caption_should_track_text_width();
         post_it_button_disabled_or_not();
         initialize_contribution_sizes();
         settle_down();
+        $(window.document).on('webkitfullscreenchange mozfullscreenchange fullscreenchange', function () {
+            // noinspection JSUnresolvedVariable
+            var isFullScreen = window.document.fullScreen ||
+                               window.document.mozFullScreen ||
+                               window.document.webkitIsFullScreen;
+            var which_way = isFullScreen ? "ENTER" : "EXIT";
+            console.debug(which_way, "full screen");
+        });
+        setTimeout(function () {
+            console.debug(
+                "Unchecked runtime.lastError: Could not establish connection? Receiving end does not exist?",
+                "<--- Ignore these if you get them."
+            );
+            $('.render-bar iframe').iFrameResize({
+                log: true,
+                sizeWidth: true,
+                sizeHeight: true,
+                widthCalculationMethod: 'taggedElement'
+            });
+        }, 1000);
+        // NOTE:  If this delay is not enough, I don't think anything too bad happens.
+        //        You might see briefly a wafer-thin iframe before it gives its children
+        //        the data-iframe-width attribute that taggedElement needs.
+        //        That has to happen after a delay due to provider tricks with the
+        //        embedded html (see noembed_render()).
+        // NOTE:  Intermittent error made 2 of 3 youtube videos inoperative:
+        //        iframeResizer.min.js:8 Failed to execute 'postMessage' on 'DOMWindow':
+        //        The target origin provided ('...the proper domain...')
+        //        does not match the recipient window's origin ('null').
     });
+
+    /**
+     * Is there unfinished entry or editing on the page?
+     *
+     * @return {boolean} - true = confirm exit, false = exit harmless, don't impede
+     */
+    function is_page_dirty() {
+        return (
+            $('#enter_some_text').val().length > 0 ||
+            $('#enter_a_caption').val().length > 0 ||
+            ! attempt_content_edit_abandon()
+        );
+    }
 
     function contribution_edit(evt) {
         var $cont = $cont_of(this);
@@ -542,6 +602,9 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
 
     function contributions_becoming_visible_for_the_first_time_maybe() {
         initialize_contribution_sizes();
+        $('.render-bar iframe').each(function () {
+            this.iFrameResizer.resize();
+        });
     }
 
     function new_contribution_just_created() {
@@ -655,19 +718,6 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
         return $cat_of(element).attr('id') === MONTY.IDN.CAT_ANON.toString();
     }
 
-    /**
-     * Console log the first words of each contribution, in each category.
-     */
-    function console_order_report() {
-        // console.log("monty", order_report(MONTY.order));
-        console.log(order_report(reconstitute_order_from_dom()));
-        // if (has(MONTY.order, 'error_messages')) {
-        //     looper(MONTY.order.error_messages, function (_, error_message) {
-        //         console.warn("Monty order error:", error_message);
-        //     });
-        // }
-    }
-
     function post_it_button_disabled_or_not() {
         // if (
         //     $('#enter_some_text').val().length === 0 ||
@@ -774,9 +824,13 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
         }
     }
 
+    var auth_log;   // Record all the decisions made by is_authorized().
+
     /**
      * Build the body from scratch.
      */
+    // TODO:  Faster bypassing jQuery, https://howchoo.com/g/mmu0nguznjg/
+    //        learn-the-slow-and-fast-way-to-append-elements-to-the-dom
     function build_dom() {
         $(window.document.body).empty();
         $(window.document.body).addClass('dirty-nowhere');
@@ -867,6 +921,7 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
             }
         }
 
+        auth_log = [];
         looper(MONTY.w, function (_, word) {
             var $sup;
             var $cont;
@@ -875,15 +930,17 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
                 switch (word.vrb) {
                 case MONTY.IDN.CONTRIBUTE:
                 case MONTY.IDN.UNSLUMP_OBSOLETE:
-                    $sup = build_contribution_dom(word);
-                    $cont = $sup.find('.contribution');
-                    $caption_span = $sup.find('.caption-span');
-                    $cont.attr('data-owner', word.sbj);
-                    $caption_span.attr('data-owner', word.sbj);
-                    $sup_contributions[word.idn] = $sup;
-                    var cat = original_cat(word);
-                    conts_in_cat[cat].unshift(word.idn);
-                    cat_of_cont[word.idn] = cat;
+                    if (query_string_filter(word)) {
+                        $sup = build_contribution_dom(word);
+                        $cont = $sup.find('.contribution');
+                        $caption_span = $sup.find('.caption-span');
+                        $cont.attr('data-owner', word.sbj);
+                        $caption_span.attr('data-owner', word.sbj);
+                        $sup_contributions[word.idn] = $sup;
+                        var cat = original_cat(word);
+                        conts_in_cat[cat].unshift(word.idn);
+                        cat_of_cont[word.idn] = cat;
+                    }
                     break;
                 case MONTY.IDN.CAPTION:
                     if (has($sup_contributions, word.obj)) {
@@ -987,24 +1044,9 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
                 }
             }
         });
+        console.log("Authorizations", auth_log.join("\n"));
 
         console.log("order_cont", conts_in_cat, cat_of_cont);
-
-        // looper($sup_contributions, function (cont_idn, $sup_cont) {
-        //     var cat = cat_of_cont[cont_idn];
-        //     console.assert(is_defined(cat), cont_idn);
-        //     $categories[cat].append($sup_cont);
-        // });
-
-        // var $sup_contributions = {};
-        // looper(MONTY.words.cont, function (_, word) {
-        //     $sup_contributions[word.idn] = build_contribution_dom(word);
-        // });
-        // looper(MONTY.order.cat, function (_, cat) {
-        //     looper(MONTY.order.cont[cat], function (_, cont) {
-        //         $categories[cat].append($sup_contributions[cont]);
-        //     });
-        // });
 
         looper(conts_in_cat, function (cat, conts) {
             looper(conts, function (_, cont) {
@@ -1015,6 +1057,37 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
         looper(MONTY.cat.order, function (_, idn) {
             $(window.document.body).append($sup_categories[idn]);
         });
+
+        // NOTE:  Now the contributions are in the DOM.
+
+        $('.sup-contribution').each(function () {
+            render_bar($(this));
+        });
+    }
+
+    function query_string_filter(word) {
+        var query_string = window.location.search;
+        if (query_string === '') {
+            return true;
+        }
+        if (typeof window.URLSearchParams !== 'function') {
+            console.error("This browser doesn't support URLSearchParams.");
+            return true;
+        }
+        var query_params = new window.URLSearchParams(query_string);
+        var cont_filter = query_params.get('cont');
+        if (cont_filter === null) {
+            return true;
+        } else {
+            var cont_array = cont_filter.split(',');
+            // noinspection RedundantIfStatementJS
+            if (has(cont_array, word.idn.toString())) {
+                return true;
+            } else {
+                console.log("Skipping", word.idn.toString(), "in", cont_array);
+                return false;
+            }
+        }
     }
 
     function original_cat(word) {
@@ -1078,9 +1151,9 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
         var let_owner_change = ! did_i_change_last && ! did_admin_change_last && is_change_owner;
         var ok = is_change_mine || let_admin_change || let_owner_change;
         if (ok) {
-            console.log(word.idn + ". Yes " + user_name_short(word.sbj) + " may " + action + " " + word.obj + ", work of " + user_name_short(owner));
+            auth_log.push(word.idn + ". Yes " + user_name_short(word.sbj) + " may " + action + " " + word.obj + ", work of " + user_name_short(owner));
         } else {
-            console.log(word.idn + ". Nope " + user_name_short(word.sbj) + " won't " + action + " " + word.obj + ", work of " + user_name_short(owner));
+            auth_log.push(word.idn + ". Nope " + user_name_short(word.sbj) + " won't " + action + " " + word.obj + ", work of " + user_name_short(owner));
         }
         return ok;
     }
@@ -1138,15 +1211,20 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
      */
     function build_contribution_dom(contribution_word) {
         var $sup_contribution = $('<div>', {class: 'sup-contribution word'});
-        var $contribution = $('<div>', {class: 'contribution size-adjust-once', id: contribution_word.idn});
+        var $contribution = $('<div>', {
+            id: contribution_word.idn,
+            class: 'contribution size-adjust-once'
+        });
         $sup_contribution.append($contribution);
         $contribution.text(leading_spaces_indent(contribution_word.txt));
+        var $render_bar = $('<div>', {class: 'render-bar'});
         var $caption_bar = $('<div>', {class: 'caption-bar'});
         var $save_bar = $('<div>', {class: 'save-bar'});
         $save_bar.append($('<button>', {class: 'edit'}).text('edit'));
         $save_bar.append($('<button>', {class: 'cancel'}).text('cancel'));
         $save_bar.append($('<button>', {class: 'save'}).text('save'));
         $save_bar.append($('<button>', {class: 'discard'}).text('discard'));
+        $sup_contribution.append($render_bar);
         $sup_contribution.append($caption_bar);
         $sup_contribution.append($save_bar);
         var $grip = $('<span>', {class: 'grip'});
@@ -1162,7 +1240,52 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
         if (contribution_word.was_submitted_anonymous) {
             $sup_contribution.addClass('was-submitted-anonymous');
         }
+        // render_bar($sup_contribution);
         return $sup_contribution;
+    }
+
+    function render_bar($sup_cont) {
+        var cont_txt = $sup_cont.find('.contribution').text();
+        var cont_idn = $sup_cont.find('.contribution').attr('id');
+        can_i_embed_it(cont_txt, function embed_parsed(yes, oembed) {
+            if (yes) {
+                render_iframe($sup_cont, oembed, cont_txt, cont_idn);
+            } else {
+                render_text($sup_cont);
+            }
+        });
+    }
+
+    function render_text($sup_cont) {
+        var $render_bar = $sup_cont.find('.render-bar');
+        $sup_cont.removeClass('render-video');
+        $render_bar.empty();
+    }
+
+    function render_iframe($sup_cont, oembed, url, cont_idn) {
+        // console.log("render iframe", oembed.width, oembed.height);
+        var $render_bar = $sup_cont.find('.render-bar');
+        $sup_cont.addClass('render-video');
+        var $iframe = $('<iframe>', {
+            id: 'iframe_' + cont_idn,
+            style: 'width: 300px;',   // This becomes the minimum render-bar width.
+            src: MONTY.OEMBED_PREFIX + encodeURIComponent(url)
+        });
+        $render_bar.html($iframe);
+
+    }
+
+    function could_be_url(text) {
+        return starts_with(text, 'http://') || starts_with(text, 'https://');
+    }
+
+    function can_i_embed_it(text, callback) {
+        if (could_be_url(text)) {
+            callback(true, {});
+        } else {
+            callback(false);
+        }
+
     }
 
     /**
@@ -1257,16 +1380,14 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
     console.assert("foo" === first_word(" foo bar "));
     console.assert("" === first_word(""));
 
-
     /**
      * After major changes:
      *
-     * 1. Make sure reconstituted_order() agrees with ajax order.
-     * 2. Update MONTY.order if so.
-     * 3. Refresh the how-many numbers in anti-valved fields (stuff that shows when closed).
+     * 1. log the first words of each contribution, in each category.
+     * 2. Refresh the how-many numbers in anti-valved fields (stuff that shows when closed).
      */
     function settle_down() {
-        console_order_report();
+        console.log(order_report(reconstitute_order_from_dom()));
         refresh_how_many();
     }
 
@@ -1286,8 +1407,9 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
 
     // noinspection JSUnusedLocalSymbols
     /**
-     * Report some kerfuffle to the server.
+     * Report some malfeasance or kerfuffle to the server.
      */
+    // TODO:  In the timeless words of Captain Herbert Sobel:  Find some.
     function flub(report) {
         qoolbar.sentence({
             vrb_idn: MONTY.IDN.FIELD_FLUB,
@@ -1558,4 +1680,17 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
     }
     console.assert('number' === type_name(3));
     console.assert('Date' === type_name(new Date()));
+
+    /**
+     * Does a long string start with a short string?  Case sensitive.
+     *
+     * @param string {string}
+     * @param str {string}
+     * @return {boolean}
+     */
+    function starts_with(string, str) {
+        return string.substr(0, str.length) === str;
+    }
+    console.assert( true === starts_with("string", "str"));
+    console.assert(false === starts_with("string", "ing"));
 }
