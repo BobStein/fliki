@@ -573,8 +573,15 @@ authomatic_global = authomatic.Authomatic(
             'class_': authomatic.providers.oauth2.Google,
             'consumer_key': secure.credentials.google_client_id,
             'consumer_secret': secure.credentials.google_client_secret,
-            'scope': authomatic.providers.oauth2.Google.user_info_scope + ['https://gdata.youtube.com'],
-            # SEE:  get a users's YouTube uploads, https://stackoverflow.com/a/21987075/673991
+
+            'scope':
+                authomatic.providers.oauth2.Google.user_info_scope
+                # + ['https://gdata.youtube.com']
+                # SEE:  get a users's YouTube uploads, https://stackoverflow.com/a/21987075/673991
+                # The gdata.youtube.com field means that logging in for the first time
+                # asks if you want to allow the app to "Manage your YouTube account"
+            ,
+
             'id': 42,
             # NOTE:  See exception in core.py Credentials.serialize() ~line 810:
             #            "To serialize credentials you need to specify a"
@@ -586,6 +593,7 @@ authomatic_global = authomatic.Authomatic(
     secure.credentials.authomatic_secret_key,
 )
 STALE_LOGIN_ERROR = 'Unable to retrieve stored state!'
+
 
 login_manager = flask_login.LoginManager()
 # noinspection PyTypeChecker
@@ -1242,6 +1250,12 @@ class AuthFliki(Auth):
 
     def authenticated_id(self):
         return self.flask_user.get_id()
+        # the_id = self.flask_user.get_id()
+        # assert isinstance(the_id, six.text_type), type_name(the_id) + " - " + repr(the_id)
+        # if the_id == 'None':   # HACK:  Where did this string come from?
+        #     return None
+        # else:
+        #     return the_id
 
     @property
     def current_url(self):
@@ -1386,6 +1400,7 @@ def login():
         else:
             if hasattr(login_result, 'user') and login_result.user is not None:
                 login_result.user.update()
+                assert login_result.user.id is not None
                 flask_user = GoogleFlaskUser(login_result.user.id)
                 qiki_user = lex.word_google_class(login_result.user.id)
                 picture_parts = urllib.parse.urlsplit(login_result.user.picture)
@@ -1393,8 +1408,8 @@ def login():
                 # THANKS:  Parse URL query-string, http://stackoverflow.com/a/21584580/673991
                 picture_size_string = picture_dict.get('sz', ['0'])[0]
                 avatar_width = qiki.Number(picture_size_string)   # width?  height?  size??
-                avatar_url = login_result.user.picture
-                display_name = login_result.user.name
+                avatar_url = login_result.user.picture or ''
+                display_name = login_result.user.name or ''
                 print("Logging in", qiki_user.index, qiki_user.idn.qstring())
                 # EXAMPLE:   Logging in 0q8A_059E058E6A6308C8B0 0q82_15__8A059E058E6A6308C8B0_1D0B00
                 lex[lex](lex.IDN.ICONIFY, use_already=True)[qiki_user.idn] = avatar_width, avatar_url

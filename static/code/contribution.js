@@ -111,9 +111,9 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
     // Config options for size_adjust()
     var WIDTH_MAX_EM = {
         soft: 15,         // below the hard-max, display as is.
-        hard: 20,         // between hard and extreme-max, limit to hard-max.
+        hard: 40,         // between hard and extreme-max, limit to hard-max.
                           // (good reason to have a gap here: minimize wrapping)
-        extreme: 25       // above extreme-max, display at soft-max.
+        extreme: 45       // above extreme-max, display at soft-max.
     };
     var HEIGHT_MAX_EM = {
         soft: 7,          // below the hard-max, display as is.
