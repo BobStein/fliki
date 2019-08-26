@@ -1406,9 +1406,24 @@ def login():
                 response.set_data("Whoops")
         else:
             if hasattr(login_result, 'user'):
-                if login_result.user is not None:
-                    if login_result.user.id is not None:
+                if login_result.user is None:
+                    print("None user!")
+                else:
+                    if login_result.user.id is None or login_result.user.name is None:
+                        print(
+                            "Fairly routine, user needed updating",
+                            repr(login_result.user.id),
+                            repr(login_result.user.name)
+                        )
                         login_result.user.update()
+                        # SEE:  about calling user.update() only if id or name is missing,
+                        #       http://authomatic.github.io/authomatic/#log-the-user-in
+                    if login_result.user.id is None or login_result.user.name is None:
+                        print(
+                            "Freakish.  Updated, but user id:", repr(login_result.user.id),
+                            "name:", repr(login_result.user.name)
+                        )
+                    else:
                         flask_user = GoogleFlaskUser(login_result.user.id)
                         qiki_user = lex.word_google_class(login_result.user.id)
                         picture_parts = urllib.parse.urlsplit(login_result.user.picture)
@@ -1427,15 +1442,12 @@ def login():
                         # TODO:  Why does Chrome put a # on the end of this URL (empty fragment)?
                         # SEE:  Fragment on redirect, https://stackoverflow.com/q/2286402/673991
                         # SEE:  Fragment of resource, https://stackoverflow.com/a/5283528/673991
-                    else:
-                        print("None user id!")
-                else:
-                    print("None user!")
             else:
                 print("No user!")
             if login_result.provider:
                 print("Provider:", repr(login_result.provider))
     else:
+        '''Is this where anonymous users go?'''
         pass
         # print("not logged in", repr(login_result))
         # EXAMPLE:  None (e.g. with extraneous variable on request query, e.g. ?then_url=...)
