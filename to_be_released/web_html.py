@@ -248,9 +248,9 @@ class WebHTML(richard_jones_html.HTML):
              body.jquery()
                 1st try:  http://ajax.googleapis.com/ajax/libs/jquery/latest/jquery.js
 
-             body.jquery(version='3.1.1', local_directory='/static/code')
-                1st try:  http://ajax.googleapis.com/ajax/libs/jquery/3.1.1/jquery.js
-                2nd try:  /static/code/jquery-3.1.1.js
+             body.jquery(version='3.2.1', local_directory='/static/code')
+                1st try:  http://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.js
+                2nd try:  /static/code/jquery-3.2.1.js
         """
         js_parameters = dict(
             src='//ajax.googleapis.com/ajax/libs/jquery/{version}/jquery{{dot_min}}.js'.format(

@@ -1,0 +1,20 @@
+/* embed_content.css - for oembed iframe */
+
+body *:first-child {
+    display: block;
+    /* NOTE:  Avoid gap at bottom of iframe. */
+}
+
+body {
+    margin: 0;
+    /* NOTE:  The padding in the embedded elements is enough. */
+}
+
+.twitter-tweet {   /* <twitter-widget> in most browsers, <iframe> in IE11 */
+    margin-top:    0 !important;
+    margin-bottom: 0 !important;
+    /* NOTE:  Eliminate margins in the element's style */
+
+    overflow: auto;
+    /* NOTE:  scrollbars if needed, hopefully only overflow-y */
+}

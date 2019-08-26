@@ -47,7 +47,7 @@ import to_be_released.web_html as web_html
 
 
 AJAX_URL = '/meta/ajax'
-JQUERY_VERSION = '3.3.1'   # https://developers.google.com/speed/libraries/#jquery
+JQUERY_VERSION = '3.4.1'   # https://developers.google.com/speed/libraries/#jquery
 JQUERYUI_VERSION = '1.12.1'   # https://developers.google.com/speed/libraries/#jquery-ui
 DO_MINIFY = False
 config_names = ('AJAX_URL', 'JQUERY_VERSION', 'JQUERYUI_VERSION')
@@ -531,6 +531,7 @@ class UNICODE(object):
     BLACK_RIGHT_POINTING_TRIANGLE = u'\u25B6'
     VERTICAL_ELLIPSIS = u'\u22EE'   # 3 vertical dots, aka &vellip; &#x022ee; &#8942;
     VERTICAL_FOUR_DOTS = u'\u205E'   # 4 vertical dots
+    HORIZONTAL_LINE_EXTENSION = u'\u23AF'
 
 
 # TODO:  Combine classes, e.g. GoogleUser(flask_login.UserMixin, qiki.Listing)
@@ -1252,10 +1253,13 @@ class AuthFliki(Auth):
         return self.flask_user.get_id()
         # the_id = self.flask_user.get_id()
         # assert isinstance(the_id, six.text_type), type_name(the_id) + " - " + repr(the_id)
-        # if the_id == 'None':   # HACK:  Where did this string come from?
+        # if the_id == 'None':
         #     return None
         # else:
         #     return the_id
+        # TODO:  Where did the 'None' STRING come from?
+        #        Looks as if get_id() converts to a string
+        #        Did the original None come from
 
     @property
     def current_url(self):
@@ -1346,6 +1350,9 @@ def get_then_url():
     """Get next URL from session variable.  Default to home."""
     then_url_default = flask.url_for('home_or_root_directory')
     then_url_actual = flask.session.get('then_url', then_url_default)
+    # TODO:  Make this work better if a user has multiple tabs open at once.
+    #        sessionStorage?
+    # SEE:  Tab-specific user data, https://stackoverflow.com/q/27137562/673991
     return then_url_actual
 
 
@@ -1398,27 +1405,32 @@ def login():
                 print("Whoops")
                 response.set_data("Whoops")
         else:
-            if hasattr(login_result, 'user') and login_result.user is not None:
-                login_result.user.update()
-                assert login_result.user.id is not None
-                flask_user = GoogleFlaskUser(login_result.user.id)
-                qiki_user = lex.word_google_class(login_result.user.id)
-                picture_parts = urllib.parse.urlsplit(login_result.user.picture)
-                picture_dict = urllib.parse.parse_qs(picture_parts.query)
-                # THANKS:  Parse URL query-string, http://stackoverflow.com/a/21584580/673991
-                picture_size_string = picture_dict.get('sz', ['0'])[0]
-                avatar_width = qiki.Number(picture_size_string)   # width?  height?  size??
-                avatar_url = login_result.user.picture or ''
-                display_name = login_result.user.name or ''
-                print("Logging in", qiki_user.index, qiki_user.idn.qstring())
-                # EXAMPLE:   Logging in 0q8A_059E058E6A6308C8B0 0q82_15__8A059E058E6A6308C8B0_1D0B00
-                lex[lex](lex.IDN.ICONIFY, use_already=True)[qiki_user.idn] = avatar_width, avatar_url
-                lex[lex](lex.IDN.NAME, use_already=True)[qiki_user.idn] = display_name
-                flask_login.login_user(flask_user)
-                return flask.redirect(get_then_url())
-                # TODO:  Why does Chrome put a # on the end of this URL (empty fragment)?
-                # SEE:  Fragment on redirect, https://stackoverflow.com/q/2286402/673991
-                # SEE:  Fragment of resource, https://stackoverflow.com/a/5283528/673991
+            if hasattr(login_result, 'user'):
+                if login_result.user is not None:
+                    if login_result.user.id is not None:
+                        login_result.user.update()
+                        flask_user = GoogleFlaskUser(login_result.user.id)
+                        qiki_user = lex.word_google_class(login_result.user.id)
+                        picture_parts = urllib.parse.urlsplit(login_result.user.picture)
+                        picture_dict = urllib.parse.parse_qs(picture_parts.query)
+                        # THANKS:  Parse URL query-string, http://stackoverflow.com/a/21584580/673991
+                        picture_size_string = picture_dict.get('sz', ['0'])[0]
+                        avatar_width = qiki.Number(picture_size_string)   # width?  height?  size??
+                        avatar_url = login_result.user.picture or ''
+                        display_name = login_result.user.name or ''
+                        print("Logging in", qiki_user.index, qiki_user.idn.qstring())
+                        # EXAMPLE:   Logging in 0q8A_059E058E6A6308C8B0 0q82_15__8A059E058E6A6308C8B0_1D0B00
+                        lex[lex](lex.IDN.ICONIFY, use_already=True)[qiki_user.idn] = avatar_width, avatar_url
+                        lex[lex](lex.IDN.NAME, use_already=True)[qiki_user.idn] = display_name
+                        flask_login.login_user(flask_user)
+                        return flask.redirect(get_then_url())
+                        # TODO:  Why does Chrome put a # on the end of this URL (empty fragment)?
+                        # SEE:  Fragment on redirect, https://stackoverflow.com/q/2286402/673991
+                        # SEE:  Fragment of resource, https://stackoverflow.com/a/5283528/673991
+                    else:
+                        print("None user id!")
+                else:
+                    print("None user!")
             else:
                 print("No user!")
             if login_result.provider:
@@ -1550,6 +1562,8 @@ def meta_contrib():
 def contribution_home(home_page_title):
     t_start = time.time()
     auth = AuthFliki()
+    if not auth.is_online:
+        return "lex offline"
     q_start = auth.lex.query_count
     # auth.hit(auth.current_path)   Commented out to suppress early churn
     if auth.is_enough_anonymous_patience(MINIMUM_SECONDS_BETWEEN_ANONYMOUS_QUESTIONS):
@@ -1563,8 +1577,9 @@ def contribution_home(home_page_title):
                 foot.comment("SEE:  /meta/static/code/Sortable-LICENSE.txt")
                 foot.js('https://cdn.jsdelivr.net/npm/jquery-sortablejs@1.0.0/jquery-sortable.js')
                 foot.comment("SEE:  /meta/static/code/jquery-sortable-LICENSE.txt")
-                foot.js(auth.static_url('code/iframeResizer.js'))
-                foot.comment("SEE:  /meta/static/code/iframe-resizer-LICENSE.txt")
+                # foot.js(auth.static_url('code/iframeResizer.js'))
+                # foot.comment("SEE:  /meta/static/code/iframe-resizer-LICENSE.txt")
+                foot.js('https://cdn.jsdelivr.net/npm/iframe-resizer@4.1.1/js/iframeResizer.min.js')
                 foot.js_stamped(auth.static_url('code/contribution.js'))
                 verbs = []
                 verbs += auth.get_category_idns_in_order()
@@ -1587,7 +1602,7 @@ def contribution_home(home_page_title):
                         login_html=auth.login_html(),
                         cat=auth.monty_cat(),
                         WHAT_IS_THIS_THING=secure.credentials.Options.what_is_this_thing,
-                        OEMBED_PREFIX=secure.credentials.Options.oembed_prefix,
+                        OEMBED_CLIENT_PREFIX=secure.credentials.Options.oembed_client_prefix,
 
                         # order=auth.cat_cont_order(),
                         # order.cat - list of categories in order
@@ -2589,7 +2604,7 @@ INSTAGRAM_PATTERNS = [
 ]
 
 
-@flask_app.route(secure.credentials.Options.oembed_prefix, methods=('GET', 'HEAD'))
+@flask_app.route(secure.credentials.Options.oembed_server_prefix, methods=('GET', 'HEAD'))
 def oembed_html():
     """
     Serve the iframe contents for embedded media.
@@ -2607,8 +2622,6 @@ def oembed_html():
         return instagram_render(url)
     else:
         oembed_dict = noembed_get(url)
-        domain_stuff = urllib.parse.urlsplit(url).netloc
-        domain_printable = json.dumps(domain_stuff)
         if 'html' in oembed_dict:
             provider_name = oembed_dict.get('provider_name', "((unspecified))")
             but_noembed = "Though noembed may support it. Provider: " + provider_name
@@ -2617,8 +2630,8 @@ def oembed_html():
             but_noembed = "Anyway noembed says: " + error
         print("Unauthorized", json.dumps(url), but_noembed)
         return error_render(
-            message="Unauthorized embed for domain {domain}.  {but_noembed}".format(
-                domain=domain_printable,
+            message="{domain} - unsupported domain.  {but_noembed}".format(
+                domain=json.dumps(domain_from_url(url)),
                 but_noembed=but_noembed,
             )
         )
@@ -2636,81 +2649,96 @@ def noembed_render(url):
             return flask.Response("Unknown response:" + json_pretty(oembed_dict), status=404)
     else:
         with FlikiHTML('html') as html:
+            domain = domain_from_url(url)
             with html.head(newlines=True) as head:
-                head.jquery(JQUERY_VERSION)
-                head.js(AuthFliki.static_url('code/iframeResizer.contentWindow.js'))
-                head.style().raw_text('''
-                    body *:first-child { display: block; }  /* avoid dumb gap at bottom of iframes */
-                    body { margin: 0; }
-                \n''')
-                head.script(type='text/javascript').raw_text('''
-                    $(document).ready(function () {
-                        setTimeout(function () {
-                            var $body = $(document.body);
-                            var $child = $body.children().first();
-                            var $grandchild = $child.children().first();
-                            
-                            $child.attr('data-iframe-width', 300);
-                            $grandchild.attr('data-iframe-width', 300);
-                            
-                            fit_width(300, $body);
-                            fit_width(300, $child);
-                            fit_width(300, $grandchild);
-                            // NOTE:  flickr.com needs the $grandchild fit,
-                            //        which is an img-tag inside an a-tag.
-                            //        Dropbox images may have the same need.
-                            
-                            fit_height(400, $body);
-                            fit_height(400, $child);
-                            fit_height(400, $grandchild);
-                            
-                            $child.css('margin', '0');
-                            // NOTE:  Remove top & bottom margins
-                            //        in e.g. a twitter-widget element.
-                            //        But this doesn't work in IE11.  Shocked I am.
-                                                        
-                            $('body > a').attr('target', '_blank');
-                            // NOTE:  This fixes a boneheaded flickr issue.
-                            //        (Which may foul up only in Chrome, didn't check.)
-                            //        Without it, when you click on a flickr embed,
-                            //        you see a sad-faced paper emoji.
-                            //        Hovering over that you see below it:
-                            //        www.flickr.com refused to connect
-                            //        and in the javascript console you can see:
-                            //        Refused to display 'https://www.flickr.com/...' 
-                            //        in a frame because it set 'X-Frame-Options' 
-                            //        to 'sameorigin'.
-                            //        Twitter, Dropbox, Instagram already do this
-                            //        target=_blank which pops up a new browser tab.
-                            
-                        }, 1000);   
-                        // NOTE:  If this delay is not enough, the fancy-pants embedded html
-                        //        from the provider may not have enough time to transmogrify
-                        //        itself into whatever elements it's going to become.
-                    });
-                    
-                    function fit_width(outer_width, $inner) {
-                        if (outer_width < $inner.width()) {
-                            var new_width = outer_width;
-                            var new_height = $inner.height() * outer_width / $inner.width()
-                            $inner.height(new_height);
-                            $inner.width(new_width);   
-                            // NOTE:  Once thought I saw a clue that order matters.
-                            //        Or maybe I was just desperately trying stuff.
-                        }
-                    }
-                    
-                    function fit_height(outer_height, $inner) {
-                        if (outer_height < $inner.height()) {
-                            var new_height = outer_height;
-                            var new_width = $inner.width() * outer_height / $inner.height()
-                            $inner.width(new_width);
-                            $inner.height(new_height);
-                        }
-                    }
-                \n''')
-            with html.body(newlines=True) as body:
+                head.css_stamped(AuthFliki.static_url('code/embed_content.css'))
+
+                # head.style().raw_text('''
+                #     body *:first-child { display: block; }  /* avoid dumb gap at bottom of iframes */
+                #     body { margin: 0; }
+                # \n''')
+                # head.script(type='text/javascript').raw_text('''
+                #     $(document).ready(function () {
+                #         setTimeout(function () {
+                #             var $body = $(document.body);
+                #             var $child = $body.children().first();
+                #             var $grandchild = $child.children().first();
+                #
+                #             $child.attr('data-iframe-width', 300);
+                #             $grandchild.attr('data-iframe-width', 300);
+                #
+                #             fit_width(300, $body);
+                #             fit_width(300, $child);
+                #             fit_width(300, $grandchild);
+                #             // NOTE:  flickr.com needs the $grandchild fit,
+                #             //        which is an img-tag inside an a-tag.
+                #             //        Dropbox images may have the same need.
+                #
+                #             fit_height(400, $body);
+                #             fit_height(400, $child);
+                #             fit_height(400, $grandchild);
+                #
+                #             $child.css('margin', '0');
+                #             // NOTE:  Remove top & bottom margins
+                #             //        in e.g. a twitter-widget element.
+                #             //        But this doesn't work in IE11.  Shocked I am.
+                #
+                #             $('body > a').attr('target', '_blank');
+                #             // NOTE:  This fixes a boneheaded flickr issue.
+                #             //        (Which may foul up only in Chrome, didn't check.)
+                #             //        Without it, when you click on a flickr embed,
+                #             //        you see a sad-faced paper emoji.
+                #             //        Hovering over that you see below it:
+                #             //        www.flickr.com refused to connect
+                #             //        and in the javascript console you can see:
+                #             //        Refused to display 'https://www.flickr.com/...'
+                #             //        in a frame because it set 'X-Frame-Options'
+                #             //        to 'sameorigin'.
+                #             //        Twitter, Dropbox, Instagram already do this
+                #             //        target=_blank which pops up a new browser tab.
+                #
+                #         }, 100);
+                #         // NOTE:  If this delay is not enough, the fancy-pants embedded html
+                #         //        from the provider may not have enough time to transmogrify
+                #         //        itself into whatever elements it's going to become.
+                #     });
+                #
+                #     function fit_width(outer_width, $inner) {
+                #         if (outer_width < $inner.width()) {
+                #             var new_width = outer_width;
+                #             var new_height = $inner.height() * outer_width / $inner.width()
+                #             $inner.height(new_height);
+                #             $inner.width(new_width);
+                #             // NOTE:  Once thought I saw a clue that order matters.
+                #             //        Or maybe I was just desperately trying stuff.
+                #         }
+                #     }
+                #
+                #     function fit_height(outer_height, $inner) {
+                #         if (outer_height < $inner.height()) {
+                #             var new_height = outer_height;
+                #             var new_width = $inner.width() * outer_height / $inner.height()
+                #             $inner.width(new_width);
+                #             $inner.height(new_height);
+                #         }
+                #     }
+                # \n''')
+            with html.body(newlines=True, **{'data-oembed-domain': domain}) as body:
                 body.raw_text(embeddable_html)
+
+            with html as foot:
+                foot.jquery(JQUERY_VERSION, local_directory=AuthFliki.static_url('code'))
+                foot.js(
+                    'https://cdn.jsdelivr.net/npm/iframe-resizer@4.1.1/js/'
+                    'iframeResizer.contentWindow.js'
+                )
+                # foot.js(
+                #     'https://cdn.jsdelivr.net/npm/iframe-resizer@4.1.1/js/'
+                #     'iframeResizer.contentWindow.js',
+                #     local_file=AuthFliki.static_url('code/iframeResizer.contentWindow.js'),
+                #     litmus_function='(window.parentIFrame && window.parentIFrame.close)',
+                # )
+                foot.js_stamped(AuthFliki.static_url('code/embed_content.js'))
 
             return html.doctype_plus_html()
 
@@ -2730,13 +2758,15 @@ def instagram_render(url):
         code = code.rstrip('/')
         thumbnail_url = 'https://instagram.com/p/{code}/media/?size=t'.format(code=code)
         with FlikiHTML('html') as html:
+            domain = domain_from_url(url)
             with html.head(newlines=True) as head:
-                head.js(AuthFliki.static_url('code/iframeResizer.contentWindow.js'))
+                # head.js(AuthFliki.static_url('code/iframeResizer.contentWindow.js'))
+                head.js('https://cdn.jsdelivr.net/npm/iframe-resizer@4.1.1/js/iframeResizer.contentWindow.js')
                 head.style().raw_text('''
                     body { margin: 0; }
                     img { display: block; }   /* Prevents unsightly space below image. */
                 \n''')
-            with html.body(style='margin:0', newlines=True) as body:
+            with html.body(style='margin:0', newlines=True, **{'data-oembed-domain': domain}) as body:
                 thumbnail_escaped = FlikiHTML.escape(thumbnail_url)
                 with body.a(style='border:0', href=url, target='_blank') as a:
                     a.img(src=thumbnail_escaped, **{'data-iframe-width': '300'})
@@ -2749,10 +2779,15 @@ def error_render(message):
     """Explain why this url can't be embedded."""
     with FlikiHTML('html') as html:
         with html.head(newlines=True) as head:
-            head.js(AuthFliki.static_url('code/iframeResizer.contentWindow.js'))
+            # head.js(AuthFliki.static_url('code/iframeResizer.contentWindow.js'))
+            head.js('https://cdn.jsdelivr.net/npm/iframe-resizer@4.1.1/js/iframeResizer.contentWindow.js')
         with html.body(newlines=True) as body:
             body.p(message, style='margin:0; min-width: 10em;', **{'data-iframe-width': '300'})
         return html.doctype_plus_html()
+
+
+def domain_from_url(url):
+    return urllib.parse.urlsplit(url).netloc
 
 
 @flask_app.route('/<path:url_suffix>', methods=('GET', 'HEAD'))
@@ -3241,22 +3276,27 @@ def fix_dict(thing):
 
 
 def version_report():
-    print(
-        "Fliki {yyyy_mmdd_hhmm_ss}, "
-        "git {git_sha_10}, "
-        "Python {python_version}, "
-        "Flask {flask_version}, "
-        "qiki {qiki_version}".format(
-            yyyy_mmdd_hhmm_ss=qiki.TimeLex().now_word().txt,
-            git_sha_10=GIT_SHA_10,
-            python_version=".".join(str(x) for x in sys.version_info),
-            flask_version=flask.__version__,
-            qiki_version=qiki.__version__,
-        )
-    )
+    print((
+        "Fliki {yyyy_mmdd_hhmm_ss}" +
+        " - " +
+        "git {git_sha_10}" +
+        " - " +
+        "Python {python_version}" +
+        " - " +
+        "Flask {flask_version}" +
+        " - " +
+        "qiki {qiki_version}"
+    ).format(
+        yyyy_mmdd_hhmm_ss=qiki.TimeLex().now_word().txt,
+        git_sha_10=GIT_SHA_10,
+        python_version=".".join(str(x) for x in sys.version_info),
+        flask_version=flask.__version__,
+        qiki_version=qiki.__version__,
+    ))
     # EXAMPLES:
     #     Fliki 2019.0603.1144.11, git e74a46d9ed, Python 2.7.15.candidate.1, Flask 1.0.3, qiki 0.0.1.2019.0603.0012.15
     #     Fliki 2019.0603.1133.40, git a34d72cdc6, Python 2.7.16.final.0, Flask 1.0.2, qiki 0.0.1.2019.0603.0012.15
+    #     Fliki 2019.0822.0932.33 - git 379d8bcd48 - Python 3.7.3.final.0 - Flask 1.1.1 - qiki 0.0.1.2019.0728.1919.04
 
 
 if __name__ == '__main__':

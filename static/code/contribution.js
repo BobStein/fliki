@@ -30,7 +30,7 @@
  * @param MONTY.login_html
  * @param MONTY.me_idn
  * @param MONTY.me_txt
- * @param MONTY.OEMBED_PREFIX
+ * @param MONTY.OEMBED_CLIENT_PREFIX
  * @param MONTY.WHAT_IS_THIS_THING
  * @param MONTY.u
  * @param MONTY.u.is_admin
@@ -150,10 +150,10 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
             .on('input', '.contribution, .caption-span', contribution_dirty)
             .on('click', '.contribution', stop_propagation)
             .on('click', '.caption-bar, .save-bar', stop_propagation)
-            .on('click', '.save-bar .edit', contribution_edit)
-            .on('click', '.save-bar .cancel', contribution_cancel)
+            .on('click', '.save-bar .edit',    contribution_edit)
+            .on('click', '.save-bar .cancel',  contribution_cancel)
             .on('click', '.save-bar .discard', contribution_cancel)
-            .on('click', '.save-bar .save', contribution_save)
+            .on('click', '.save-bar .save',    contribution_save)
         ;
 
         if (DO_DOCUMENT_CLICK_ENDS_CLEAN_EDIT) {
@@ -189,28 +189,59 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
             var which_way = isFullScreen ? "ENTER" : "EXIT";
             console.debug(which_way, "full screen");
         });
-        setTimeout(function () {
-            console.debug(
-                "Unchecked runtime.lastError: Could not establish connection? Receiving end does not exist?",
-                "<--- Ignore these if you get them."
-            );
-            $('.render-bar iframe').iFrameResize({
-                log: true,
-                sizeWidth: true,
-                sizeHeight: true,
-                widthCalculationMethod: 'taggedElement'
-            });
-        }, 1000);
-        // NOTE:  If this delay is not enough, I don't think anything too bad happens.
-        //        You might see briefly a wafer-thin iframe before it gives its children
-        //        the data-iframe-width attribute that taggedElement needs.
-        //        That has to happen after a delay due to provider tricks with the
-        //        embedded html (see noembed_render()).
-        // NOTE:  Intermittent error made 2 of 3 youtube videos inoperative:
-        //        iframeResizer.min.js:8 Failed to execute 'postMessage' on 'DOMWindow':
-        //        The target origin provided ('...the proper domain...')
-        //        does not match the recipient window's origin ('null').
+        console.debug(
+            "Unchecked runtime.lastError: Could not establish connection? " +
+            "Receiving end does not exist?",
+            "<--- Ignore these if you get them."
+            // NOTE:  On my desktop Chrome these errors went away by disabling
+            //        Youtube Playback Speed Control 0.0.5
+            // SEE:  https://stackoverflow.com/q/54619817/673991#comment101370041_54765752
+        );
+        // setTimeout(function () {
+        //     // $('.sup-contribution').each(function () { resizer_init(this); });
+        //     // $('.render-bar iframe').iFrameResize({
+        //     //     log: true,
+        //     //     sizeWidth: true,
+        //     //     sizeHeight: true,
+        //     //     widthCalculationMethod: 'taggedElement'
+        //     // });
+        // }, 1000);
+        // // NOTE:  If this delay is not enough, I don't think anything too bad happens.
+        // //        You might see briefly a wafer-thin iframe before it gives its children
+        // //        the data-iframe-width attribute that taggedElement needs.
+        // //        That has to happen after a delay due to provider tricks with the
+        // //        embedded html (see noembed_render()).
     });
+
+    /**
+     * Initialize the iFrameResizer on an iframe jQuery object3.
+     *
+     * @param $iframe
+     */
+    // NOTE:  Intermittent error made 2 of 3 youtube videos inoperative:
+    //        iframeResizer.min.js:8 Failed to execute 'postMessage' on 'DOMWindow':
+    //        The target origin provided ('...the proper domain...')
+    //        does not match the recipient window's origin ('null').
+    function resizer_init($iframe) {
+        if (typeof $iframe[0].iFrameResizer !== 'object') {
+            setTimeout(function () {
+                $iframe.iFrameResize({
+                    log: false,
+                    sizeWidth: true,
+                    sizeHeight: true,
+                    widthCalculationMethod: 'taggedElement'
+                    // onInit: function resizer_init_callback(iframe) {
+                    //     console.log("RESIZER_INIT_CALLBACK", iframe.id);
+                    // }
+                });
+            }, 100);
+            // NOTE:  Increase to 1500 milliseconds to avoid the following Chrome error:
+            //            Failed to execute 'postMessage' on 'DOMWindow':
+            //            The target origin provided ('<URL>') does not match
+            //            the recipient window's origin ('<URL>').
+            //        But it's a false alarm, and only happens when the iframe domain differs.
+            }
+    }
 
     /**
      * Is there unfinished entry or editing on the page?
@@ -283,6 +314,7 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
                 var $caption_span = $cont_editing.closest('.sup-contribution').find('.caption-span');
                 var cont_idn_new = $cont_editing.attr('id');
                 edit_submit($caption_span, "caption", MONTY.IDN.CAPTION, cont_idn_new, function () {
+                    render_bar($cont_editing);
                     contribution_edit_end();
                 });
             });
@@ -301,7 +333,7 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
                 vrb_idn: vrb,
                 obj_idn: obj,
                 txt: new_text
-            }, function contribution_save_done(edit_word) {
+            }, function edit_submit_done(edit_word) {
                 console.log("Saved", what, edit_word.idn);
                 $div.attr('id', edit_word.idn);
                 then(edit_word);
@@ -762,19 +794,20 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
                     }
                     // MONTY.words.cont.push(contribute_word);
                     // Another good thing, that we don't have to do this.
-                    var $new_sup = build_contribution_dom(contribute_word);
+                    var $sup_cont = build_contribution_dom(contribute_word);
                     var $cat = $categories[MONTY.IDN.CAT_MY];
                     var $first_old_sup = $cat.find('.sup-contribution').first();
                     if ($first_old_sup.length === 1) {
-                        $first_old_sup.before($new_sup);
+                        $first_old_sup.before($sup_cont);
                     } else {
-                        $cat.append($new_sup);
+                        $cat.append($sup_cont);
                     }
                     // NOTE:  New .sup-contribution goes before leftmost .sup-contribution, if any.
                     // safe_prepend(MONTY.order.cont, MONTY.IDN.CAT_MY, contribute_word.idn);
                     // Is it a good thing we don't have to do this now?  Let the DOM be the (digested) database?
                     $text.val("");
                     $caption_input.val("");
+                    render_bar($sup_cont);
                     settle_down();
                     setTimeout(function () {  // Give rendering some airtime.
                         new_contribution_just_created();
@@ -1091,7 +1124,7 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
     }
 
     function iframe_src_from_url(url) {
-        return MONTY.OEMBED_PREFIX + "?" + $.param({url:url});
+        return MONTY.OEMBED_CLIENT_PREFIX + "?" + $.param({url:url});
         // THANKS:  jQuery query string, https://stackoverflow.com/a/31599255/673991
     }
 
@@ -1250,28 +1283,28 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
         return $sup_contribution;
     }
 
-    function render_bar($sup_cont) {
-        var cont_txt = $sup_cont.find('.contribution').text();
-        var cont_idn = $sup_cont.find('.contribution').attr('id');
-        can_i_embed_it(cont_txt, function embed_parsed(yes, oembed) {
-            if (yes) {
-                render_iframe($sup_cont, oembed, cont_txt, cont_idn);
-            } else {
-                render_text($sup_cont);
-            }
-        });
+    function render_bar(any_element_in_a_contribution) {
+        var $sup_cont = $(any_element_in_a_contribution).closest('.sup-contribution');
+        console.assert($sup_cont.length === 1, $sup_cont, any_element_in_a_contribution);
+        var $cont = $sup_cont.find('.contribution');
+        var cont_txt = $cont.text();
+        var cont_idn = $cont.attr('id');
+        if (can_i_embed_it(cont_txt)) {
+            render_iframe($sup_cont, cont_txt, cont_idn);
+        } else {
+            render_text($sup_cont);
+        }
     }
 
     function render_text($sup_cont) {
-        var $render_bar = $sup_cont.find('.render-bar');
         $sup_cont.removeClass('render-video');
+        var $render_bar = $sup_cont.find('.render-bar');
         $render_bar.empty();
     }
 
-    function render_iframe($sup_cont, oembed, url, cont_idn) {
-        // console.log("render iframe", oembed.width, oembed.height);
-        var $render_bar = $sup_cont.find('.render-bar');
+    function render_iframe($sup_cont, url, cont_idn) {
         $sup_cont.addClass('render-video');
+        var $render_bar = $sup_cont.find('.render-bar');
         var $iframe = $('<iframe>', {
             id: 'iframe_' + cont_idn,
             style: 'width: 300px;',   // This becomes the minimum render-bar width.
@@ -1279,20 +1312,15 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
             allowfullscreen: 'allowfullscreen'
         });
         $render_bar.html($iframe);
-
+        resizer_init($iframe);
     }
 
     function could_be_url(text) {
         return starts_with(text, 'http://') || starts_with(text, 'https://');
     }
 
-    function can_i_embed_it(text, callback) {
-        if (could_be_url(text)) {
-            callback(true, {});
-        } else {
-            callback(false);
-        }
-
+    function can_i_embed_it(text) {
+        return could_be_url(text);
     }
 
     /**
@@ -1352,12 +1380,19 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
         var cont_strings = cont_nonempty.map(function(cat) {
             var first_words = order.cont[cat].map(function (cont) {
                 console.assert(is_laden(cont), cat, "`" + cont + "`", order.cont[cat]);
-                return JSON.stringify(first_word_from_cont(cont));
+                return safe_string(first_word_from_cont(cont));
             });
-            return MONTY.cat.txt[cat] + ":" + first_words.join(",");
+            return MONTY.cat.txt[cat] + ":" + first_words.join(" ");
         });
-        return cont_strings.join(" ");
+        return cont_strings.join("\n");
     }
+
+    function safe_string(string) {
+        return JSON.stringify(string).replace(/^"/, '').replace(/"$/, '')
+    }
+    console.assert('string' === safe_string('string'));
+    console.assert('back\\\\slash line\\nfeed' === safe_string('back\\slash line\nfeed'));
+    console.assert('42' === safe_string(42));
 
     /**
      * Retrieve the first word of a contribution
@@ -1374,11 +1409,25 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
             // console.error("Missing contribution element, id =", cont);
             return "[" + cont + "?]";
         }
-        var txt = $cont.text().trim();
-        if ( ! is_laden(txt)) {
+        var $sup = $cont.closest('.sup-contribution');
+        var $cap = $sup.find('.caption-span');
+        var txt_cont = $cont.text().trim();
+        var txt_cap = $cap.text().trim();
+        if        ( ! is_laden(txt_cont) && ! is_laden(txt_cap)) {
             return "[blank]";
+        } else if ( ! is_laden(txt_cont) &&   is_laden(txt_cap)) {
+            return                          first_word(txt_cap);
+        } else if (   is_laden(txt_cont) && ! is_laden(txt_cap)) {
+            return  first_word(txt_cont);
+        } else if (   is_laden(txt_cont) &&   is_laden(txt_cap)) {
+            var first_cap = first_word(txt_cap);
+            var first_cont = first_word(txt_cont);
+            if (first_cont.length < first_cap.length) {
+                return first_cont;
+            } else {
+                return first_cap;
+            }
         }
-        return first_word(txt);
     }
 
     function first_word(string) {
