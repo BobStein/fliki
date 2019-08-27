@@ -769,7 +769,7 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
         var caption = $caption_input.val();
         if (text.length === 0) {
             $text.focus();
-            console.warn("Enter a quote or video.");
+            console.warn("Enter some content.");
         } else {
             qoolbar.sentence({
                 vrb_idn: MONTY.IDN.CONTRIBUTE,
@@ -880,7 +880,7 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
         $sup_categories[MONTY.IDN.CAT_MY].addClass('sup-category-first');
 
         var $entry = $('<div>', {class: 'container-entry'});
-        $entry.append($('<textarea>', {id: 'enter_some_text', placeholder: "enter a quote"}));
+        $entry.append($('<textarea>', {id: 'enter_some_text', placeholder: "enter a quote or video"}));
         $entry.append($('<input>', {id: 'enter_a_caption', placeholder: "and a caption"}));
         $entry.append($('<button>', {id: 'post_it_button'}).text("post it"));
         $categories[MONTY.IDN.CAT_MY].append($entry);
