@@ -880,8 +880,8 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
         var $status_prompt = $('<div>', {id: 'status-prompt'});
         $status_prompt.text("");
         if (cont_only !== null) {
-            $status_prompt.append("Only idn " + cont_only.join(", ") + UNICODE.NBSP + " ");
-            $status_prompt.append($('<a>', {href: url_with_no_query_string()}).text("See all"));
+            $status_prompt.append("only idn " + cont_only.join(", ") + " - ");
+            $status_prompt.append($('<a>', {href: url_with_no_query_string()}).text("see all"));
         }
         $up_top.append($status_prompt);
 
