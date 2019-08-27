@@ -2602,6 +2602,7 @@ def safe_txt(w):
         return "[non-listing {}]".format(w.idn.qstring())
 
 
+# noinspection SpellCheckingInspection
 NOEMBED_PATTERNS = [
     "https?://(?:[^\\.]+\\.)?youtube\\.com/watch/?\\?(?:.+&)?v=([^&]+)",
     "https?://(?:[^\\.]+\\.)?(?:youtu\\.be|youtube\\.com/embed)/([a-zA-Z0-9_-]+)",
@@ -2616,6 +2617,8 @@ NOEMBED_PATTERNS = [
 
     "https?://www\\.(dropbox\\.com/s/.+\\.(?:jpg|png|gif))",
     "https?://db\\.tt/[a-zA-Z0-9]+",
+
+    "https?://soundcloud\\.com/.*",
 ]
 
 INSTAGRAM_PATTERNS = [
@@ -2679,80 +2682,8 @@ def noembed_render(url):
             domain = domain_from_url(url)
             with html.head(newlines=True) as head:
                 head.css_stamped(AuthFliki.static_url('code/embed_content.css'))
-
-                # head.style().raw_text('''
-                #     body *:first-child { display: block; }  /* avoid dumb gap at bottom of iframes */
-                #     body { margin: 0; }
-                # \n''')
-                # head.script(type='text/javascript').raw_text('''
-                #     $(document).ready(function () {
-                #         setTimeout(function () {
-                #             var $body = $(document.body);
-                #             var $child = $body.children().first();
-                #             var $grandchild = $child.children().first();
-                #
-                #             $child.attr('data-iframe-width', 300);
-                #             $grandchild.attr('data-iframe-width', 300);
-                #
-                #             fit_width(300, $body);
-                #             fit_width(300, $child);
-                #             fit_width(300, $grandchild);
-                #             // NOTE:  flickr.com needs the $grandchild fit,
-                #             //        which is an img-tag inside an a-tag.
-                #             //        Dropbox images may have the same need.
-                #
-                #             fit_height(400, $body);
-                #             fit_height(400, $child);
-                #             fit_height(400, $grandchild);
-                #
-                #             $child.css('margin', '0');
-                #             // NOTE:  Remove top & bottom margins
-                #             //        in e.g. a twitter-widget element.
-                #             //        But this doesn't work in IE11.  Shocked I am.
-                #
-                #             $('body > a').attr('target', '_blank');
-                #             // NOTE:  This fixes a boneheaded flickr issue.
-                #             //        (Which may foul up only in Chrome, didn't check.)
-                #             //        Without it, when you click on a flickr embed,
-                #             //        you see a sad-faced paper emoji.
-                #             //        Hovering over that you see below it:
-                #             //        www.flickr.com refused to connect
-                #             //        and in the javascript console you can see:
-                #             //        Refused to display 'https://www.flickr.com/...'
-                #             //        in a frame because it set 'X-Frame-Options'
-                #             //        to 'sameorigin'.
-                #             //        Twitter, Dropbox, Instagram already do this
-                #             //        target=_blank which pops up a new browser tab.
-                #
-                #         }, 100);
-                #         // NOTE:  If this delay is not enough, the fancy-pants embedded html
-                #         //        from the provider may not have enough time to transmogrify
-                #         //        itself into whatever elements it's going to become.
-                #     });
-                #
-                #     function fit_width(outer_width, $inner) {
-                #         if (outer_width < $inner.width()) {
-                #             var new_width = outer_width;
-                #             var new_height = $inner.height() * outer_width / $inner.width()
-                #             $inner.height(new_height);
-                #             $inner.width(new_width);
-                #             // NOTE:  Once thought I saw a clue that order matters.
-                #             //        Or maybe I was just desperately trying stuff.
-                #         }
-                #     }
-                #
-                #     function fit_height(outer_height, $inner) {
-                #         if (outer_height < $inner.height()) {
-                #             var new_height = outer_height;
-                #             var new_width = $inner.width() * outer_height / $inner.height()
-                #             $inner.width(new_width);
-                #             $inner.height(new_height);
-                #         }
-                #     }
-                # \n''')
             with html.body(newlines=True, **{'data-oembed-domain': domain}) as body:
                 body.raw_text(embeddable_html)
-
             with html as foot:
                 foot.jquery(JQUERY_VERSION, local_directory=AuthFliki.static_url('code'))
                 foot.script(type='text/javascript').raw_text('''
@@ -2764,12 +2695,6 @@ def noembed_render(url):
                     'https://cdn.jsdelivr.net/npm/iframe-resizer@4.1.1/js/'
                     'iframeResizer.contentWindow.js'
                 )
-                # foot.js(
-                #     'https://cdn.jsdelivr.net/npm/iframe-resizer@4.1.1/js/'
-                #     'iframeResizer.contentWindow.js',
-                #     local_file=AuthFliki.static_url('code/iframeResizer.contentWindow.js'),
-                #     litmus_function='(window.parentIFrame && window.parentIFrame.close)',
-                # )
                 foot.js_stamped(AuthFliki.static_url('code/embed_content.js'))
 
             return html.doctype_plus_html()
@@ -2792,7 +2717,6 @@ def instagram_render(url):
         with FlikiHTML('html') as html:
             domain = domain_from_url(url)
             with html.head(newlines=True) as head:
-                # head.js(AuthFliki.static_url('code/iframeResizer.contentWindow.js'))
                 head.js('https://cdn.jsdelivr.net/npm/iframe-resizer@4.1.1/js/iframeResizer.contentWindow.js')
                 head.style().raw_text('''
                     body { margin: 0; }
@@ -2801,7 +2725,7 @@ def instagram_render(url):
             with html.body(style='margin:0', newlines=True, **{'data-oembed-domain': domain}) as body:
                 thumbnail_escaped = FlikiHTML.escape(thumbnail_url)
                 with body.a(style='border:0', href=url, target='_blank') as a:
-                    a.img(src=thumbnail_escaped, **{'data-iframe-width': '300'})
+                    a.img(src=thumbnail_escaped, **{'data-iframe-width': 'x'})
             return html.doctype_plus_html()
     else:
         return "Unable to decode " + json.dumps(url)

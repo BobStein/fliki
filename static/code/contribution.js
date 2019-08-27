@@ -1103,17 +1103,16 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
         if (query_string === '') {
             return true;
         }
-        if (typeof window.URLSearchParams !== 'function') {
-            console.error("This browser doesn't support URLSearchParams.");
-            return true;
-        }
+        // if (typeof window.URLSearchParams !== 'function') {
+        //     console.error("This browser doesn't support URLSearchParams.");
+        //     return true;
+        // }
         var query_params = new window.URLSearchParams(query_string);
         var cont_filter = query_params.get('cont');
         if (cont_filter === null) {
             return true;
         } else {
             var cont_array = cont_filter.split(',');
-            // noinspection RedundantIfStatementJS
             if (has(cont_array, word.idn.toString())) {
                 return true;
             } else {
@@ -1750,3 +1749,23 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
     console.assert( true === starts_with("string", "str"));
     console.assert(false === starts_with("string", "ing"));
 }
+
+/**
+ * Polyfill for window.URLSearchParams (so it works in IE11)
+ *
+ * THANKS:  https://stackoverflow.com/a/50756253/673991
+ */
+(function (w) {
+    w.URLSearchParams = w.URLSearchParams || function (searchString) {
+        var self = this;
+        self.searchString = searchString;
+        self.get = function (name) {
+            var results = new RegExp('[\?&]' + name + '=([^&#]*)').exec(self.searchString);
+            if (results === null) {
+                return null;
+            } else {
+                return decodeURI(results[1]) || 0;
+            }
+        };
+    }
+})(window);
