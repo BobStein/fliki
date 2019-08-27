@@ -15,7 +15,7 @@ var description_of_last_change = "(none)";
 
 /**
  * @param window
- * @param $ {function} - jQuery
+ * @param {function} $
  */
 (function(window, $) {
     console.assert(typeof $ === 'function');
@@ -23,8 +23,8 @@ var description_of_last_change = "(none)";
 
     fix_embedded_content();
 
-    window.iFrameResizer = {
-        onReady: function() {
+    // window.iFrameResizer = {
+    //     onReady: function() {
             $(window.document).ready(function () {
                 var interval = setInterval(function () {
                     if (num_cycles >= POLL_REPETITIONS) {
@@ -49,17 +49,19 @@ var description_of_last_change = "(none)";
                     fix_embedded_content();
                 }, POLL_MILLISECONDS);
             });
-        }
-    };
+    //     }
+    // };
 
     function fix_embedded_content() {
         var $body = $(window.document.body);
-        // noinspection JSValidateTypes
         var $child = $body.children().first();
         var $grandchild = $child.children().first();
+        // NOTE:  flickr.com needs the $grandchild fit,
+        //        which is an img-tag inside an a-tag.
+        //        Dropbox images may have the same need.
 
-        // NOTE:  The changes below have a light touch.
-        //        They don't "change" a setting if it was already at that value.
+        // NOTE:  Each of the following changes have a light touch.
+        //        That is, they don't "change" a setting if it was already at that value.
         //        That's because applying some settings, even redundantly,
         //        triggers JavaScript events, and maybe iFrameResizer resizings,
         //        which cause visual churn and slowness.
@@ -70,9 +72,6 @@ var description_of_last_change = "(none)";
         fit_width(300, $body);
         fit_width(300, $child);
         fit_width(300, $grandchild);
-        // NOTE:  flickr.com needs the $grandchild fit,
-        //        which is an img-tag inside an a-tag.
-        //        Dropbox images may have the same need.
 
         fit_height(300, $body);
         fit_height(300, $child);

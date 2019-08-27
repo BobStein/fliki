@@ -224,6 +224,20 @@ class LexFliki(qiki.LexMySQL):
         lex_fliki_instance = self
 
         class WordFlikiUser(qiki.Word):
+            """
+            Words that can be the sbj of a lex sentence.  Anonymous and logged in users.
+
+            word.is_admin determination:
+                secure.credentials.Options.system_administrator_users
+
+            word.is_admin consequences (at least will try to remember to keep up here):
+                Auth.login_html() prompt amended "(admin)"
+                Can drag contributions to the About category
+                    (enforced on both client and server sides)
+                Contribution_home() HTML MONTY.u elements have "is_admin":true,
+                Edits and category moves are used by other users
+                    (if those users don't edit or move later than that)
+            """
             lex = lex_fliki_instance
 
             def __init__(self, user_id, meta_idn):
@@ -2616,37 +2630,38 @@ INSTAGRAM_PATTERNS = [
 ]
 
 
-@flask_app.route(secure.credentials.Options.oembed_server_prefix, methods=('GET', 'HEAD'))
-def oembed_html():
-    """
-    Serve the iframe contents for embedded media.
+if secure.credentials.Options.oembed_server_prefix is not None:
+    @flask_app.route(secure.credentials.Options.oembed_server_prefix, methods=('GET', 'HEAD'))
+    def oembed_html():
+        """
+        Serve the iframe contents for embedded media.
 
-    Pass the url for the media as a user might browse it.
+        Pass the url for the media as a user might browse it.
 
-    EXAMPLE:  url=https://www.youtube.com/watch?v=o9tDO3HK20Q
-    EXAMPLE:  url=https://www.instagram.com/p/BkVQRWuDigy/
-    """
-    print("oembed_html", json.dumps(flask.request.full_path))
-    url = flask.request.args.get('url')
-    if matcher(url, NOEMBED_PATTERNS):
-        return noembed_render(url)
-    elif matcher(url, INSTAGRAM_PATTERNS):
-        return instagram_render(url)
-    else:
-        oembed_dict = noembed_get(url)
-        if 'html' in oembed_dict:
-            provider_name = oembed_dict.get('provider_name', "((unspecified))")
-            but_noembed = "Though noembed may support it. Provider: " + provider_name
+        EXAMPLE:  url=https://www.youtube.com/watch?v=o9tDO3HK20Q
+        EXAMPLE:  url=https://www.instagram.com/p/BkVQRWuDigy/
+        """
+        print("oembed_html", json.dumps(flask.request.full_path))
+        url = flask.request.args.get('url')
+        if matcher(url, NOEMBED_PATTERNS):
+            return noembed_render(url)
+        elif matcher(url, INSTAGRAM_PATTERNS):
+            return instagram_render(url)
         else:
-            error = oembed_dict.get('error', "((for some reason))")
-            but_noembed = "Anyway noembed says: " + error
-        print("Unauthorized", json.dumps(url), but_noembed)
-        return error_render(
-            message="{domain} - unsupported domain.  {but_noembed}".format(
-                domain=json.dumps(domain_from_url(url)),
-                but_noembed=but_noembed,
+            oembed_dict = noembed_get(url)
+            if 'html' in oembed_dict:
+                provider_name = oembed_dict.get('provider_name', "((unspecified))")
+                but_noembed = "Though noembed may support it. Provider: " + provider_name
+            else:
+                error = oembed_dict.get('error', "((for some reason))")
+                but_noembed = "Anyway noembed says: " + error
+            print("Unauthorized", json.dumps(url), but_noembed)
+            return error_render(
+                message="{domain} - unsupported domain.  {but_noembed}".format(
+                    domain=json.dumps(domain_from_url(url)),
+                    but_noembed=but_noembed,
+                )
             )
-        )
 
 
 def noembed_render(url):
@@ -2740,6 +2755,11 @@ def noembed_render(url):
 
             with html as foot:
                 foot.jquery(JQUERY_VERSION, local_directory=AuthFliki.static_url('code'))
+                foot.script(type='text/javascript').raw_text('''
+                    window.iFrameResizer = {
+                        targetOrigin: "''' + secure.credentials.Options.oembed_target_origin + '''"
+                    };
+                \n''')
                 foot.js(
                     'https://cdn.jsdelivr.net/npm/iframe-resizer@4.1.1/js/'
                     'iframeResizer.contentWindow.js'
