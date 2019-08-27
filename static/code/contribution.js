@@ -859,6 +859,10 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
 
     var auth_log;   // Record all the decisions made by is_authorized().
 
+    function url_with_no_query_string() {
+        return window.location.href.split('?')[0];
+    }
+
     /**
      * Build the body from scratch.
      */
@@ -868,9 +872,22 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
         $(window.document.body).empty();
         $(window.document.body).addClass('dirty-nowhere');
 
+        var cont_only = cont_list_from_query_string();
+
+        var $up_top = $('<div>', {id: 'up-top'});
+        $(window.document.body).append($up_top);
+
+        var $status_prompt = $('<div>', {id: 'status-prompt'});
+        $status_prompt.text("");
+        if (cont_only !== null) {
+            $status_prompt.append("Only idn " + cont_only.join(", ") + UNICODE.NBSP + " ");
+            $status_prompt.append($('<a>', {href: url_with_no_query_string()}).text("See all"));
+        }
+        $up_top.append($status_prompt);
+
         var $login_prompt = $('<div>', {id: 'login-prompt'});
         $login_prompt.html(MONTY.login_html);
-        $(window.document.body).append($login_prompt);
+        $up_top.append($login_prompt);
 
         build_category_dom(me_title,    MONTY.IDN.CAT_MY,    true, true);
         build_category_dom("others",    MONTY.IDN.CAT_THEIR, true, true);
@@ -955,6 +972,7 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
         }
 
         auth_log = [];
+
         looper(MONTY.w, function (_, word) {
             var $sup;
             var $cont;
@@ -963,7 +981,7 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
                 switch (word.vrb) {
                 case MONTY.IDN.CONTRIBUTE:
                 case MONTY.IDN.UNSLUMP_OBSOLETE:
-                    if (query_string_filter(word)) {
+                    if (query_string_filter(word, cont_only)) {
                         $sup = build_contribution_dom(word);
                         $cont = $sup.find('.contribution');
                         $caption_span = $sup.find('.caption-span');
@@ -1098,27 +1116,29 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
         });
     }
 
-    function query_string_filter(word) {
+    function cont_list_from_query_string() {
         var query_string = window.location.search;
         if (query_string === '') {
-            return true;
+            return null;
         }
-        // if (typeof window.URLSearchParams !== 'function') {
-        //     console.error("This browser doesn't support URLSearchParams.");
-        //     return true;
-        // }
         var query_params = new window.URLSearchParams(query_string);
         var cont_filter = query_params.get('cont');
         if (cont_filter === null) {
-            return true;
+            return null;
         } else {
             var cont_array = cont_filter.split(',');
-            if (has(cont_array, word.idn.toString())) {
-                return true;
-            } else {
-                console.log("Skipping", word.idn.toString(), "in", cont_array);
-                return false;
-            }
+            return cont_array;
+        }
+    }
+
+    function query_string_filter(word, cont_array) {
+        if (cont_array === null) {
+            return true;
+        } else if (has(cont_array, word.idn.toString())) {
+            return true;
+        } else {
+            console.log("Skipping", word.idn.toString(), "in", cont_array);
+            return false;
         }
     }
 

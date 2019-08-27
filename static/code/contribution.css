@@ -1,6 +1,18 @@
 /* css for the contribution.js. */
 
+#up-top {
+    overflow: hidden;
+    margin-bottom: 0.1em;
+}
+
+#status-prompt {
+    float: left;
+    text-align: left;
+    font: menu;
+}
+
 #login-prompt {
+    float: right;
     text-align: right;
     font: menu;
 }
