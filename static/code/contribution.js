@@ -769,7 +769,7 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
         var caption = $caption_input.val();
         if (text.length === 0) {
             $text.focus();
-            console.warn("Enter a quote.");
+            console.warn("Enter a quote or video.");
         } else {
             qoolbar.sentence({
                 vrb_idn: MONTY.IDN.CONTRIBUTE,
