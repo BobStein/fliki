@@ -1,59 +1,124 @@
 // embed_content.js - for oembed iframe
 
-var POLL_MILLISECONDS = 1000;   // Try this often to "fix" embedded content
-var POLL_REPETITIONS = 10;   // Try this many times to "fix" embedded content
-// NOTE:  If this doesn't go on long enough, the fancy-pants embedded html
-//        from the provider may not have enough time to transmogrify
-//        itself into whatever elements it's going to become.
-
-// TODO:  Why does twitter + IE11 + fit_height() go on for all repetitions?
-
-var num_cycles = 0;
-var num_changes = 0;
-var cycle_of_last_change = 0;
-var description_of_last_change = "(none)";
-
+// noinspection JSUnusedGlobalSymbols
 /**
  * @param window
  * @param {function} $
+ * @param {function} $.getScript
+ * @param {object}  MONTY
+ * @param {array}   MONTY.matcher_groups
+ * @param {object}  MONTY.oembed
+ * @param {string}  MONTY.target_origin
  */
-(function(window, $) {
-    console.assert(typeof $ === 'function');
+function embed_content_js(window, $, MONTY) {
     console.assert(typeof window === 'object');
+    console.assert(typeof $ === 'function');
+    console.assert(typeof MONTY === 'object');
 
-    fix_embedded_content();
+    var POLL_MILLISECONDS = 1000;   // Try this often to "fix" embedded content
+    var POLL_REPETITIONS = 10;   // Try this many times to "fix" embedded content
+    // NOTE:  If this doesn't go on long enough, the fancy-pants embedded html
+    //        from the provider may not have enough time to transmogrify
+    //        itself into whatever elements it's going to become.
+    //        So the "fix_embedded_content" may be incomplete.
 
-    // window.iFrameResizer = {
-    //     onReady: function() {
+    // TODO:  Why does twitter + IE11 + fit_height() go on for all repetitions?
+
+    var num_cycles = 0;
+    var num_changes = 0;
+    var cycle_of_last_change = 0;
+    var description_of_last_change = "(none)";
+    var $body;
+
+    var url = query_get('url');
+    var domain = domain_from_url(url);
+    var domain_simple = domain.toLowerCase();
+    domain_simple = domain_simple.replace(/^www\./, '');
+    domain_simple = domain_simple.replace(/\.com$/, '');
+    var is_pop_up = query_get('is_pop_up', 'false') === 'true';
+    var is_pop_youtube = is_pop_up && (
+        domain_simple === 'youtube' ||
+        domain_simple ==='youtu.be'
+    );
+
+    // console.assert(domain === MONTY.domain);
+    // console.assert(domain_simple === MONTY.domain_simple);
+    // console.assert(is_pop_youtube === MONTY.is_pop_youtube);
+
+    window.iFrameResizer = {
+        targetOrigin: MONTY.target_origin,
+        onReady: function iframe_resizer_content_ready() {
             $(window.document).ready(function () {
-                var interval = setInterval(function () {
-                    if (num_cycles >= POLL_REPETITIONS) {
-                        var domain = $('body').data('oembed-domain');
-                        var domain_simple = domain.replace(/\.com$/, "").replace(/^www\./, "");
-                        if (num_changes === 0) {
-                            console.debug(
-                                "embed_contents -", domain_simple, "- no changes"
-                            );
-                        } else {
-                            console.debug(
-                                "embed_contents -", domain_simple, "-",
-                                num_changes, "changes,",
-                                "last was", description_of_last_change,
-                                "on cycle", cycle_of_last_change, "of", POLL_REPETITIONS
-                            );
-                        }
-                        clearInterval(interval);
-                        return;
-                    }
-                    num_cycles++;
+                $body = $(window.document.body);
+                if (is_pop_youtube) {
+                    var $div_outer = $('<div>', {id: 'outer'});
+                    var $div_inner = $('<div>', {id: 'you-pop'});
+                    tag_width($div_outer);
+                    tag_width($div_inner);
+                    $div_outer.append($div_inner);
+                    $body.append($div_outer);
+                    $.getScript("https://www.youtube.com/iframe_api");
+                } else {
+                    $body.html(MONTY.oembed.html);
                     fix_embedded_content();
-                }, POLL_MILLISECONDS);
+                    var interval = setInterval(function () {
+                        if (num_cycles >= POLL_REPETITIONS) {
+                            if (num_changes === 0) {
+                                console.debug(
+                                    domain_simple, "- no changes"
+                                );
+                            } else {
+                                console.debug(
+                                    domain_simple, "-",
+                                    num_changes, "changes,",
+                                    "last", description_of_last_change,
+                                    "cycle", cycle_of_last_change, "of", POLL_REPETITIONS,
+                                    "codes", JSON.stringify(MONTY.matcher_groups)
+                                );
+                            }
+                            if (typeof window.parentIFrame === 'object') {
+                                // NOTE:  Step 1 in the mother-daughter message demo.
+                                window.parentIFrame.sendMessage(
+                                    {'foo':'bar'},
+                                    window.iFrameResizer.targetOrigin
+                                );
+                            } else {
+                                console.error("NOT LOADED PARENT IFRAME");
+                            }
+                            clearInterval(interval);
+                            return;
+                        }
+                        num_cycles++;
+                        fix_embedded_content();
+                    }, POLL_MILLISECONDS);
+                }
             });
-    //     }
-    // };
+        },
+        onMessage: function iframe_resizer_content_message(message) {
+            // NOTE:  Step 3 in the mother-daughter message demo.
+            console.log("Daughter Message In", window.parentIFrame.getId(), message);
+            // EXAMPLE:  Daughter Message In iframe_1849 {moo: "butter"}
+        }
+    };
+    $.getScript(
+        'https://cdn.jsdelivr.net/npm/iframe-resizer@4.1.1/js/' +
+        'iframeResizer.contentWindow.js'
+    );
+
+
+    // function load_youtube_iframe_api() {
+    //     var tag = document.createElement('script');
+    //     tag.src = "https://www.youtube.com/iframe_api";
+    //     var firstScriptTag = document.getElementsByTagName('script')[0];
+    //     firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+    // }
+
+    function domain_from_url(url) {
+        return $('<a>').prop('href', url).prop('hostname');
+        // THANKS:  domain from url, https://stackoverflow.com/a/4815665/673991
+    }
 
     function fix_embedded_content() {
-        var $body = $(window.document.body);
         var $child = $body.children().first();
         var $grandchild = $child.children().first();
         // NOTE:  flickr.com needs the $grandchild fit,
@@ -69,28 +134,35 @@ var description_of_last_change = "(none)";
         tag_width($child);
         tag_width($grandchild);
 
-        fit_width(300, $body);
-        fit_width(300, $child);
-        fit_width(300, $grandchild);
+        var is_pop_up = query_get('is_pop_up', false);
+        if (is_pop_up) {
+            var pop_width = query_get('width', 'auto');
+            var pop_height = query_get('height', 'auto');
+            $body.css({width: pop_width, height: pop_height});
+            $child.css({width: pop_width, height: pop_height});
+        } else {
+            fit_width(300, $body);
+            fit_width(300, $child);
+            fit_width(300, $grandchild);
 
-        fit_height(300, $body);
-        fit_height(300, $child);
-        fit_height(300, $grandchild);
+            fit_height(300, $body);
+            fit_height(300, $child);
+            fit_height(300, $grandchild);
 
-        target_blank($('body > a'));
-        // NOTE:  This fixes a boneheaded flickr issue.
-        //        (Which may foul up only in Chrome, didn't check.)
-        //        Without it, when you click on a flickr embed,
-        //        you see a sad-faced paper emoji.
-        //        Hovering over that you see below it:
-        //        www.flickr.com refused to connect
-        //        and in the javascript console you can see:
-        //            Refused to display 'https://www.flickr.com/...'
-        //            in a frame because it set 'X-Frame-Options'
-        //            to 'sameorigin'.
-        //        Twitter, Dropbox, Instagram already do target=_blank
-        //        which pops up a new browser tab.
-
+            target_blank($('body > a'));
+            // NOTE:  This fixes a boneheaded flickr issue.
+            //        (Which may foul up only in Chrome, didn't check.)
+            //        Without it, when you click on a flickr embed,
+            //        you see a sad-faced paper emoji.
+            //        Hovering over that you see below it:
+            //        www.flickr.com refused to connect
+            //        and in the javascript console you can see:
+            //            Refused to display 'https://www.flickr.com/...'
+            //            in a frame because it set 'X-Frame-Options'
+            //            to 'sameorigin'.
+            //        Twitter, Dropbox, Instagram already do target=_blank
+            //        which pops up a new browser tab.
+        }
     }
 
     function count_a_change(description) {
@@ -137,4 +209,64 @@ var description_of_last_change = "(none)";
             count_a_change($element[0].tagName + ".fit_height");
         }
     }
-})(window, jQuery);
+
+    function query_get(name, default_value) {
+        var query_params = new window.URLSearchParams(window.location.search);
+        var value = query_params.get(name);
+        if (value === null) {
+            return default_value;
+        } else {
+            return value;
+        }
+    }
+
+    var youtube_player = null;
+
+    /**
+     * @param YT
+     * @param YT.Player
+     */
+    embed_content_js.api_ready = function (YT) {
+        var api_settings = {
+            width: query_get('width', 'auto'),
+            height: query_get('height', 'auto'),
+            videoId: MONTY.matcher_groups[0],
+            events: {
+                onReady: function () {
+                    console.log("Innermost YouTube api ready");
+                }
+            }
+        };
+        youtube_player = new YT.Player('you-pop', api_settings);
+        console.log("Inner YouTube api ready", api_settings);
+    };
+}
+
+// noinspection JSUnusedGlobalSymbols
+/**
+ * @property YT
+ */
+function onYouTubeIframeAPIReady() {
+    console.log("Outer YouTube api ready");
+    embed_content_js.api_ready(window.YT);
+}
+
+/**
+ * Polyfill for window.URLSearchParams.get(), so it works in IE11
+ *
+ * THANKS:  https://stackoverflow.com/a/50756253/673991
+ */
+(function (w) {
+    w.URLSearchParams = w.URLSearchParams || function (searchString) {
+        var self = this;
+        self.searchString = searchString;
+        self.get = function (name) {
+            var results = new RegExp('[\?&]' + name + '=([^&#]*)').exec(self.searchString);
+            if (results === null) {
+                return null;
+            } else {
+                return decodeURI(results[1]) || 0;
+            }
+        };
+    }
+})(window);

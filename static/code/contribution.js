@@ -79,7 +79,9 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
         EM_SPACE: '\u2003',
         VERTICAL_ELLIPSIS: '\u22EE',
         BLACK_RIGHT_POINTING_TRIANGLE: '\u25B6',
-        BLACK_DOWN_POINTING_TRIANGLE: '\u25BC'
+        BLACK_DOWN_POINTING_TRIANGLE: '\u25BC',
+        NW_SE_ARROW: '\u2921',
+        NE_SW_ARROW: '\u2922'
         // THANKS:  https://www.fileformat.info/info/unicode/char/
     };
 
@@ -129,6 +131,9 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
     var $cont_editing = null;   // TODO:  $('.contribution-edit').find('.contribution')
     // var original_text = null;
 
+
+    var cont_only = cont_list_from_query_string();
+
     $(window.document).ready(function document_ready() {
         qoolbar.ajax_url(MONTY.AJAX_URL);
 
@@ -145,6 +150,8 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
             .sortable(sortable_options())
         ;
 
+        $('#play-link').on('click', play_link_click);
+
         $(window.document)
             // .on('click', '.contribution', contribution_click)
             .on('input', '.contribution, .caption-span', contribution_dirty)
@@ -154,6 +161,13 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
             .on('click', '.save-bar .cancel',  contribution_cancel)
             .on('click', '.save-bar .discard', contribution_cancel)
             .on('click', '.save-bar .save',    contribution_save)
+            .on('click', '.save-bar .full',    contribution_full)
+            .on('click', '.save-bar .unfull',  contribution_unfull)
+            .on('keyup', function (evt) {
+                if (evt.key === 'Escape') {
+                    contribution_unfull();
+                }
+            })
         ;
 
         if (DO_DOCUMENT_CLICK_ENDS_CLEAN_EDIT) {
@@ -197,6 +211,19 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
             //        Youtube Playback Speed Control 0.0.5
             // SEE:  https://stackoverflow.com/q/54619817/673991#comment101370041_54765752
         );
+        if (cont_only === null) {
+            setTimeout(function () {
+                resize_render_bars('.render-bar iframe');
+                // NOTE:  Cheap-ass workaround for the zero-iframe-size bug.
+                // https://github.com/davidjbradshaw/iframe-resizer/issues/629#issuecomment-525498353
+                // But (even cheaper-ass) only do the workaround if no ?cont=NNN
+                // -- that is, we're not limiting the contributions, showing all of them,
+                // so as to preserve the failure mode in the above issue report.
+                // FIXME:  Instead append query-string ?...&disable_zero_size_iframe_workaround
+                //         Or wait until it's fixed.  And then remove this workaround
+            }, 3 * 1000);
+        }
+
         // setTimeout(function () {
         //     // $('.sup-contribution').each(function () { resizer_init(this); });
         //     // $('.render-bar iframe').iFrameResize({
@@ -213,6 +240,10 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
         // //        embedded html (see noembed_render()).
     });
 
+    function play_link_click() {
+
+    }
+
     /**
      * Initialize the iFrameResizer on an iframe jQuery object3.
      *
@@ -223,13 +254,19 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
     //        The target origin provided ('...the proper domain...')
     //        does not match the recipient window's origin ('null').
     function resizer_init($iframe) {
-        if (typeof $iframe[0].iFrameResizer !== 'object') {
+        if ($iframe.length >= 1 && typeof $iframe[0].iFrameResizer !== 'object') {
             setTimeout(function () {
                 $iframe.iFrameResize({
                     log: false,
                     sizeWidth: true,
                     sizeHeight: true,
-                    widthCalculationMethod: 'taggedElement'
+                    widthCalculationMethod: 'taggedElement',
+                    onMessage: function(x) {
+                        // NOTE:  Step 2 in the mother-daughter message demo.
+                        console.log("Mother Message In", $(x.iframe).attr('id'), x.message);
+                        // EXAMPLE:  Mother Message In iframe_1849 {foo: "bar"}
+                        x.iframe.iFrameResizer.sendMessage({'moo':'butter'});
+                    }
                     // onInit: function resizer_init_callback(iframe) {
                     //     console.log("RESIZER_INIT_CALLBACK", iframe.id);
                     // }
@@ -240,7 +277,7 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
             //            The target origin provided ('<URL>') does not match
             //            the recipient window's origin ('<URL>').
             //        But it's a false alarm, and only happens when the iframe domain differs.
-            }
+        }
     }
 
     /**
@@ -321,6 +358,86 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
         } else {
             console.error("Save but we weren't editing?", $cont_editing);
         }
+    }
+
+    function contribution_unfull() {
+        $('.pop-up .render-bar iframe').each(function () {
+            this.iFrameResizer.close();
+            // NOTE:  Without this, the un-full window generates warnings on resizing.  Example:
+            //            iframeResizer.js:134 [iFrameSizer][Host page: popup_iframe_1834]
+            //            [Window resize] IFrame(popup_iframe_1834) not found
+            //        And probably leaks memory.
+        });
+        $('.pop-up').remove();
+        $('.pop-down').removeClass('pop-down');
+    }
+
+    function contribution_full() {
+        contribution_unfull();
+        var $full = $(this);
+        var $sup_cont = $full.closest('.sup-contribution');
+        var $cont = $sup_cont.find('.contribution');
+        var cont_idn = $cont.attr('id');
+        var offset = $sup_cont.offset();
+        var window_width = $(window).width();
+        var window_height = $(window).height();
+        var cont_width = $sup_cont.width();
+        var cont_height = $sup_cont.height();
+        var render_height = $sup_cont.find('.render-bar').height();
+        var $popup = $sup_cont.clone(false, true);
+        $sup_cont.addClass('pop-down');
+        $sup_cont.before($popup);
+        $popup.find('.contribution');
+        $popup.find('[id]').attr('id', function () {
+            return 'popup_' + $(this).attr('id');
+            // NOTE:  Avoid duplicate ids by prefixing all the ones in the clone.
+        });
+
+        var $iframe = $popup.find('.render-bar iframe');
+        $iframe.attr('src', function () {
+            return $(this).attr('src') + '&' + $.param({
+                width:  Math.round(window_width - 30),
+                height: Math.round(window_height - cont_height + render_height - 30),
+                is_pop_up: true
+            });
+        });
+        resizer_init($iframe);
+        // NOTE:  Finally decided the best way to make the popup iframe big
+        //        was to focus on the CONTENTS size, and let iFrameResizer handle the outer size.
+        // SEE:  Tricky iframe height 100%, https://stackoverflow.com/a/5871861/673991
+
+        $popup.css({
+            position: 'fixed',
+            top: offset.top - $(window).scrollTop(),
+            left: offset.left - $(window).scrollLeft(),
+            'z-index': 1
+        });
+        // THANKS:  Recast position from relative to fixed, with no apparent change,
+        //          (my own compendium) https://stackoverflow.com/a/44438131/673991
+        // NOTE:  Now, animate some motion.
+        $popup.animate({
+            left: window_width/2 - cont_width/2,
+            top: window_height/2 - cont_height/2
+        }, {
+            easing: 'linear',
+            complete: function () {
+                $popup.css({
+                    'background-color': 'rgba(0,0,0,0)'
+                });
+                $popup.animate({
+                    left: 0,
+                    top: 0,
+                    width: window_width- 30,
+                    height: window_height - 30,
+                    'background-color': 'rgba(0,0,0,0.25)'
+                    // THANKS:  Alpha, not opacity, https://stackoverflow.com/a/5770362/673991
+                }, {
+                    easing: 'swing'
+                });
+            }
+        });
+        $popup.addClass('pop-up');
+        console.log("Popup", cont_idn);
     }
 
     function edit_submit($div, what, vrb, obj, then) {
@@ -634,9 +751,7 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
 
     function contributions_becoming_visible_for_the_first_time_maybe() {
         initialize_contribution_sizes();
-        $('.render-bar iframe').each(function () {
-            this.iFrameResizer.resize();
-        });
+        resize_render_bars('.render-bar iframe');
     }
 
     function new_contribution_just_created() {
@@ -648,6 +763,11 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
             $element.removeClass('size-adjust-once');
             size_adjust($element, 'width', WIDTH_MAX_EM);
             size_adjust($element, 'height', HEIGHT_MAX_EM);
+        });
+    }
+    function resize_render_bars(selector) {
+        $(selector).each(function () {
+            this.iFrameResizer.resize();
         });
     }
     function size_adjust($element, dimension, max_em) {
@@ -872,7 +992,8 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
         $(window.document.body).empty();
         $(window.document.body).addClass('dirty-nowhere');
 
-        var cont_only = cont_list_from_query_string();
+        // var $play_canvas = $('<div>', {id: 'play-canvas'});
+        // $(window.document.body).append($play_canvas);
 
         var $up_top = $('<div>', {id: 'up-top'});
         $(window.document.body).append($up_top);
@@ -884,6 +1005,12 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
             $status_prompt.append($('<a>', {href: url_with_no_query_string()}).text("see all"));
         }
         $up_top.append($status_prompt);
+
+        var $play_prompt = $('<div>', {id: 'play-prompt'});
+        var $play_link = $('<a>', {id: 'play-button'});
+        $play_link.text("play");
+        $play_prompt.append($play_link);
+        $up_top.append($play_prompt);
 
         var $login_prompt = $('<div>', {id: 'login-prompt'});
         $login_prompt.html(MONTY.login_html);
@@ -1117,12 +1244,7 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
     }
 
     function cont_list_from_query_string() {
-        var query_string = window.location.search;
-        if (query_string === '') {
-            return null;
-        }
-        var query_params = new window.URLSearchParams(query_string);
-        var cont_filter = query_params.get('cont');
+        var cont_filter = query_get('cont', null);
         if (cont_filter === null) {
             return null;
         } else {
@@ -1282,6 +1404,8 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
         $save_bar.append($('<button>', {class: 'cancel'}).text('cancel'));
         $save_bar.append($('<button>', {class: 'save'}).text('save'));
         $save_bar.append($('<button>', {class: 'discard'}).text('discard'));
+        $save_bar.append($('<button>', {class: 'full'}).text('full'));
+        $save_bar.append($('<button>', {class: 'unfull'}).text('unfull'));
         $sup_contribution.append($render_bar);
         $sup_contribution.append($caption_bar);
         $sup_contribution.append($save_bar);
@@ -1770,8 +1894,18 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
     console.assert(false === starts_with("string", "ing"));
 }
 
+function query_get(name, default_value) {
+    var query_params = new window.URLSearchParams(window.location.search);
+    var value = query_params.get(name);
+    if (value === null) {
+        return default_value;
+    } else {
+        return value;
+    }
+}
+
 /**
- * Polyfill for window.URLSearchParams (so it works in IE11)
+ * Polyfill for window.URLSearchParams.get(), so it works in IE11
  *
  * THANKS:  https://stackoverflow.com/a/50756253/673991
  */

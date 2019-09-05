@@ -2,10 +2,12 @@
 
 #up-top {
     overflow: hidden;
+    /* THANKS:  Outer div tall as inner divs, https://stackoverflow.com/a/804936/673991 */
     margin-bottom: 0.1em;
 }
 
-#status-prompt {
+#status-prompt,
+#play-prompt {
     float: left;
     text-align: left;
     font: menu;
@@ -87,6 +89,7 @@
     position: relative;
     top: 0;
     left: 0;
+    z-index: 0;
     resize: both;
     min-width: 4em;
     min-height: 2em;
@@ -141,6 +144,11 @@
 .save-bar {
     /*text-align: right;*/
 }
+.save-bar .full,
+.save-bar .unfull {
+    font: small-caption;
+    float: left;
+}
 .save-bar .edit,
 .save-bar .cancel,
 .save-bar .discard,
@@ -162,6 +170,10 @@
 .grip {
     cursor: move;
     padding-right: 0.3em;
+}
+
+.pop-down {
+    visibility: hidden;
 }
 
 .double-anon {
@@ -238,3 +250,8 @@ iframe { display:block; }
 .render-bar iframe {
     border: 1px solid black;
 }
+
+        .save-bar   .full { display: inline-block; }
+.pop-up .save-bar   .full { display: none; }
+        .save-bar .unfull { display: none; }
+.pop-up .save-bar .unfull { display: inline-block; }

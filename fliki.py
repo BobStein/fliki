@@ -1639,9 +1639,7 @@ def contribution_home(home_page_title):
                         # words.cont - list of contribution words
                     )
                     monty.update(words_for_js)
-                    script.raw_text('var MONTY = {json};\n'.format(
-                        json=json_pretty(monty)
-                    ))
+                    script.raw_text('var MONTY = {json};\n'.format(json=json_pretty(monty)))
                     script.raw_text('js_for_contribution(window, jQuery, qoolbar, MONTY);\n')
     t_end = time.time()
     q_end = auth.lex.query_count
@@ -2637,7 +2635,7 @@ if secure.credentials.Options.oembed_server_prefix is not None:
     @flask_app.route(secure.credentials.Options.oembed_server_prefix, methods=('GET', 'HEAD'))
     def oembed_html():
         """
-        Serve the iframe contents for embedded media.
+        Serve the iframe contents for embedded media, based on its URL.
 
         Pass the url for the media as a user might browse it.
 
@@ -2648,6 +2646,9 @@ if secure.credentials.Options.oembed_server_prefix is not None:
         url = flask.request.args.get('url')
         if matcher(url, NOEMBED_PATTERNS):
             return noembed_render(url)
+        # elif matcher(url, YOUTUBE_PATTERNS):
+        #     etc['matcher_groups'] = matcher_groups(url, YOUTUBE_PATTERNS)
+        #     return youtube_render(url, etc)
         elif matcher(url, INSTAGRAM_PATTERNS):
             return instagram_render(url)
         else:
@@ -2668,36 +2669,76 @@ if secure.credentials.Options.oembed_server_prefix is not None:
 
 
 def noembed_render(url):
-    """Render and wrangle noembed-supplied html.  For use by an iframe of embedded media."""
-    oembed_dict = noembed_get(url)
-    try:
-        embeddable_html = oembed_dict['html']
-    except KeyError:
-        try:
-            return flask.Response("Noembed error: " + oembed_dict['error'], status=404)
-        except KeyError:
-            return flask.Response("Unknown response:" + json_pretty(oembed_dict), status=404)
-    else:
-        with FlikiHTML('html') as html:
-            domain = domain_from_url(url)
-            with html.head(newlines=True) as head:
-                head.css_stamped(AuthFliki.static_url('code/embed_content.css'))
-            with html.body(newlines=True, **{'data-oembed-domain': domain}) as body:
-                body.raw_text(embeddable_html)
-            with html as foot:
-                foot.jquery(JQUERY_VERSION, local_directory=AuthFliki.static_url('code'))
-                foot.script(type='text/javascript').raw_text('''
-                    window.iFrameResizer = {
-                        targetOrigin: "''' + secure.credentials.Options.oembed_target_origin + '''"
-                    };
-                \n''')
-                foot.js(
-                    'https://cdn.jsdelivr.net/npm/iframe-resizer@4.1.1/js/'
-                    'iframeResizer.contentWindow.js'
-                )
-                foot.js_stamped(AuthFliki.static_url('code/embed_content.js'))
+    """
+    Render and wrangle noembed-supplied html.  For use by an iframe of embedded media.
 
-            return html.doctype_plus_html()
+    Not only is viewing this page in isolation minimalist
+    (it starts with an empty body element), but it won't work at all.
+    Because it waits for iFrameResizer of the parent page to load first.
+    At least I think that's why.
+    """
+    oembed_dict = noembed_get(url)
+    # try:
+    #     embeddable_html = oembed_dict['html']
+    # except KeyError:
+    #     try:
+    #         return flask.Response("Noembed error: " + oembed_dict['error'], status=404)
+    #     except KeyError:
+    #         return flask.Response("Unknown response:" + json_pretty(oembed_dict), status=404)
+    # else:
+    with FlikiHTML('html') as html:
+        # domain = domain_from_url(url)
+        # domain_simple = domain.lower()
+        # domain_simple = re.sub(r'^www\.', '', domain_simple)
+        # domain_simple = re.sub(r'\.com$', '', domain_simple)
+        # is_pop_up = flask.request.args.get('is_pop_up', 'false') == 'true'
+        # is_pop_youtube = is_pop_up and domain_simple in ('youtube', 'youtu.be')
+        monty = dict(
+            # domain=domain,
+            # domain_simple=domain_simple,
+            matcher_groups=matcher_groups(url, NOEMBED_PATTERNS),
+            # TODO:  Really have to go through all patterns again?
+            # oembed={k: v for k, v in oembed_dict.items() if k != 'html'},
+            oembed=oembed_dict,
+            # is_pop_youtube=is_pop_youtube,
+            target_origin=secure.credentials.Options.oembed_target_origin,
+        )
+        with html.head(newlines=True) as head:
+            head.css_stamped(AuthFliki.static_url('code/embed_content.css'))
+            head.jquery(JQUERY_VERSION)
+            # head.script(type='text/javascript').raw_text('''
+            #     window.iFrameResizer = {
+            #         targetOrigin: "''' + secure.credentials.Options.oembed_target_origin + '''",
+            #         onMessage: function(message) {
+            #             console.log("Daughter Message In", message);
+            #         }
+            #     };
+            # \n''')
+            # head.js(
+            #     'https://cdn.jsdelivr.net/npm/iframe-resizer@4.1.1/js/'
+            #     'iframeResizer.contentWindow.js'
+            # )
+            # if is_pop_youtube:
+            #     head.js('https://www.youtube.com/iframe_api')
+            head.js_stamped(AuthFliki.static_url('code/embed_content.js'))
+            head.script(type='text/javascript').raw_text('''
+                var MONTY = {json};
+                embed_content_js(window, jQuery, MONTY);
+            \n'''.format(json=json_pretty(monty)))
+
+        # html.body(newlines=True, **{'data-domain': domain})
+        html.body()
+
+            # with html.body(newlines=True, **{'data-domain': domain}) as body:
+                # if not is_pop_youtube:
+                #     body.raw_text('')    # embeddable_html)
+                # with body as foot:
+
+        return html.doctype_plus_html()
+#
+#
+# def json_safer(x):
+#     return flask.render_template_string('{{x|tojson(indent=4)}}', x=x)
 
 
 def noembed_get(url):
@@ -2709,6 +2750,7 @@ def noembed_get(url):
 
 def instagram_render(url):
     """Render instagram-supplied html.  For use by an iframe of embedded media."""
+    # TODO:  Pop-up is busted.  And there may be cruft here, like data-domain.
     matched = re.search(r'/p/(.*)', url)
     if matched:
         code = matched.group(1)
@@ -2722,7 +2764,7 @@ def instagram_render(url):
                     body { margin: 0; }
                     img { display: block; }   /* Prevents unsightly space below image. */
                 \n''')
-            with html.body(style='margin:0', newlines=True, **{'data-oembed-domain': domain}) as body:
+            with html.body(style='margin:0', newlines=True, **{'data-domain': domain}) as body:
                 thumbnail_escaped = FlikiHTML.escape(thumbnail_url)
                 with body.a(style='border:0', href=url, target='_blank') as a:
                     a.img(src=thumbnail_escaped, **{'data-iframe-width': 'x'})
@@ -2839,7 +2881,7 @@ def answer_qiki(url_suffix):
     # TODO:  browses = lex.jbo(session_words)
     # TODO:  browses = lex(obj=lex(vrb=WORD.BROWSE, obj=auth.this_path))
     # TODO:  browses = lex.find_words(obj=lex.find_words(vrb=WORD.BROWSE, obj=auth.this_path))
-    render_question = youtube_render(url_suffix)
+    render_question = legacy_youtube_render(url_suffix)
     if render_question is None:
         render_question = "Here is a page for '{}'".format(flask.escape(url_suffix))
     return flask.render_template(
@@ -2858,7 +2900,7 @@ def answer_qiki(url_suffix):
     )
 
 
-def youtube_render(url_suffix):
+def legacy_youtube_render(url_suffix):
     found = re.search(r'^youtube/([a-zA-Z0-9_-]{11})$', url_suffix)
     # THANKS:  YouTube video id, https://stackoverflow.com/a/4084332/673991
     # SEE:  v3 API, https://stackoverflow.com/a/31742587/673991
@@ -3148,6 +3190,14 @@ def json_get(url):
     return response_native
 
 
+def matcher_groups(url, pattern_list):
+    for i, pattern in enumerate(pattern_list):
+        match_object = re.search(pattern, url)
+        if match_object:
+            return list(match_object.groups())
+    return []
+
+
 def matcher(url, pattern_list):
     any_pattern_matched = any(re.search(p, url) for p in pattern_list)
     return any_pattern_matched
@@ -3171,11 +3221,17 @@ JSON_SEPARATORS_NO_SPACES = (',', ':')
 
 
 def json_encode(x, **kwargs):
-    """JSON encoding a dict, including custom objects with to_json() methods."""
+    """
+    JSON encoding a dict, including custom objects with to_json() methods.
+
+    SEE:  (own report) conform to script element, https://stackoverflow.com/a/57796324/673991
+    THANKS:  Jinja2 html safe json dumps utility, for inspiration
+             https://github.com/pallets/jinja/blob/90595070ae0c8da489faf24f153b918d2879e759/jinja2/utils.py#L549
+    """
     # TODO:  Support encoding list, etc.
     # if isinstance(x, dict):
     #     x = dict(fix_dict(x))
-    return json.dumps(
+    json_almost = json.dumps(
         x,
         cls=WordEncoder,
         separators=JSON_SEPARATORS_NO_SPACES,
@@ -3184,6 +3240,8 @@ def json_encode(x, **kwargs):
         # NOTE:  If there APPEAR to be newlines when viewed in a browser,
         #        it may just be the browser wrapping lines on the commas.
     )
+    json_for_script = json_almost.replace('<', r'\u003C')
+    return json_for_script
 
 
 def json_pretty(x):
