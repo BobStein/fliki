@@ -261,11 +261,11 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
                     sizeWidth: true,
                     sizeHeight: true,
                     widthCalculationMethod: 'taggedElement',
-                    onMessage: function(x) {
+                    onMessage: function(stuff) {
                         // NOTE:  Step 2 in the mother-daughter message demo.
-                        console.log("Mother Message In", $(x.iframe).attr('id'), x.message);
+                        // console.log("Mother Message In", $(stuff.iframe).attr('id'), stuff.message);
                         // EXAMPLE:  Mother Message In iframe_1849 {foo: "bar"}
-                        x.iframe.iFrameResizer.sendMessage({'moo':'butter'});
+                        // stuff.iframe.iFrameResizer.sendMessage({'moo':'butter'});
                     }
                     // onInit: function resizer_init_callback(iframe) {
                     //     console.log("RESIZER_INIT_CALLBACK", iframe.id);
@@ -323,7 +323,8 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
         var $cont = $(this);
         var $sup_cont = $cont.closest('.sup-contribution');
         var $caption_span = $sup_cont.find('.caption-span');
-        console.assert(is_editing_some_contribution);   // If not editing, how was the cancel button visible?
+        console.assert(is_editing_some_contribution);
+        // If not editing, how was the cancel button visible?
         if (is_editing_some_contribution) {
             if ($sup_cont.hasClass('edit-dirty')) {
                 // $cont_editing.text(original_text);
@@ -348,7 +349,8 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
         if (is_editing_some_contribution) {
             var cont_idn_old = $cont_editing.attr('id');
             edit_submit($cont_editing, "contribution", MONTY.IDN.EDIT, cont_idn_old, function () {
-                var $caption_span = $cont_editing.closest('.sup-contribution').find('.caption-span');
+                var $sup_cont = $cont_editing.closest('.sup-contribution');
+                var $caption_span = $sup_cont.find('.caption-span');
                 var cont_idn_new = $cont_editing.attr('id');
                 edit_submit($caption_span, "caption", MONTY.IDN.CAPTION, cont_idn_new, function () {
                     render_bar($cont_editing);
@@ -361,82 +363,167 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
     }
 
     function contribution_unfull() {
-        $('.pop-up .render-bar iframe').each(function () {
-            this.iFrameResizer.close();
-            // NOTE:  Without this, the un-full window generates warnings on resizing.  Example:
-            //            iframeResizer.js:134 [iFrameSizer][Host page: popup_iframe_1834]
-            //            [Window resize] IFrame(popup_iframe_1834) not found
-            //        And probably leaks memory.
+        var $pop_ups = $('.pop-up');
+        var $pop_downs = $('.pop-down');
+        console.assert($pop_ups.length <= 1, $pop_ups);
+        console.assert($pop_downs.length <= 1, $pop_downs);
+        $pop_ups.each(function () {
+            var $popup = $(this);
+            var pop_stuff = $popup.data('pop-stuff');
+            // TODO:  Instead, just remember the pop-down DOM object,
+            //        and recalculate its current "fixed" coordinates from it.
+            var iframe = $popup.find('.render-bar iframe')[0];
+            if (iframe) {
+                try {
+                    iframe.iFrameResizer.sendMessage({
+                        action: 'un-pop-up',
+                        width: pop_stuff.render_width,
+                        height: pop_stuff.render_height
+                    });
+                } catch (e) {
+                    console.error("Unable to unfull??", iframe.id, e.toString());
+                    // NOTE:  2nd line of defense, double-pop-up
+                    //        Or rather a mop-up of consequences, long after the fact.
+                    //        TypeError 'iframe' of undefined in iframeResizer.js
+                    //        when 'full'ing one contribution when another's already full.
+                    //        And then all 'full' clicks trigger the same error, trying
+                    //        to unfull.
+                    //        Reproduce:
+                    //        Full contribution A
+                    //        Without un-fulling it, full contribution B
+                    //        Notice B's original location is not popped down (invisible)?
+                    //        Now full contribution B again, from it's supposed-to-be-invisible form.
+                    //        Now the popup is atrophied.
+                    //        Try to unfull it.
+                    //        Worked around by SAVING $pop_downs above, undoing it below.
+                }
+            } else {
+                // NOTE:  Harmlessly un-popping-up something with no render-bar iframe.
+            }
+            $popup.animate({
+                top: pop_stuff.fixed_top,
+                left: pop_stuff.fixed_left
+            }, {
+                complete: function () {
+                    if (iframe) {
+                        iframe.iFrameResizer.close();
+                    }
+                    $popup.remove();
+                    $pop_downs.removeClass('pop-down');
+                    // NOTE:  1st line of defense, double-pop-up,
+                    //        Remembered pop-down object, now un-class it.
+                    //        Instead of now
+                    //        $('.pop-down').removeClass('pop-down');
+                    //        which might undo half of a more recent pop-up.
+                }
+            });
         });
-        $('.pop-up').remove();
-        $('.pop-down').removeClass('pop-down');
+        // $('.pop-up .render-bar iframe').each(function () {
+        //     // NOTE:  There should never be more than one,
+        //     //        but this way we don't have to know which one.
+        //     this.iFrameResizer.close();
+        //     // NOTE:  Without this, the un-full window generates warnings on resizing.  Example:
+        //     //            iframeResizer.js:134 [iFrameSizer][Host page: popup_iframe_1834]
+        //     //            [Window resize] IFrame(popup_iframe_1834) not found
+        //     //        And probably leaks memory.
+        //     // TODO:  Should this only proceed after the onClosed event(s)?
+        // });
+        // $('.pop-up').remove();
+        // $('.pop-down').removeClass('pop-down');
     }
 
     function contribution_full() {
-        contribution_unfull();
         var $full = $(this);
         var $sup_cont = $full.closest('.sup-contribution');
         var $cont = $sup_cont.find('.contribution');
         var cont_idn = $cont.attr('id');
+        var was_already_popped_up = $('#popup_' + cont_idn).length > 0;
+
+        contribution_unfull();
+        if (was_already_popped_up) {
+            console.error("Oops, somehow", cont_idn, "was already popped up.");
+            // NOTE:  3rd line of defense, double-pop-up.
+            //        Just pop down, don't pop-up again.
+            return;
+        }
+
         var offset = $sup_cont.offset();
         var window_width = $(window).width();
         var window_height = $(window).height();
-        var cont_width = $sup_cont.width();
-        var cont_height = $sup_cont.height();
-        var render_height = $sup_cont.find('.render-bar').height();
+        // var cont_width = $sup_cont.width();
+        // var cont_height = $sup_cont.height();
+        var $render_bar = $sup_cont.find('.render-bar');
+        var render_width = $render_bar.width();
+        var render_height = $render_bar.height();
+        var caption_height = $sup_cont.find('.caption-bar').height();
+        var $save_bar = $sup_cont.find('.save-bar');
+        $save_bar.addClass('');
+        var save_height = $save_bar.height();
+        $save_bar.removeClass('');
+
         var $popup = $sup_cont.clone(false, true);
-        $sup_cont.addClass('pop-down');
-        $sup_cont.before($popup);
-        $popup.find('.contribution');
         $popup.find('[id]').attr('id', function () {
             return 'popup_' + $(this).attr('id');
             // NOTE:  Avoid duplicate ids by prefixing all the ones in the clone.
         });
+        $popup.addClass('pop-up');
+        $sup_cont.addClass('pop-down');
+        $sup_cont.before($popup);
 
         var $iframe = $popup.find('.render-bar iframe');
-        $iframe.attr('src', function () {
-            return $(this).attr('src') + '&' + $.param({
-                width:  Math.round(window_width - 30),
-                height: Math.round(window_height - cont_height + render_height - 30),
-                is_pop_up: true
-            });
-        });
         resizer_init($iframe);
         // NOTE:  Finally decided the best way to make the popup iframe big
-        //        was to focus on the CONTENTS size, and let iFrameResizer handle the outer size.
+        //        was to focus on the inner CONTENTS size,
+        //        and let iFrameResizer handle the outer size.
         // SEE:  Tricky iframe height 100%, https://stackoverflow.com/a/5871861/673991
-
+        var fixed_top = offset.top - $(window).scrollTop();
+        var fixed_left = offset.left - $(window).scrollLeft();
+        $popup.data('pop-stuff', {
+            render_width: render_width,
+            render_height: render_height,
+            fixed_top: fixed_top,
+            fixed_left: fixed_left
+        });
         $popup.css({
             position: 'fixed',
-            top: offset.top - $(window).scrollTop(),
-            left: offset.left - $(window).scrollLeft(),
+            top: fixed_top,
+            left: fixed_left,
             'z-index': 1
         });
         // THANKS:  Recast position from relative to fixed, with no apparent change,
         //          (my own compendium) https://stackoverflow.com/a/44438131/673991
+
+        $iframe.attr('src', function () {
+            var cont_padding = px_from_em(0.3 + 0.3);
+            return $(this).attr('src') + '&' + $.param({
+                width:  Math.round(window_width - 30),
+                height: Math.round(window_height - caption_height - save_height - 30 - cont_padding),
+                is_pop_up: true
+            });
+        });
+
         // NOTE:  Now, animate some motion.
-        $popup.animate({
-            left: window_width/2 - cont_width/2,
-            top: window_height/2 - cont_height/2
-        }, {
-            easing: 'linear',
-            complete: function () {
+        // $popup.animate({
+        //     left: window_width/2 - cont_width/2,
+        //     top: window_height/2 - cont_height/2
+        // }, {
+        //     easing: 'linear',
+        //     complete: function () {
                 $popup.css({
                     'background-color': 'rgba(0,0,0,0)'
                 });
                 $popup.animate({
                     left: 0,
                     top: 0,
-                    width: window_width- 30,
-                    height: window_height - 30,
+                    // width: window_width- 30,
+                    // height: window_height - 30,
                     'background-color': 'rgba(0,0,0,0.25)'
                     // THANKS:  Alpha, not opacity, https://stackoverflow.com/a/5770362/673991
                 }, {
                     easing: 'swing'
                 });
-            }
-        });
-        $popup.addClass('pop-up');
+        //     }
+        // });
         console.log("Popup", cont_idn);
     }
 
@@ -991,9 +1078,6 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
     function build_dom() {
         $(window.document.body).empty();
         $(window.document.body).addClass('dirty-nowhere');
-
-        // var $play_canvas = $('<div>', {id: 'play-canvas'});
-        // $(window.document.body).append($play_canvas);
 
         var $up_top = $('<div>', {id: 'up-top'});
         $(window.document.body).append($up_top);

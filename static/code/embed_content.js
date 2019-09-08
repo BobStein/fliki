@@ -40,6 +40,10 @@ function embed_content_js(window, $, MONTY) {
         domain_simple === 'youtube' ||
         domain_simple ==='youtu.be'
     );
+    var THUMB_MAX_WIDTH = 300;
+    var THUMB_MAX_HEIGHT = 300;
+    var YOUTUBE_EMBED_PREFIX = 'https://www.youtube.com/embed/';
+    // THANKS:  URL, https://developers.google.com/youtube/player_parameters#Manual_IFrame_Embeds
 
     // console.assert(domain === MONTY.domain);
     // console.assert(domain_simple === MONTY.domain_simple);
@@ -51,13 +55,46 @@ function embed_content_js(window, $, MONTY) {
             $(window.document).ready(function () {
                 $body = $(window.document.body);
                 if (is_pop_youtube) {
-                    var $div_outer = $('<div>', {id: 'outer'});
-                    var $div_inner = $('<div>', {id: 'you-pop'});
-                    tag_width($div_outer);
-                    tag_width($div_inner);
-                    $div_outer.append($div_inner);
-                    $body.append($div_outer);
-                    $.getScript("https://www.youtube.com/iframe_api");
+                    // var $div_outer = $('<div>', {id: 'outer'});
+                    // var $div_inner = $('<div>', {id: 'you-pop'});
+                    // tag_width($div_outer);
+                    // tag_width($div_inner);
+                    // $div_outer.append($div_inner);
+                    // $body.append($div_outer);
+
+                    console.assert(MONTY.matcher_groups.length === 1);
+                    var youtube_embed_url = YOUTUBE_EMBED_PREFIX + MONTY.matcher_groups[0];
+                    youtube_iframe_api(function () {
+                        var $you_frame = $('<iframe>', {
+                            id: 'youtube_iframe',
+                            width: MONTY.oembed.width,
+                            height: MONTY.oembed.height,
+                            type: 'text/html',
+                            src: youtube_embed_url,
+                            frameborder: '0'
+                        });
+                        tag_width($you_frame);
+                        fit_width(THUMB_MAX_WIDTH, $you_frame);
+                        fit_height(THUMB_MAX_HEIGHT, $you_frame);
+                        $body.append($you_frame);
+                        $you_frame.animate({
+                            width: query_get('width'),
+                            height: query_get('height')
+                        });
+
+                        // var api_settings = {
+                        //     width: query_get('width', 'auto'),
+                        //     height: query_get('height', 'auto'),
+                        //     videoId: MONTY.matcher_groups[0],
+                        //     events: {
+                        //         onReady: function () {
+                        //             console.log("Innermost YouTube api ready");
+                        //         }
+                        //     }
+                        // };
+                        // var youtube_player = new window.YT.Player('you-pop', api_settings);
+                        console.log("Inner YouTube api ready"/*, api_settings*/);
+                    });
                 } else {
                     $body.html(MONTY.oembed.html);
                     fix_embedded_content();
@@ -76,15 +113,15 @@ function embed_content_js(window, $, MONTY) {
                                     "codes", JSON.stringify(MONTY.matcher_groups)
                                 );
                             }
-                            if (typeof window.parentIFrame === 'object') {
-                                // NOTE:  Step 1 in the mother-daughter message demo.
-                                window.parentIFrame.sendMessage(
-                                    {'foo':'bar'},
-                                    window.iFrameResizer.targetOrigin
-                                );
-                            } else {
-                                console.error("NOT LOADED PARENT IFRAME");
-                            }
+                            // if (typeof window.parentIFrame === 'object') {
+                            //     // NOTE:  Step 1 in the mother-daughter message demo.
+                            //     window.parentIFrame.sendMessage(
+                            //         {'foo':'bar'},
+                            //         window.iFrameResizer.targetOrigin
+                            //     );
+                            // } else {
+                            //     console.error("");
+                            // }
                             clearInterval(interval);
                             return;
                         }
@@ -95,8 +132,20 @@ function embed_content_js(window, $, MONTY) {
             });
         },
         onMessage: function iframe_resizer_content_message(message) {
+            // noinspection JSRedundantSwitchStatement
+            switch (message.action) {
+            case 'un-pop-up':
+                $('#youtube_iframe').animate({
+                    width: message.width,
+                    height: message.height
+                });
+                break;
+            default:
+                console.error("Undefined messaged action", message.action);
+                break;
+            }
             // NOTE:  Step 3 in the mother-daughter message demo.
-            console.log("Daughter Message In", window.parentIFrame.getId(), message);
+            // console.log("Daughter Message In", window.parentIFrame.getId(), message);
             // EXAMPLE:  Daughter Message In iframe_1849 {moo: "butter"}
         }
     };
@@ -105,6 +154,18 @@ function embed_content_js(window, $, MONTY) {
         'iframeResizer.contentWindow.js'
     );
 
+    // noinspection JSUnusedLocalSymbols
+    function parent_iframe() {
+        if (typeof window.parentIFrame === 'object') {
+            return window.parentIFrame;
+        } else {
+            console.error("NOT LOADED PARENT IFRAME");
+            return {
+                getId: function () { return "not loaded id"; },
+                sendMessage: function () { console.error("no loaded send"); }
+            }
+        }
+    }
 
     // function load_youtube_iframe_api() {
     //     var tag = document.createElement('script');
@@ -141,13 +202,13 @@ function embed_content_js(window, $, MONTY) {
             $body.css({width: pop_width, height: pop_height});
             $child.css({width: pop_width, height: pop_height});
         } else {
-            fit_width(300, $body);
-            fit_width(300, $child);
-            fit_width(300, $grandchild);
+            fit_width(THUMB_MAX_WIDTH, $body);
+            fit_width(THUMB_MAX_WIDTH, $child);
+            fit_width(THUMB_MAX_WIDTH, $grandchild);
 
-            fit_height(300, $body);
-            fit_height(300, $child);
-            fit_height(300, $grandchild);
+            fit_height(THUMB_MAX_HEIGHT, $body);
+            fit_height(THUMB_MAX_HEIGHT, $child);
+            fit_height(THUMB_MAX_HEIGHT, $grandchild);
 
             target_blank($('body > a'));
             // NOTE:  This fixes a boneheaded flickr issue.
@@ -161,7 +222,7 @@ function embed_content_js(window, $, MONTY) {
             //            in a frame because it set 'X-Frame-Options'
             //            to 'sameorigin'.
             //        Twitter, Dropbox, Instagram already do target=_blank
-            //        which pops up a new browser tab.
+            //        which pops up a new browser tab, avoiding the XSS issue.
         }
     }
 
@@ -220,25 +281,19 @@ function embed_content_js(window, $, MONTY) {
         }
     }
 
-    var youtube_player = null;
+    var _youtube_iframe_api_when_ready = null;
 
-    /**
-     * @param YT
-     * @param YT.Player
-     */
-    embed_content_js.api_ready = function (YT) {
-        var api_settings = {
-            width: query_get('width', 'auto'),
-            height: query_get('height', 'auto'),
-            videoId: MONTY.matcher_groups[0],
-            events: {
-                onReady: function () {
-                    console.log("Innermost YouTube api ready");
-                }
-            }
-        };
-        youtube_player = new YT.Player('you-pop', api_settings);
-        console.log("Inner YouTube api ready", api_settings);
+    function youtube_iframe_api(when_ready) {
+        console.assert(_youtube_iframe_api_when_ready === null);
+        console.assert(typeof window.YT === 'undefined');   // TODO:  Support multiple calls
+        $.getScript("https://www.youtube.com/iframe_api");
+        _youtube_iframe_api_when_ready = when_ready;
+    }
+
+    embed_content_js.youtube_iframe_api_ready = function () {
+        console.assert(typeof _youtube_iframe_api_when_ready === 'function');
+        console.assert(typeof window.YT === 'object');
+        _youtube_iframe_api_when_ready();
     };
 }
 
@@ -248,7 +303,7 @@ function embed_content_js(window, $, MONTY) {
  */
 function onYouTubeIframeAPIReady() {
     console.log("Outer YouTube api ready");
-    embed_content_js.api_ready(window.YT);
+    embed_content_js.youtube_iframe_api_ready();
 }
 
 /**

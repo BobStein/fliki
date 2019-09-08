@@ -142,7 +142,8 @@
 }
 
 .save-bar {
-    /*text-align: right;*/
+    overflow: auto;
+    /* THANKS:  make outer big as inner, https://stackoverflow.com/a/8464523/673991 */
 }
 .save-bar .full,
 .save-bar .unfull {
@@ -161,11 +162,18 @@
     border-color: red;
 }
 
+.sup-contribution.pop-up                  .save-bar .edit    { display: none; }
 .sup-contribution.contribution-edit       .save-bar .edit    { display: none; }
 .sup-contribution:not(.contribution-edit) .save-bar .cancel  { display: none; }
 .sup-contribution.edit-dirty              .save-bar .cancel  { display: none; }
 .sup-contribution:not(.edit-dirty)        .save-bar .save    { display: none; }
 .sup-contribution:not(.edit-dirty)        .save-bar .discard { display: none; }
+
+.contribution-edit .save-bar   .full { display: none; }
+                   .save-bar   .full { display: inline-block; }
+.pop-up            .save-bar   .full { display: none; }
+                   .save-bar .unfull { display: none; }
+.pop-up            .save-bar .unfull { display: inline-block; }
 
 .grip {
     cursor: move;
@@ -250,8 +258,3 @@ iframe { display:block; }
 .render-bar iframe {
     border: 1px solid black;
 }
-
-        .save-bar   .full { display: inline-block; }
-.pop-up .save-bar   .full { display: none; }
-        .save-bar .unfull { display: none; }
-.pop-up .save-bar .unfull { display: inline-block; }
