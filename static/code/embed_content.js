@@ -32,13 +32,15 @@ function embed_content_js(window, $, MONTY) {
 
     var url = query_get('url');
     var domain = domain_from_url(url);
-    var domain_simple = domain.toLowerCase();
-    domain_simple = domain_simple.replace(/^www\./, '');
-    domain_simple = domain_simple.replace(/\.com$/, '');
+    var domain_simple = domain
+        .toLowerCase()
+        .replace(/^www\./, '')
+        .replace(/\.com$/, '')
+    ;
     var is_pop_up = query_get('is_pop_up', 'false') === 'true';
     var is_pop_youtube = is_pop_up && (
         domain_simple === 'youtube' ||
-        domain_simple ==='youtu.be'
+        domain_simple === 'youtu.be'
     );
     var THUMB_MAX_WIDTH = 300;
     var THUMB_MAX_HEIGHT = 300;
@@ -202,13 +204,17 @@ function embed_content_js(window, $, MONTY) {
             $body.css({width: pop_width, height: pop_height});
             $child.css({width: pop_width, height: pop_height});
         } else {
-            fit_width(THUMB_MAX_WIDTH, $body);
-            fit_width(THUMB_MAX_WIDTH, $child);
             fit_width(THUMB_MAX_WIDTH, $grandchild);
+            fit_width(THUMB_MAX_WIDTH, $child);
+            // fit_width(THUMB_MAX_WIDTH, $body);
 
-            fit_height(THUMB_MAX_HEIGHT, $body);
-            fit_height(THUMB_MAX_HEIGHT, $child);
             fit_height(THUMB_MAX_HEIGHT, $grandchild);
+            fit_height(THUMB_MAX_HEIGHT, $child);
+            // fit_height(THUMB_MAX_HEIGHT, $body);
+            // NOTE:  $child before $body fixes SoundCloud too skinny bug.
+            //        Because $body shrinkage for some reason constricted $child width,
+            //        but not its height.  So its skinny apparent aspect ratio was preserved.
+            //        Then noticed $body doesn't need to be "fitted" at all.
 
             target_blank($('body > a'));
             // NOTE:  This fixes a boneheaded flickr issue.
@@ -230,6 +236,12 @@ function embed_content_js(window, $, MONTY) {
         cycle_of_last_change = num_cycles;
         description_of_last_change = description;
         num_changes++;
+        // console.log("CHANGE", description);
+        // EXAMPLE:
+        //    CHANGE IFRAME.fit_height(300x400-225x300)
+        //    CHANGE TWITTER-WIDGET.fit_height(220x421.063-156.7461401262994x300)
+        //    CHANGE IMG.fit_height(300x468.281-192.19229479735458x300)
+        //    CHANGE BLOCKQUOTE.fit_height(220x302-218.5430463576159x300)
     }
 
     function target_blank($element) {
@@ -251,8 +263,10 @@ function embed_content_js(window, $, MONTY) {
 
     function fit_width(max_width, $element) {
         if ($element.length === 1 && max_width < $element.width()) {
+            var old_width = $element.width();
+            var old_height = $element.height();
             var new_width = max_width;
-            var new_height = $element.height() * max_width / $element.width();
+            var new_height = old_height * max_width / old_width;
             $element.height(new_height);
             $element.width(new_width);
             // NOTE:  Once thought I saw a clue that order matters.
@@ -263,11 +277,24 @@ function embed_content_js(window, $, MONTY) {
 
     function fit_height(max_height, $element) {
         if ($element.length === 1 && max_height < $element.height()) {
+            var old_height = $element.height();
+            var old_width = $element.width();
             var new_height = max_height;
-            var new_width = $element.width() * max_height / $element.height();
+            var new_width = old_width * max_height / old_height;
             $element.width(new_width);
             $element.height(new_height);
-            count_a_change($element[0].tagName + ".fit_height");
+            count_a_change(
+                $element[0].tagName + ".fit_height" +
+                "(" +
+                old_width.toString() +
+                "x" +
+                old_height.toString() +
+                "-" +
+                new_width.toString() +
+                "x" +
+                new_height.toString() +
+                ")"
+            );
         }
     }
 

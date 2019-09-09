@@ -3088,26 +3088,11 @@ def ajax():
         elif action == 'anon_answer':
             return valid_response('seconds', float(seconds_until_anonymous_answer()))
 
-        # elif action == 'embed':
-        #     url = auth.form('url')
-        #     noembed_request = 'https://noembed.com/embed?url=' + url
-        #     oembed_dict = json_get(noembed_request)
-        #     if not authorized_embed(url):
-        #         domain_stuff = urllib.parse.urlsplit(url).netloc
-        #         domain_printable = json.dumps(domain_stuff)
-        #         if 'html' in oembed_dict:
-        #             provider_name = oembed_dict.get('provider_name', "((unspecified))")
-        #             but_noembed = "though noembed supports provider " + provider_name
-        #         else:
-        #             error = oembed_dict.get('error', "((for some reason))")
-        #             but_noembed = "anyway noembed says: " + error
-        #         return invalid_response(
-        #             "Unauthorized embed for {domain} {but_noembed}".format(
-        #                 domain=domain_printable,
-        #                 but_noembed=but_noembed,
-        #             )
-        #         )
-        #     return valid_response('oembed', oembed_dict)
+        elif action == 'noembed_meta':
+            url = auth.form('url')
+            noembed_request = 'https://noembed.com/embed?url=' + url
+            oembed_dict = json_get(noembed_request)
+            return valid_response('oembed', oembed_dict)
 
         else:
             return invalid_response("Unknown action " + action)

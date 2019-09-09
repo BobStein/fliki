@@ -392,7 +392,8 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
                     //        Full contribution A
                     //        Without un-fulling it, full contribution B
                     //        Notice B's original location is not popped down (invisible)?
-                    //        Now full contribution B again, from it's supposed-to-be-invisible form.
+                    //        Now full contribution B again, from the button of it's
+                    //        supposed-to-be-invisible form.
                     //        Now the popup is atrophied.
                     //        Try to unfull it.
                     //        Worked around by SAVING $pop_downs above, undoing it below.
@@ -407,14 +408,20 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
                 complete: function () {
                     if (iframe) {
                         iframe.iFrameResizer.close();
+                        // NOTE:  Without this, the un-full window generates warnings on resizing.
+                        //        Example:
+                        //            iframeResizer.js:134
+                        //            [iFrameSizer][Host page: popup_iframe_1834]
+                        //            [Window resize] IFrame(popup_iframe_1834) not found
+                        //        And probably leaks memory.
                     }
                     $popup.remove();
                     $pop_downs.removeClass('pop-down');
                     // NOTE:  1st line of defense, double-pop-up,
                     //        Remembered pop-down object, now un-class it.
-                    //        Instead of now
+                    //        Instead of doing this now...
                     //        $('.pop-down').removeClass('pop-down');
-                    //        which might undo half of a more recent pop-up.
+                    //        ...because that might undo half of a more recent pop-up.
                 }
             });
         });
@@ -422,10 +429,6 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
         //     // NOTE:  There should never be more than one,
         //     //        but this way we don't have to know which one.
         //     this.iFrameResizer.close();
-        //     // NOTE:  Without this, the un-full window generates warnings on resizing.  Example:
-        //     //            iframeResizer.js:134 [iFrameSizer][Host page: popup_iframe_1834]
-        //     //            [Window resize] IFrame(popup_iframe_1834) not found
-        //     //        And probably leaks memory.
         //     // TODO:  Should this only proceed after the onClosed event(s)?
         // });
         // $('.pop-up').remove();
@@ -707,6 +710,51 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
                         //          https://developer.mozilla.org/en-US/docs/Web/API/DataTransferItemList/DataTransferItem#Example_Drag_and_Drop
                         // TODO:  Drop anything, https://developer.mozilla.org/en-US/docs/Web/API/HTML_Drag_and_Drop_API/Recommended_drag_types
                         // SEE:  Drop link, https://stackoverflow.com/q/11124320/673991
+                        if (
+                            item.kind === 'string' &&
+                            item.type === 'text/plain'
+                        ) {
+                            item.getAsString(function (might_be_url) {
+                                console.assert(typeof might_be_url === 'string');
+                                if (can_i_get_meta_about_it(might_be_url)) {
+                                    qoolbar.post('noembed_meta', {
+                                        url: might_be_url
+                                    }, function (oembed_response) {
+                                        console.log("noembed meta", oembed_response);
+                                        if (
+                                            typeof oembed_response.oembed.title === 'string' &&
+                                            typeof oembed_response.oembed.error === 'undefined'
+                                        ) {
+                                            var title = oembed_response.oembed.title;
+                                            var $enter_some_text = $('#enter_some_text');
+                                            var $enter_a_caption = $('#enter_a_caption');
+                                            $enter_some_text.val(might_be_url);
+                                            $enter_a_caption.val(title);
+                                            // TODO:  Avoid setting text/caption when they're dirty.
+                                        } else {
+                                            console.warn(
+                                                "Not an oembed URL",
+                                                might_be_url,
+                                                oembed_response.oembed.error
+                                            );
+                                        }
+                                    });
+                                    evt.preventDefault();
+                                    evt.stopPropagation();
+                                    return false;
+                                    // NOTE:  This probably does nothing.  I'm not the only one
+                                    //        who thinks this is bull puppy:
+                                    //        https://opensourcehacker.com/2011/11/11/cancelling
+                                    //        -html5-drag-and-drop-events-in-web-browsers/
+                                    //        Hint:  you have to cancel dragover / dragenter
+                                    // SEE:  Valid drop target
+                                    //       https://developer.mozilla.org/en-US/docs/Web/API/HTML_Drag_and_Drop_API/Drag_operations#drop
+                                    //       https://stackoverflow.com/q/8414154/673991
+                                } else {
+                                    console.log("Dropped a non-URL", might_be_url);
+                                }
+                            });
+                        }
                     });
                     // EXAMPLE (Chrome, Edge, Opera):
                     //     0. string text/plain
@@ -720,6 +768,17 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
                     //     ... 1 "https://www.youtube.com/watch?v=o9tDO3HK20Q"
                     // EXAMPLE (IE11):
                     //     (data.items is undefined)
+                    // EXAMPLE (dropping a YouTube thumbnail in Chrome, supplemental):
+                    //     2. string text/html
+                    //     ... 0 "https://www.youtube.com/watch?v=YsA3PK8bQd8"
+                    //     ... 1 "https://www.youtube.com/watch?v=YsA3PK8bQd8"
+                    //     ... 2 "<a id=\"thumbnail\" class=\"yt-simple-endpoint ...
+                    //            ...
+                    //                </ytd-thumbnail-overlay-toggle-button-renderer></div>\n
+                    //            </a>"
+                    // contribution.js?mtime=1568044505.725:723
+                } else {
+                    console.log("... originalEvent.dataTransfer.items is", typeof items);
                 }
             }
         } catch (e) {
@@ -1547,6 +1606,10 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
     }
 
     function can_i_embed_it(text) {
+        return could_be_url(text);
+    }
+
+    function can_i_get_meta_about_it(text) {
         return could_be_url(text);
     }
 
