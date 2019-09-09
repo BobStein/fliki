@@ -678,9 +678,31 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
                 var pasted_text = data.getData('Text');
                 // THANKS:  Getting pasted text, https://stackoverflow.com/a/6804718/673991
                 console.log("Pasted string: `" + pasted_text + "'");
+                    // NOTE:  Only insert a new oembed-supplied caption
+                    //        if both text and caption were blank
+                    //        BEFORE the pasting took place.
+                possible_incoming_media("paste", evt, pasted_text, function (url, title) {
+                    var $enter_some_text = $('#enter_some_text');
+                    var $enter_a_caption = $('#enter_a_caption');
+                    var is_new_text = (
+                        $enter_some_text.val().length === 0 ||   // was blank (is blank?? remove this?)
+                        $enter_some_text.val() === url           // must have pasted over all
+                    );
+                    var is_blank_caption = $enter_a_caption.val().length === 0;
+                    if (is_new_text && is_blank_caption) {
+                        $enter_a_caption.val(title);
+                        // NOTE:  Insert a caption when it was blank, and
+                        //        the text is completely overwritten by the pasted url.
+                        //        Unlike drop, pasting a URL into the caption does nothing special.
+                        //        The thinking is, paste is more surgical than drop,
+                        //        so take the user a little more literally.
+                        // TODO:  Also overwrite a semi-dirty caption, that is,
+                        //        the automated result of a previous paste or drop.
+                    }
+                });
             }
         } catch (e) {
-            console.error("Oops, trying to handle drop:", e.message);
+            console.error("Oops, trying to handle paste:", e.message);
         }
     }
 
@@ -716,43 +738,67 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
                         ) {
                             item.getAsString(function (might_be_url) {
                                 console.assert(typeof might_be_url === 'string');
-                                if (can_i_get_meta_about_it(might_be_url)) {
-                                    qoolbar.post('noembed_meta', {
-                                        url: might_be_url
-                                    }, function (oembed_response) {
-                                        console.log("noembed meta", oembed_response);
-                                        if (
-                                            typeof oembed_response.oembed.title === 'string' &&
-                                            typeof oembed_response.oembed.error === 'undefined'
-                                        ) {
-                                            var title = oembed_response.oembed.title;
-                                            var $enter_some_text = $('#enter_some_text');
-                                            var $enter_a_caption = $('#enter_a_caption');
-                                            $enter_some_text.val(might_be_url);
-                                            $enter_a_caption.val(title);
-                                            // TODO:  Avoid setting text/caption when they're dirty.
-                                        } else {
-                                            console.warn(
-                                                "Not an oembed URL",
-                                                might_be_url,
-                                                oembed_response.oembed.error
-                                            );
-                                        }
-                                    });
-                                    evt.preventDefault();
-                                    evt.stopPropagation();
-                                    return false;
-                                    // NOTE:  This probably does nothing.  I'm not the only one
-                                    //        who thinks this is bull puppy:
-                                    //        https://opensourcehacker.com/2011/11/11/cancelling
-                                    //        -html5-drag-and-drop-events-in-web-browsers/
-                                    //        Hint:  you have to cancel dragover / dragenter
-                                    // SEE:  Valid drop target
-                                    //       https://developer.mozilla.org/en-US/docs/Web/API/HTML_Drag_and_Drop_API/Drag_operations#drop
-                                    //       https://stackoverflow.com/q/8414154/673991
-                                } else {
-                                    console.log("Dropped a non-URL", might_be_url);
-                                }
+                                possible_incoming_media(
+                                    "drop",
+                                    evt,
+                                    might_be_url,
+                                    function (url, title) {
+                                        var $enter_some_text = $('#enter_some_text');
+                                        var $enter_a_caption = $('#enter_a_caption');
+                                        $enter_some_text.val(url);
+                                        $enter_a_caption.val(title);
+                                        // TODO:  Avoid setting text/caption when they're dirty.
+                                        //        But do overwrite semi-dirty, that is already the result
+                                        //        of an earlier URL drop or paste.
+                                        // NOTE:  These calls to .val() here are what overrides
+                                        //        the previous contents of the text/caption,
+                                        //        not the .preventDefault() call,
+                                        //        which almost certainly happens BEFORE here.
+                                    }
+                                );
+                                // if (can_i_get_meta_about_it(might_be_url)) {
+                                //     qoolbar.post('noembed_meta', {
+                                //         url: might_be_url
+                                //     }, function (oembed_response) {
+                                //         console.log("noembed meta", oembed_response);
+                                //         if (
+                                //             typeof oembed_response.oembed.title === 'string' &&
+                                //             typeof oembed_response.oembed.error === 'undefined'
+                                //         ) {
+                                //             var title = oembed_response.oembed.title;
+                                //             var $enter_some_text = $('#enter_some_text');
+                                //             var $enter_a_caption = $('#enter_a_caption');
+                                //             $enter_some_text.val(might_be_url);
+                                //             $enter_a_caption.val(title);
+                                //             // TODO:  Avoid setting text/caption when they're dirty.
+                                //             //        But not semi-dirty, that is already the result
+                                //             //        of an earlier URL drop.
+                                //             // NOTE:  These calls to .val() here are what overrides
+                                //             //        the previous contents of the text/caption,
+                                //             //        not the .preventDefault() below,
+                                //             //        which almost certainly happens BEFORE here.
+                                //         } else {
+                                //             console.warn(
+                                //                 "Not an oembed URL",
+                                //                 might_be_url,
+                                //                 oembed_response.oembed.error
+                                //             );
+                                //         }
+                                //     });
+                                //     evt.preventDefault();
+                                //     evt.stopPropagation();
+                                //     return false;
+                                //     // NOTE:  This probably does nothing.  I'm not the only one
+                                //     //        who thinks this is bull puppy:
+                                //     //        https://opensourcehacker.com/2011/11/11/cancelling
+                                //     //        -html5-drag-and-drop-events-in-web-browsers/
+                                //     //        Hint:  you have to cancel dragover / dragenter
+                                //     // SEE:  Valid drop target
+                                //     //       https://developer.mozilla.org/en-US/docs/Web/API/HTML_Drag_and_Drop_API/Drag_operations#drop
+                                //     //       https://stackoverflow.com/q/8414154/673991
+                                // } else {
+                                //     console.log("Dropped a non-URL", might_be_url);
+                                // }
                             });
                         }
                     });
@@ -778,11 +824,44 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
                     //            </a>"
                     // contribution.js?mtime=1568044505.725:723
                 } else {
-                    console.log("... originalEvent.dataTransfer.items is", typeof items);
+                    console.log("... items is", typeof items);
                 }
             }
         } catch (e) {
             console.error("Oops, trying to handle drop:", e.message);
+        }
+    }
+
+    function possible_incoming_media(what, evt, url, oembed_handler) {
+        if (can_i_get_meta_about_it(url)) {
+            qoolbar.post('noembed_meta', {
+                url: url
+            }, function (oembed_response) {
+                console.log("noembed meta", what, oembed_response);
+                if (
+                    typeof oembed_response.oembed.title === 'string' &&
+                    typeof oembed_response.oembed.error === 'undefined'
+                ) {
+                    var title = oembed_response.oembed.title;
+                    oembed_handler(url, title);
+                } else {
+                    console.warn("Not an oembed URL", what, url, oembed_response.oembed.error);
+                }
+            });
+            // evt.preventDefault();
+            // evt.stopPropagation();
+            // return false;
+            // NOTE:  The above anti-bubbling, anti-propagation code
+            //        probably would have done nothing.
+            //        I'm not the only one who thinks this is bull puppy:
+            //        https://opensourcehacker.com/2011/11/11/cancelling
+            //        -html5-drag-and-drop-events-in-web-browsers/
+            //        Hint:  you have to cancel dragover / dragenter
+            // SEE:  Valid drop target
+            //       https://developer.mozilla.org/en-US/docs/Web/API/HTML_Drag_and_Drop_API/Drag_operations#drop
+            //       https://stackoverflow.com/q/8414154/673991
+        } else {
+            console.log("Incoming non-URL", what, url);
         }
     }
 
