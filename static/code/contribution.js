@@ -3,6 +3,14 @@
 /**
  * JavaScript for qiki contributions, an attempt at generalizing the features of unslumping.org
  *
+ * Auxiliary input parameter extracted from the URL (window.location.search):
+ *
+ *     ?cont=IDN,IDN,...
+ *
+ * Limits the contributions displayed.
+ * Each IDN is the inconvenient ROOT idn,
+ * not the handier idn at the TIP of the edit chain.
+ *
  * @param window
  * @param $
  * @param qoolbar
@@ -1486,8 +1494,8 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
         }
     }
 
-    function iframe_src_from_url(url) {
-        return MONTY.OEMBED_CLIENT_PREFIX + "?" + $.param({url:url});
+    function iframe_src_from_url(url, idn) {
+        return MONTY.OEMBED_CLIENT_PREFIX + "?" + $.param({url: url, idn: idn});
         // THANKS:  jQuery query string, https://stackoverflow.com/a/31599255/673991
     }
 
@@ -1673,7 +1681,7 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
         var $iframe = $('<iframe>', {
             id: 'iframe_' + cont_idn,
             style: 'width: 300px;',   // This becomes the minimum render-bar width.
-            src: iframe_src_from_url(url),
+            src: iframe_src_from_url(url, cont_idn),
             allowfullscreen: 'allowfullscreen'
         });
         $render_bar.html($iframe);

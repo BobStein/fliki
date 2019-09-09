@@ -2704,6 +2704,7 @@ def noembed_render(url):
             target_origin=secure.credentials.Options.oembed_target_origin,
         )
         with html.head(newlines=True) as head:
+            # TODO:  head.title(something)  Could be caption eventually, idn here.
             head.css_stamped(AuthFliki.static_url('code/embed_content.css'))
             head.jquery(JQUERY_VERSION)
             # head.script(type='text/javascript').raw_text('''

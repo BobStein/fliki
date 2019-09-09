@@ -5,6 +5,7 @@
  * @param window
  * @param {function} $
  * @param {function} $.getScript
+ * @param {function} $.param
  * @param {object}  MONTY
  * @param {array}   MONTY.matcher_groups
  * @param {object}  MONTY.oembed
@@ -30,8 +31,8 @@ function embed_content_js(window, $, MONTY) {
     var description_of_last_change = "(none)";
     var $body;
 
-    var url = query_get('url');
-    var domain = domain_from_url(url);
+    var url_outer_iframe = query_get('url');
+    var domain = domain_from_url(url_outer_iframe);
     var domain_simple = domain
         .toLowerCase()
         .replace(/^www\./, '')
@@ -51,28 +52,35 @@ function embed_content_js(window, $, MONTY) {
     // console.assert(domain_simple === MONTY.domain_simple);
     // console.assert(is_pop_youtube === MONTY.is_pop_youtube);
 
+    var did_resizer_ready_itself = false;
+    var moment_called = new Date();
+
     window.iFrameResizer = {
         targetOrigin: MONTY.target_origin,
         onReady: function iframe_resizer_content_ready() {
+            did_resizer_ready_itself = true;
+            var moment_resizer = new Date();
+            var lag_resizer = moment_resizer - moment_called;
+
             $(window.document).ready(function () {
+                var moment_jquery = new Date();
+                var lag_jquery = moment_jquery - moment_resizer;
+
+                function lag_report() {
+                    return lag_resizer.toFixed() + "ms " + lag_jquery.toFixed() + "ms";
+                    // EXAMPLE:  39-58ms for popup
+                    // EXAMPLE:  376-601ms for embedded thumbnails
+                }
+
                 $body = $(window.document.body);
                 if (is_pop_youtube) {
-                    // var $div_outer = $('<div>', {id: 'outer'});
-                    // var $div_inner = $('<div>', {id: 'you-pop'});
-                    // tag_width($div_outer);
-                    // tag_width($div_inner);
-                    // $div_outer.append($div_inner);
-                    // $body.append($div_outer);
-
-                    console.assert(MONTY.matcher_groups.length === 1);
-                    var youtube_embed_url = YOUTUBE_EMBED_PREFIX + MONTY.matcher_groups[0];
                     youtube_iframe_api(function () {
                         var $you_frame = $('<iframe>', {
                             id: 'youtube_iframe',
                             width: MONTY.oembed.width,
                             height: MONTY.oembed.height,
                             type: 'text/html',
-                            src: youtube_embed_url,
+                            src: youtube_embed_url(),
                             frameborder: '0'
                         });
                         tag_width($you_frame);
@@ -83,19 +91,11 @@ function embed_content_js(window, $, MONTY) {
                             width: query_get('width'),
                             height: query_get('height')
                         });
-
-                        // var api_settings = {
-                        //     width: query_get('width', 'auto'),
-                        //     height: query_get('height', 'auto'),
-                        //     videoId: MONTY.matcher_groups[0],
-                        //     events: {
-                        //         onReady: function () {
-                        //             console.log("Innermost YouTube api ready");
-                        //         }
-                        //     }
-                        // };
-                        // var youtube_player = new window.YT.Player('you-pop', api_settings);
-                        console.log("Inner YouTube api ready"/*, api_settings*/);
+                        console.log(
+                            "popup_" + query_get('idn') + ".",
+                            domain_simple, "api ready,",
+                            "lag", lag_report()
+                        );
                     });
                 } else {
                     $body.html(MONTY.oembed.html);
@@ -108,13 +108,34 @@ function embed_content_js(window, $, MONTY) {
                                 );
                             } else {
                                 console.debug(
+                                    query_get('idn') + ".",
                                     domain_simple, "-",
                                     num_changes, "changes,",
                                     "last", description_of_last_change,
                                     "cycle", cycle_of_last_change, "of", POLL_REPETITIONS,
-                                    "codes", JSON.stringify(MONTY.matcher_groups)
+                                    // "codes", JSON.stringify(MONTY.matcher_groups),
+                                    "lag", lag_report()
                                 );
                             }
+                            // EXAMPLE:
+                            //     1871. youtu.be - 2 changes, last IFRAME.fit_width cycle 0 of 10 codes ["3j0ji-tn4Cc"] lag 551ms 78ms
+                            //     1857. soundcloud - 2 changes, last IFRAME.fit_height(300x400-225x300) cycle 0 of 10 codes [] lag 548ms 83ms
+                            //     1834. youtube - 2 changes, last IFRAME.fit_width cycle 0 of 10 codes ["bYubEn15eH4"] lag 400ms 92ms
+                            //     1831. youtube - 2 changes, last IFRAME.fit_width cycle 0 of 10 codes ["5BfWll_Inwg"] lag 392ms 98ms
+                            //     1823. flickr - 5 changes, last tag_width cycle 2 of 10 codes [] lag 303ms 35ms
+                            //     1822. youtu.be - 2 changes, last IFRAME.fit_width cycle 0 of 10 codes ["5BfWll_Inwg"] lag 300ms 42ms
+                            //     1813. twitter - 4 changes, last TWITTER-WIDGET.fit_height(220x421-157x300) cycle 4 of 10 codes ["ICRC","799571646331912192"] lag 296ms 48ms
+                            //     1825. twitter - 5 changes, last TWITTER-WIDGET.fit_height(299x489-184x300) cycle 4 of 10 codes ["marinamaral2","1161324087362367488"] lag 268ms 48ms
+                            //     1748. twitter - 5 changes, last TWITTER-WIDGET.fit_height(220x409-161x300) cycle 4 of 10 codes ["QuotesOnline4Me","1158728987914276864"] lag 280ms 53ms
+                            //     1754. flickr - 6 changes, last tag_width cycle 1 of 10 codes [] lag 389ms 56ms
+                            //     1851. youtu.be - 2 changes, last IFRAME.fit_width cycle 0 of 10 codes ["uwjbvhRReZo"] lag 255ms 203ms
+                            //     1795. dropbox - 3 changes, last IMG.fit_width cycle 0 of 10 codes ["dropbox.com/s/k3yjtkxdh28d4jt/Haitham-in-Aleppo---ICRC.jpg"] lag 522ms 113ms
+                            //     1746. vimeo - 2 changes, last IFRAME.fit_width cycle 0 of 10 codes [] lag 521ms 128ms
+                            //     1741. youtube - 2 changes, last IFRAME.fit_width cycle 0 of 10 codes ["f3u3Xs8sQwQ"] lag 436ms 204ms
+                            //     1739. youtube - 2 changes, last IFRAME.fit_width cycle 0 of 10 codes ["4e4eP_g2E7w"] lag 446ms 213ms
+                            //     1733. youtube - 2 changes, last IFRAME.fit_width cycle 0 of 10 codes ["o9tDO3HK20Q"] lag 518ms 158ms
+                            //     1849. youtube - 2 changes, last IFRAME.fit_width cycle 0 of 10 codes ["uwjbvhRReZo"] lag 585ms 8ms
+
                             // if (typeof window.parentIFrame === 'object') {
                             //     // NOTE:  Step 1 in the mother-daughter message demo.
                             //     window.parentIFrame.sendMessage(
@@ -151,10 +172,17 @@ function embed_content_js(window, $, MONTY) {
             // EXAMPLE:  Daughter Message In iframe_1849 {moo: "butter"}
         }
     };
-    $.getScript(
-        'https://cdn.jsdelivr.net/npm/iframe-resizer@4.1.1/js/' +
-        'iframeResizer.contentWindow.js'
-    );
+
+    if (am_i_in_an_iframe()) {
+        $.getScript(
+            'https://cdn.jsdelivr.net/npm/iframe-resizer@4.1.1/js/' +
+            'iframeResizer.contentWindow.js'
+        );
+    } else {
+        // NOTE:  Make this page work stand-alone.  For development purposes.
+        console.log("Stand-alone embed.");
+        window.iFrameResizer.onReady();
+    }
 
     // noinspection JSUnusedLocalSymbols
     function parent_iframe() {
@@ -169,17 +197,17 @@ function embed_content_js(window, $, MONTY) {
         }
     }
 
-    // function load_youtube_iframe_api() {
-    //     var tag = document.createElement('script');
-    //     tag.src = "https://www.youtube.com/iframe_api";
-    //     var firstScriptTag = document.getElementsByTagName('script')[0];
-    //     firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
-    // }
-
     function domain_from_url(url) {
         return $('<a>').prop('href', url).prop('hostname');
         // THANKS:  domain from url, https://stackoverflow.com/a/4815665/673991
     }
+    console.assert('example.com' === domain_from_url('https://example.com/?foo=bar'), domain_from_url('https://example.com/?foo=bar'));
+
+    function query_string_from_url(url) {
+        return $('<a>').prop('href', url).prop('search');
+        // THANKS:  url parts, https://stackoverflow.com/a/28772794/673991
+    }
+    console.assert('?foo=bar' === query_string_from_url('https://example.com/?foo=bar'), query_string_from_url('https://example.com/?foo=bar'));
 
     function fix_embedded_content() {
         var $child = $body.children().first();
@@ -286,16 +314,32 @@ function embed_content_js(window, $, MONTY) {
             count_a_change(
                 $element[0].tagName + ".fit_height" +
                 "(" +
-                old_width.toString() +
+                old_width.toFixed() +
                 "x" +
-                old_height.toString() +
+                old_height.toFixed() +
                 "-" +
-                new_width.toString() +
+                new_width.toFixed() +
                 "x" +
-                new_height.toString() +
+                new_height.toFixed() +
                 ")"
             );
         }
+    }
+
+    function youtube_embed_url() {
+        console.assert(MONTY.matcher_groups.length === 1);
+        var url_inner_iframe = YOUTUBE_EMBED_PREFIX + MONTY.matcher_groups[0];
+
+        // NOTE:  Now copy the t=NNN parameter from the outer URL
+        //        to the start=NNN parameter of the inner URL
+        // SEE:  embed start, https://developers.google.com/youtube/player_parameters#start
+
+        var you_params = new window.URLSearchParams(query_string_from_url(url_outer_iframe));
+        var t_start = you_params.get('t');
+        if (t_start !== null) {
+            url_inner_iframe += '?' + $.param({start: t_start});
+        }
+        return url_inner_iframe;
     }
 
     function query_get(name, default_value) {
@@ -352,3 +396,16 @@ function onYouTubeIframeAPIReady() {
         };
     }
 })(window);
+
+/**
+ * Is this page inside an iframe?
+ *
+ * THANKS:  https://stackoverflow.com/a/326076/673991
+ */
+function am_i_in_an_iframe () {
+    try {
+        return window.self !== window.top;
+    } catch (e) {
+        return true;
+    }
+}
