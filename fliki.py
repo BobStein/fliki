@@ -1597,6 +1597,7 @@ def contribution_home(home_page_title):
             with html.header(home_page_title) as head:
                 head.css_stamped(auth.static_url('code/contribution.css'))
                 head.css('https://fonts.googleapis.com/css?family=Literata&display=swap')
+                head.css('https://fonts.googleapis.com/icon?family=Material+Icons')
             html.body("Loading...")
             with html.footer() as foot:
                 foot.js('https://cdn.jsdelivr.net/npm/sortablejs@1.9.0/Sortable.js')
@@ -1606,6 +1607,7 @@ def contribution_home(home_page_title):
                 # foot.js(auth.static_url('code/iframeResizer.js'))
                 # foot.comment("SEE:  /meta/static/code/iframe-resizer-LICENSE.txt")
                 foot.js('https://cdn.jsdelivr.net/npm/iframe-resizer@4.1.1/js/iframeResizer.min.js')
+                foot.js_stamped(auth.static_url('code/util.js'))
                 foot.js_stamped(auth.static_url('code/contribution.js'))
                 verbs = []
                 verbs += auth.get_category_idns_in_order()
@@ -2721,6 +2723,7 @@ def noembed_render(url):
             # )
             # if is_pop_youtube:
             #     head.js('https://www.youtube.com/iframe_api')
+            head.js_stamped(AuthFliki.static_url('code/util.js'))
             head.js_stamped(AuthFliki.static_url('code/embed_content.js'))
             head.script(type='text/javascript').raw_text('''
                 var MONTY = {json};
@@ -2756,20 +2759,25 @@ def instagram_render(url):
     if matched:
         code = matched.group(1)
         code = code.rstrip('/')
-        thumbnail_url = 'https://instagram.com/p/{code}/media/?size=t'.format(code=code)
-        with FlikiHTML('html') as html:
-            domain = domain_from_url(url)
-            with html.head(newlines=True) as head:
-                head.js('https://cdn.jsdelivr.net/npm/iframe-resizer@4.1.1/js/iframeResizer.contentWindow.js')
-                head.style().raw_text('''
-                    body { margin: 0; }
-                    img { display: block; }   /* Prevents unsightly space below image. */
-                \n''')
-            with html.body(style='margin:0', newlines=True, **{'data-domain': domain}) as body:
-                thumbnail_escaped = FlikiHTML.escape(thumbnail_url)
-                with body.a(style='border:0', href=url, target='_blank') as a:
-                    a.img(src=thumbnail_escaped, **{'data-iframe-width': 'x'})
-            return html.doctype_plus_html()
+        is_pop_up = flask.request.args.get('is_pop_up', 'false') == 'true'
+        if is_pop_up:
+            media_url = 'https://instagram.com/p/{code}'.format(code=code)
+            return noembed_render(media_url)
+        else:
+            thumbnail_url = 'https://instagram.com/p/{code}/media/?size=t'.format(code=code)
+            with FlikiHTML('html') as html:
+                domain = domain_from_url(url)
+                with html.head(newlines=True) as head:
+                    head.js('https://cdn.jsdelivr.net/npm/iframe-resizer@4.1.1/js/iframeResizer.contentWindow.js')
+                    head.style().raw_text('''
+                        body { margin: 0; }
+                        img { display: block; }   /* Prevents unsightly space below image. */
+                    \n''')
+                with html.body(style='margin:0', newlines=True, **{'data-domain': domain}) as body:
+                    thumbnail_escaped = FlikiHTML.escape(thumbnail_url)
+                    with body.a(style='border:0', href=url, target='_blank') as a:
+                        a.img(src=thumbnail_escaped, **{'data-iframe-width': 'x'})
+                return html.doctype_plus_html()
     else:
         return "Unable to decode " + json.dumps(url)
 

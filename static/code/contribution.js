@@ -147,8 +147,12 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
 
         build_dom();
 
+        $('#play-button').on('click', play_player_bot);
+        $('#stop-button').on('click', stop_player_bot);
+        $('#skip-button').on('click', skip_player_bot);
+
         $('#enter_some_text, #enter_a_caption')
-            .on('keyup', post_it_button_disabled_or_not)
+            .on('change keyup input paste', post_it_button_disabled_or_not)
             .on('drop', text_or_caption_drop)
             .on('paste', text_or_caption_paste)
         ;
@@ -157,8 +161,6 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
         $('.category, .frou-category')
             .sortable(sortable_options())
         ;
-
-        $('#play-link').on('click', play_link_click);
 
         $(window.document)
             // .on('click', '.contribution', contribution_click)
@@ -169,11 +171,12 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
             .on('click', '.save-bar .cancel',  contribution_cancel)
             .on('click', '.save-bar .discard', contribution_cancel)
             .on('click', '.save-bar .save',    contribution_save)
-            .on('click', '.save-bar .full',    contribution_full)
-            .on('click', '.save-bar .unfull',  contribution_unfull)
+            .on('click', '.save-bar .full',    function () { pop_up(this, false); })
+            .on('click', '.save-bar .unfull',  pop_down_all)
             .on('keyup', function (evt) {
                 if (evt.key === 'Escape') {
-                    contribution_unfull();
+                    play_bot_abort();
+                    pop_down_all();
                 }
             })
         ;
@@ -248,8 +251,135 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
         // //        embedded html (see noembed_render()).
     });
 
-    function play_link_click() {
+    var index_play_bot;
+    var progress_play_bot = null;
+    var list_play_bot;   // array of contribution id's
 
+    function play_player_bot() {
+        if (progress_play_bot === null) {
+            var $my_cat = $categories[MONTY.IDN.CAT_MY];
+            list_play_bot = [];
+            $my_cat.find('.contribution[id]').each(function () {
+                list_play_bot.push(this.id);
+            });
+            // TODO:  Yes of course this should be a map call.
+            console.log("play idns", list_play_bot.join(","));
+
+            index_play_bot = 0;
+            next_play_bot();
+        } else {
+            console.log("(player bot already in play)");
+        }
+    }
+
+    function stop_player_bot() {
+        if (progress_play_bot !== null) {
+            console.log("Stop player bot");
+            play_bot_abort();
+            pop_down_all();
+        }
+    }
+
+    function skip_player_bot() {
+        if (progress_play_bot !== null) {
+            if (index_play_bot < list_play_bot.length) {
+                console.log("Skip player bot", list_play_bot[index_play_bot]);
+            } else {
+                console.error("Skip when it shouldn't", index_play_bot, list_play_bot);
+            }
+            play_bot_abort();
+            end_one_begin_another();
+        }
+    }
+
+    // TODO:  What if play-bot is in progress and user hits un-full button?
+    //        Stop play-bot?  Or just skip to next one?  Thinking skip...
+
+    function play_bot_abort() {
+        if (progress_play_bot !== null) {
+            clearTimeout(progress_play_bot);
+            progress_play_bot = null;
+            player_bot_ending();
+        }
+    }
+
+    /**
+     * At the beginning of each contribution.
+     */
+    function player_bot_going() {
+        $(window.document.body).addClass('player-bot-playing');
+    }
+
+    /**
+     * At the end of each contribution.
+     */
+    function player_bot_ending() {
+        $(window.document.body).removeClass('player-bot-playing');
+    }
+
+    var MEDIA_SECONDS_TABLE = {
+        youtube: 600,
+        youtu_be: 600,
+        // vimeo: 600,
+
+        default: 10,
+        no_domain: 0
+    };
+
+    function get_media_seconds($sup_cont) {
+        var data_domain = $sup_cont.attr('data-domain');
+        var media_seconds;
+        if (is_defined(data_domain) && has(MEDIA_SECONDS_TABLE, data_domain)) {
+            media_seconds = MEDIA_SECONDS_TABLE[data_domain];
+        } else {
+            media_seconds = MEDIA_SECONDS_TABLE.default;
+        }
+        return media_seconds;
+    }
+
+    function next_play_bot() {
+        if (index_play_bot < list_play_bot.length) {
+            var cont_idn = list_play_bot[index_play_bot];
+            var $cont = $_from_id(cont_idn);
+            var $sup_cont = $sup_contribution($cont);
+            var media_seconds = get_media_seconds($sup_cont);
+            if (media_seconds <= 0) {
+                setTimeout(function () {
+                    end_one_begin_another();
+                }, 100);
+            } else {
+                pop_up($sup_cont, true);
+                player_bot_going();
+                progress_play_bot = setTimeout(function () {
+                    progress_play_bot = null;
+                    console.log("Play", list_play_bot[index_play_bot], "taking too long.  Onward.");
+                    player_bot_ending();
+                    end_one_begin_another();
+                }, media_seconds * 1000);
+            }
+        } else {
+            console.log("End player bot");
+        }
+    }
+
+    function end_one_begin_another() {
+        pop_down_all();
+        index_play_bot++;
+        next_play_bot();
+    }
+
+    /**
+     * Create an icon, something ready to pass to jQuery .append()
+     *
+     * THANKS:  Google icons, https://stackoverflow.com/a/27053825/673991
+     * SEE:  Google icons, https://material.io/resources/icons/?style=baseline
+     * SEE:  Google icons, https://github.com/google/material-design-icons
+     *
+     * @param name - e.g. 'play_arrow', 'volume_up'
+     * @return {jQuery|string}
+     */
+    function $icon(name) {
+        return $('<i>', {'class': 'material-icons'}).text(name);
     }
 
     /**
@@ -269,11 +399,29 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
                     sizeWidth: true,
                     sizeHeight: true,
                     widthCalculationMethod: 'taggedElement',
-                    onMessage: function(stuff) {
+                    onMessage: function(twofer) {
+                        var message = twofer.message;
                         // NOTE:  Step 2 in the mother-daughter message demo.
-                        // console.log("Mother Message In", $(stuff.iframe).attr('id'), stuff.message);
+                        // console.log("Mother Message In", $(message.iframe).attr('id'), message.message);
                         // EXAMPLE:  Mother Message In iframe_1849 {foo: "bar"}
-                        // stuff.iframe.iFrameResizer.sendMessage({'moo':'butter'});
+                        // message.iframe.iFrameResizer.sendMessage({'moo':'butter'});
+                        // noinspection JSRedundantSwitchStatement
+                        switch (message.action) {
+                        case 'auto-play-ended':
+                            console.log("Natural progression to the next contribution.");
+                            if (progress_play_bot !== null) {
+                                play_bot_abort();
+                                end_one_begin_another();
+                            }
+                            break;
+                        default:
+                            console.error(
+                                "Unknown action, parent <== child",
+                                '"' + message.action + '"',
+                                message
+                            );
+                            break;
+                        }
                     }
                     // onInit: function resizer_init_callback(iframe) {
                     //     console.log("RESIZER_INIT_CALLBACK", iframe.id);
@@ -328,8 +476,7 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
     }
 
     function contribution_cancel() {
-        var $cont = $(this);
-        var $sup_cont = $cont.closest('.sup-contribution');
+        var $sup_cont = $sup_contribution(this);
         var $caption_span = $sup_cont.find('.caption-span');
         console.assert(is_editing_some_contribution);
         // If not editing, how was the cancel button visible?
@@ -341,6 +488,10 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
             }
             contribution_edit_end();
         }
+    }
+
+    function $sup_contribution(somewhere_in_it) {
+        return $(somewhere_in_it).closest('.sup-contribution');
     }
 
     function contribution_dirty() {
@@ -370,13 +521,19 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
         }
     }
 
-    function contribution_unfull() {
+    function pop_down_all() {
         var $pop_ups = $('.pop-up');
-        var $pop_downs = $('.pop-down');
+        // var $pop_downs = $('.pop-down');
         console.assert($pop_ups.length <= 1, $pop_ups);
-        console.assert($pop_downs.length <= 1, $pop_downs);
+        // console.assert($pop_downs.length <= 1, $pop_downs);
+        // // TODO:  Because this sometimes fails, we should control pop-downs not by class
+        // //        but by the pop-ups having data-links to their corresponding
+        // //        $popup.data('popped-down', $popdown);
         $pop_ups.each(function () {
             var $popup = $(this);
+            $popup.removeClass('pop-up');
+            // NOTE:  This immediate removal of the pop-up class -- though premature --
+            //        allows redundant back-to-back calls to contribution_unfull().
             var pop_stuff = $popup.data('pop-stuff');
             // TODO:  Instead, just remember the pop-down DOM object,
             //        and recalculate its current "fixed" coordinates from it.
@@ -423,13 +580,17 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
                         //            [Window resize] IFrame(popup_iframe_1834) not found
                         //        And probably leaks memory.
                     }
-                    $popup.remove();
-                    $pop_downs.removeClass('pop-down');
-                    // NOTE:  1st line of defense, double-pop-up,
+
+                    $popup.data('popped-down').removeClass('pop-down');
+                    $popup.removeData('popped-down');
+                    // $pop_downs.removeClass('pop-down');
+                    // NOTE:  1st line of defense against double-pop-up,
                     //        Remembered pop-down object, now un-class it.
                     //        Instead of doing this now...
                     //        $('.pop-down').removeClass('pop-down');
                     //        ...because that might undo half of a more recent pop-up.
+
+                    $popup.remove();
                 }
             });
         });
@@ -443,14 +604,13 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
         // $('.pop-down').removeClass('pop-down');
     }
 
-    function contribution_full() {
-        var $full = $(this);
-        var $sup_cont = $full.closest('.sup-contribution');
+    function pop_up(somewhere_in_contribution, auto_play) {
+        var $sup_cont = $sup_contribution(somewhere_in_contribution);
         var $cont = $sup_cont.find('.contribution');
         var cont_idn = $cont.attr('id');
         var was_already_popped_up = $('#popup_' + cont_idn).length > 0;
 
-        contribution_unfull();
+        pop_down_all();
         if (was_already_popped_up) {
             console.error("Oops, somehow", cont_idn, "was already popped up.");
             // NOTE:  3rd line of defense, double-pop-up.
@@ -479,14 +639,11 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
         });
         $popup.addClass('pop-up');
         $sup_cont.addClass('pop-down');
+        $popup.data('popped-down', $sup_cont);
         $sup_cont.before($popup);
 
-        var $iframe = $popup.find('.render-bar iframe');
-        resizer_init($iframe);
-        // NOTE:  Finally decided the best way to make the popup iframe big
-        //        was to focus on the inner CONTENTS size,
-        //        and let iFrameResizer handle the outer size.
-        // SEE:  Tricky iframe height 100%, https://stackoverflow.com/a/5871861/673991
+        var top_air = $('.sup-category-first').offset().top;
+
         var fixed_top = offset.top - $(window).scrollTop();
         var fixed_left = offset.left - $(window).scrollLeft();
         $popup.data('pop-stuff', {
@@ -504,37 +661,74 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
         // THANKS:  Recast position from relative to fixed, with no apparent change,
         //          (my own compendium) https://stackoverflow.com/a/44438131/673991
 
-        $iframe.attr('src', function () {
-            var cont_padding = px_from_em(0.3 + 0.3);
-            return $(this).attr('src') + '&' + $.param({
-                width:  Math.round(window_width - 30),
-                height: Math.round(window_height - caption_height - save_height - 30 - cont_padding),
-                is_pop_up: true
-            });
-        });
+        if ($sup_cont.is('.render-media')) {
+            var $iframe = $popup.find('.render-bar iframe');
+            resizer_init($iframe);
+            // NOTE:  Finally decided the best way to make the popup iframe big
+            //        was to focus on the inner CONTENTS size,
+            //        and let iFrameResizer handle the outer size.
+            // SEE:  Tricky iframe height 100%, https://stackoverflow.com/a/5871861/673991
 
-        // NOTE:  Now, animate some motion.
-        // $popup.animate({
-        //     left: window_width/2 - cont_width/2,
-        //     top: window_height/2 - cont_height/2
-        // }, {
-        //     easing: 'linear',
-        //     complete: function () {
-                $popup.css({
-                    'background-color': 'rgba(0,0,0,0)'
+            $iframe.attr('src', function () {
+                var cont_padding = px_from_em(0.3 + 0.3);
+                return $(this).attr('src') + '&' + $.param({
+                    width:  Math.round(window_width - 30),
+                    height: Math.round(
+                        window_height
+                        - top_air
+                        - caption_height
+                        - save_height
+                        - 30
+                        - cont_padding
+                    ),
+                    is_pop_up: true,
+                    auto_play: auto_play.toString()
                 });
-                $popup.animate({
-                    left: 0,
-                    top: 0,
-                    // width: window_width- 30,
-                    // height: window_height - 30,
-                    'background-color': 'rgba(0,0,0,0.25)'
-                    // THANKS:  Alpha, not opacity, https://stackoverflow.com/a/5770362/673991
-                }, {
-                    easing: 'swing'
-                });
-        //     }
-        // });
+                // NOTE:  The 30-pixel reduction in height gives room for browser status
+                //        messages at the bottom.  Along with the same for width it also
+                //        tends to prevent scrollbars from spontaneously appearing.
+                //        Someday a less crude way would be good.
+            });
+
+            $popup.css({
+                'background-color': 'rgba(0,0,0,0)'
+            });
+            $popup.animate({
+                left: 0,
+                top: top_air,
+                // width: window_width- 30,
+                // height: window_height - 30,
+                'background-color': 'rgba(0,0,0,0.25)'
+                // THANKS:  Alpha, not opacity, https://stackoverflow.com/a/5770362/673991
+            }, {
+                easing: 'swing',
+                complete: function () {
+                    resize_render_bars($iframe);
+                    // NOTE:  This seems to work around the iFrameResizer bug
+                    //        that sometimes leaves the frame zero-width when popping up.
+                }
+            });
+        } else {
+            $popup.css({
+                'background-color': 'rgba(0,0,0,0)'
+            });
+            $popup.animate({
+                left: 0,
+                top: top_air,
+                // width: window_width- 30,
+                // height: window_height - 30,
+                'background-color': 'rgba(0,0,0,0.25)'
+                // THANKS:  Alpha, not opacity, https://stackoverflow.com/a/5770362/673991
+            }, {
+                easing: 'swing',
+                complete: function () {
+                    resize_render_bars($iframe);
+                    // NOTE:  This seems to work around the iFrameResizer bug
+                    //        that sometimes leaves the frame zero-width when popping up.
+                }
+            });
+
+        }
         console.log("Popup", cont_idn);
     }
 
@@ -1104,10 +1298,6 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
     }
 
     function post_it_button_disabled_or_not() {
-        // if (
-        //     $('#enter_some_text').val().length === 0 ||
-        //     $('#enter_a_caption').val().length === 0
-        // ) {
         if ($('#enter_some_text').val().length === 0) {
             $('#post_it_button').attr('disabled', 'disabled');
         } else {
@@ -1236,11 +1426,22 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
         }
         $up_top.append($status_prompt);
 
-        var $play_prompt = $('<div>', {id: 'play-prompt'});
-        var $play_link = $('<a>', {id: 'play-button'});
-        $play_link.text("play");
-        $play_prompt.append($play_link);
-        $up_top.append($play_prompt);
+        var $bot = $('<div>', {id: 'player-bot'});
+
+        $bot.append($('<button>', {id: 'play-button'})
+            .append($icon('play_arrow'))
+            .append(" play")
+        );
+        $bot.append($('<button>', {id: 'stop-button'})
+            .append($icon('stop'))
+            .append(" stop")
+        );
+        $bot.append($('<button>', {id: 'skip-button'})
+            .append($icon('skip_next'))
+            .append(" skip")
+        );
+
+        $up_top.append($bot);
 
         var $login_prompt = $('<div>', {id: 'login-prompt'});
         $login_prompt.html(MONTY.login_html);
@@ -1670,20 +1871,33 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
     }
 
     function render_text($sup_cont) {
-        $sup_cont.removeClass('render-video');
+        $sup_cont.removeClass('render-media');
+        $sup_cont.removeAttr('data-domain');
         var $render_bar = $sup_cont.find('.render-bar');
         $render_bar.empty();
     }
 
     function render_iframe($sup_cont, url, cont_idn) {
-        $sup_cont.addClass('render-video');
+        $sup_cont.addClass('render-media');
+        $sup_cont.attr('data-domain', sanitized_domain_from_url(url));
         var $render_bar = $sup_cont.find('.render-bar');
         var $iframe = $('<iframe>', {
             id: 'iframe_' + cont_idn,
             style: 'width: 300px;',   // This becomes the minimum render-bar width.
             src: iframe_src_from_url(url, cont_idn),
-            allowfullscreen: 'allowfullscreen'
+            allowfullscreen: 'allowfullscreen',
+            allow: 'autoplay; fullscreen'
         });
+        // NOTE:  Chrome's ooey gooey autoplay policy needs iframe delegation.
+        //        https://developers.google.com/web/updates/2017/09/autoplay-policy-changes
+        //        Unclear if allow: autoplay is part or all of that.
+        //        Emeffing lazy browser developers hammer legitimate media activity.
+        //        So user may have to hit in-iframe play buttons an unknown number of times
+        //        before the (Geedee user-initiated) player bot will begin to work.
+        // NOTE:  Instagram popup won't do scrollbars, even if iframe overflow: auto
+        //        On both outer (this $iframe here) and inner (instagram-installed).
+        //        Is this a bad thing?  Even if it did scroll, virtually ANY other interaction
+        //        results in an instagram tab popping up.
         $render_bar.html($iframe);
         resizer_init($iframe);
     }
@@ -2055,105 +2269,4 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
         } catch (_) {
         }
     }
-
-    /**
-     * Not undefined, not null, not the empty string.
-     */
-    function is_laden(txt) {
-        return is_specified(txt) && txt !== "";
-    }
-    console.assert(is_laden(" "));
-    console.assert( ! is_laden(""));
-
-    /**
-     * Not undefined, not null.
-     */
-    function is_specified(x) {
-        return is_defined(x) && x !== null;
-    }
-    console.assert(is_specified('x'));
-    console.assert( ! is_specified(null));
-
-    /**
-     * Not undefined.
-     */
-    function is_defined(x) {
-        return typeof x !== 'undefined';
-    }
-    console.assert(is_defined(42));
-    console.assert( ! is_defined(undefined));
-
-    function has(collection, thing) {
-        if (typeof collection === 'undefined') {
-            return false;
-        } else if (collection instanceof Array) {
-            return $.inArray(thing, collection) !== -1;
-        } else if (collection instanceof Object) {
-            return collection.hasOwnProperty(thing);
-        } else if (typeof collection === 'string') {
-            return collection.indexOf(thing) !== -1;
-        } else {
-            console.error("Don't understand has(", type_name(collection), ", )");
-        }
-    }
-    console.assert( true === has([1, 2, 3], 2));
-    console.assert(false === has([1, 2, 3], 9));
-    console.assert( true === has({one:1, two:2, three:3}, 'three'));
-    console.assert(false === has({one:1, two:2, three:3}, 3));
-    console.assert( true === has('alphabet', 'a'));
-    console.assert(false === has('alphabet', 'z'));
-    console.assert(false === has(undefined, 'anything'));
-
-    function type_name(z) {
-        var the_name = typeof z;
-        if (the_name === 'object') {
-            the_name = z.constructor.name;
-        }
-        return the_name;
-    }
-    console.assert('number' === type_name(3));
-    console.assert('Date' === type_name(new Date()));
-
-    /**
-     * Does a long string start with a short string?  Case sensitive.
-     *
-     * @param string {string}
-     * @param str {string}
-     * @return {boolean}
-     */
-    function starts_with(string, str) {
-        return string.substr(0, str.length) === str;
-    }
-    console.assert( true === starts_with("string", "str"));
-    console.assert(false === starts_with("string", "ing"));
 }
-
-function query_get(name, default_value) {
-    var query_params = new window.URLSearchParams(window.location.search);
-    var value = query_params.get(name);
-    if (value === null) {
-        return default_value;
-    } else {
-        return value;
-    }
-}
-
-/**
- * Polyfill for window.URLSearchParams.get(), so it works in IE11
- *
- * THANKS:  https://stackoverflow.com/a/50756253/673991
- */
-(function (w) {
-    w.URLSearchParams = w.URLSearchParams || function (searchString) {
-        var self = this;
-        self.searchString = searchString;
-        self.get = function (name) {
-            var results = new RegExp('[\?&]' + name + '=([^&#]*)').exec(self.searchString);
-            if (results === null) {
-                return null;
-            } else {
-                return decodeURI(results[1]) || 0;
-            }
-        };
-    }
-})(window);

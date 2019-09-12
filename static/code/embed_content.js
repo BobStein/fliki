@@ -3,13 +3,29 @@
 // noinspection JSUnusedGlobalSymbols
 /**
  * @param window
+ * @param window.document
+ * @param window.iFrameResizer
+ * @param window.parentIFrame
+ * @param window.parentIFrame.getId
+ * @param window.URLSearchParams
+ * @param window.YT
+ * @param window.YT.Player
+ * @param window.YT.PlayerState
+ * @param window.YT.PlayerState.ENDED
+ *
  * @param {function} $
+ * @param {function} $.extend
  * @param {function} $.getScript
  * @param {function} $.param
- * @param {object}  MONTY
- * @param {array}   MONTY.matcher_groups
- * @param {object}  MONTY.oembed
- * @param {string}  MONTY.target_origin
+ *
+ * @param {object}   MONTY
+ * @param {array}    MONTY.matcher_groups
+ * @param {object}   MONTY.oembed
+ * @param {string}   MONTY.target_origin
+ *
+ * @property {object}   yt_player
+ * @property {function} yt_player.getPlayerState
+ * @property {function} yt_player.playVideo
  */
 function embed_content_js(window, $, MONTY) {
     console.assert(typeof window === 'object');
@@ -32,28 +48,23 @@ function embed_content_js(window, $, MONTY) {
     var $body;
 
     var url_outer_iframe = query_get('url');
-    var domain = domain_from_url(url_outer_iframe);
-    var domain_simple = domain
-        .toLowerCase()
-        .replace(/^www\./, '')
-        .replace(/\.com$/, '')
-    ;
+    var contribution_idn = query_get('idn');
+    var is_auto_play = query_get('auto_play', 'false') === 'true';
     var is_pop_up = query_get('is_pop_up', 'false') === 'true';
+    var domain_simple = simplified_domain_from_url(url_outer_iframe);
     var is_pop_youtube = is_pop_up && (
         domain_simple === 'youtube' ||
         domain_simple === 'youtu.be'
     );
+
     var THUMB_MAX_WIDTH = 300;
     var THUMB_MAX_HEIGHT = 300;
     var YOUTUBE_EMBED_PREFIX = 'https://www.youtube.com/embed/';
     // THANKS:  URL, https://developers.google.com/youtube/player_parameters#Manual_IFrame_Embeds
 
-    // console.assert(domain === MONTY.domain);
-    // console.assert(domain_simple === MONTY.domain_simple);
-    // console.assert(is_pop_youtube === MONTY.is_pop_youtube);
-
     var did_resizer_ready_itself = false;
     var moment_called = new Date();
+    var yt_player = null;
 
     window.iFrameResizer = {
         targetOrigin: MONTY.target_origin,
@@ -80,27 +91,101 @@ function embed_content_js(window, $, MONTY) {
                             width: MONTY.oembed.width,
                             height: MONTY.oembed.height,
                             type: 'text/html',
-                            src: youtube_embed_url(),
-                            frameborder: '0'
+                            src: youtube_embed_url({enablejsapi: '1'}),
+                            frameborder: '0',
+                            allow: 'autoplay; fullscreen'
+                            // enablejsapi: '1'
+                            // SEE:  enablejsapi, https://developers.google.com/youtube/iframe_api_reference#Examples
+                            // THANKS:  Doesn't work as attribute, https://stackoverflow.com/q/51109436/673991
+                            //          Required in src query string for onReady to get called.
                         });
+
                         tag_width($you_frame);
                         fit_width(THUMB_MAX_WIDTH, $you_frame);
                         fit_height(THUMB_MAX_HEIGHT, $you_frame);
                         $body.append($you_frame);
                         $you_frame.animate({
                             width: query_get('width'),
-                            height: query_get('height')
+                            height: query_get('height'),
+                            easing: 'linear'
+                        }, {
+                            complete: function () {
+                                console.assert($('#youtube_iframe').length === 1);
+                                // noinspection JSUnusedGlobalSymbols
+                                yt_player = new window.YT.Player('youtube_iframe', {
+                                    events: {
+                                        onReady: function (yt_event) {
+                                            if (is_auto_play) {
+                                                // yt_event.target.playVideo();
+                                                yt_player.playVideo();
+
+                                            }
+                                            console.log(
+                                                "Yippee you ready",
+                                                contribution_idn,
+                                                type_name(yt_player),   // "Y"
+                                                type_name(yt_event),   // "Object"
+                                                type_name(yt_event.target),   // "Y"
+                                                yt_player.getPlayerState(),   // 5=cued
+                                                yt_event.data   // null
+                                            );
+                                            if (yt_player.getPlayerState() === -1) {
+                                                console.warn(
+                                                    "Unstarted",
+                                                    contribution_idn,
+                                                    "-- Chrome blocked?"
+                                                );
+                                            }
+                                        },
+                                        onStateChange: function (yt_event) {
+                                            console.log(
+                                                "Player",
+                                                contribution_idn,
+                                                "state",
+                                                yt_player.getPlayerState(),
+                                                yt_event.data
+                                            );
+                                            // noinspection JSRedundantSwitchStatement
+                                            switch (yt_event.data) {
+                                            case window.YT.PlayerState.ENDED:
+                                                if (is_auto_play) {
+                                                    parent_iframe().sendMessage(
+                                                        { action: 'auto-play-ended' },
+                                                        window.iFrameResizer.targetOrigin
+                                                    );
+                                                }
+                                                break;
+                                            default:
+                                                break;
+                                            }
+                                        },
+                                        onError: function (yt_event) {
+                                            console.warn(
+                                                "Player error",
+                                                yt_event.data
+                                            );
+                                        }
+                                    }
+                                });
+                                console.log("You are here-ish", yt_player);
+                            }
                         });
                         console.log(
-                            "popup_" + query_get('idn') + ".",
+                            "popup_" + contribution_idn + ".",
                             domain_simple, "api ready,",
                             "lag", lag_report()
                         );
                     });
+                    // NOTE:  PlayerState sequences:
+                    //        cued=>unstarted=>buffering=>playing=>ended
+                    //        5=>-1=>3=>    1=>0  --  usually
+                    //        5=>-1=>3=>-1=>1=>0  --  once
+                    //        2=>3=>1  --  clicking the timeline
                 } else {
                     $body.html(MONTY.oembed.html);
                     fix_embedded_content();
                     var interval = setInterval(function () {
+                        // noinspection SpellCheckingInspection
                         if (num_cycles >= POLL_REPETITIONS) {
                             if (num_changes === 0) {
                                 console.debug(
@@ -158,13 +243,22 @@ function embed_content_js(window, $, MONTY) {
             // noinspection JSRedundantSwitchStatement
             switch (message.action) {
             case 'un-pop-up':
+                // noinspection JSJQueryEfficiency
                 $('#youtube_iframe').animate({
                     width: message.width,
                     height: message.height
                 });
                 break;
+            // case 'play-bot-start':
+            //     console.log("Think about starting video...");
+            //     // noinspection JSJQueryEfficiency,JSUnresolvedFunction
+            //     // $('#youtube_iframe')[0].playVideo();
+            //     break;
             default:
-                console.error("Undefined messaged action", message.action);
+                console.error(
+                    "Unknown action, parent ==> child",
+                    '"' + message.action + '"'
+                );
                 break;
             }
             // NOTE:  Step 3 in the mother-daughter message demo.
@@ -197,17 +291,11 @@ function embed_content_js(window, $, MONTY) {
         }
     }
 
-    function domain_from_url(url) {
-        return $('<a>').prop('href', url).prop('hostname');
-        // THANKS:  domain from url, https://stackoverflow.com/a/4815665/673991
-    }
-    console.assert('example.com' === domain_from_url('https://example.com/?foo=bar'), domain_from_url('https://example.com/?foo=bar'));
-
     function query_string_from_url(url) {
         return $('<a>').prop('href', url).prop('search');
         // THANKS:  url parts, https://stackoverflow.com/a/28772794/673991
     }
-    console.assert('?foo=bar' === query_string_from_url('https://example.com/?foo=bar'), query_string_from_url('https://example.com/?foo=bar'));
+    console.assert('?foo=bar' === query_string_from_url('https://example.com/?foo=bar'));
 
     function fix_embedded_content() {
         var $child = $body.children().first();
@@ -280,7 +368,7 @@ function embed_content_js(window, $, MONTY) {
     }
 
     function tag_width($element) {
-        if ($element.length === 1 && 'undefined' === typeof $element.attr('data-iframe-width')) {
+        if ($element.length === 1 && ! is_defined($element.attr('data-iframe-width'))) {
             $element.attr('data-iframe-width', "x");
             // NOTE:  Tag elements for width determination.  This is part of the
             //        iFrameResizer option widthCalculationMethod: 'taggedElement'
@@ -326,7 +414,8 @@ function embed_content_js(window, $, MONTY) {
         }
     }
 
-    function youtube_embed_url() {
+    function youtube_embed_url(additional_parameters) {
+        additional_parameters = additional_parameters || {};
         console.assert(MONTY.matcher_groups.length === 1);
         var url_inner_iframe = YOUTUBE_EMBED_PREFIX + MONTY.matcher_groups[0];
 
@@ -337,26 +426,17 @@ function embed_content_js(window, $, MONTY) {
         var you_params = new window.URLSearchParams(query_string_from_url(url_outer_iframe));
         var t_start = you_params.get('t');
         if (t_start !== null) {
-            url_inner_iframe += '?' + $.param({start: t_start});
+            $.extend(additional_parameters, {start: t_start});
         }
+        url_inner_iframe += '?' + $.param(additional_parameters);
         return url_inner_iframe;
-    }
-
-    function query_get(name, default_value) {
-        var query_params = new window.URLSearchParams(window.location.search);
-        var value = query_params.get(name);
-        if (value === null) {
-            return default_value;
-        } else {
-            return value;
-        }
     }
 
     var _youtube_iframe_api_when_ready = null;
 
     function youtube_iframe_api(when_ready) {
         console.assert(_youtube_iframe_api_when_ready === null);
-        console.assert(typeof window.YT === 'undefined');   // TODO:  Support multiple calls
+        console.assert( ! is_defined(window.YT));   // TODO:  Support multiple calls
         $.getScript("https://www.youtube.com/iframe_api");
         _youtube_iframe_api_when_ready = when_ready;
     }
@@ -371,6 +451,7 @@ function embed_content_js(window, $, MONTY) {
 // noinspection JSUnusedGlobalSymbols
 /**
  * @property YT
+ * @property YT.Player
  */
 function onYouTubeIframeAPIReady() {
     console.log("Outer YouTube api ready");

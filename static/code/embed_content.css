@@ -18,3 +18,8 @@ body {
     overflow: auto;
     /* NOTE:  scrollbars if needed, hopefully only overflow-y */
 }
+
+.instagram-media {
+    overflow: auto;
+    /* NOTE:  scrollbars if needed, hopefully only overflow-y */
+}
