@@ -12,10 +12,21 @@
  * not the handier idn at the TIP of the edit chain.
  *
  * @param window
+ * @param window.clipboardData
+ * @param window.document
+ * @param window.document.body
+ * @param window.document.fullScreen
+ * @param window.document.mozFullScreen
+ * @param window.document.webkitIsFullScreen
+ * @param window.localStorage
+ * @param window.localStorage.getItem({string})
+ * @param window.localStorage.setItem
+ * @param window.location
+ * @param window.location.href
+ * @param window.MutationObserver
  * @param $
  * @param qoolbar
  * @param MONTY
- *
  * @param MONTY.AJAX_URL
  * @param MONTY.cat.order
  * @param MONTY.cat.txt
@@ -55,12 +66,13 @@
  * @property word.sbj
  * @property word.vrb
  * @property word.was_submitted_anonymous
- *
  */
 function js_for_contribution(window, $, qoolbar, MONTY) {
 
     var DO_LONG_PRESS_EDIT = false;
     // NOTE:  Long press seems like too easy a way to trigger an edit.
+    //        Only do this for mobile users?
+    //        Edit is just not that common a desired course of action.
 
     var DO_DOCUMENT_CLICK_ENDS_CLEAN_EDIT = false;
     // NOTE:  Clicking on the document background ends a non-dirty edit.
@@ -171,8 +183,14 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
             .on('click', '.save-bar .cancel',  contribution_cancel)
             .on('click', '.save-bar .discard', contribution_cancel)
             .on('click', '.save-bar .save',    contribution_save)
-            .on('click', '.save-bar .full',    function () { pop_up(this, false); })
-            .on('click', '.save-bar .unfull',  pop_down_all)
+            .on('click', '.save-bar .full',    function () {
+                play_bot_abort();
+                pop_up(this, false);
+            })
+            .on('click', '.save-bar .unfull',  function () {
+                play_bot_abort();
+                pop_down_all();
+            })
             .on('keyup', function (evt) {
                 if (evt.key === 'Escape') {
                     play_bot_abort();
@@ -180,6 +198,8 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
                 }
             })
         ;
+
+        $('#playlist-sequencer').on('change', playlist_sequencer_change());
 
         if (DO_DOCUMENT_CLICK_ENDS_CLEAN_EDIT) {
             $(window.document)
@@ -255,15 +275,48 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
     var progress_play_bot = null;
     var list_play_bot;   // array of contribution id's
 
+    function playlist_random() {
+        var playlist = playlist_in_order();
+        shuffle(playlist);
+        return playlist;
+    }
+
+    function playlist_in_order() {
+        var $my_category = $categories[MONTY.IDN.CAT_MY];
+        return $my_category.find('.contribution[id]').map(function () {
+            return this.id;
+        }).get();
+    }
+
+    var PLAYLIST_IN_ORDER = 'in_order';
+    var PLAYLIST_RANDOM = 'random';
+    var PLAYLIST_TABLE = {};
+    PLAYLIST_TABLE[PLAYLIST_IN_ORDER] = {generate: playlist_in_order};
+    PLAYLIST_TABLE[PLAYLIST_RANDOM  ] = {generate: playlist_random};
+
+    function playlist_generate() {
+        var playlist_selection = $('#playlist-sequencer').val();
+        console.assert(
+            has(PLAYLIST_TABLE, playlist_selection),
+            playlist_selection, "not in", PLAYLIST_TABLE
+        );
+        return PLAYLIST_TABLE[playlist_selection].generate();
+    }
+
     function play_player_bot() {
         if (progress_play_bot === null) {
-            var $my_cat = $categories[MONTY.IDN.CAT_MY];
-            list_play_bot = [];
-            $my_cat.find('.contribution[id]').each(function () {
-                list_play_bot.push(this.id);
-            });
-            // TODO:  Yes of course this should be a map call.
+            list_play_bot = playlist_generate();
+            // var $my_cat = $categories[MONTY.IDN.CAT_MY];
+            // list_play_bot = [];
+            // $my_cat.find('.contribution[id]').each(function () {
+            //     list_play_bot.push(this.id);
+            // });
+            // // DONE:  Yes of course this should be a map call.
             console.log("play idns", list_play_bot.join(","));
+            // var alt_idns = $my_cat.find('.contribution[id]').map(function () {
+            //     return this.id;
+            // }).get();
+            // console.log("alt idns", alt_idns.join(","));
 
             index_play_bot = 0;
             next_play_bot();
@@ -308,6 +361,7 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
      */
     function player_bot_going() {
         $(window.document.body).addClass('player-bot-playing');
+        $('#playlist-sequencer').prop('disabled', true);
     }
 
     /**
@@ -315,6 +369,7 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
      */
     function player_bot_ending() {
         $(window.document.body).removeClass('player-bot-playing');
+        $('#playlist-sequencer').prop('disabled', false);
     }
 
     var MEDIA_SECONDS_TABLE = {
@@ -463,7 +518,7 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
             // Leave it alone, might be selecting text to replace, or just giving focus.
         } else {
             contribution_edit_begin($cont);
-            console.log("edit clicked", $clicked_on[0].className, $clicked_on[0].id);
+            console.log("edit clicked", $cont[0].id);
             if ($clicked_on.is('.contribution')) {
                 $cont.focus();
             } else if ($clicked_on.closest('.caption-bar').length > 0) {
@@ -628,9 +683,10 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
         var render_height = $render_bar.height();
         var caption_height = $sup_cont.find('.caption-bar').height();
         var $save_bar = $sup_cont.find('.save-bar');
-        $save_bar.addClass('');
+        // $save_bar.addClass('');   WTF was this supposed to be?
         var save_height = $save_bar.height();
-        $save_bar.removeClass('');
+        console.assert(save_height > 0.0);
+        // $save_bar.removeClass('');
 
         var $popup = $sup_cont.clone(false, true);
         $popup.find('[id]').attr('id', function () {
@@ -1440,7 +1496,10 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
             .append($icon('skip_next'))
             .append(" skip")
         );
-
+        $bot.append($('<select>', {id: 'playlist-sequencer'})
+            .append($('<option>', {value: PLAYLIST_IN_ORDER}).text("in order"))
+            .append($('<option>', {value: PLAYLIST_RANDOM  }).text("random"))
+        );
         $up_top.append($bot);
 
         var $login_prompt = $('<div>', {id: 'login-prompt'});
@@ -2267,6 +2326,29 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
         try {
             nonessential_function_that_may_not_be_supported();
         } catch (_) {
+        }
+    }
+
+    /**
+     * Fisher-Yates Shuffle, in-place.
+     *
+     * THANKS:  https://stackoverflow.com/a/2450976/673991
+     * SEE:  https://bost.ocks.org/mike/shuffle/
+     */
+    function shuffle(array) {
+        var currentIndex = array.length, temporaryValue, randomIndex;
+
+        // While there remain elements to shuffle...
+        while (0 !== currentIndex) {
+
+            // Pick a remaining element...
+            randomIndex = Math.floor(Math.random() * currentIndex);
+            currentIndex -= 1;
+
+            // And swap it with the current element.
+            temporaryValue = array[currentIndex];
+            array[currentIndex] = array[randomIndex];
+            array[randomIndex] = temporaryValue;
         }
     }
 }

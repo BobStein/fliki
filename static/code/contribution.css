@@ -180,16 +180,19 @@ body.player-bot-playing #skip-button { display: inline-block; }
 
 .sup-contribution.pop-up                  .save-bar .edit    { display: none; }
 .sup-contribution.contribution-edit       .save-bar .edit    { display: none; }
+body.player-bot-playing                   .save-bar .edit    { display: none; }
 .sup-contribution:not(.contribution-edit) .save-bar .cancel  { display: none; }
 .sup-contribution.edit-dirty              .save-bar .cancel  { display: none; }
 .sup-contribution:not(.edit-dirty)        .save-bar .save    { display: none; }
 .sup-contribution:not(.edit-dirty)        .save-bar .discard { display: none; }
 
-.contribution-edit .save-bar   .full { display: none; }
-                   .save-bar   .full { display: inline-block; }
-.pop-up            .save-bar   .full { display: none; }
-                   .save-bar .unfull { display: none; }
-.pop-up            .save-bar .unfull { display: inline-block; }
+.sup-contribution                         .save-bar   .full { display: inline-block; }
+.sup-contribution.contribution-edit       .save-bar   .full { display: none; }
+body.player-bot-playing                   .save-bar   .full { display: none; }
+.sup-contribution.pop-up                  .save-bar   .full { display: none; }
+
+.sup-contribution                         .save-bar .unfull { display: none; }
+.sup-contribution.pop-up                  .save-bar .unfull { display: inline-block; }
 
 .grip {
     cursor: move;

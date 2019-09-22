@@ -11,7 +11,12 @@
  * @param window.YT
  * @param window.YT.Player
  * @param window.YT.PlayerState
- * @param window.YT.PlayerState.ENDED
+ * @param window.YT.PlayerState.UNSTARTED - -1
+ * @param window.YT.PlayerState.ENDED     -  0
+ * @param window.YT.PlayerState.PLAYING   -  1
+ * @param window.YT.PlayerState.PAUSED    -  2
+ * @param window.YT.PlayerState.BUFFERING -  3
+ * @param window.YT.PlayerState.CUED      -  5
  *
  * @param {function} $
  * @param {function} $.extend
@@ -120,16 +125,16 @@ function embed_content_js(window, $, MONTY) {
                                                 yt_player.playVideo();
 
                                             }
-                                            console.log(
-                                                "Yippee you ready",
-                                                contribution_idn,
-                                                type_name(yt_player),   // "Y"
-                                                type_name(yt_event),   // "Object"
-                                                type_name(yt_event.target),   // "Y"
-                                                yt_player.getPlayerState(),   // 5=cued
-                                                yt_event.data   // null
-                                            );
-                                            if (yt_player.getPlayerState() === -1) {
+                                            // console.log(
+                                            //     "Yippee you ready",
+                                            //     contribution_idn,
+                                            //     type_name(yt_player),   // "Y"
+                                            //     type_name(yt_event),   // "Object"
+                                            //     type_name(yt_event.target),   // "Y"
+                                            //     yt_player.getPlayerState(),   // 5=cued
+                                            //     yt_event.data   // null
+                                            // );
+                                            if (yt_player.getPlayerState() === window.YT.PlayerState.UNSTARTED) {
                                                 console.warn(
                                                     "Unstarted",
                                                     contribution_idn,
@@ -138,13 +143,13 @@ function embed_content_js(window, $, MONTY) {
                                             }
                                         },
                                         onStateChange: function (yt_event) {
-                                            console.log(
-                                                "Player",
-                                                contribution_idn,
-                                                "state",
-                                                yt_player.getPlayerState(),
-                                                yt_event.data
-                                            );
+                                            // console.log(
+                                            //     "Player",
+                                            //     contribution_idn,
+                                            //     "state",
+                                            //     yt_player.getPlayerState(),
+                                            //     yt_event.data
+                                            // );
                                             // noinspection JSRedundantSwitchStatement
                                             switch (yt_event.data) {
                                             case window.YT.PlayerState.ENDED:
