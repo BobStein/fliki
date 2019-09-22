@@ -151,8 +151,17 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
     var $cont_editing = null;   // TODO:  $('.contribution-edit').find('.contribution')
     // var original_text = null;
 
-
     var cont_only = cont_list_from_query_string();
+
+    var index_play_bot;
+    var progress_play_bot = null;
+    var list_play_bot;   // array of contribution id's
+
+    var PLAYLIST_IN_ORDER = 'in_order';
+    var PLAYLIST_RANDOM = 'random';
+    var PLAYLIST_TABLE = {};
+    PLAYLIST_TABLE[PLAYLIST_IN_ORDER] = {generate: playlist_in_order};
+    PLAYLIST_TABLE[PLAYLIST_RANDOM  ] = {generate: playlist_random};
 
     $(window.document).ready(function document_ready() {
         qoolbar.ajax_url(MONTY.AJAX_URL);
@@ -271,9 +280,9 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
         // //        embedded html (see noembed_render()).
     });
 
-    var index_play_bot;
-    var progress_play_bot = null;
-    var list_play_bot;   // array of contribution id's
+    function playlist_sequencer_change() {
+        // TODO:  remember in localStorage
+    }
 
     function playlist_random() {
         var playlist = playlist_in_order();
@@ -287,12 +296,6 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
             return this.id;
         }).get();
     }
-
-    var PLAYLIST_IN_ORDER = 'in_order';
-    var PLAYLIST_RANDOM = 'random';
-    var PLAYLIST_TABLE = {};
-    PLAYLIST_TABLE[PLAYLIST_IN_ORDER] = {generate: playlist_in_order};
-    PLAYLIST_TABLE[PLAYLIST_RANDOM  ] = {generate: playlist_random};
 
     function playlist_generate() {
         var playlist_selection = $('#playlist-sequencer').val();
@@ -578,17 +581,12 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
 
     function pop_down_all() {
         var $pop_ups = $('.pop-up');
-        // var $pop_downs = $('.pop-down');
         console.assert($pop_ups.length <= 1, $pop_ups);
-        // console.assert($pop_downs.length <= 1, $pop_downs);
-        // // TODO:  Because this sometimes fails, we should control pop-downs not by class
-        // //        but by the pop-ups having data-links to their corresponding
-        // //        $popup.data('popped-down', $popdown);
         $pop_ups.each(function () {
             var $popup = $(this);
             $popup.removeClass('pop-up');
             // NOTE:  This immediate removal of the pop-up class -- though premature --
-            //        allows redundant back-to-back calls to contribution_unfull().
+            //        allows redundant back-to-back calls to pop_down_all().
             var pop_stuff = $popup.data('pop-stuff');
             // TODO:  Instead, just remember the pop-down DOM object,
             //        and recalculate its current "fixed" coordinates from it.
@@ -602,21 +600,6 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
                     });
                 } catch (e) {
                     console.error("Unable to unfull??", iframe.id, e.toString());
-                    // NOTE:  2nd line of defense, double-pop-up
-                    //        Or rather a mop-up of consequences, long after the fact.
-                    //        TypeError 'iframe' of undefined in iframeResizer.js
-                    //        when 'full'ing one contribution when another's already full.
-                    //        And then all 'full' clicks trigger the same error, trying
-                    //        to unfull.
-                    //        Reproduce:
-                    //        Full contribution A
-                    //        Without un-fulling it, full contribution B
-                    //        Notice B's original location is not popped down (invisible)?
-                    //        Now full contribution B again, from the button of it's
-                    //        supposed-to-be-invisible form.
-                    //        Now the popup is atrophied.
-                    //        Try to unfull it.
-                    //        Worked around by SAVING $pop_downs above, undoing it below.
                 }
             } else {
                 // NOTE:  Harmlessly un-popping-up something with no render-bar iframe.
@@ -638,25 +621,10 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
 
                     $popup.data('popped-down').removeClass('pop-down');
                     $popup.removeData('popped-down');
-                    // $pop_downs.removeClass('pop-down');
-                    // NOTE:  1st line of defense against double-pop-up,
-                    //        Remembered pop-down object, now un-class it.
-                    //        Instead of doing this now...
-                    //        $('.pop-down').removeClass('pop-down');
-                    //        ...because that might undo half of a more recent pop-up.
-
                     $popup.remove();
                 }
             });
         });
-        // $('.pop-up .render-bar iframe').each(function () {
-        //     // NOTE:  There should never be more than one,
-        //     //        but this way we don't have to know which one.
-        //     this.iFrameResizer.close();
-        //     // TODO:  Should this only proceed after the onClosed event(s)?
-        // });
-        // $('.pop-up').remove();
-        // $('.pop-down').removeClass('pop-down');
     }
 
     function pop_up(somewhere_in_contribution, auto_play) {
@@ -676,17 +644,13 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
         var offset = $sup_cont.offset();
         var window_width = $(window).width();
         var window_height = $(window).height();
-        // var cont_width = $sup_cont.width();
-        // var cont_height = $sup_cont.height();
         var $render_bar = $sup_cont.find('.render-bar');
         var render_width = $render_bar.width();
         var render_height = $render_bar.height();
         var caption_height = $sup_cont.find('.caption-bar').height();
         var $save_bar = $sup_cont.find('.save-bar');
-        // $save_bar.addClass('');   WTF was this supposed to be?
         var save_height = $save_bar.height();
         console.assert(save_height > 0.0);
-        // $save_bar.removeClass('');
 
         var $popup = $sup_cont.clone(false, true);
         $popup.find('[id]').attr('id', function () {
@@ -752,8 +716,6 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
             $popup.animate({
                 left: 0,
                 top: top_air,
-                // width: window_width- 30,
-                // height: window_height - 30,
                 'background-color': 'rgba(0,0,0,0.25)'
                 // THANKS:  Alpha, not opacity, https://stackoverflow.com/a/5770362/673991
             }, {
@@ -771,8 +733,6 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
             $popup.animate({
                 left: 0,
                 top: top_air,
-                // width: window_width- 30,
-                // height: window_height - 30,
                 'background-color': 'rgba(0,0,0,0.25)'
                 // THANKS:  Alpha, not opacity, https://stackoverflow.com/a/5770362/673991
             }, {
@@ -885,7 +845,6 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
         if (attempt_content_edit_abandon()) {
             contribution_edit_show($cont);
             is_editing_some_contribution = true;
-            // original_text = $cont.text();
             $cont.data('original_text', $cont.text());
             var $caption_span = $cont.closest('.sup-contribution').find('.caption-span');
             $caption_span.data('original_text', $caption_span.text());
@@ -1005,58 +964,11 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
                                         var $enter_a_caption = $('#enter_a_caption');
                                         $enter_some_text.val(url);
                                         $enter_a_caption.val(title);
-                                        // TODO:  Avoid setting text/caption when they're dirty.
-                                        //        But do overwrite semi-dirty, that is already the result
-                                        //        of an earlier URL drop or paste.
-                                        // NOTE:  These calls to .val() here are what overrides
-                                        //        the previous contents of the text/caption,
-                                        //        not the .preventDefault() call,
-                                        //        which almost certainly happens BEFORE here.
+                                        // TODO:  Avoid dropping new text/caption when they're dirty.
+                                        //        But do overwrite semi-dirty,
+                                        //        that is already the result of earlier URL drop/paste.
                                     }
                                 );
-                                // if (can_i_get_meta_about_it(might_be_url)) {
-                                //     qoolbar.post('noembed_meta', {
-                                //         url: might_be_url
-                                //     }, function (oembed_response) {
-                                //         console.log("noembed meta", oembed_response);
-                                //         if (
-                                //             typeof oembed_response.oembed.title === 'string' &&
-                                //             typeof oembed_response.oembed.error === 'undefined'
-                                //         ) {
-                                //             var title = oembed_response.oembed.title;
-                                //             var $enter_some_text = $('#enter_some_text');
-                                //             var $enter_a_caption = $('#enter_a_caption');
-                                //             $enter_some_text.val(might_be_url);
-                                //             $enter_a_caption.val(title);
-                                //             // TODO:  Avoid setting text/caption when they're dirty.
-                                //             //        But not semi-dirty, that is already the result
-                                //             //        of an earlier URL drop.
-                                //             // NOTE:  These calls to .val() here are what overrides
-                                //             //        the previous contents of the text/caption,
-                                //             //        not the .preventDefault() below,
-                                //             //        which almost certainly happens BEFORE here.
-                                //         } else {
-                                //             console.warn(
-                                //                 "Not an oembed URL",
-                                //                 might_be_url,
-                                //                 oembed_response.oembed.error
-                                //             );
-                                //         }
-                                //     });
-                                //     evt.preventDefault();
-                                //     evt.stopPropagation();
-                                //     return false;
-                                //     // NOTE:  This probably does nothing.  I'm not the only one
-                                //     //        who thinks this is bull puppy:
-                                //     //        https://opensourcehacker.com/2011/11/11/cancelling
-                                //     //        -html5-drag-and-drop-events-in-web-browsers/
-                                //     //        Hint:  you have to cancel dragover / dragenter
-                                //     // SEE:  Valid drop target
-                                //     //       https://developer.mozilla.org/en-US/docs/Web/API/HTML_Drag_and_Drop_API/Drag_operations#drop
-                                //     //       https://stackoverflow.com/q/8414154/673991
-                                // } else {
-                                //     console.log("Dropped a non-URL", might_be_url);
-                                // }
                             });
                         }
                     });
@@ -1080,7 +992,6 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
                     //            ...
                     //                </ytd-thumbnail-overlay-toggle-button-renderer></div>\n
                     //            </a>"
-                    // contribution.js?mtime=1568044505.725:723
                 } else {
                     console.log("... items is", typeof items);
                 }
@@ -1106,11 +1017,11 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
                     console.warn("Not an oembed URL", what, url, oembed_response.oembed.error);
                 }
             });
-            // evt.preventDefault();
-            // evt.stopPropagation();
-            // return false;
-            // NOTE:  The above anti-bubbling, anti-propagation code
-            //        probably would have done nothing.
+            // NOTE:  The following anti-bubbling, anti-propagation code
+            //        we could do it, but it probably never does anything.
+            //            evt.preventDefault();
+            //            evt.stopPropagation();
+            //            return false;
             //        I'm not the only one who thinks this is bull puppy:
             //        https://opensourcehacker.com/2011/11/11/cancelling
             //        -html5-drag-and-drop-events-in-web-browsers/
@@ -1226,7 +1137,6 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
                         console.debug("Revert to end of category", from_cat_idn);
                         $from_cat.append($movee);
                     }
-
                 }
             }
         };
@@ -1860,7 +1770,6 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
         $sup_category.append($category);
         if (do_valve) {
             var $valve = valve(name, is_valve_open);
-            // noinspection JSCheckFunctionSignatures
             $title.prepend($valve);   // triangles go BEFORE the heading text
             var $how_many = $('<span>', {class:'how-many'});
             $title.append($how_many);   // (n) anti-valve goes AFTER the heading text
@@ -1912,7 +1821,6 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
         if (contribution_word.was_submitted_anonymous) {
             $sup_contribution.addClass('was-submitted-anonymous');
         }
-        // render_bar($sup_contribution);
         return $sup_contribution;
     }
 
@@ -1999,28 +1907,6 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
             });
         });
         return order;
-    }
-
-    // noinspection JSUnusedLocalSymbols
-    /**
-     * Make a string of category and contribution idns in order,
-     * ready to compare with order from another source.
-     *
-     * EXAMPLE return:
-     *     "0q83_059F:0q83_05B0,0q83_0598,0q83_03B3,0q83_03BC,0q83_0372 " +
-     *     "0q83_059E:0q83_0596,0q83_03B9,0q83_04"
-     *
-     * @param order - e.g. MONTY.order e.g.
-     * @return {string}
-     */
-    function order_idns(order) {
-        var cont_nonempty = order.cat.filter(function(cat) {
-            return has(order.cont, cat) && order.cont[cat].length > 0
-        });
-        var cont_strings = cont_nonempty.map(function(cat) {
-            return cat + ":" + order.cont[cat].join(",");
-        });
-        return cont_strings.join(" ");
     }
 
     function order_report(order) {
