@@ -37,7 +37,18 @@ console.assert('example' === simplified_domain_from_url('https://www.example.com
 function domain_from_url(url) {
     if (typeof url === 'string' && url !== '') {
         var $a = $('<a>').prop('href', url);
-        if ($a.prop('href').toLowerCase() === url.toLowerCase()) {  // TODO:  is_valid_url()?
+        var href_back;
+        try {
+            href_back = $a.prop('href');
+        } catch (e) {
+            console.error("couldn't read back href on", url);
+            // EXAMPLE (IE11):  couldn't read back href on https://www.e%ample.com/
+            // EXAMPLE (IE11):  couldn't read back href on https://e%ample.com/
+            // NOTE:  Without this try-catch there's an Invalid Argument deep in jQuery.
+        }
+        // noinspection JSObjectNullOrUndefined
+        if (is_specified(href_back) && href_back.toLowerCase() === url.toLowerCase()) {
+            // TODO:  Spawn off an is_valid_url() function?
             var hostname = $a.prop('hostname');
             // THANKS:  domain from url, https://stackoverflow.com/a/4815665/673991
             if (hostname) {

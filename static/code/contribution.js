@@ -163,6 +163,8 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
     PLAYLIST_TABLE[PLAYLIST_IN_ORDER] = {generate: playlist_in_order};
     PLAYLIST_TABLE[PLAYLIST_RANDOM  ] = {generate: playlist_random};
 
+    var SETTING_SEQUENCER = 'setting.sequencer';
+
     $(window.document).ready(function document_ready() {
         qoolbar.ajax_url(MONTY.AJAX_URL);
 
@@ -208,7 +210,8 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
             })
         ;
 
-        $('#playlist-sequencer').on('change', playlist_sequencer_change());
+        $('#playlist-sequencer').on('change', playlist_sequencer_change);
+        val_from_storage('#playlist-sequencer', SETTING_SEQUENCER);
 
         if (DO_DOCUMENT_CLICK_ENDS_CLEAN_EDIT) {
             $(window.document)
@@ -282,6 +285,18 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
 
     function playlist_sequencer_change() {
         // TODO:  remember in localStorage
+        storage_from_val(SETTING_SEQUENCER, this);
+    }
+
+    function storage_from_val(name, selector) {
+        window.localStorage.setItem(name, $(selector).val());
+    }
+
+    function val_from_storage(selector, name) {
+        var setting = window.localStorage.getItem(name);
+        if (is_specified(setting)) {
+            $(selector).val(setting);
+        }
     }
 
     function playlist_random() {
@@ -738,9 +753,8 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
             }, {
                 easing: 'swing',
                 complete: function () {
-                    resize_render_bars($iframe);
-                    // NOTE:  This seems to work around the iFrameResizer bug
-                    //        that sometimes leaves the frame zero-width when popping up.
+                    // TODO:  Speak the words.
+
                 }
             });
 
