@@ -155,7 +155,10 @@ function embed_content_js(window, $, MONTY) {
                                             case window.YT.PlayerState.ENDED:
                                                 if (is_auto_play) {
                                                     parent_iframe().sendMessage(
-                                                        { action: 'auto-play-ended' },
+                                                        {
+                                                            action: 'auto-play-ended',
+                                                            contribution_idn: contribution_idn
+                                                        },
                                                         window.iFrameResizer.targetOrigin
                                                     );
                                                 }

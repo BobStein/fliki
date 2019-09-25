@@ -95,10 +95,14 @@ body.player-bot-playing #skip-button { display: inline-block; }
         -moz-border-radius-topleft: 0.5em;
 }
 .contribution {
+    white-space: pre-line/* !important*/;
+    /* TODO:  Should this be important or not?
+              Sometimes "playing" text caused the hard-returns to melt away. */
+}
+.contribution {
     border-color: black;
     border-style: solid;
 
-    white-space: pre-line;
     background-color: #EEEEEE;
     border-width: 1px;
     overflow: auto;
@@ -127,6 +131,21 @@ body.player-bot-playing #skip-button { display: inline-block; }
               but it fixes Chrome's dumb habit of changing Enter keystrokes to <div> blocks.
               Hope it doesn't mess up the flow in some other circumstance. */
 }
+
+/* NOTE:  The display-inline-block directive above is overridden
+          by an equivalent directive below,
+          that deals with the interactions between all 8 combinations of classes
+          render-media, render-bar, and contribution-edit. */
+
+.sup-contribution                                .contribution { display:block; }
+.sup-contribution.render-media                   .contribution { display:none; }
+.sup-contribution.contribution-edit              .contribution { display:inline-block; }
+.sup-contribution.render-media.contribution-edit .contribution { display:inline-block; }
+
+.sup-contribution                                .render-bar { display:none; }
+.sup-contribution.render-media                   .render-bar { display:block; }
+.sup-contribution.contribution-edit              .render-bar { display:none; }
+.sup-contribution.render-media.contribution-edit .render-bar { display:none; }
 
                    .contribution { padding: 0.5em 0.5em 0.7em 0.5em; }
 .contribution-edit .contribution { padding: 0.3em 0.3em 0.5em 0.3em; border: 0.2em inset; }
@@ -262,18 +281,37 @@ body.player-bot-playing                   .save-bar   .full { display: none; }
     /* NOTE:  Prevent inadvertent text-selection of triangles. */
 }
 
-.sup-contribution                                .contribution { display:block; }
-.sup-contribution.render-media                   .contribution { display:none; }
-.sup-contribution.render-media.contribution-edit .contribution { display:inline-block; }
-
-.sup-contribution                                .render-bar { display:none; }
-.sup-contribution.render-media                   .render-bar { display:block; }
-.sup-contribution.render-media.contribution-edit .render-bar { display:none; }
-
 iframe { display:block; }
 /* THANKS:  Remove space at bottom of a div with an iframe in it,
             https://stackoverflow.com/a/21025344/673991 */
 
 .render-bar iframe {
     border: 1px solid black;
+}
+
+.talkify-sentence-highlight {
+}
+
+.pop-up .contribution {
+    transition: font-size 1s;
+    /*font-size: 16px;*/
+}
+
+.pop-up .contribution .talkify-word-highlight {
+    transition: font-size 1s;
+    /*font-size: 24px;*/
+    font-size: 150%;
+    /* TODO:  Animate text size somehow.
+       SEE:  Inline elements can't be transformed, https://stackoverflow.com/q/14883250/673991 */
+
+    display: inline-block;
+    border: 1px solid silver;
+    padding: 3px;
+    background-color: white;
+    line-height: 66%;
+}
+
+#talkify-audio {
+    position: fixed;
+    bottom: 0;
 }

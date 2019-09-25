@@ -61,13 +61,14 @@
  * @param MONTY.w.obj
  * @param MONTY.w.txt
  * @param MONTY.w.num
+ * @param talkify
  *
  * @property word
  * @property word.sbj
  * @property word.vrb
  * @property word.was_submitted_anonymous
  */
-function js_for_contribution(window, $, qoolbar, MONTY) {
+function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
 
     var DO_LONG_PRESS_EDIT = false;
     // NOTE:  Long press seems like too easy a way to trigger an edit.
@@ -165,6 +166,35 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
 
     var SETTING_SEQUENCER = 'setting.sequencer';
 
+    var MEDIA_SKIP = 0;
+    var MEDIA_INFINITE_PATIENCE = 1000000 * 365 * 24 * 60 * 60 * 1000;
+    var MEDIA_SECONDS_TABLE = {
+        youtube: MEDIA_INFINITE_PATIENCE,
+        youtu_be: MEDIA_INFINITE_PATIENCE,
+        // vimeo: 600,   // TODO automate playing for vimeo videos
+
+        default: 10,   // other media is a static image
+        no_media: MEDIA_INFINITE_PATIENCE,   // text being read aloud
+        no_domain: MEDIA_SKIP     // badly formatted URL
+    };
+    // TODO:  Better way to prevent pausing youtube or talkify to result MUCH LATER
+    //        in a jarring timeout and resumption of the bot with the next contribution.
+    //        Now that's done with MEDIA_INFINITE_PATIENCE.
+
+    var talkify_player = null;
+    var talkify_playlist = null;
+    var POPUP_PREFIX = 'popup_';
+    var talkify_done = null;
+    var talkify_voice_name;
+
+    var BOT_CONTEXT = 'bot_context';  // PubSub message context
+
+    var TALKIFY_VOICES_ENGLISH = [
+        'Hazel',
+        'David',
+        'Zira'    // this may be the default
+    ];
+
     $(window.document).ready(function document_ready() {
         qoolbar.ajax_url(MONTY.AJAX_URL);
 
@@ -195,16 +225,16 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
             .on('click', '.save-bar .discard', contribution_cancel)
             .on('click', '.save-bar .save',    contribution_save)
             .on('click', '.save-bar .full',    function () {
-                play_bot_abort();
+                bot_abort();
                 pop_up(this, false);
             })
             .on('click', '.save-bar .unfull',  function () {
-                play_bot_abort();
+                bot_abort();
                 pop_down_all();
             })
             .on('keyup', function (evt) {
                 if (evt.key === 'Escape') {
-                    play_bot_abort();
+                    bot_abort();
                     pop_down_all();
                 }
             })
@@ -346,7 +376,7 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
     function stop_player_bot() {
         if (progress_play_bot !== null) {
             console.log("Stop player bot");
-            play_bot_abort();
+            bot_abort();
             pop_down_all();
         }
     }
@@ -354,30 +384,32 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
     function skip_player_bot() {
         if (progress_play_bot !== null) {
             if (index_play_bot < list_play_bot.length) {
-                console.log("Skip player bot", list_play_bot[index_play_bot]);
+                console.log("Skipping", list_play_bot[index_play_bot]);
             } else {
-                console.error("Skip when it shouldn't", index_play_bot, list_play_bot);
+                console.error("Skip shouldn't be possible", index_play_bot, list_play_bot);
             }
-            play_bot_abort();
-            end_one_begin_another();
         }
+        bot_timely_transition();
     }
 
     // TODO:  What if play-bot is in progress and user hits un-full button?
     //        Stop play-bot?  Or just skip to next one?  Thinking skip...
 
-    function play_bot_abort() {
+    /**
+     * Stop the bot, pop-down the media, cancel the bot timeout.
+     */
+    function bot_abort() {
         if (progress_play_bot !== null) {
             clearTimeout(progress_play_bot);
             progress_play_bot = null;
-            player_bot_ending();
+            bot_media_ending();
         }
     }
 
     /**
      * At the beginning of each contribution.
      */
-    function player_bot_going() {
+    function bot_media_beginning() {
         $(window.document.body).addClass('player-bot-playing');
         $('#playlist-sequencer').prop('disabled', true);
     }
@@ -385,27 +417,22 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
     /**
      * At the end of each contribution.
      */
-    function player_bot_ending() {
+    function bot_media_ending() {
         $(window.document.body).removeClass('player-bot-playing');
         $('#playlist-sequencer').prop('disabled', false);
     }
 
-    var MEDIA_SECONDS_TABLE = {
-        youtube: 600,
-        youtu_be: 600,
-        // vimeo: 600,
-
-        default: 10,
-        no_domain: 0
-    };
-
     function get_media_seconds($sup_cont) {
         var data_domain = $sup_cont.attr('data-domain');
         var media_seconds;
-        if (is_defined(data_domain) && has(MEDIA_SECONDS_TABLE, data_domain)) {
-            media_seconds = MEDIA_SECONDS_TABLE[data_domain];
+        if (is_defined(data_domain)) {
+            if (has(MEDIA_SECONDS_TABLE, data_domain)) {
+                media_seconds = MEDIA_SECONDS_TABLE[data_domain];
+            } else {
+                media_seconds = MEDIA_SECONDS_TABLE.default;
+            }
         } else {
-            media_seconds = MEDIA_SECONDS_TABLE.default;
+            media_seconds = MEDIA_SECONDS_TABLE.no_media;
         }
         return media_seconds;
     }
@@ -416,17 +443,18 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
             var $cont = $_from_id(cont_idn);
             var $sup_cont = $sup_contribution($cont);
             var media_seconds = get_media_seconds($sup_cont);
-            if (media_seconds <= 0) {
+            if (media_seconds === MEDIA_SKIP) {
+                // NOTE:  0-second media should not be displayed at all.
                 setTimeout(function () {
                     end_one_begin_another();
                 }, 100);
             } else {
                 pop_up($sup_cont, true);
-                player_bot_going();
-                progress_play_bot = setTimeout(function () {
+                bot_media_beginning();
+                progress_play_bot = setTimeout(function bot_media_timed_out() {
                     progress_play_bot = null;
                     console.log("Play", list_play_bot[index_play_bot], "taking too long.  Onward.");
-                    player_bot_ending();
+                    bot_media_ending();
                     end_one_begin_another();
                 }, media_seconds * 1000);
             }
@@ -439,6 +467,16 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
         pop_down_all();
         index_play_bot++;
         next_play_bot();
+    }
+
+    /**
+     * Go to the next media in list_play_bot[] BEFORE the timeout has expired.
+     */
+    function bot_timely_transition() {
+        if (progress_play_bot !== null) {
+            bot_abort();
+            end_one_begin_another();
+        }
     }
 
     /**
@@ -481,11 +519,9 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
                         // noinspection JSRedundantSwitchStatement
                         switch (message.action) {
                         case 'auto-play-ended':
-                            console.log("Natural progression to the next contribution.");
-                            if (progress_play_bot !== null) {
-                                play_bot_abort();
-                                end_one_begin_another();
-                            }
+                            var media_cont_idn = message.contribution_idn;
+                            console.log("Media ended", media_cont_idn);
+                            bot_timely_transition();
                             break;
                         default:
                             console.error(
@@ -640,13 +676,32 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
                 }
             });
         });
+        if (talkify_player !== null) {
+            talkify_player.pause();
+            talkify_player.dispose();   // close the player UX
+            talkify_player = null;
+        }
+        if (talkify_playlist !== null) {
+            talkify_playlist.pause();   // stop the audio
+            talkify_playlist.dispose();
+            talkify_playlist = null;
+        }
+        if (talkify_done !== null) {
+            talkify_done();
+            talkify_done = null;
+        }
+        talkify.messageHub.unsubscribe(BOT_CONTEXT, '*.player.tts.ended');
+        talkify.messageHub.unsubscribe(BOT_CONTEXT, '*.player.tts.timeupdated');
+        talkify.messageHub.unsubscribe(BOT_CONTEXT, '*');
     }
 
     function pop_up(somewhere_in_contribution, auto_play) {
         var $sup_cont = $sup_contribution(somewhere_in_contribution);
         var $cont = $sup_cont.find('.contribution');
         var cont_idn = $cont.attr('id');
-        var was_already_popped_up = $('#popup_' + cont_idn).length > 0;
+        var popup_cont_idn = POPUP_PREFIX + cont_idn;
+        var popup_cont_selector = selector_from_id(popup_cont_idn);
+        var was_already_popped_up = $(popup_cont_selector).length > 0;
 
         pop_down_all();
         if (was_already_popped_up) {
@@ -669,8 +724,8 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
 
         var $popup = $sup_cont.clone(false, true);
         $popup.find('[id]').attr('id', function () {
-            return 'popup_' + $(this).attr('id');
-            // NOTE:  Avoid duplicate ids by prefixing all the ones in the clone.
+            return POPUP_PREFIX + $(this).attr('id');
+            // NOTE:  Prefix all ids in the clone, to avoid duplicates.
         });
         $popup.addClass('pop-up');
         $sup_cont.addClass('pop-down');
@@ -753,11 +808,150 @@ function js_for_contribution(window, $, qoolbar, MONTY) {
             }, {
                 easing: 'swing',
                 complete: function () {
-                    // TODO:  Speak the words.
+                    talkify.config.remoteService.host = 'https://talkify.net';
+                    talkify.config.remoteService.apiKey = '084ff0b0-89a3-4284-96a1-205b5a2072c0';
+                    talkify.config.ui.audioControls = {
+                        enabled: false, //<-- Disable to get the browser built in audio controls
+                        container: document.getElementById("player-bot")
+                    };
+                    talkify_player = new talkify.TtsPlayer();
+                    talkify_player.enableTextHighlighting();
 
+                    talkify_player.setRate(-1.0);   // a little slower than the default
+                    // SEE:  Rate codes, https://github.com/Hagsten/Talkify#user-content-talkify-hosted-only
+
+                    talkify_voice_name = random_element(TALKIFY_VOICES_ENGLISH);
+                    talkify_player.forceVoice({name: talkify_voice_name});
+                    // SEE:  Voice names,
+                    //       https://github.com/Hagsten/Talkify/issues/20#issuecomment-347837787-permalink
+                    //       https://jsfiddle.net/mknm62nx/1/
+                    //       https://talkify.net/api/speech/v1/voices?key= + talkify api key
+
+                    var popup_cont_node_list = document.querySelectorAll(popup_cont_selector);
+                    // NOTE:  Although $(popup_cont_selector) appears to work, the doc calls for
+                    //        "DOM elements" and the example passes a NodeList object.
+                    //        https://github.com/Hagsten/Talkify#play-all-top-to-bottom
+
+                    talkify_playlist = new talkify.playlist()
+                        .begin()
+                        .usingPlayer(talkify_player)
+                        // .withTextInteraction()
+                        .withElements(popup_cont_node_list)
+                        .build();
+
+                    talkify_playlist.play();
+                    // NOTE:  Play now, if not auto_play pause later.
+
+                    // console.log("Talkie", talkify_player, talkify_playlist);
+                    // EXAMPLE talkify_player (type talkify.TtsPlayer) members:
+                    //     audioSource: {play: ƒ, pause: ƒ, isPlaying: ƒ, paused: ƒ, currentTime: ƒ, …}
+                    //     correlationId: "8e90fbe4-607f-4a82-97af-6802a18e430b"
+                    //     createItems: ƒ (text)
+                    //     currentContext: {item: {…}, positions: Array(86)}
+                    //     disableTextHighlighting: ƒ ()
+                    //     dispose: ƒ ()
+                    //     enableTextHighlighting: ƒ ()
+                    //     forceLanguage: ƒ (culture)
+                    //     forceVoice: ƒ (voice)
+                    //     forcedVoice: null
+                    //     isPlaying: ƒ ()
+                    //     isPlaying: ƒ ()
+                    //     pause: ƒ ()
+                    //     paused: ƒ ()
+                    //     play: ƒ ()
+                    //     playAudio: ƒ (item)
+                    //     playItem: ƒ (item)
+                    //     playText: ƒ (text)
+                    //     playbar: {instance: null}
+                    //     setRate: ƒ (r)
+                    //     settings: {useTextHighlight: true, referenceLanguage: {…}, lockedLanguage: null, rate: 1, useControls: false}
+                    //     subscribeTo: ƒ (subscriptions)
+                    //     withReferenceLanguage: ƒ (refLang)
+                    //     wordHighlighter: {start: ƒ, highlight: ƒ, dispose: ƒ}
+                    // EXAMPLE talkify_playlist (type Object, e.g. {}) members:
+                    //     disableTextInteraction: ƒ ()
+                    //     dispose: ƒ ()
+                    //     enableTextInteraction: ƒ ()
+                    //     getQueue: ƒ ()
+                    //     insert: ƒ insertElement(element)
+                    //     isPlaying: ƒ isPlaying()
+                    //     pause: ƒ pause()
+                    //     play: ƒ play(item)
+                    //     replayCurrent: ƒ replayCurrent()
+                    //     setPlayer: ƒ (p)
+                    //     startListeningToVoiceCommands: ƒ ()
+                    //     stopListeningToVoiceCommands: ƒ ()
+
+                    var duration_report = "unknown duration";
+
+                    var pause_once = ! auto_play;
+
+                    talkify.messageHub.subscribe(BOT_CONTEXT, '*', function (message, topic) {
+                        // var members = message ? Object.keys(message).join() : "(no message)";
+                        // console.debug("talkify", topic, members);
+                        // EXAMPLE topics (context.type.action only, GUID context removed)
+                        //         and message members:
+                        //     player.*.prepareplay     \  text,preview,element,originalElement,
+                        //     player.tts.loading        > isPlaying,isLoading
+                        //     player.tts.loaded        /
+                        //     player.tts.play          item,positions,currentTime
+                        //     player.tts.timeupdated   currentTime,duration
+                        //     player.tts.pause         (no message)
+                        //     player.tts.ended         ((same members as loaded))
+                        if (/\.play$/.test(topic)) {
+                            if (pause_once) {
+                                pause_once = false;
+                                talkify_player.pause();
+                                // NOTE:  Crude, mfing way to support manual-only playing.
+                                //        Without this, player is inoperative.
+                            }
+                        }
+                    });
+                    talkify.messageHub.subscribe(
+                        BOT_CONTEXT,
+                        '*.player.tts.timeupdated',
+                        function (message) {
+                            // NOTE:  This event happens roughly 20Hz, 50ms.
+                            var $highlight = $('.talkify-word-highlight');
+                            $highlight.each(function () {
+                                this.scrollIntoView({
+                                    behavior: 'smooth',
+                                    block: 'center',
+                                    inline: 'center'
+                                });
+                                // SEE:  Browser scrollIntoView, https://caniuse.com/#search=scrollIntoView
+                                // TODO:  Reduce frequency of this call by tagging span
+                                //        with .talkify-word-highlight-already-scrolled-into-view?
+                            });
+                            duration_report = message.duration.toFixed(1) + " seconds";
+                        }
+                    );
+                    talkify.messageHub.subscribe(
+                        BOT_CONTEXT,
+                        '*.player.tts.ended',
+                        function (/*message, topic*/) {
+                            bot_timely_transition();
+                            // console.log("talkify ended", popup_cont_idn, message, topic);
+                            // EXAMPLE:  topic
+                            //     23b92641-e7dc-46af-9f9b-cbed4de70fe4.player.tts.ended
+                            // EXAMPLE:  message object members:
+                            //     element: div#popup_1024.contribution.talkify-highlight
+                            //     isLoading: false
+                            //     isPlaying: false
+                            //     originalElement: div#popup_1024.contribution
+                            //     preview: "this is just a test"
+                            //     text: "this is just a test"
+                        }
+                    );
+                    talkify_done = function () {
+                        console.log(
+                            "talkify", popup_cont_idn,
+                            "voice", talkify_voice_name,
+                            duration_report
+                        );
+                    };
                 }
             });
-
         }
         console.log("Popup", cont_idn);
     }

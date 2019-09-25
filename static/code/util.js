@@ -146,6 +146,12 @@ function query_get(name, default_value) {
     }
 }
 
+function random_element(an_array) {
+    return an_array[Math.floor(Math.random() * an_array.length)];
+    // THANKS:  https://stackoverflow.com/a/4550514/673991
+}
+console.assert(42 === random_element([42, 42, 42]));
+
 /**
  * Polyfill for window.URLSearchParams.get(), so it works in IE11
  *

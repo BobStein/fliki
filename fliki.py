@@ -1607,6 +1607,9 @@ def contribution_home(home_page_title):
                 # foot.js(auth.static_url('code/iframeResizer.js'))
                 # foot.comment("SEE:  /meta/static/code/iframe-resizer-LICENSE.txt")
                 foot.js('https://cdn.jsdelivr.net/npm/iframe-resizer@4.1.1/js/iframeResizer.min.js')
+                foot.js('https://use.fontawesome.com/49adfe8390.js')
+                foot.js('https://cdn.jsdelivr.net/npm/talkify-tts@2.6.0/dist/talkify.min.js')
+
                 foot.js_stamped(auth.static_url('code/util.js'))
                 foot.js_stamped(auth.static_url('code/contribution.js'))
                 verbs = []
@@ -1642,7 +1645,7 @@ def contribution_home(home_page_title):
                     )
                     monty.update(words_for_js)
                     script.raw_text('var MONTY = {json};\n'.format(json=json_pretty(monty)))
-                    script.raw_text('js_for_contribution(window, jQuery, qoolbar, MONTY);\n')
+                    script.raw_text('js_for_contribution(window, jQuery, qoolbar, MONTY, talkify);\n')
     t_end = time.time()
     q_end = auth.lex.query_count
     print("/meta/contrib {q:d} queries, {t:.3f} sec".format(
@@ -2661,7 +2664,7 @@ if secure.credentials.Options.oembed_server_prefix is not None:
             else:
                 error = oembed_dict.get('error', "((for some reason))")
                 but_noembed = "Anyway noembed says: " + error
-            print("Unauthorized", json.dumps(url), but_noembed)
+            print("Unsupported", json.dumps(url), but_noembed)
             return error_render(
                 message="{domain} - unsupported domain.  {but_noembed}".format(
                     domain=json.dumps(domain_from_url(url)),
@@ -2788,6 +2791,10 @@ def error_render(message):
         with html.head(newlines=True) as head:
             # head.js(AuthFliki.static_url('code/iframeResizer.contentWindow.js'))
             head.js('https://cdn.jsdelivr.net/npm/iframe-resizer@4.1.1/js/iframeResizer.contentWindow.js')
+            # NOTE:  So there are fewer console warnings.
+
+            head.style('body {background-color:#FFF8F0}')
+            # NOTE:  So error messages aren't transparent popped up.
         with html.body(newlines=True) as body:
             body.p(message, style='margin:0; min-width: 10em;', **{'data-iframe-width': '300'})
         return html.doctype_plus_html()
