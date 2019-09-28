@@ -62,8 +62,8 @@ function embed_content_js(window, $, MONTY) {
         domain_simple === 'youtu.be'
     );
 
-    var THUMB_MAX_WIDTH = 300;
-    var THUMB_MAX_HEIGHT = 300;
+    var THUMB_MAX_WIDTH = 200;
+    var THUMB_MAX_HEIGHT = 200;
     var YOUTUBE_EMBED_PREFIX = 'https://www.youtube.com/embed/';
     // THANKS:  URL, https://developers.google.com/youtube/player_parameters#Manual_IFrame_Embeds
 

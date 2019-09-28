@@ -129,13 +129,15 @@ body.player-bot-playing #skip-button { display: inline-block; }
     /* THANKS:  Avoid Chrome LF-to-div conversion, https://stackoverflow.com/a/24689420/673991 */
     /* NOTE:  This inserts an unsightly gap between contribution and caption,
               but it fixes Chrome's dumb habit of changing Enter keystrokes to <div> blocks.
-              Hope it doesn't mess up the flow in some other circumstance. */
+              Hope it doesn't mess up the flow in some other circumstance.
+              It may cause clumsiness when editing "hard" returns.
+              Or the creeping upward of the whole div when you insert/delete hard returns. */
+    /* SEE:  More Chrome contenteditable issues, https://stackoverflow.com/q/6023307/673991 */
 }
 
-/* NOTE:  The display-inline-block directive above is overridden
-          by an equivalent directive below,
-          that deals with the interactions between all 8 combinations of classes
-          render-media, render-bar, and contribution-edit. */
+/* NOTE:  The display-inline-block directive above may no longer be necessary,
+          as it is overridden anyway by the four directives below
+          that deal with combinations of editing and render-able media. */
 
 .sup-contribution                                .contribution { display:block; }
 .sup-contribution.render-media                   .contribution { display:none; }
@@ -215,6 +217,10 @@ body.player-bot-playing                   .save-bar   .full { display: none; }
 
 .grip {
     cursor: move;
+}
+
+.grip,
+.grip-inoperative {
     padding-right: 0.3em;
 }
 
@@ -294,14 +300,14 @@ iframe { display:block; }
 
 .pop-up .contribution {
     transition: font-size 1s;
-    /*font-size: 16px;*/
 }
 
-.pop-up .contribution .talkify-word-highlight {
+.pop-up .contribution .talkify-word-highlight,
+.speaking {
     transition: font-size 1s;
-    /*font-size: 24px;*/
     font-size: 150%;
-    /* TODO:  Animate text size somehow.
+    font-weight: bold;
+    /* TODO:  Animate text size somehow?
        SEE:  Inline elements can't be transformed, https://stackoverflow.com/q/14883250/673991 */
 
     display: inline-block;

@@ -24,6 +24,8 @@
  * @param window.location
  * @param window.location.href
  * @param window.MutationObserver
+ * @param window.speechSynthesis
+ * @param window.SpeechSynthesisUtterance
  * @param $
  * @param qoolbar
  * @param MONTY
@@ -133,38 +135,54 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
 
     // Config options for size_adjust()
     var WIDTH_MAX_EM = {
-        soft: 15,         // below the hard-max, display as is.
-        hard: 40,         // between hard and extreme-max, limit to hard-max.
+        soft: 10,         // below the hard-max, display as is.
+        hard: 15,         // between hard and extreme-max, limit to hard-max.
                           // (good reason to have a gap here: minimize wrapping)
-        extreme: 45       // above extreme-max, display at soft-max.
+        extreme: 20       // above extreme-max, display at soft-max.
     };
     var HEIGHT_MAX_EM = {
-        soft: 7,          // below the hard-max, display as is.
-        hard: 15,         // between hard and extreme-max, limit to hard-max.
+        soft: 4,          // below the hard-max, display as is.
+        hard: 6,         // between hard and extreme-max, limit to hard-max.
                           // (no good reason to have a gap here: it's just
                           // annoying to show a tiny bit scrolled out of view)
-        extreme: 15       // above extreme-max, display at soft-max.
+        extreme: 6       // above extreme-max, display at soft-max.
     };
-    // var WIDTH_TARGET_EM = 20;
+    var POPUP_WIDTH_MAX_EM = {
+        soft: 30,         // below the hard-max, display as is.
+        hard: 60,         // between hard and extreme-max, limit to hard-max.
+                          // (good reason to have a gap here: minimize wrapping)
+        extreme: 65       // above extreme-max, display at soft-max.
+    };
+    var POPUP_HEIGHT_MAX_EM = {
+        soft: 20,         // below the hard-max, display as is.
+        hard: 30,         // between hard and extreme-max, limit to hard-max.
+                          // (no good reason to have a gap here: it's just
+                          // annoying to show a tiny bit scrolled out of view)
+        extreme: 40       // above extreme-max, display at soft-max.
+    };
 
-    var is_editing_some_contribution = false;   // TODO:  $(window.document.body).hasClass('edit-somewhere')
-    // var is_dirty = false;
-    var $cont_editing = null;   // TODO:  $('.contribution-edit').find('.contribution')
-    // var original_text = null;
+    var is_editing_some_contribution = false;
+    // TODO:  $(window.document.body).hasClass('edit-somewhere')
+    var $cont_editing = null;
+    // TODO:  $('.contribution-edit').find('.contribution')
 
     var cont_only = cont_list_from_query_string();
 
-    var index_play_bot;
-    var progress_play_bot = null;
+    var progress_play_bot = null;   // setTimeout timer for the current contribution in play
     var list_play_bot;   // array of contribution id's
+    var index_play_bot;
 
-    var PLAYLIST_IN_ORDER = 'in_order';
-    var PLAYLIST_RANDOM = 'random';
+    var SETTING_PLAY_BOT_SEQUENCE = 'setting.play_bot.sequence';
+    var PLAY_BOT_SEQUENCE_ORDER = 'in_order';
+    var PLAY_BOT_SEQUENCE_RANDOM = 'random';
+
     var PLAYLIST_TABLE = {};
-    PLAYLIST_TABLE[PLAYLIST_IN_ORDER] = {generate: playlist_in_order};
-    PLAYLIST_TABLE[PLAYLIST_RANDOM  ] = {generate: playlist_random};
+    PLAYLIST_TABLE[PLAY_BOT_SEQUENCE_ORDER] = {generate: playlist_in_order};
+    PLAYLIST_TABLE[PLAY_BOT_SEQUENCE_RANDOM] = {generate: playlist_random};
 
-    var SETTING_SEQUENCER = 'setting.sequencer';
+    var SETTING_PLAY_BOT_FROM = 'setting.play_bot.from';
+    var PLAY_BOT_FROM_MY = 'CAT_MY';          // \ human-understandable values for #play_bot_from
+    var PLAY_BOT_FROM_OTHERS = 'CAT_THEIR';   // / options, machine use ala MONTY.IDN['CAT_THEIR']
 
     var MEDIA_SKIP = 0;
     var MEDIA_INFINITE_PATIENCE = 1000000 * 365 * 24 * 60 * 60 * 1000;
@@ -186,6 +204,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     var POPUP_PREFIX = 'popup_';
     var talkify_done = null;
     var talkify_voice_name;
+    var $animation_in_progress = null;
 
     var BOT_CONTEXT = 'bot_context';  // PubSub message context
 
@@ -195,7 +214,38 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         'Zira'    // this may be the default
     ];
 
+    // var synth = window.speechSynthesis;
+    // var voices = null;
+    // if (is_specified(synth)) {
+    //     voices = synth.getVoices();
+    // }
+    var utter = null;
+    var voices = null;
+    var voice_weights;
+    var voice_default = {name:"(unknown)", lang: ""};
+    var SECONDS_BREATHER_AT_ALL_MEDIA_END = 1.0;
+    var SECONDS_BREATHER_AT_SPEECH_END = 2.0;
+    var breather_timer = null;
+
     $(window.document).ready(function document_ready() {
+        window.speechSynthesis.onvoiceschanged = function () {
+            // THANKS:  voices ready, https://stackoverflow.com/a/22978802/673991
+            voices = window.speechSynthesis.getVoices();
+            console.log("Voices loaded", voices);
+            voice_weights = Array(voices.length);
+            for (var i=0 ; i < voices.length ; i++) {
+                if (/^en-GB/.test(voices[i].lang)) {
+                    voice_weights[i] = 10.0;
+                } else if (/^en/.test(voices[i].lang)) {
+                    voice_weights[i] = 5.0;
+                } else {
+                    voice_weights[i] = 0.0;
+                }
+                if (voices[i].default) {
+                    voice_default = voices[i];
+                }
+            }
+        };
         qoolbar.ajax_url(MONTY.AJAX_URL);
 
         build_dom();
@@ -240,15 +290,14 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             })
         ;
 
-        $('#playlist-sequencer').on('change', playlist_sequencer_change);
-        val_from_storage('#playlist-sequencer', SETTING_SEQUENCER);
+        persist_select_element('#play_bot_sequence', SETTING_PLAY_BOT_SEQUENCE);
+
+        play_bot_default_others_if_empty_my_category();
+        persist_select_element('#play_bot_from', SETTING_PLAY_BOT_FROM);
 
         if (DO_DOCUMENT_CLICK_ENDS_CLEAN_EDIT) {
-            $(window.document)
-                .on('click', attempt_content_edit_abandon)
-            ;
+            $(window.document).on('click', attempt_content_edit_abandon);
         }
-
         if (DO_LONG_PRESS_EDIT) {
             long_press('.sup-contribution', contribution_edit);
         }
@@ -276,14 +325,13 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             var which_way = isFullScreen ? "ENTER" : "EXIT";
             console.debug(which_way, "full screen");
         });
-        console.debug(
-            "Unchecked runtime.lastError: Could not establish connection? " +
-            "Receiving end does not exist?",
-            "<--- Ignore these if you get them."
-            // NOTE:  On my desktop Chrome these errors went away by disabling
-            //        Youtube Playback Speed Control 0.0.5
-            // SEE:  https://stackoverflow.com/q/54619817/673991#comment101370041_54765752
-        );
+
+        // NOTE:  On my desktop Chrome the following errors went away by disabling
+        //        Youtube Playback Speed Control 0.0.5
+        //            Unchecked runtime.lastError: Could not establish connection?
+        //            Receiving end does not exist?
+        // SEE:  https://stackoverflow.com/q/54619817/673991#comment101370041_54765752
+
         if (cont_only === null) {
             setTimeout(function () {
                 resize_render_bars('.render-bar iframe');
@@ -292,40 +340,36 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                 // But (even cheaper-ass) only do the workaround if no ?cont=NNN
                 // -- that is, we're not limiting the contributions, showing all of them,
                 // so as to preserve the failure mode in the above issue report.
-                // FIXME:  Instead append query-string ?...&disable_zero_size_iframe_workaround
-                //         Or wait until it's fixed.  And then remove this workaround
+                // FIXME:  Instead, append query-string ?...&disable_zero_size_iframe_workaround
+                //         Or wait until it's fixed.  And then remove this workaround.
             }, 3 * 1000);
+            // NOTE:  If this delay is not enough, I don't think anything too bad happens.
+            //        You might see briefly a wafer-thin iframe before it gives its children
+            //        the data-iframe-width attribute that taggedElement needs.
+            //        That has to happen after a delay due to provider tricks with the
+            //        embedded html (see noembed_render()).
         }
-
-        // setTimeout(function () {
-        //     // $('.sup-contribution').each(function () { resizer_init(this); });
-        //     // $('.render-bar iframe').iFrameResize({
-        //     //     log: true,
-        //     //     sizeWidth: true,
-        //     //     sizeHeight: true,
-        //     //     widthCalculationMethod: 'taggedElement'
-        //     // });
-        // }, 1000);
-        // // NOTE:  If this delay is not enough, I don't think anything too bad happens.
-        // //        You might see briefly a wafer-thin iframe before it gives its children
-        // //        the data-iframe-width attribute that taggedElement needs.
-        // //        That has to happen after a delay due to provider tricks with the
-        // //        embedded html (see noembed_render()).
     });
 
-    function playlist_sequencer_change() {
-        // TODO:  remember in localStorage
-        storage_from_val(SETTING_SEQUENCER, this);
+    function play_bot_default_others_if_empty_my_category() {
+        var $my_category = $categories[MONTY.IDN.CAT_MY];
+        var num_my_contributions = $my_category.find('.contribution').length;
+        var $play_bot_from = $('#play_bot_from');
+        var is_play_bot_from_my = $play_bot_from.val() === PLAY_BOT_FROM_MY;
+        if (num_my_contributions === 0 && is_play_bot_from_my) {
+            $play_bot_from.val(PLAY_BOT_FROM_OTHERS);
+            console.log("My category is empty, defaulting play-bot to the other category.");
+        }
     }
 
-    function storage_from_val(name, selector) {
-        window.localStorage.setItem(name, $(selector).val());
-    }
-
-    function val_from_storage(selector, name) {
-        var setting = window.localStorage.getItem(name);
+    function persist_select_element(selector, storage_name) {
+        $(selector).on('change', function () {
+            window.localStorage.setItem(storage_name, $(selector).val());
+        });
+        var setting = window.localStorage.getItem(storage_name);
         if (is_specified(setting)) {
             $(selector).val(setting);
+            console.log("Recalling", storage_name, setting);
         }
     }
 
@@ -336,14 +380,16 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     }
 
     function playlist_in_order() {
-        var $my_category = $categories[MONTY.IDN.CAT_MY];
-        return $my_category.find('.contribution[id]').map(function () {
+        var play_bot_from_symbol = $('#play_bot_from').val();
+        var play_bot_from_idn = MONTY.IDN[play_bot_from_symbol];
+        var $cat = $categories[play_bot_from_idn];
+        return $cat.find('.contribution[id]').map(function () {
             return this.id;
         }).get();
     }
 
     function playlist_generate() {
-        var playlist_selection = $('#playlist-sequencer').val();
+        var playlist_selection = $('#play_bot_sequence').val();
         console.assert(
             has(PLAYLIST_TABLE, playlist_selection),
             playlist_selection, "not in", PLAYLIST_TABLE
@@ -411,7 +457,8 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
      */
     function bot_media_beginning() {
         $(window.document.body).addClass('player-bot-playing');
-        $('#playlist-sequencer').prop('disabled', true);
+        $('#play_bot_sequence').prop('disabled', true);
+        $('#play_bot_from'    ).prop('disabled', true);
     }
 
     /**
@@ -419,7 +466,8 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
      */
     function bot_media_ending() {
         $(window.document.body).removeClass('player-bot-playing');
-        $('#playlist-sequencer').prop('disabled', false);
+        $('#play_bot_sequence').prop('disabled', false);
+        $('#play_bot_from'    ).prop('disabled', false);
     }
 
     function get_media_seconds($sup_cont) {
@@ -464,9 +512,14 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     }
 
     function end_one_begin_another() {
-        pop_down_all();
-        index_play_bot++;
-        next_play_bot();
+        console.log("(bot breather)");
+        breather_timer = setTimeout(function () {
+            breather_timer = null;
+            // NOTE:  Hold the video/text still for a few seconds.
+            pop_down_all();
+            index_play_bot++;
+            next_play_bot();
+        }, SECONDS_BREATHER_AT_ALL_MEDIA_END * 1000);
     }
 
     /**
@@ -591,7 +644,6 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         // If not editing, how was the cancel button visible?
         if (is_editing_some_contribution) {
             if ($sup_cont.hasClass('edit-dirty')) {
-                // $cont_editing.text(original_text);
                 $cont_editing.text($cont_editing.data('original_text'));
                 $caption_span.text($caption_span.data('original_text'));
             }
@@ -676,12 +728,23 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                 }
             });
         });
+
+        if ($animation_in_progress !== null) {
+            console.log("DEANIMATING", $animation_in_progress.map(function () {
+                return $(this).find('.contribution').attr('id');
+            }).toArray().join());
+            $animation_in_progress.stop();
+            $animation_in_progress = null;
+        }
+
         if (talkify_player !== null) {
+            console.log("DISPOSE", talkify_player.correlationId, "player");
             talkify_player.pause();
             talkify_player.dispose();   // close the player UX
             talkify_player = null;
         }
         if (talkify_playlist !== null) {
+            console.log("dispose playlist");
             talkify_playlist.pause();   // stop the audio
             talkify_playlist.dispose();
             talkify_playlist = null;
@@ -693,6 +756,26 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         talkify.messageHub.unsubscribe(BOT_CONTEXT, '*.player.tts.ended');
         talkify.messageHub.unsubscribe(BOT_CONTEXT, '*.player.tts.timeupdated');
         talkify.messageHub.unsubscribe(BOT_CONTEXT, '*');
+
+        if (utter !== null) {
+            utter = null;
+            // NOTE:  .cancel() does lead eventually to our 'end' event handler being called.
+            //        This can cause us to come back here.  So we're setting utter to null
+            //        first thing, in case .cancel() EVER leads to a synchronous call
+            //        to our 'end' event handler!  (Though it appears to be async now.)
+
+            // window.speechSynthesis.pause();   No need for this, right?
+            console.log("Aborting speech.");
+            window.speechSynthesis.cancel();
+            // CAUTION:  .cancel() then immediately .play() may not have worked at some point.
+            //           https://stackoverflow.com/a/44042494/673991
+            //           Though it seems to have been fixed in Chrome.
+        }
+        if (breather_timer !== null) {
+            console.log("(breather cut short)");
+            clearTimeout(breather_timer);
+            breather_timer = null;
+        }
     }
 
     function pop_up(somewhere_in_contribution, auto_play) {
@@ -723,10 +806,17 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         console.assert(save_height > 0.0);
 
         var $popup = $sup_cont.clone(false, true);
+
         $popup.find('[id]').attr('id', function () {
             return POPUP_PREFIX + $(this).attr('id');
-            // NOTE:  Prefix all ids in the clone, to avoid duplicates.
         });
+        // NOTE:  Prefix all ids in the clone, to avoid duplicate ids.
+
+        $popup.find('.grip').removeClass('grip').addClass('grip-inoperative');
+        // NOTE:  No dragging popped-up stuff.
+        //        It was a little disconcerting not seeing the grip symbol there.
+        //        So just disabling the feature seemed the lesser UX crime.
+
         $popup.addClass('pop-up');
         $sup_cont.addClass('pop-down');
         $popup.data('popped-down', $sup_cont);
@@ -800,6 +890,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             $popup.css({
                 'background-color': 'rgba(0,0,0,0)'
             });
+            $animation_in_progress = $popup;
             $popup.animate({
                 left: 0,
                 top: top_air,
@@ -808,6 +899,106 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             }, {
                 easing: 'swing',
                 complete: function () {
+                    $animation_in_progress = null;
+                    var $pop_cont = $popup.find('.contribution');
+                    console.assert($pop_cont.length === 1, $popup);
+                    size_adjust($pop_cont, POPUP_WIDTH_MAX_EM, POPUP_HEIGHT_MAX_EM);
+                    var pop_text = $pop_cont.text();
+                    utter = new window.SpeechSynthesisUtterance(pop_text);
+                    utter.rate = 0.8;
+                    // utter.voice = chooseWeighted(voices, voice_weights);
+                    // console.log("Voice", utter.voice.name, utter.voice.lang);
+                    // NOTE:  (2019) Google voices don't report word-boundary events.
+                    //               Microsoft voices do, and they sound better too.
+                    //        (2018) https://stackoverflow.com/a/48160824/673991
+                    //        (2016) https://bugs.chromium.org/p/chromium/issues/detail?id=521666
+                    //        Upshot is not to set voice at all.
+                    //        Microsoft Anna is default in Chrome, Firefox, Opera, Edge.
+                    //        Edge has many voices (9 English, 25 total).
+                    //        Could multiplicatively weight Google voices 0, Microsoft 1.
+                    console.log("Language", voice_default.name, voice_default.lang);
+                    window.speechSynthesis.speak(utter);
+                    $(utter).on('start end boundary error', function (evt) {
+                        // console.log("Utter", evt.type, evt.originalEvent.charIndex);
+                        // EXAMPLE:  Utter boundary 416
+                    });
+                    var $svg = null;
+                    $(utter).on('boundary', function (evt) {
+                        var start_word = evt.originalEvent.charIndex;
+                        // TODO:  Adjust leftward to word-boundary?  That's what's done in
+                        //        https://stackoverflow.com/a/50285928/673991
+                        //        left = str.slice(0, pos + 1).search(/\S+$/)
+                        var word_to_end = pop_text.slice(start_word);
+                        var len_word = word_to_end.search(/\s|$/);
+                        var end_word = start_word + len_word;
+                        var the_word = pop_text.slice(start_word, end_word+1);
+                        var range_word = window.document.createRange();
+                        $pop_cont.text(pop_text);
+                        console.assert($pop_cont[0].childNodes.length > 0, $pop_cont[0]);
+                        var text_node = $pop_cont[0].childNodes[0];
+                        console.assert(text_node.nodeName === '#text', text_node);
+                        range_word.setStart(text_node, start_word);
+                        range_word.setEnd(text_node, end_word);
+                        var speaking_node = $('<span>', {class:'speaking'})[0];
+                        range_word.surroundContents(speaking_node);
+                        // THANKS:  Wrap text, https://stackoverflow.com/a/6328906/673991
+                        speaking_node.scrollIntoView({
+                            behavior: 'smooth',
+                            block: 'center',
+                            inline: 'center'
+                        });
+                        return;
+
+
+
+                        // noinspection UnreachableCodeJS
+                        var r = range_word.getBoundingClientRect();
+                        console.log("Bound", the_word, r.x, r.y);
+                        if ($svg !== null) {
+                            $svg.remove();
+                        }
+                        var svg_top = r.top - $popup.position().top;
+                        var svg_left = r.left - $popup.position().left;
+                        $svg = $('<svg>', {
+                            height: r.height,
+                            width: r.width,
+                            style: (
+                                'position:absolute;color:red;font: 16px Literata,serif;' +
+                                'top:'+svg_top.toString()+'px;' +
+                                'left:'+svg_left.toString()+'px;'
+                            )
+                        }).append($('<text>', {fill:'red !important'}).append(the_word));
+                        $popup.append($svg);
+                        // TODO:  Needs to scroll word into view,
+                        //        and then also position the svg right onto the scrolled word.
+
+                    });
+                    $(utter).on('end', function () {
+                        // if ($svg !== null) {
+                        //     $svg.remove();
+                        // }
+                        $pop_cont.text(pop_text);
+                        // bot_timely_transition();
+                        if (utter === null) {
+                            console.log("(vestigial end after aborted speech)");
+                            // bot_timely_transition();
+                        } else {
+                            console.log("(speech breather)");
+                            breather_timer = setTimeout(function () {
+                                breather_timer = null;
+                                bot_timely_transition();
+                            }, SECONDS_BREATHER_AT_SPEECH_END * 1000);
+                            // A little lame that this happens whether manually popped up or
+                            // automatically played by the bot.  But it should have
+                            // no consequence manually anyway.
+                        }
+                    });
+                    return;
+
+
+
+
+                    // noinspection UnreachableCodeJS
                     talkify.config.remoteService.host = 'https://talkify.net';
                     talkify.config.remoteService.apiKey = '084ff0b0-89a3-4284-96a1-205b5a2072c0';
                     talkify.config.ui.audioControls = {
@@ -886,9 +1077,13 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
 
                     var pause_once = ! auto_play;
 
+                    var this_player = talkify_player;
+                    // NOTE:  Local "copy" of player needed in case pop_down_all() happens
+                    //        before the callback below has fully popped up.
+
                     talkify.messageHub.subscribe(BOT_CONTEXT, '*', function (message, topic) {
                         // var members = message ? Object.keys(message).join() : "(no message)";
-                        // console.debug("talkify", topic, members);
+                        console.debug("talkify", topic/*, members*/);
                         // EXAMPLE topics (context.type.action only, GUID context removed)
                         //         and message members:
                         //     player.*.prepareplay     \  text,preview,element,originalElement,
@@ -901,7 +1096,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                         if (/\.play$/.test(topic)) {
                             if (pause_once) {
                                 pause_once = false;
-                                talkify_player.pause();
+                                this_player.pause();
                                 // NOTE:  Crude, mfing way to support manual-only playing.
                                 //        Without this, player is inoperative.
                             }
@@ -940,7 +1135,8 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                             //     isPlaying: false
                             //     originalElement: div#popup_1024.contribution
                             //     preview: "this is just a test"
-                            //     text: "this is just a test"
+                            //     text: "this is just a te
+                            //     st"
                         }
                     );
                     talkify_done = function () {
@@ -1038,9 +1234,9 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     function getXY(evt, element) {
         var rect = element.getBoundingClientRect();
         var scrollTop = document.documentElement.scrollTop?
-                        document.documentElement.scrollTop:document.body.scrollTop;
+                        document.documentElement.scrollTop:window.document.body.scrollTop;
         var scrollLeft = document.documentElement.scrollLeft?
-                        document.documentElement.scrollLeft:document.body.scrollLeft;
+                        document.documentElement.scrollLeft:window.document.body.scrollLeft;
         var elementLeft = rect.left+scrollLeft;
         var elementTop = rect.top+scrollTop;
 
@@ -1279,6 +1475,10 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                         return MOVE_CANCEL;
                     }
                 }
+                if (is_in_popup(evt.related)) {
+                    console.warn("Whoa there, don't drag me bro.");
+                    return MOVE_CANCEL;
+                }
             },
             onEnd: function sortable_drop(evt) {
                 // NOTE:  movee means the contribution being moved
@@ -1362,8 +1562,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         $('.size-adjust-once:visible').each(function () {
             var $element = $(this);
             $element.removeClass('size-adjust-once');
-            size_adjust($element, 'width', WIDTH_MAX_EM);
-            size_adjust($element, 'height', HEIGHT_MAX_EM);
+            size_adjust($element, WIDTH_MAX_EM, HEIGHT_MAX_EM);
         });
     }
     function resize_render_bars(selector) {
@@ -1371,16 +1570,33 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             this.iFrameResizer.resize();
         });
     }
-    function size_adjust($element, dimension, max_em) {
+    function size_adjust($element, width_max_em, height_max_em) {
+        size_adjust_each($element, 'width', width_max_em);
+        size_adjust_each($element, 'height', height_max_em);
+    }
+    function size_adjust_each($element, dimension, max_em) {
+        $element[dimension]('auto');
         var natural_px = $element[dimension]();
         var natural_em = em_from_px(natural_px, $element);
         var adjust_em;
         if (natural_em <= max_em.hard) {
             adjust_em = null;
+            console.debug (
+                "Easy", dimension, first_word($element.text()),
+                natural_em.toFixed(0)
+            );
         } else if (natural_em < max_em.extreme) {
             adjust_em = max_em.hard;
+            console.debug(
+                "Hard", dimension, first_word($element.text()),
+                adjust_em.toFixed(0), "<-", natural_em.toFixed(0)
+            );
         } else {
             adjust_em = max_em.soft;
+            console.debug(
+                "Soft", dimension, first_word($element.text()),
+                adjust_em.toFixed(0), "<=", natural_em.toFixed(0)
+            );
         }
         if (adjust_em !== null) {
             var initial_px = px_from_em(adjust_em, $element);
@@ -1461,6 +1677,10 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
      */
     function is_in_frou(element) {
         return $(element).closest('.frou-category').length > 0;
+    }
+
+    function is_in_popup(element) {
+        return $(element).closest('.pop-up').length > 0;
     }
 
     function is_in_about(element) {
@@ -1614,9 +1834,13 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             .append($icon('skip_next'))
             .append(" skip")
         );
-        $bot.append($('<select>', {id: 'playlist-sequencer'})
-            .append($('<option>', {value: PLAYLIST_IN_ORDER}).text("in order"))
-            .append($('<option>', {value: PLAYLIST_RANDOM  }).text("random"))
+        $bot.append($('<select>', {id: 'play_bot_sequence'})
+            .append($('<option>', {value: PLAY_BOT_SEQUENCE_RANDOM}).text("random"))
+            .append($('<option>', {value: PLAY_BOT_SEQUENCE_ORDER}).text("in order"))
+        );
+        $bot.append($('<select>', {id: 'play_bot_from'})
+            .append($('<option>', {value: PLAY_BOT_FROM_MY}).text("from my playlist"))
+            .append($('<option>', {value: PLAY_BOT_FROM_OTHERS}).text("from others playlist"))
         );
         $up_top.append($bot);
 
@@ -1756,7 +1980,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                             //        That would prevent vacuous "unknown word" situations.
                             $sup_contributions[new_idn] = $sup;
                             renumber_cont(old_idn, new_idn);
-                            // TODO:  add new cat_of_cont[] index,
+                            // DONE (long time ago):  add new cat_of_cont[] index,
                             //        and change number in conts_in_cat[][]
                             consistent_cat_cont();
                         }
@@ -1831,8 +2055,6 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             }
         });
         console.log("Authorizations", auth_log.join("\n"));
-
-        console.log("order_cont", conts_in_cat, cat_of_cont);
 
         looper(conts_in_cat, function (cat, conts) {
             looper(conts, function (_, cont) {
@@ -1914,34 +2136,90 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
      * The hierarchy of changes to a contribution:
      *     original contributor < system admin < me (browsing user)
      *
-     * So once I change a contribution, I will ignore changes by others.
+     * So once I (logged-in user) changes a contribution, I will ignore changes by others.
+     * Before that, admin changes similarly stop original author changes.
      *
-     * @param word - the changing word (e.g. edit or re-categorization or rearrangement)
+     * @param word - the word causing a change (e.g. edit or re-categorization or rearrangement)
      *               word.sbj is the idn of the user who initiated this change.
-     * @param owner - tricky - this is last person we authorized to change this contribution.
+     * @param owner - tricky - id of the last person we authorized to change this contribution.
      *                It starts off as the original contributor.
      *                But then if I (the browsing user) moved it or edited it, then I'm the owner.
      *                But before that if the system admin moved or edited it,
      *                then they became the owner.
-     *                This field comes from the data-owner attribute.  But if we return true,
-     *                then we expect data-owner to be overridden by whoever initiated this change!
+     *                This field comes from the data-owner attribute.  BUT if we return true,
+     *                then we expect data-owner to be overridden by whoever initiated THIS change!
      * @param action - text describing the change.
-     *               (This is probably word.verb.txt, as if that were accessible in JS)
+     *                 (This is probably word.verb.txt, as if that were accessible in JS)
      * @return {boolean}
      */
+
+    // DONE:  Don't let owner or admin "drag to my.*"  (not even before I do)
+    //            Shame that removes the Seuss quote, and the top will be empty for new users.
+    //        Nor other.* nor anon.*
+    //            (It's weird that we allow recategorizations to there at all,
+    //            less weird that we allow rearrangements within those categories,
+    //            but it would be weirder if we allowed anyone ELSE do those FOR me.)
+    //            But this eliminates admin rearranging the "other" category.
+    //            Which would be problematic anyway, as different users already have
+    //            different stuff there.  So admin placing X to the left of Y would
+    //            already be unusable to the user who created Y (or moved it to category 'my')
+    //            because it wouldn't then be in category 'other'.
+    //        But do allow owner or admin to "drag to trash.*"
+    //            And that affects everyone else, unless of course I drag it elsewhere later.
+    //            A little weird that owner or admin rearrangements WITHIN trash affect
+    //            everyone.
+    //        Do allow admin to "drag to about.*" (Only admin can create those words anyway.)
+    //            And those actions rightly affect everyone.
+    // TODO:  The confusion above is a symptom of the deeper confusion:
+    //            Are categories user-interest partitions, or user-origin partitions?
+    //            IOW are we separating things by where they came from?
+    //                (anonymous users, me, other logged-in users)
+    //            or by what we want to do with them?
+    //                (my unslumping, others, trash)
+
     function is_authorized(word, owner, action) {
+
+        // First stage of decision-making:
         var is_change_mine = word.sbj === MONTY.me_idn;
         var is_change_admin = is_admin(word.sbj);
         var is_change_owner = word.sbj === owner;
         var did_i_change_last = owner === MONTY.me_idn;
         var did_admin_change_last = is_admin(owner);
-        var let_admin_change = ! did_i_change_last && is_change_admin;
+
+        // Second stage of decision making:
+        var let_admin_change = ! did_i_change_last                            && is_change_admin;
         var let_owner_change = ! did_i_change_last && ! did_admin_change_last && is_change_owner;
-        var ok = is_change_mine || let_admin_change || let_owner_change;
+
+        // Third stage of decision making:
+        var only_i_can_do_these = [
+            // NOTE:  These rearranging actions are only allowed by the browsing user.
+            MONTY.IDN.CAT_MY,
+            MONTY.IDN.CAT_THEIR,
+            MONTY.IDN.CAT_ANON
+        ];
+        var ok;
+        if (has(only_i_can_do_these, word.vrb)) {
+            ok = is_change_mine;
+        } else {
+            ok = is_change_mine || let_admin_change || let_owner_change;
+        }
+
+        // Decision:
         if (ok) {
             auth_log.push(word.idn + ". Yes " + user_name_short(word.sbj) + " may " + action + " " + word.obj + ", work of " + user_name_short(owner));
         } else {
             auth_log.push(word.idn + ". Nope " + user_name_short(word.sbj) + " won't " + action + " " + word.obj + ", work of " + user_name_short(owner));
+            if (let_admin_change || let_owner_change) {
+                auth_log.push("     ...because only I can recategorize like this.");
+            }
+            // TODO:  Display more thorough explanations on why or why not ok.
+            //        This might be a big idea:
+            //        Explain reasons by seeing which boolean inputs were critical,
+            //        that is, which if flipped, would have changed the "ok" output.
+            //        Would this really be interesting and complete?
+            //        What about pairs of inputs that together change the output?
+            //        How to compose the human-readable explanations once we know which
+            //        inputs were critical?
         }
         return ok;
     }
@@ -2085,6 +2363,11 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         return could_be_url(text);
     }
 
+    /**
+     * Try to find a caption?  I.e. is this text something we can "go meta" about?
+     *
+     * @param text - is this a URL of something we can get a caption about?
+     */
     function can_i_get_meta_about_it(text) {
         return could_be_url(text);
     }
@@ -2444,5 +2727,15 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             array[currentIndex] = array[randomIndex];
             array[randomIndex] = temporaryValue;
         }
+    }
+
+    // noinspection JSUnusedLocalSymbols
+    function chooseWeighted(items, chances) {
+        // THANKS:  Weighted random element, https://stackoverflow.com/a/55671924/673991
+        var sum = chances.reduce(function (acc, el) { return acc + el; }, 0);
+        var acc = 0;
+        chances = chances.map(function (el) { acc = el + acc; return acc; });
+        var rand = Math.random() * sum;
+        return items[chances.filter(function (el) { return el <= rand; }).length];
     }
 }
