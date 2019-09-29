@@ -23,3 +23,9 @@ body {
     overflow: auto;
     /* NOTE:  scrollbars if needed, hopefully only overflow-y */
 }
+
+.oembed-error {
+    background-color: #FFF8F0;
+    margin: 0;
+    padding: 1em;
+}

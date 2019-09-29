@@ -60,6 +60,8 @@ NUM_QOOL_VERB_NEW = qiki.Number(1)
 NUM_QOOL_VERB_DELETE = qiki.Number(0)
 MINIMUM_SECONDS_BETWEEN_ANONYMOUS_QUESTIONS = 10
 MINIMUM_SECONDS_BETWEEN_ANONYMOUS_ANSWERS = 60
+THUMB_MAX_WIDTH = 200
+THUMB_MAX_HEIGHT = 166
 
 time_lex = qiki.TimeLex()
 t_last_anonymous_question = time_lex.now_word()
@@ -2707,6 +2709,8 @@ def noembed_render(url):
             oembed=oembed_dict,
             # is_pop_youtube=is_pop_youtube,
             target_origin=secure.credentials.Options.oembed_target_origin,
+            THUMB_MAX_WIDTH=THUMB_MAX_WIDTH,
+            THUMB_MAX_HEIGHT=THUMB_MAX_HEIGHT,
         )
         with html.head(newlines=True) as head:
             # TODO:  head.title(something)  Could be caption eventually, idn here.
@@ -2776,7 +2780,7 @@ def instagram_render(url):
                         body { margin: 0; }
                         img { display: block; }   /* Prevents unsightly space below image. */
                     \n''')
-                with html.body(style='margin:0', newlines=True, **{'data-domain': domain}) as body:
+                with html.body(newlines=True, **{'data-domain': domain}) as body:
                     thumbnail_escaped = FlikiHTML.escape(thumbnail_url)
                     with body.a(style='border:0', href=url, target='_blank') as a:
                         a.img(src=thumbnail_escaped, **{'data-iframe-width': 'x'})
@@ -2796,7 +2800,7 @@ def error_render(message):
             head.style('body {background-color:#FFF8F0}')
             # NOTE:  So error messages aren't transparent popped up.
         with html.body(newlines=True) as body:
-            body.p(message, style='margin:0; min-width: 10em;', **{'data-iframe-width': '300'})
+            body.p(message, style='margin:0; min-width: 10em;', **{'data-iframe-width': 'x'})
         return html.doctype_plus_html()
 
 

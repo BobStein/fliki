@@ -86,6 +86,8 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         "Log in to see anonymous contributions other than yours."
     );
 
+    var DEBUG_SIZE_ADJUST = false;
+
     // noinspection JSUnusedLocalSymbols
     var MOVE_AFTER_TARGET = 1,   // SortableJS shoulda defined these
         MOVE_BEFORE_TARGET = -1,
@@ -135,17 +137,17 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
 
     // Config options for size_adjust()
     var WIDTH_MAX_EM = {
-        soft: 10,         // below the hard-max, display as is.
+        soft: 12,         // below the hard-max, display as is.
         hard: 15,         // between hard and extreme-max, limit to hard-max.
                           // (good reason to have a gap here: minimize wrapping)
-        extreme: 20       // above extreme-max, display at soft-max.
+        extreme: 15       // above extreme-max, display at soft-max.
     };
     var HEIGHT_MAX_EM = {
-        soft: 4,          // below the hard-max, display as is.
-        hard: 6,         // between hard and extreme-max, limit to hard-max.
+        soft: 5,          // below the hard-max, display as is.
+        hard: 6,          // between hard and extreme-max, limit to hard-max.
                           // (no good reason to have a gap here: it's just
                           // annoying to show a tiny bit scrolled out of view)
-        extreme: 6       // above extreme-max, display at soft-max.
+        extreme: 8        // above extreme-max, display at soft-max.
     };
     var POPUP_WIDTH_MAX_EM = {
         soft: 30,         // below the hard-max, display as is.
@@ -919,8 +921,16 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                     console.log("Language", voice_default.name, voice_default.lang);
                     window.speechSynthesis.speak(utter);
                     $(utter).on('start end boundary error', function (evt) {
-                        // console.log("Utter", evt.type, evt.originalEvent.charIndex);
-                        // EXAMPLE:  Utter boundary 416
+                        // console.log("Utter", evt.type, evt.originalEvent.charIndex, evt.originalEvent.elapsedTime);
+                        // EXAMPLE:
+                        //     Utter start 0 39.220001220703125
+                        //     Utter boundary 0 158.97999572753906
+                        //     Utter boundary 0 161.0850067138672
+                        //     Utter boundary 5 359.07000732421875
+                        //     Utter boundary 8 449.2300109863281
+                        //     Utter boundary 13 759.3049926757812
+                        //     Utter boundary 15 799.1599731445312
+                        //     Utter end 0 1779.2449951171875
                     });
                     var $svg = null;
                     $(utter).on('boundary', function (evt) {
@@ -973,17 +983,24 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                         //        and then also position the svg right onto the scrolled word.
 
                     });
-                    $(utter).on('end', function () {
+                    $(utter).on('end', function (evt) {
                         // if ($svg !== null) {
                         //     $svg.remove();
                         // }
                         $pop_cont.text(pop_text);
                         // bot_timely_transition();
                         if (utter === null) {
-                            console.log("(vestigial end after aborted speech)");
+                            console.log(
+                                "Utterance interruptus (vestigial end after aborted speech)",
+                                (evt.originalEvent.elapsedTime/1000).toFixed(3), "sec"
+                            );
                             // bot_timely_transition();
                         } else {
-                            console.log("(speech breather)");
+                            console.log(
+                                "Utterance",
+                                (evt.originalEvent.elapsedTime/1000).toFixed(3), "sec",
+                                "(speech breather)"
+                            );
                             breather_timer = setTimeout(function () {
                                 breather_timer = null;
                                 bot_timely_transition();
@@ -1416,17 +1433,26 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                     typeof oembed_response.oembed.error === 'undefined'
                 ) {
                     var title = oembed_response.oembed.title;
+                    if (title === oembed_response.oembed.url) {
+                        // NOTE:  Twitter does this, title same as url, WTF?!?
+                        //        https://twitter.com/ICRC/status/799571646331912192
+                        //        but in that case author_name === 'ICRC'
+                        //        Another example from facebook:
+                        //        https://www.facebook.com/priscila.s.iwama/videos/10204886348423453/
+                        title = oembed_response.oembed.author_name || null;
+                    }
                     oembed_handler(url, title);
                 } else {
                     console.warn("Not an oembed URL", what, url, oembed_response.oembed.error);
+                    oembed_handler(url, oembed_response.oembed.error);
                 }
             });
             // NOTE:  The following anti-bubbling, anti-propagation code
-            //        we could do it, but it probably never does anything.
+            //        COULD have been here, but it probably never does anything.
             //            evt.preventDefault();
             //            evt.stopPropagation();
             //            return false;
-            //        I'm not the only one who thinks this is bull puppy:
+            //        I'm not the only one who thinks this is bull puppy (that it does nothing):
             //        https://opensourcehacker.com/2011/11/11/cancelling
             //        -html5-drag-and-drop-events-in-web-browsers/
             //        Hint:  you have to cancel dragover / dragenter
@@ -1581,19 +1607,19 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         var adjust_em;
         if (natural_em <= max_em.hard) {
             adjust_em = null;
-            console.debug (
+            if (DEBUG_SIZE_ADJUST) console.debug (
                 "Easy", dimension, first_word($element.text()),
                 natural_em.toFixed(0)
             );
         } else if (natural_em < max_em.extreme) {
             adjust_em = max_em.hard;
-            console.debug(
+            if (DEBUG_SIZE_ADJUST) console.debug(
                 "Hard", dimension, first_word($element.text()),
                 adjust_em.toFixed(0), "<-", natural_em.toFixed(0)
             );
         } else {
             adjust_em = max_em.soft;
-            console.debug(
+            if (DEBUG_SIZE_ADJUST) console.debug(
                 "Soft", dimension, first_word($element.text()),
                 adjust_em.toFixed(0), "<=", natural_em.toFixed(0)
             );
@@ -2048,6 +2074,16 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                             }
                         } else {
                             console.log("(Can't drag " + word.obj + ")");
+                            // NOTE:  Because we're not rendering word.obj anywhere.
+                            //        Possible reasons:
+                            //        - cont=NNN restricts the contributions displayed
+                            //        - it's an action built on another action we rejected
+                            //          already, because it was for another user.
+                            //          E.g. Baker edited Able's quote, then dragged it.
+                            //               So when Able is the browsing user,
+                            //               the edit gets rejected.
+                            //               Then the drag gets here
+                            //               because it uses the idn of the edit word.
                         }
                     }
                     break;
@@ -2336,7 +2372,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         var $render_bar = $sup_cont.find('.render-bar');
         var $iframe = $('<iframe>', {
             id: 'iframe_' + cont_idn,
-            style: 'width: 300px;',   // This becomes the minimum render-bar width.
+            // style: 'width: 300px;',   // This becomes the minimum render-bar width.
             src: iframe_src_from_url(url, cont_idn),
             allowfullscreen: 'allowfullscreen',
             allow: 'autoplay; fullscreen'
@@ -2346,7 +2382,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         //        Unclear if allow: autoplay is part or all of that.
         //        Emeffing lazy browser developers hammer legitimate media activity.
         //        So user may have to hit in-iframe play buttons an unknown number of times
-        //        before the (Geedee user-initiated) player bot will begin to work.
+        //        before the (GeeDee user-initiated) player bot will begin to work.
         // NOTE:  Instagram popup won't do scrollbars, even if iframe overflow: auto
         //        On both outer (this $iframe here) and inner (instagram-installed).
         //        Is this a bad thing?  Even if it did scroll, virtually ANY other interaction

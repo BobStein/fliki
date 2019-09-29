@@ -26,7 +26,13 @@
  * @param {object}   MONTY
  * @param {array}    MONTY.matcher_groups
  * @param {object}   MONTY.oembed
+ * @param {object}   MONTY.oembed.width
+ * @param {object}   MONTY.oembed.height
+ * @param {object}   MONTY.oembed.html
+ * @param {object}   MONTY.oembed.error
  * @param {string}   MONTY.target_origin
+ * @param {string}   MONTY.THUMB_MAX_HEIGHT
+ * @param {string}   MONTY.THUMB_MAX_WIDTH
  *
  * @property {object}   yt_player
  * @property {function} yt_player.getPlayerState
@@ -62,8 +68,8 @@ function embed_content_js(window, $, MONTY) {
         domain_simple === 'youtu.be'
     );
 
-    var THUMB_MAX_WIDTH = 200;
-    var THUMB_MAX_HEIGHT = 200;
+    // var THUMB_MAX_WIDTH = 200;
+    // var THUMB_MAX_HEIGHT = 166;
     var YOUTUBE_EMBED_PREFIX = 'https://www.youtube.com/embed/';
     // THANKS:  URL, https://developers.google.com/youtube/player_parameters#Manual_IFrame_Embeds
 
@@ -106,8 +112,8 @@ function embed_content_js(window, $, MONTY) {
                         });
 
                         tag_width($you_frame);
-                        fit_width(THUMB_MAX_WIDTH, $you_frame);
-                        fit_height(THUMB_MAX_HEIGHT, $you_frame);
+                        fit_width(MONTY.THUMB_MAX_WIDTH, $you_frame);
+                        fit_height(MONTY.THUMB_MAX_HEIGHT, $you_frame);
                         $body.append($you_frame);
                         $you_frame.animate({
                             width: query_get('width'),
@@ -119,7 +125,7 @@ function embed_content_js(window, $, MONTY) {
                                 // noinspection JSUnusedGlobalSymbols
                                 yt_player = new window.YT.Player('youtube_iframe', {
                                     events: {
-                                        onReady: function (yt_event) {
+                                        onReady: function (/*yt_event*/) {
                                             if (is_auto_play) {
                                                 // yt_event.target.playVideo();
                                                 yt_player.playVideo();
@@ -189,6 +195,24 @@ function embed_content_js(window, $, MONTY) {
                     //        5=>-1=>3=>    1=>0  --  usually
                     //        5=>-1=>3=>-1=>1=>0  --  once
                     //        2=>3=>1  --  clicking the timeline
+                } else if (is_laden(MONTY.oembed.error)) {
+                    var $p = $('<p>', {
+                        'class': 'oembed-error',
+                        'data-iframe-width': MONTY.THUMB_MAX_WIDTH
+                    });
+                    $p.text(MONTY.oembed.error);
+                    $body.append($p);
+                    $body.addClass();
+                    // EXAMPLE:
+                    //     /meta/oembed/?url=https://www.youtube.com/watch?v=bAD2_MVMUlE&idn=1931
+                    //     https://noembed.com/embed?url=https://www.youtube.com/watch?v=bAD2_MVMUlE
+                    //     MONTY.oembed = {
+                    //         "error":"401 Unauthorized",
+                    //         "url":"https://www.youtube.com/watch?v=bAD2_MVMUlE"
+                    //     }
+                    fix_embedded_content();
+                    // TODO:  Trigger a resize, so containing iframe doesn't expose
+                    //        a bit of blank area below this <p>.  Or something.
                 } else {
                     $body.html(MONTY.oembed.html);
                     fix_embedded_content();
@@ -228,6 +252,9 @@ function embed_content_js(window, $, MONTY) {
                             //     1739. youtube - 2 changes, last IFRAME.fit_width cycle 0 of 10 codes ["4e4eP_g2E7w"] lag 446ms 213ms
                             //     1733. youtube - 2 changes, last IFRAME.fit_width cycle 0 of 10 codes ["o9tDO3HK20Q"] lag 518ms 158ms
                             //     1849. youtube - 2 changes, last IFRAME.fit_width cycle 0 of 10 codes ["uwjbvhRReZo"] lag 585ms 8ms
+
+                            // EXAMPLE:  (10 second delay!  Might explain why some contributions stay zero-size.)
+                            //     1825. twitter - 14 changes, last TWITTER-WIDGET.fit_width cycle 10 of 10 lag 876ms 149ms
 
                             // if (typeof window.parentIFrame === 'object') {
                             //     // NOTE:  Step 1 in the mother-daughter message demo.
@@ -282,6 +309,8 @@ function embed_content_js(window, $, MONTY) {
         );
     } else {
         // NOTE:  Make this page work stand-alone.  For development purposes.
+        //        That is, when browsing a URL like this:
+        //
         console.log("Stand-alone embed.");
         window.iFrameResizer.onReady();
     }
@@ -328,13 +357,13 @@ function embed_content_js(window, $, MONTY) {
             $body.css({width: pop_width, height: pop_height});
             $child.css({width: pop_width, height: pop_height});
         } else {
-            fit_width(THUMB_MAX_WIDTH, $grandchild);
-            fit_width(THUMB_MAX_WIDTH, $child);
-            // fit_width(THUMB_MAX_WIDTH, $body);
+            fit_width(MONTY.THUMB_MAX_WIDTH, $grandchild);
+            fit_width(MONTY.THUMB_MAX_WIDTH, $child);
+            // fit_width(MONTY.THUMB_MAX_WIDTH, $body);
 
-            fit_height(THUMB_MAX_HEIGHT, $grandchild);
-            fit_height(THUMB_MAX_HEIGHT, $child);
-            // fit_height(THUMB_MAX_HEIGHT, $body);
+            fit_height(MONTY.THUMB_MAX_HEIGHT, $grandchild);
+            fit_height(MONTY.THUMB_MAX_HEIGHT, $child);
+            // fit_height(MONTY.THUMB_MAX_HEIGHT, $body);
             // NOTE:  $child before $body fixes SoundCloud too skinny bug.
             //        Because $body shrinkage for some reason constricted $child width,
             //        but not its height.  So its skinny apparent aspect ratio was preserved.
