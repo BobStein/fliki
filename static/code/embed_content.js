@@ -110,6 +110,7 @@ function embed_content_js(window, $, MONTY) {
                     //         "error":"401 Unauthorized",
                     //         "url":"https://www.youtube.com/watch?v=bAD2_MVMUlE"
                     //     }
+                    //     https://www.youtube.com/oembed?url=http://www.youtube.com/watch?v=bAD2_MVMUlE
                     // EXAMPLE:
                     //     https://noembed.com/embed?url=https://www.youtube.com/watch?v=qqLIH2UiPXg
                     //     {"url":"https://www.youtube.com/watch?v=qqLIH2UiPXg","error":"401 Unauthorized"}

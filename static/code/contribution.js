@@ -949,14 +949,17 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                         console.assert(text_node.nodeName === '#text', text_node);
                         range_word.setStart(text_node, start_word);
                         range_word.setEnd(text_node, end_word);
+                        // THANKS:  Range of text, https://stackoverflow.com/a/29903556/673991
                         var speaking_node = $('<span>', {class:'speaking'})[0];
                         range_word.surroundContents(speaking_node);
-                        // THANKS:  Wrap text, https://stackoverflow.com/a/6328906/673991
+                        // THANKS:  Range wrap, https://stackoverflow.com/a/6328906/673991
                         speaking_node.scrollIntoView({
                             behavior: 'smooth',
                             block: 'center',
                             inline: 'center'
                         });
+                        // SEE:  Hilite speech example, https://stackoverflow.com/a/38122794/673991
+                        // SEE:  Select speech example, https://stackoverflow.com/a/50285928/673991
                         return;
 
 
