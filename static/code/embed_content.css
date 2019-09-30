@@ -29,3 +29,9 @@ body {
     margin: 0;
     padding: 1em;
 }
+
+.oembed-thumb {
+    display: block;
+    /* NOTE:  Avoid gap at bottom of iframe. */
+    border: 0;
+}

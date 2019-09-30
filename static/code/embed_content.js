@@ -26,10 +26,11 @@
  * @param {object}   MONTY
  * @param {array}    MONTY.matcher_groups
  * @param {object}   MONTY.oembed
- * @param {object}   MONTY.oembed.width
+ * @param {object}   MONTY.oembed.error
  * @param {object}   MONTY.oembed.height
  * @param {object}   MONTY.oembed.html
- * @param {object}   MONTY.oembed.error
+ * @param {object}   MONTY.oembed.thumbnail_url
+ * @param {object}   MONTY.oembed.width
  * @param {string}   MONTY.target_origin
  * @param {string}   MONTY.THUMB_MAX_HEIGHT
  * @param {string}   MONTY.THUMB_MAX_WIDTH
@@ -50,6 +51,8 @@ function embed_content_js(window, $, MONTY) {
     //        itself into whatever elements it's going to become.
     //        So the "fix_embedded_content" may be incomplete.
 
+    var SHOW_YOUTUBE_THUMBS = false;  // true=thumbnails, false=live tiny videos
+
     // TODO:  Why does twitter + IE11 + fit_height() go on for all repetitions?
 
     var num_cycles = 0;
@@ -63,10 +66,8 @@ function embed_content_js(window, $, MONTY) {
     var is_auto_play = query_get('auto_play', 'false') === 'true';
     var is_pop_up = query_get('is_pop_up', 'false') === 'true';
     var domain_simple = simplified_domain_from_url(url_outer_iframe);
-    var is_pop_youtube = is_pop_up && (
-        domain_simple === 'youtube' ||
-        domain_simple === 'youtu.be'
-    );
+    var is_youtube = (domain_simple === 'youtube' || domain_simple === 'youtu.be');
+    var is_pop_youtube = is_pop_up && is_youtube;
 
     // var THUMB_MAX_WIDTH = 200;
     // var THUMB_MAX_HEIGHT = 166;
@@ -95,7 +96,51 @@ function embed_content_js(window, $, MONTY) {
                 }
 
                 $body = $(window.document.body);
-                if (is_pop_youtube) {
+                if (is_laden(MONTY.oembed.error)) {
+                    var $p = $('<p>', {
+                        'class': 'oembed-error',
+                        'data-iframe-width': 'x'
+                    });
+                    $p.text(MONTY.oembed.error);
+                    $body.prepend($p);
+                    // EXAMPLE:
+                    //     /meta/oembed/?url=https://www.youtube.com/watch?v=bAD2_MVMUlE&idn=1931
+                    //     https://noembed.com/embed?url=https://www.youtube.com/watch?v=bAD2_MVMUlE
+                    //     MONTY.oembed = {
+                    //         "error":"401 Unauthorized",
+                    //         "url":"https://www.youtube.com/watch?v=bAD2_MVMUlE"
+                    //     }
+                    // EXAMPLE:
+                    //     https://noembed.com/embed?url=https://www.youtube.com/watch?v=qqLIH2UiPXg
+                    //     {"url":"https://www.youtube.com/watch?v=qqLIH2UiPXg","error":"401 Unauthorized"}
+                    fix_embedded_content();
+                    // TODO:  Trigger a resize, so containing iframe doesn't expose
+                    //        a bit of blank area below this <p>.  Or something.
+                } else if (is_youtube && SHOW_YOUTUBE_THUMBS) {
+                    var src = MONTY.oembed.thumbnail_url;
+
+                    src = src.replace(/hqdefault/, 'default');
+                    // THANKS:  No black bars, https://stackoverflow.com/a/18978874/673991
+                    // SEE:  More on stupid mother effing over-effed-with ew-tube thumbnails
+                    //       https://stackoverflow.com/a/20542029/673991
+
+                    var $a = $('<a>', {
+                        href: url_outer_iframe,
+                        target: '_blank'
+                    });
+                    // noinspection HtmlRequiredAltAttribute,RequiredAttributes
+                    var $img = $('<img>', {
+                        'class': 'oembed-thumb',
+                        'data-iframe-width': 'x',
+                        src: src
+                    });
+                    $a.append($img);
+                    $body.prepend($a);
+                    // NOTE:  prepend() instead of append() or iFrameResizer could get a
+                    //        phantom div in BEFORE this element, because it is being an eager
+                    //        beaver and inserting a data-iframe-width=x attribute.
+                    fix_embedded_content();
+                } else if (is_pop_youtube) {
                     youtube_iframe_api(function () {
                         var $you_frame = $('<iframe>', {
                             id: 'youtube_iframe',
@@ -114,7 +159,7 @@ function embed_content_js(window, $, MONTY) {
                         tag_width($you_frame);
                         fit_width(MONTY.THUMB_MAX_WIDTH, $you_frame);
                         fit_height(MONTY.THUMB_MAX_HEIGHT, $you_frame);
-                        $body.append($you_frame);
+                        $body.prepend($you_frame);
                         $you_frame.animate({
                             width: query_get('width'),
                             height: query_get('height'),
@@ -195,24 +240,6 @@ function embed_content_js(window, $, MONTY) {
                     //        5=>-1=>3=>    1=>0  --  usually
                     //        5=>-1=>3=>-1=>1=>0  --  once
                     //        2=>3=>1  --  clicking the timeline
-                } else if (is_laden(MONTY.oembed.error)) {
-                    var $p = $('<p>', {
-                        'class': 'oembed-error',
-                        'data-iframe-width': MONTY.THUMB_MAX_WIDTH
-                    });
-                    $p.text(MONTY.oembed.error);
-                    $body.append($p);
-                    $body.addClass();
-                    // EXAMPLE:
-                    //     /meta/oembed/?url=https://www.youtube.com/watch?v=bAD2_MVMUlE&idn=1931
-                    //     https://noembed.com/embed?url=https://www.youtube.com/watch?v=bAD2_MVMUlE
-                    //     MONTY.oembed = {
-                    //         "error":"401 Unauthorized",
-                    //         "url":"https://www.youtube.com/watch?v=bAD2_MVMUlE"
-                    //     }
-                    fix_embedded_content();
-                    // TODO:  Trigger a resize, so containing iframe doesn't expose
-                    //        a bit of blank area below this <p>.  Or something.
                 } else {
                     $body.html(MONTY.oembed.html);
                     fix_embedded_content();
@@ -348,9 +375,9 @@ function embed_content_js(window, $, MONTY) {
         //        which cause visual churn and slowness.
 
         tag_width($child);
+        // tag_width($child2);
         tag_width($grandchild);
 
-        var is_pop_up = query_get('is_pop_up', false);
         if (is_pop_up) {
             var pop_width = query_get('width', 'auto');
             var pop_height = query_get('height', 'auto');
@@ -364,6 +391,7 @@ function embed_content_js(window, $, MONTY) {
             fit_height(MONTY.THUMB_MAX_HEIGHT, $grandchild);
             fit_height(MONTY.THUMB_MAX_HEIGHT, $child);
             // fit_height(MONTY.THUMB_MAX_HEIGHT, $body);
+
             // NOTE:  $child before $body fixes SoundCloud too skinny bug.
             //        Because $body shrinkage for some reason constricted $child width,
             //        but not its height.  So its skinny apparent aspect ratio was preserved.
