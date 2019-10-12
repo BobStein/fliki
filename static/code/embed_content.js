@@ -50,10 +50,10 @@ function embed_content_js(window, $, MONTY) {
     //        from the provider may not have enough time to transmogrify
     //        itself into whatever elements it's going to become.
     //        So the "fix_embedded_content" may be incomplete.
+    // TODO:  Why does twitter + IE11 + fit_height() go on changing height in EVERY repetition?
 
     var SHOW_YOUTUBE_THUMBS = false;  // true=thumbnails, false=live tiny videos
-
-    // TODO:  Why does twitter + IE11 + fit_height() go on for all repetitions?
+    // TODO:  Get EweBoob thumbnails to work sanely.
 
     var num_cycles = 0;
     var num_changes = 0;
@@ -69,19 +69,14 @@ function embed_content_js(window, $, MONTY) {
     var is_youtube = (domain_simple === 'youtube' || domain_simple === 'youtu.be');
     var is_pop_youtube = is_pop_up && is_youtube;
 
-    // var THUMB_MAX_WIDTH = 200;
-    // var THUMB_MAX_HEIGHT = 166;
     var YOUTUBE_EMBED_PREFIX = 'https://www.youtube.com/embed/';
     // THANKS:  URL, https://developers.google.com/youtube/player_parameters#Manual_IFrame_Embeds
 
-    var did_resizer_ready_itself = false;
     var moment_called = new Date();
-    var yt_player = null;
 
     window.iFrameResizer = {
         targetOrigin: MONTY.target_origin,
         onReady: function iframe_resizer_content_ready() {
-            did_resizer_ready_itself = true;
             var moment_resizer = new Date();
             var lag_resizer = moment_resizer - moment_called;
 
@@ -161,6 +156,12 @@ function embed_content_js(window, $, MONTY) {
                         fit_width(MONTY.THUMB_MAX_WIDTH, $you_frame);
                         fit_height(MONTY.THUMB_MAX_HEIGHT, $you_frame);
                         $body.prepend($you_frame);
+
+                        console.log(
+                            "popup_" + contribution_idn + ".",
+                            domain_simple, "api ready,",
+                            "lag", lag_report()
+                        );
                         $you_frame.animate({
                             width: query_get('width'),
                             height: query_get('height'),
@@ -169,7 +170,7 @@ function embed_content_js(window, $, MONTY) {
                             complete: function () {
                                 console.assert($('#youtube_iframe').length === 1);
                                 // noinspection JSUnusedGlobalSymbols
-                                yt_player = new window.YT.Player('youtube_iframe', {
+                                var yt_player = new window.YT.Player('youtube_iframe', {
                                     events: {
                                         onReady: function (/*yt_event*/) {
                                             if (is_auto_play) {
@@ -230,11 +231,6 @@ function embed_content_js(window, $, MONTY) {
                                 console.log("You are here-ish", yt_player);
                             }
                         });
-                        console.log(
-                            "popup_" + contribution_idn + ".",
-                            domain_simple, "api ready,",
-                            "lag", lag_report()
-                        );
                     });
                     // NOTE:  PlayerState sequences:
                     //        cued=>unstarted=>buffering=>playing=>ended

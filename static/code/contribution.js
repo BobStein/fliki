@@ -225,8 +225,8 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     var voices = null;
     var voice_weights;
     var voice_default = {name:"(unknown)", lang: ""};
-    var SECONDS_BREATHER_AT_ALL_MEDIA_END = 1.0;
-    var SECONDS_BREATHER_AT_SPEECH_END = 2.0;
+    var SECONDS_BREATHER_AT_ALL_MEDIA_END = 2.0;
+    var SECONDS_BREATHER_AT_SPEECH_END = 2.0;  // plus SECONDS_BREATHER_AT_ALL_MEDIA_END
     var breather_timer = null;
 
     $(window.document).ready(function document_ready() {

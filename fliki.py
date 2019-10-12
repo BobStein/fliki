@@ -35,7 +35,6 @@ import flask   # , send_from_directory
 import flask_login
 import git
 import six
-# noinspection PyUnresolvedReferences
 import six.moves.urllib as urllib
 import werkzeug.local
 import werkzeug.useragents
@@ -909,197 +908,197 @@ class Auth(object):
             self.lex.IDN.CAT_ABOUT,
         ]
 
+    # def cat_cont_words(self):
+    #     """
+    #     Get all the category and contribution words, plus objectifiers.
+    #
+    #     Verbs we're interested in:
+    #         'contribute'
+    #         'unslump'
+    #
+    #     Objectifying (*1) verbs we're interested in:
+    #         category verbs, i.e. [lex](define)[category]
+    #         'caption'
+    #
+    #     Return dictionary:
+    #         cat:  dictionary of category words, keyed by their idn qstring
+    #         cont:  list of contribution words, in chronological order
+    #
+    #     A word is represented in JSON as an object with properties idn, sbj, vrb, obj, etc.
+    #
+    #     (*1) Contribution objectifiers are words whose obj is a contribution.
+    #          They're tagged onto each contribution they objectify through its jbo field.
+    #          Get it?  jbo is obj backwards.
+    #     """
+    #     lex = self.lex
+    #
+    #     category_verb_list = lex.find_words(idn=self.get_category_idns_in_order())
+    #
+    #     # objectifying_verbs = category_verb_list + [lex[lex.IDN.CAPTION]]
+    #     # FIXME:  Gasp!  We (and contribution.js) never use the categorizing verbs here!
+    #     #         Only cat_cont_order() uses them, and not via this return value!
+    #     #         This should cut down a lot on bytes transferred, if there's a lot of rearranging.
+    #
+    #     objectifying_verbs = [lex.IDN.CAPTION]
+    #
+    #     # resource_nouns = lex.find_words(obj=lex.IDN.RESOURCE)
+    #     # print("Resources", json_encode(resource_nouns))
+    #     # EXAMPLE:  Resources [{
+    #     #               "idn":"0q83_058C",
+    #     #               "sbj":"0q80",
+    #     #               "vrb":"0q82_01",
+    #     #               "obj":"0q83_058B",
+    #     #               "whn":1562431607.118508,
+    #     #               "txt":"quote"
+    #     #           }]
+    #
+    #     contributed_resources = []
+    #
+    #     do_grandfather_in_obsolete_unslump_verb = True
+    #
+    #     if do_grandfather_in_obsolete_unslump_verb:
+    #         contributed_resources += lex.find_words(
+    #             vrb=lex.IDN.UNSLUMP_OBSOLETE,
+    #             # The object of all unslump verbs was the lex itself.
+    #             jbo_vrb=objectifying_verbs,
+    #             jbo_ascending=True,
+    #         )
+    #
+    #     contributed_resources += lex.find_words(
+    #         vrb=lex.IDN.CONTRIBUTE,
+    #         # obj=resource_nouns,     # Why was I afraid resource_nouns would be huge?
+    #         #                         # There's just one now:  quote.
+    #         #                         # Does it help or hinder to limit by these?
+    #         #                         # It could allow other resources to be added someday.
+    #         #                         # They wouldn't show because we don't know how to render them
+    #         #                         # Though we could just render
+    #         #                         # "some kinda unfamiliar resource, here's the text..."
+    #         jbo_vrb=objectifying_verbs,
+    #         jbo_ascending=True,
+    #     )
+    #
+    #     vetted_contributions = self.vet(contributed_resources)
+    #
+    #     # category_words_by_qstring = {w.idn.qstring() : w for w in category_verb_list}
+    #     category_words_by_int = {int(w.idn) : w for w in category_verb_list}
+    #     # TODO:  All contribute.js needs from the category words
+    #     #        (i.e. return-value.cat) is their txt.
+    #     #        {w.idn.qstring() : w.txt for w in category_verb_list}
+    #     #        {i.qstring() : self.lex[i].txt for i in self.get_category_idns_in_order()}
+    #
+    #     # TODO:  Heck all it needs from return-value.cont is its txt and its jbo[].txt.
+    #     #        And then only once at startup.
+    #     #        So that could come down by ajax, and perhaps be better garbage collected.
+    #     #        Or come in pieces, see https://stackoverflow.com/a/18964123/673991
+    #
+    #     return dict(
+    #         cat=category_words_by_int,
+    #         cont=vetted_contributions,
+    #     )
 
-    def cat_cont_words(self):
-        """
-        Get all the category and contribution words, plus objectifiers.
-
-        Verbs we're interested in:
-            'contribute'
-            'unslump'
-
-        Objectifying (*1) verbs we're interested in:
-            category verbs, i.e. [lex](define)[category]
-            'caption'
-
-        Return dictionary:
-            cat:  dictionary of category words, keyed by their idn qstring
-            cont:  list of contribution words, in chronological order
-
-        A word is represented in JSON as an object with properties idn, sbj, vrb, obj, etc.
-
-        (*1) Contribution objectifiers are words whose obj is a contribution.
-             They're tagged onto each contribution they objectify through its jbo field.
-             Get it?  jbo is obj backwards.
-        """
-        lex = self.lex
-
-        category_verb_list = lex.find_words(idn=self.get_category_idns_in_order())
-
-        # objectifying_verbs = category_verb_list + [lex[lex.IDN.CAPTION]]
-        # FIXME:  Gasp!  We (and contribution.js) never use the categorizing verbs here!
-        #         Only cat_cont_order() uses them, and not via this return value!
-        #         This should cut down a lot on bytes transferred, if there's a lot of rearranging.
-
-        objectifying_verbs = [lex.IDN.CAPTION]
-
-        # resource_nouns = lex.find_words(obj=lex.IDN.RESOURCE)
-        # print("Resources", json_encode(resource_nouns))
-        # EXAMPLE:  Resources [{
-        #               "idn":"0q83_058C",
-        #               "sbj":"0q80",
-        #               "vrb":"0q82_01",
-        #               "obj":"0q83_058B",
-        #               "whn":1562431607.118508,
-        #               "txt":"quote"
-        #           }]
-
-        contributed_resources = []
-
-        do_grandfather_in_obsolete_unslump_verb = True
-
-        if do_grandfather_in_obsolete_unslump_verb:
-            contributed_resources += lex.find_words(
-                vrb=lex.IDN.UNSLUMP_OBSOLETE,
-                # The object of all unslump verbs was the lex itself.
-                jbo_vrb=objectifying_verbs,
-                jbo_ascending=True,
-            )
-
-        contributed_resources += lex.find_words(
-            vrb=lex.IDN.CONTRIBUTE,
-            # obj=resource_nouns,     # Why was I afraid resource_nouns would be huge?
-            #                         # There's just one now:  quote.
-            #                         # Does it help or hinder to limit by these?
-            #                         # It could allow other resources to be added someday.
-            #                         # They wouldn't show because we don't know how to render them
-            #                         # Though we could just render
-            #                         # "some kinda unfamiliar resource, here's the text..."
-            jbo_vrb=objectifying_verbs,
-            jbo_ascending=True,
-        )
-
-        vetted_contributions = self.vet(contributed_resources)
-
-        # category_words_by_qstring = {w.idn.qstring() : w for w in category_verb_list}
-        category_words_by_int = {int(w.idn) : w for w in category_verb_list}
-        # TODO:  All contribute.js needs from the category words
-        #        (i.e. return-value.cat) is their txt.
-        #        {w.idn.qstring() : w.txt for w in category_verb_list}
-        #        {i.qstring() : self.lex[i].txt for i in self.get_category_idns_in_order()}
-
-        # TODO:  Heck all it needs from return-value.cont is its txt and its jbo[].txt.
-        #        And then only once at startup.
-        #        So that could come down by ajax, and perhaps be better garbage collected.
-        #        Or come in pieces, see https://stackoverflow.com/a/18964123/673991
-
-        return dict(
-            cat=category_words_by_int,
-            cont=vetted_contributions,
-        )
-
-    def cat_cont_order(self):
-        """
-        Determine the order of categories and contributions.
-
-        All contributions are included,
-        except anonymous users don't see contributions from other anonymous users,
-        but only a users's own reordering is included.
-
-        Verbs we're interested in:
-            'contribute'
-            'unslump'
-            category verbs, i.e. [lex](define)[category]
-
-        (*2) error messages marked may be untestable
-
-        Return dictionary:
-            cat:  list of category idns, in chronological order
-            cont:  dictionary keyed by category idn qstring,
-                   of lists of contribution idns,
-                   in the order they should appear
-
-        An idn is represented in JSON by its qstring.
-        """
-        # TODO:  Should this and cat_cont_words() create one ordered dictionary instead?
-        cat_order = self.get_category_idns_in_order()
-        cont_order = dict()   # dictionary of contribution lists, keyed by category
-        cat_from_cont = dict()  # current category of each contribution
-        error_messages = list()
-
-        words = self.vet(self.lex.find_words())
-        # TODO:  Restrict verbs
-
-        def error(*args):
-            error_messages.append(" ".join(str(arg) for arg in args))
-
-        def cat_room(cat):
-            cat = self.idn(cat)
-            if cat not in cont_order:
-                cont_order[cat] = []
-
-        def add_cont(cat, cont, into):
-            cat = self.idn(cat)
-            cont = self.idn(cont)
-            if cat not in cat_order:
-                error("CAT", cat, "unknown")   # (*2)
-                return
-            cat_from_cont[cont] = cat
-            cat_room(cat)
-            if not 0 <= into <= len(cont_order[cat]):
-                error("CAT insert", into, "not in", len(cont_order[cat]))   # (*2)
-                return
-            cont_order[cat].insert(into, cont)
-
-        def remove_cont(cont):
-            cont = self.idn(cont)
-            if cont not in cat_from_cont:
-                error("CAT unrecorded for", cont)
-                return
-            old_cat = cat_from_cont[cont]
-            if old_cat not in cont_order:
-                error("CAT", old_cat, "has no contribution list")   # (*2)
-                return
-            if cont not in cont_order[old_cat]:
-                error("CAT", old_cat, "lost", cont)   # (*2)
-                return
-            cont_order[old_cat].remove(cont)
-
-        def index_cont(cat, cont):
-            cat = self.idn(cat)
-            cont = self.idn(cont)
-            cat_room(cat)
-            if cont == self.lex.IDN.FENCE_POST_RIGHT:
-                return len(cont_order[cat])
-            try:
-                return cont_order[cat].index(cont)
-            except ValueError:
-                error("Reorder point", cont, "missing from", cat)
-                return 0   # desperate fallback to leftmost position, when reorder location makes no sense
-
-        for word in words:
-
-            if word.vrb.idn in (self.lex.IDN.CONTRIBUTE, self.lex.IDN.UNSLUMP_OBSOLETE):
-                if word.sbj == self.qiki_user:
-                    add_cont(self.lex.IDN.CAT_MY, word, 0)
-                elif word.sbj.is_anonymous:
-                    add_cont(self.lex.IDN.CAT_ANON, word, 0)
-                else:
-                    add_cont(self.lex.IDN.CAT_THEIR, word, 0)
-            elif word.vrb.idn in cat_order:
-                if word.sbj == self.qiki_user:
-                    remove_cont(word.obj)
-                    add_cont(word.vrb, word.obj, index_cont(word.vrb, word.num))
-
-        # cont_order_qstring_keys = {cat.qstring(): order for cat, order in cont_order.items()}
-        cont_order_int_keys = {int(cat): order for cat, order in cont_order.items()}
-        order_dict = dict(
-            cat=cat_order,
-            cont=cont_order_int_keys
-        )
-        if len(error_messages) > 0:
-            order_dict['error_messages'] = error_messages
-        return order_dict
+    # def cat_cont_order(self):
+    #     """
+    #     Determine the order of categories and contributions.
+    #
+    #     All contributions are included,
+    #     except anonymous users don't see contributions from other anonymous users,
+    #     but only a users's own reordering is included.
+    #
+    #     Verbs we're interested in:
+    #         'contribute'
+    #         'unslump'
+    #         category verbs, i.e. [lex](define)[category]
+    #
+    #     (*2) error messages marked may be untestable
+    #
+    #     Return dictionary:
+    #         cat:  list of category idns, in chronological order
+    #         cont:  dictionary keyed by category idn qstring,
+    #                of lists of contribution idns,
+    #                in the order they should appear
+    #
+    #     An idn is represented in JSON as a literal integer if possible,
+    #                                      otherwise by its qstring.
+    #     """
+    #     # TODO:  Should this and cat_cont_words() create one ordered dictionary instead?
+    #     cat_order = self.get_category_idns_in_order()
+    #     cont_order = dict()   # dictionary of contribution lists, keyed by category
+    #     cat_from_cont = dict()  # current category of each contribution
+    #     error_messages = list()
+    #
+    #     words = self.vet(self.lex.find_words())
+    #     # TODO:  Restrict verbs
+    #
+    #     def error(*args):
+    #         error_messages.append(" ".join(str(arg) for arg in args))
+    #
+    #     def cat_room(cat):
+    #         cat = self.idn(cat)
+    #         if cat not in cont_order:
+    #             cont_order[cat] = []
+    #
+    #     def add_cont(cat, cont, into):
+    #         cat = self.idn(cat)
+    #         cont = self.idn(cont)
+    #         if cat not in cat_order:
+    #             error("CAT", cat, "unknown")   # (*2)
+    #             return
+    #         cat_from_cont[cont] = cat
+    #         cat_room(cat)
+    #         if not 0 <= into <= len(cont_order[cat]):
+    #             error("CAT insert", into, "not in", len(cont_order[cat]))   # (*2)
+    #             return
+    #         cont_order[cat].insert(into, cont)
+    #
+    #     def remove_cont(cont):
+    #         cont = self.idn(cont)
+    #         if cont not in cat_from_cont:
+    #             error("CAT unrecorded for", cont)
+    #             return
+    #         old_cat = cat_from_cont[cont]
+    #         if old_cat not in cont_order:
+    #             error("CAT", old_cat, "has no contribution list")   # (*2)
+    #             return
+    #         if cont not in cont_order[old_cat]:
+    #             error("CAT", old_cat, "lost", cont)   # (*2)
+    #             return
+    #         cont_order[old_cat].remove(cont)
+    #
+    #     def index_cont(cat, cont):
+    #         cat = self.idn(cat)
+    #         cont = self.idn(cont)
+    #         cat_room(cat)
+    #         if cont == self.lex.IDN.FENCE_POST_RIGHT:
+    #             return len(cont_order[cat])
+    #         try:
+    #             return cont_order[cat].index(cont)
+    #         except ValueError:
+    #             error("Reorder point", cont, "missing from", cat)
+    #             return 0   # desperate fallback to leftmost position, when reorder location makes no sense
+    #
+    #     for word in words:
+    #
+    #         if word.vrb.idn in (self.lex.IDN.CONTRIBUTE, self.lex.IDN.UNSLUMP_OBSOLETE):
+    #             if word.sbj == self.qiki_user:
+    #                 add_cont(self.lex.IDN.CAT_MY, word, 0)
+    #             elif word.sbj.is_anonymous:
+    #                 add_cont(self.lex.IDN.CAT_ANON, word, 0)
+    #             else:
+    #                 add_cont(self.lex.IDN.CAT_THEIR, word, 0)
+    #         elif word.vrb.idn in cat_order:
+    #             if word.sbj == self.qiki_user:
+    #                 remove_cont(word.obj)
+    #                 add_cont(word.vrb, word.obj, index_cont(word.vrb, word.num))
+    #
+    #     # cont_order_qstring_keys = {cat.qstring(): order for cat, order in cont_order.items()}
+    #     cont_order_int_keys = {int(cat): order for cat, order in cont_order.items()}
+    #     order_dict = dict(
+    #         cat=cat_order,
+    #         cont=cont_order_int_keys
+    #     )
+    #     if len(error_messages) > 0:
+    #         order_dict['error_messages'] = error_messages
+    #     return order_dict
 
     def vet(self, words):
         """Filter out anonymous contributions from other anonymous users."""
@@ -1168,6 +1167,7 @@ class Auth(object):
         #        or just the dict, and let js sort the idns.
 
     def may_create_word(self, word_dict):
+        """Is the current user allowed to create this word?"""
         if word_dict['vrb'].idn == self.lex.IDN.CAT_ABOUT:
             ok = word_dict['sbj'].is_admin
         else:
@@ -1588,6 +1588,18 @@ def meta_contrib():
 
 
 def contribution_home(home_page_title):
+    """
+    User contributions (quotes, videos, etc.) in categories (mine, others, etc.).
+
+    An unslumping.org inspired application.
+
+    Generate JSON for contribution.js to process.
+
+    MONTY.w - selected (and vetted) words from the lex
+    MONTY.u - info about users, anonymous and logged-in
+    MONTY.cat - category names and ordering
+    MONTY.IDN - idns by name
+    """
     t_start = time.time()
     auth = AuthFliki()
     if not auth.is_online:
@@ -1880,7 +1892,7 @@ def short_long_description(user_word):
 
 @flask_app.route('/meta/raw', methods=('GET', 'HEAD'))
 def meta_raw():
-
+    """Raw json dump of all words in the lex."""
     auth = AuthFliki()
     if not auth.is_online:
         return "lex offline"
@@ -3059,11 +3071,6 @@ def ajax():
             )
             if auth.may_create_word(new_word_kwargs):
                 new_word = lex.create_word(**new_word_kwargs)
-                # assert json_from_words([new_word]) == json_encode([new_word]), \
-                #     "\n" + json_from_words([new_word]) + "\n" + json_encode([new_word])
-                # TODO:  replace with json_encode().
-                #        Now it gives TypeError: cannot convert dictionary update sequence element #0 to a sequence
-                # return valid_response('new_words', json_from_words([new_word]))
                 return valid_response('new_words', [new_word])
                 # TODO:  Maybe exclude txt form new_word to save bandwidth?
             else:
