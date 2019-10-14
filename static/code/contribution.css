@@ -24,8 +24,18 @@
 
 body                    #play-button { display: inline-block; }
 body.player-bot-playing #play-button { display: none; }
+
+body                    #pause-button { display: none; }
+body.player-bot-playing #pause-button { display: inline-block; }
+body.player-bot-pausing #pause-button { display: none; }
+
+body                    #resume-button { display: none; }
+body.player-bot-playing #resume-button { display: none; }
+body.player-bot-pausing #resume-button { display: inline-block; }
+
 body                    #stop-button { display: none; }
 body.player-bot-playing #stop-button { display: inline-block; }
+
 body                    #skip-button { display: none; }
 body.player-bot-playing #skip-button { display: inline-block; }
 
@@ -172,6 +182,11 @@ body.player-bot-playing #skip-button { display: inline-block; }
     clear: left;
     background-color: transparent;
     visibility: hidden;
+    overflow: hidden;
+    /* NOTE:  overflow hidden is SUPPOSED to give save-bar the height of its floating contents
+              but in pop_up() $save_bar.height() was still zero.
+              See https://stackoverflow.com/a/5369963/673991
+    */
 }
                .sup-contribution.contribution-edit .save-bar,
 .dirty-nowhere .sup-contribution:hover             .save-bar {

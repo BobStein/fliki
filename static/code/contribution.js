@@ -170,7 +170,8 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
 
     var cont_only = cont_list_from_query_string();
 
-    var progress_play_bot = null;   // setTimeout timer for the current contribution in play
+    // var progress_play_bot = null;   // setTimeout timer for the current contribution in play
+    var bot_timer = BotTimer(function () {}, 0.0);
     var list_play_bot;   // array of contribution id's
     var index_play_bot;
 
@@ -253,6 +254,8 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         build_dom();
 
         $('#play-button').on('click', play_player_bot);
+        $('#pause-button').on('click', pause_player_bot);
+        $('#resume-button').on('click', resume_player_bot);
         $('#stop-button').on('click', stop_player_bot);
         $('#skip-button').on('click', skip_player_bot);
 
@@ -277,16 +280,19 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             .on('click', '.save-bar .discard', contribution_cancel)
             .on('click', '.save-bar .save',    contribution_save)
             .on('click', '.save-bar .full',    function () {
-                bot_abort();
+                bot_timer.abort();
                 pop_up(this, false);
             })
             .on('click', '.save-bar .unfull',  function () {
-                bot_abort();
+                // TODO:  What if play-bot is in progress and user hits un-full button?
+                //        Stop play-bot?  Or just skip to next one?  Currently just stops.
+                bot_timer.abort();
                 pop_down_all();
             })
+
             .on('keyup', function (evt) {
                 if (evt.key === 'Escape') {
-                    bot_abort();
+                    bot_timer.abort();
                     pop_down_all();
                 }
             })
@@ -400,7 +406,9 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     }
 
     function play_player_bot() {
-        if (progress_play_bot === null) {
+        if (bot_timer.is_active) {
+            console.log("(player bot already in play)");
+        } else {
             list_play_bot = playlist_generate();
             // var $my_cat = $categories[MONTY.IDN.CAT_MY];
             // list_play_bot = [];
@@ -416,21 +424,34 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
 
             index_play_bot = 0;
             next_play_bot();
-        } else {
-            console.log("(player bot already in play)");
+        }
+    }
+
+    function pause_player_bot() {
+        if (bot_timer.pause()) {
+            console.log("Pause player bot,", bot_timer.ms_remaining(), "ms remaining");
+            $(window.document.body).addClass('player-bot-pausing');
+        }
+    }
+
+    function resume_player_bot() {
+        if (bot_timer.resume()) {
+            console.log("Resume player bot,", bot_timer.ms_remaining(), "ms remaining");
+            $(window.document.body).removeClass('player-bot-pausing');
         }
     }
 
     function stop_player_bot() {
-        if (progress_play_bot !== null) {
-            console.log("Stop player bot");
-            bot_abort();
+        var ms_remain = bot_timer.ms_remaining();
+        if (bot_timer.abort()) {
+            console.log("Stop player bot,", ms_remain, "ms remaining");
+            bot_media_ending();
             pop_down_all();
         }
     }
 
     function skip_player_bot() {
-        if (progress_play_bot !== null) {
+        if (bot_timer.is_active) {
             if (index_play_bot < list_play_bot.length) {
                 console.log("Skipping", list_play_bot[index_play_bot]);
             } else {
@@ -440,19 +461,16 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         bot_timely_transition();
     }
 
-    // TODO:  What if play-bot is in progress and user hits un-full button?
-    //        Stop play-bot?  Or just skip to next one?  Thinking skip...
-
-    /**
-     * Stop the bot, pop-down the media, cancel the bot timeout.
-     */
-    function bot_abort() {
-        if (progress_play_bot !== null) {
-            clearTimeout(progress_play_bot);
-            progress_play_bot = null;
-            bot_media_ending();
-        }
-    }
+    // /**
+    //  * Stop the bot, pop-down the media, cancel the bot timeout.
+    //  */
+    // function _FORMERLY_bot_abort() {
+    //     if (progress_play_bot !== null) {
+    //         clearTimeout(progress_play_bot);
+    //         progress_play_bot = null;
+    //         bot_media_ending();
+    //     }
+    // }
 
     /**
      * At the beginning of each contribution.
@@ -468,6 +486,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
      */
     function bot_media_ending() {
         $(window.document.body).removeClass('player-bot-playing');
+        $(window.document.body).removeClass('player-bot-pausing');
         $('#play_bot_sequence').prop('disabled', false);
         $('#play_bot_from'    ).prop('disabled', false);
     }
@@ -501,8 +520,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             } else {
                 pop_up($sup_cont, true);
                 bot_media_beginning();
-                progress_play_bot = setTimeout(function bot_media_timed_out() {
-                    progress_play_bot = null;
+                bot_timer = BotTimer(function bot_media_timed_out() {
                     console.log("Play", list_play_bot[index_play_bot], "taking too long.  Onward.");
                     bot_media_ending();
                     end_one_begin_another();
@@ -511,6 +529,98 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         } else {
             console.log("End player bot");
         }
+    }
+
+    /**
+     * Like setTimeout() but return object o that can o.pause() o.resume() o.abort().
+     *
+     * o.pause(), o.resume(), o.abort() each returns true if it made sense to call it,
+     *                                  false otherwise, and harmlessly does nothing
+     * o.is_active is true before the natural ending or abort.  And false inside done_callback().
+     * o.is_paused is true between pause and resume.
+     * o.ms_remaining() is milliseconds remaining, or null if not active.
+     *
+     * Inspired by:  https://stackoverflow.com/a/3969791/673991
+     *
+     * @param done_callback - callback at natural ending \ same parameters
+     * @param milliseconds - until natural ending        / as setTimeout()
+     * @return {object} - with methods and properties    > unlike setTimeout()
+     */
+    function BotTimer(done_callback, milliseconds) {
+        var time_started_or_resumed;
+        var timer_id;
+        var next_ms_remaining = milliseconds;
+        var instance = {
+            is_active: false,
+            is_paused: false,
+            ms_remaining: function () {
+                if (instance.is_active) {
+                    if (instance.is_paused) {
+                        return next_ms_remaining;
+                    } else {
+                        var ms_since_start_or_resume = now() - time_started_or_resumed;
+                        return next_ms_remaining - ms_since_start_or_resume;
+                    }
+                } else {
+                    return null;
+                }
+            },
+            pause: function () {
+                if (instance.is_active && ! instance.is_paused) {
+                    next_ms_remaining = instance.ms_remaining();
+                    // NOTE:  ms_remaining() must precede is_paused = true
+                    instance.is_paused = true;
+                    clearTimeout(timer_id);
+                    return true;
+                }
+                return false;
+            },
+            resume: function () {
+                if (instance.is_active && instance.is_paused) {
+                    instance.is_paused = false;
+                    go();
+                    return true;
+                }
+                return false;
+            },
+            abort: function () {
+                if (instance.is_active) {
+                    instance.is_active = false;
+                    clearTimeout(timer_id);
+                    return true;
+                }
+                return false;
+            }
+        };
+
+        function now() {
+            return new Date().getTime();
+        }
+
+        function go() {
+            time_started_or_resumed = now();
+            instance.is_active = true;
+            if (next_ms_remaining <= 0.0) {
+                // NOTE:  Unlike setTimeout(), o = BotTimeout(f, 0.0) immediately calls f().
+                //        And o.is_active will be false everywhere.
+                // NOTE:  Correctly handles the freakish knife-edge case when natural ending
+                //        is delayed a short time, and pause() happened an even shorter time
+                //        before that.  Hence the ms_remaining() output negative.
+                //        Though this says it would probably work anyway:
+                //        https://stackoverflow.com/a/8431015/673991
+                internally_done();
+            } else {
+                timer_id = setTimeout(internally_done, next_ms_remaining);
+            }
+        }
+
+        function internally_done() {
+            instance.is_active = false;
+            done_callback();
+        }
+
+        go();
+        return instance;
     }
 
     function end_one_begin_another() {
@@ -528,8 +638,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
      * Go to the next media in list_play_bot[] BEFORE the timeout has expired.
      */
     function bot_timely_transition() {
-        if (progress_play_bot !== null) {
-            bot_abort();
+        if (bot_timer.abort()) {
             end_one_begin_another();
         }
     }
@@ -552,12 +661,14 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
      * Initialize the iFrameResizer on an iframe jQuery object3.
      *
      * @param $iframe
+     * @param {function=} and_then - callback after iFrameResizer was initialized.
      */
     // NOTE:  Intermittent error made 2 of 3 youtube videos inoperative:
     //        iframeResizer.min.js:8 Failed to execute 'postMessage' on 'DOMWindow':
     //        The target origin provided ('...the proper domain...')
     //        does not match the recipient window's origin ('null').
-    function resizer_init($iframe) {
+    function resizer_init($iframe, and_then) {
+        and_then = and_then || function () {};
         if ($iframe.length >= 1 && typeof $iframe[0].iFrameResizer !== 'object') {
             setTimeout(function () {
                 $iframe.iFrameResize({
@@ -586,17 +697,33 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                             );
                             break;
                         }
-                    }
+                    }/*,
+                    targetOrigin: MONTY.OEMBED_OTHER_ORIGIN*/
                     // onInit: function resizer_init_callback(iframe) {
                     //     console.log("RESIZER_INIT_CALLBACK", iframe.id);
                     // }
                 });
+                and_then();
             }, 100);
-            // NOTE:  Increase to 1500 milliseconds to avoid the following Chrome error:
+            // NOTE:  Increase to 2000 milliseconds to avoid the following Chrome error:
             //            Failed to execute 'postMessage' on 'DOMWindow':
-            //            The target origin provided ('<URL>') does not match
-            //            the recipient window's origin ('<URL>').
-            //        But it's a false alarm, and only happens when the iframe domain differs.
+            //            The target origin provided ('<URL>')
+            //            does not match the recipient window's origin ('<URL>').
+            //        Chrome console may group these errors NON-CONSECUTIVELY, which is evil.
+            //        The number of messages varies wildly, e.g. 12-80.
+            //        But it's a false alarm.
+            //        Worse, it's a misleading, alarmist false alarm.
+            //        Red herring error messages are evil.
+            //        It seems to be a transient thing during initialization.
+            //        THANKS:  Unready iframe, https://stackoverflow.com/a/22379990/673991
+            //        So the parent calls out to the child before it's ready.
+            //        It must retry later and turn out fine.
+            //        And by the way it only happens when the iframe domain differs.
+            //        The cost of this 2000-ms suppression of the false alarm is slower load time.
+            //        Firefox also has this false alarm, e.g.
+            //            Failed to execute ‘postMessage’ on ‘DOMWindow’:
+            //            The target origin provided (‘http://xxx’)
+            //            does not match the recipient window’s origin (‘http://yyy’).
         }
     }
 
@@ -693,16 +820,23 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             // NOTE:  This immediate removal of the pop-up class -- though premature --
             //        allows redundant back-to-back calls to pop_down_all().
             var pop_stuff = $popup.data('pop-stuff');
-            // TODO:  Instead, just remember the pop-down DOM object,
-            //        and recalculate its current "fixed" coordinates from it.
+            // TODO:  Instead, just remember the pop-down DOM object ($sup_cont in pop_up()),
+            //        and recalculate NOW its current "fixed" coordinates from that object.
             var iframe = $popup.find('.render-bar iframe')[0];
             if (iframe) {
                 try {
-                    iframe.iFrameResizer.sendMessage({
-                        action: 'un-pop-up',
-                        width: pop_stuff.render_width,
-                        height: pop_stuff.render_height
-                    });
+                    iframe.iFrameResizer.sendMessage(
+                        {
+                            action: 'un-pop-up',
+                            width: pop_stuff.render_width,
+                            height: pop_stuff.render_height
+                        }/*,
+                        MONTY.OEMBED_OTHER_ORIGIN*/
+                        // NOTE:  The targetOrigin parameter here makes no difference,
+                        //        either in whether it works or the "Failed to execute"
+                        //        red herring error message.
+                    );
+
                 } catch (e) {
                     console.error("Unable to unfull??", iframe.id, e.toString());
                 }
@@ -804,8 +938,41 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         var render_height = $render_bar.height();
         var caption_height = $sup_cont.find('.caption-bar').height();
         var $save_bar = $sup_cont.find('.save-bar');
-        var save_height = $save_bar.height();
-        console.assert(save_height > 0.0);
+
+        var save_height = $save_bar.height() || $save_bar.find('.full').height();
+        console.assert(
+            save_height > 0.0,
+            cont_idn,
+            save_height,
+            $save_bar.height(),
+            $save_bar.width(),
+            $save_bar.find('.full').height(),
+            $save_bar.find('.unfull').height(),
+            $save_bar.css('overflow')
+        );
+        // EXAMPLE:  Assertion failed: 1929 0 ... 16 16 hidden
+        // EXAMPLE:  Assertion failed: 1851 0 0 202 16 16 hidden
+        // NOTE:  Sometimes $save_bar.height() is zero.
+        //        $save_bar is supposed to have enough .height() to contain its buttons,
+        //        but it's sometimes zero (not always), even though its overflow:hidden and
+        //        the button.full child has height.  (So does .unfull even though display none.)
+        //        See https://stackoverflow.com/a/5369963/673991
+        //        Working around it by reverting to the button height if the div height is zero.
+        //        Clear-fix didn't work https://alistapart.com/article/css-floats-101/#section7
+        //        Specifically, this code was in build_contribution_dom() below the buttons:
+        //            $save_bar.append($('<div>', {style: 'clear: both;'}).html('&nbsp;'));
+        //        Moving the .height() to before pop_down_all() didn't work.
+        //        Adds to the impression I don't understand the problem.
+        //        Along with the fact that $save_bar.height() is never zero from the console.
+        //        Not even when the item is eclipsed by something else popped up.
+        //        Both Chrome and Firefox have this problem,
+        //        and both are fixed by the || .full work-around.
+        //        Doesn't always happen.  I think it only happens when the bot is popping up
+        //        item N+1 as it is about to pop down item N.  So never for item 1.
+        //        Happens either for logged in users from their "my" category, and anon
+        //        users from the "others" category.
+        // TODO:  Try "Float Fix Float" http://complexspiral.com/publications/containing-floats/
+        //        More tricks:  https://stackoverflow.com/a/5369963/673991
 
         var $popup = $sup_cont.clone(false, true);
 
@@ -845,48 +1012,50 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
 
         if ($sup_cont.is('.render-media')) {
             var $iframe = $popup.find('.render-bar iframe');
-            resizer_init($iframe);
-            // NOTE:  Finally decided the best way to make the popup iframe big
-            //        was to focus on the inner CONTENTS size,
-            //        and let iFrameResizer handle the outer size.
-            // SEE:  Tricky iframe height 100%, https://stackoverflow.com/a/5871861/673991
+            resizer_init($iframe, function () {
 
-            $iframe.attr('src', function () {
-                var cont_padding = px_from_em(0.3 + 0.3);
-                return $(this).attr('src') + '&' + $.param({
-                    width:  Math.round(window_width - 30),
-                    height: Math.round(
-                        window_height
-                        - top_air
-                        - caption_height
-                        - save_height
-                        - 30
-                        - cont_padding
-                    ),
-                    is_pop_up: true,
-                    auto_play: auto_play.toString()
+                // NOTE:  Finally decided the best way to make the popup iframe big
+                //        was to focus on the inner CONTENTS size,
+                //        and let iFrameResizer handle the outer size.
+                // SEE:  Tricky iframe height 100%, https://stackoverflow.com/a/5871861/673991
+
+                $iframe.attr('src', function () {
+                    var cont_padding = px_from_em(0.3 + 0.3);
+                    return $(this).attr('src') + '&' + $.param({
+                        width:  Math.round(window_width - 30),
+                        height: Math.round(
+                            window_height
+                            - top_air
+                            - caption_height
+                            - save_height
+                            - 30
+                            - cont_padding
+                        ),
+                        is_pop_up: true,
+                        auto_play: auto_play.toString()
+                    });
+                    // NOTE:  The 30-pixel reduction in height gives room for browser status
+                    //        messages at the bottom.  Along with the same for width it also
+                    //        tends to prevent scrollbars from spontaneously appearing.
+                    //        Someday a less crude way would be good.
                 });
-                // NOTE:  The 30-pixel reduction in height gives room for browser status
-                //        messages at the bottom.  Along with the same for width it also
-                //        tends to prevent scrollbars from spontaneously appearing.
-                //        Someday a less crude way would be good.
-            });
 
-            $popup.css({
-                'background-color': 'rgba(0,0,0,0)'
-            });
-            $popup.animate({
-                left: 0,
-                top: top_air,
-                'background-color': 'rgba(0,0,0,0.25)'
-                // THANKS:  Alpha, not opacity, https://stackoverflow.com/a/5770362/673991
-            }, {
-                easing: 'swing',
-                complete: function () {
-                    resize_render_bars($iframe);
-                    // NOTE:  This seems to work around the iFrameResizer bug
-                    //        that sometimes leaves the frame zero-width when popping up.
-                }
+                $popup.css({
+                    'background-color': 'rgba(0,0,0,0)'
+                });
+                $popup.animate({
+                    left: 0,
+                    top: top_air,
+                    'background-color': 'rgba(0,0,0,0.25)'
+                    // THANKS:  Alpha, not opacity, https://stackoverflow.com/a/5770362/673991
+                }, {
+                    easing: 'swing',
+                    complete: function () {
+                        resize_render_bars($iframe);
+                        // NOTE:  This seems to work around the iFrameResizer bug
+                        //        that sometimes leaves the frame zero-width when popping up.
+                    }
+                });
             });
         } else {
             $popup.css({
@@ -933,7 +1102,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                         //     Utter end 0 1779.2449951171875
                     });
                     var $svg = null;
-                    $(utter).on('boundary', function (evt) {
+                    $(utter).on('boundary', function speech_boundary(evt) {
                         var start_word = evt.originalEvent.charIndex;
                         // TODO:  Adjust leftward to word-boundary?  That's what's done in
                         //        https://stackoverflow.com/a/50285928/673991
@@ -958,12 +1127,14 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                             block: 'center',
                             inline: 'center'
                         });
-                        // SEE:  Hilite speech example, https://stackoverflow.com/a/38122794/673991
-                        // SEE:  Select speech example, https://stackoverflow.com/a/50285928/673991
+                        // SEE:  Highlight speech, https://stackoverflow.com/a/38122794/673991
+                        // SEE:  Select speech, https://stackoverflow.com/a/50285928/673991
                         return;
 
 
 
+                        // NOTE:  The following experimental code would render the word being
+                        //        spoken, in red, on top of the same word in the paragraph.
                         // noinspection UnreachableCodeJS
                         var r = range_word.getBoundingClientRect();
                         console.log("Bound", the_word, r.x, r.y);
@@ -984,6 +1155,8 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                         $popup.append($svg);
                         // TODO:  Needs to scroll word into view,
                         //        and then also position the svg right onto the scrolled word.
+
+
 
                     });
                     $(utter).on('end', function (evt) {
@@ -1017,7 +1190,10 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
 
 
 
-
+                    // NOTE:  The following code worked with the Talkify service.
+                    //        Which I recall was more legible than the Chrome browser speech,
+                    //        (though less so than the Edge browser speech), and is reasonably
+                    //        priced, but any metering of an uber free service is vexing.
                     // noinspection UnreachableCodeJS
                     talkify.config.remoteService.host = 'https://talkify.net';
                     talkify.config.remoteService.apiKey = '084ff0b0-89a3-4284-96a1-205b5a2072c0';
@@ -1166,6 +1342,9 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                             duration_report
                         );
                     };
+
+
+
                 }
             });
         }
@@ -1427,6 +1606,14 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
 
     function possible_incoming_media(what, evt, url, oembed_handler) {
         if (can_i_get_meta_about_it(url)) {
+            /**
+             * @param oembed_response
+             * @param oembed_response.oembed
+             * @param oembed_response.oembed.author_name
+             * @param oembed_response.oembed.error
+             * @param oembed_response.oembed.title
+             * @param oembed_response.oembed.url
+             */
             qoolbar.post('noembed_meta', {
                 url: url
             }, function (oembed_response) {
@@ -1854,6 +2041,14 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         $bot.append($('<button>', {id: 'play-button'})
             .append($icon('play_arrow'))
             .append(" play")
+        );
+        $bot.append($('<button>', {id: 'pause-button'})
+            .append($icon('pause'))
+            .append(" pause")
+        );
+        $bot.append($('<button>', {id: 'resume-button'})
+            .append($icon('play_arrow'))
+            .append(" resume")
         );
         $bot.append($('<button>', {id: 'stop-button'})
             .append($icon('stop'))
