@@ -18,12 +18,14 @@ from __future__ import print_function
 #     But from __future__ import print_function appears to work anyway!
 
 import abc
+import functools
 import json
 import logging
 import os
 import re
 import sys
 import time
+
 import traceback
 import uuid
 
@@ -61,6 +63,8 @@ MINIMUM_SECONDS_BETWEEN_ANONYMOUS_QUESTIONS = 10
 MINIMUM_SECONDS_BETWEEN_ANONYMOUS_ANSWERS = 60
 THUMB_MAX_WIDTH = 200
 THUMB_MAX_HEIGHT = 166
+NON_ROUTABLE_IP_ADDRESS = '10.255.255.1'   # THANKS:  https://stackoverflow.com/a/904609/673991
+NON_ROUTABLE_URL = 'https://' + NON_ROUTABLE_IP_ADDRESS + '/'
 
 time_lex = qiki.TimeLex()
 t_last_anonymous_question = time_lex.now_word()
@@ -1434,19 +1438,60 @@ def login():
                         login_result.user.update()
                         # SEE:  about calling user.update() only if id or name is missing,
                         #       http://authomatic.github.io/authomatic/#log-the-user-in
-                    if login_result.user.id is None or login_result.user.name is None:
-                        print(
-                            "Freakish.  Updated, but user id:", repr(login_result.user.id),
-                            "name:", repr(login_result.user.name)
-                        )
                     else:
+
+                        # EXAMPLE:  2019.1028 - login_result.user
+                        #     User(
+                        #         provider=Google(...),
+                        #         credentials=Credentials(...),
+                        #         data={
+                        #             'id': '103620384189003122864',
+                        #             'name': {
+                        #                 'familyName': 'Stein',
+                        #                 'givenName': 'Bob'
+                        #             },
+                        #             'displayName': 'Bob Stein',
+                        #             'image': {
+                        #                 'url': 'https://lh3.googleusercontent.com/a-/AAuE7mDmUoEqODezLnr1LEwU_DW-Rkyvu1-3fvrdA34Fog=s50'
+                        #             },
+                        #             'emails': [
+                        #                 {
+                        #                     'value': 'visibone@gmail.com',
+                        #                     'type': 'ACCOUNT'
+                        #                 }
+                        #             ],
+                        #             'language': 'en',
+                        #             'kind': 'plus#person',
+                        #             'etag': '%EgUCAwolLhoDAQUH'
+                        #         },
+                        #         content=str(...),
+                        #         id=str(...),
+                        #         name='Bob Stein',
+                        #         first_name='Bob',
+                        #         last_name='Stein',
+                        #         locale='en',
+                        #         email='visibone@gmail.com',
+                        #         picture=str(...)
+                        #     )
+
+                        # EXAMPLE:  2018.1204 - login_result.user.picture
+                        #     https://lh5.googleusercontent.com/-_K6qO6tjH1A/AAAAAAAAAAI/AAAAAAAAKbQ/N14tJbQVKCc/photo.jpg?sz=50
+                        # EXAMPLE:  2019.0519 - login_result.user.picture
+                        #     https://lh5.googleusercontent.com/-_K6qO6tjH1A/AAAAAAAAAAI/AAAAAAAAKbQ/N14tJbQVKCc/s50/photo.jpg
+                        # EXAMPLE:  2019.1028 - login_result.user.picture (first appeared 2019.0820)
+                        #     https://lh3.googleusercontent.com/a-/AAuE7mDmUoEqODezLnr1LEwU_DW-Rkyvu1-3fvrdA34Fog=s50
+
                         flask_user = GoogleFlaskUser(login_result.user.id)
                         qiki_user = lex.word_google_class(login_result.user.id)
-                        picture_parts = urllib.parse.urlsplit(login_result.user.picture)
-                        picture_dict = urllib.parse.parse_qs(picture_parts.query)
-                        # THANKS:  Parse URL query-string, http://stackoverflow.com/a/21584580/673991
-                        picture_size_string = picture_dict.get('sz', ['0'])[0]
-                        avatar_width = qiki.Number(picture_size_string)   # width?  height?  size??
+
+                        picture_size_string = url_var(login_result.user.picture, 'sz', '0')
+                        try:
+                            picture_size_int = int(picture_size_string)
+                        except ValueError:
+                            picture_size_int = 0
+                        avatar_width = qiki.Number(picture_size_int)
+                        # TODO:  avatar_width is always 0 - recompute?  Alternative?
+
                         avatar_url = login_result.user.picture or ''
                         display_name = login_result.user.name or ''
                         print("Logging in", qiki_user.index, qiki_user.idn.qstring())
@@ -1469,6 +1514,28 @@ def login():
         # EXAMPLE:  None (e.g. with extraneous variable on request query, e.g. ?then_url=...)
 
     return response
+
+
+def url_var(url, key, default):
+    """
+    Look up a variable from a URL query string.
+
+    If redundant values, gets the last.
+
+    :param url: - e.g. 'http://example.com/?foo=bar'
+    :param key:                     - e.g. 'foo'
+    :param default:                     - e.g. 'bar'
+    :return:                            - e.g. 'bar'
+    """
+                        # THANKS:  Parse URL query-string, http://stackoverflow.com/a/21584580/673991
+    the_parts = urllib.parse.urlsplit(url)
+    the_dict = urllib.parse.parse_qs(the_parts.query)
+    the_value = the_dict.get(key, [default])[-1]
+    return the_value
+
+
+assert 'bar' == url_var('http://example.com/?foo=bar', 'foo', 'qux')
+assert 'qux' == url_var('http://example.com/',         'foo', 'qux')
 
 
 @flask_app.route('/module/qiki-javascript/<path:filename>')
@@ -1820,7 +1887,10 @@ def unslumping_home_obsolete():
                         with parent.div(classes=container_classes) as this_container:
                             with this_container.div(class_='contribution') as contribution:
                                 contribution.text(str(uns_word.txt))
-                            with this_container.div(class_='caption', title=long_d) as contribution_caption:
+                            with this_container.div(
+                                class_='caption',
+                                title=long_d
+                            ) as contribution_caption:
                                 with contribution_caption.span(class_='grip') as grip:
                                     grip.text(
                                         UNICODE.VERTICAL_ELLIPSIS +
@@ -2100,6 +2170,7 @@ def meta_lex():
                 # TODO:  Is d3.js here just to draw delta-time triangles?  If so replace it.
                 #        Or use it for cool stuff.
                 #        Like better drawn words or links between words!
+                foot.js_stamped(auth.static_url('code/util.js'))
                 foot.js_stamped(auth.static_url('code/meta_lex.js'))
                 with foot.script() as script:
                     script.raw_text('\n')
@@ -2636,6 +2707,10 @@ NOEMBED_PATTERNS = [
     "https?://db\\.tt/[a-zA-Z0-9]+",
 
     "https?://soundcloud\\.com/.*",
+
+    "https?://www\\.dailymotion\\.com/video/.*",
+
+    # NON_ROUTABLE_URL,   # Also works as a pattern.  The dots are tacky though.
 ]
 
 INSTAGRAM_PATTERNS = [
@@ -2663,31 +2738,33 @@ if secure.credentials.Options.oembed_server_prefix is not None:
         """
         print("oembed_html", json.dumps(flask.request.full_path))
         url = flask.request.args.get('url')
+        idn = flask.request.args.get('idn', default="(idn unknown)")
         if matcher(url, NOEMBED_PATTERNS):
-            return noembed_render(url)
+            return noembed_render(url, idn)
         # elif matcher(url, YOUTUBE_PATTERNS):
         #     etc['matcher_groups'] = matcher_groups(url, YOUTUBE_PATTERNS)
         #     return youtube_render(url, etc)
         elif matcher(url, INSTAGRAM_PATTERNS):
-            return instagram_render(url)
+            return instagram_render(url, idn)
         else:
             oembed_dict = noembed_get(url)
             if 'html' in oembed_dict:
                 provider_name = oembed_dict.get('provider_name', "((unspecified))")
-                but_noembed = "Though noembed may support it. Provider: " + provider_name
+                but_why = "Though noembed may support it. Provider: " + provider_name
             else:
                 error = oembed_dict.get('error', "((for some reason))")
-                but_noembed = "Anyway noembed says: " + error
-            print("Unsupported", json.dumps(url), but_noembed)
+                but_why = "Anyway noembed says: " + error
+            print("Unsupported", json.dumps(url), but_why)
             return error_render(
-                message="{domain} - unsupported domain.  {but_noembed}".format(
+                message="{domain} - unsupported domain.  {but_why}".format(
                     domain=json.dumps(domain_from_url(url)),
-                    but_noembed=but_noembed,
-                )
+                    but_why=but_why,
+                ),
+                title=idn,
             )
 
 
-def noembed_render(url):
+def noembed_render(url, idn):
     """
     Render and wrangle noembed-supplied html.  For use by an iframe of embedded media.
 
@@ -2697,51 +2774,20 @@ def noembed_render(url):
     At least I think that's why.
     """
     oembed_dict = noembed_get(url)
-    # try:
-    #     embeddable_html = oembed_dict['html']
-    # except KeyError:
-    #     try:
-    #         return flask.Response("Noembed error: " + oembed_dict['error'], status=404)
-    #     except KeyError:
-    #         return flask.Response("Unknown response:" + json_pretty(oembed_dict), status=404)
-    # else:
     with FlikiHTML('html') as html:
-        # domain = domain_from_url(url)
-        # domain_simple = domain.lower()
-        # domain_simple = re.sub(r'^www\.', '', domain_simple)
-        # domain_simple = re.sub(r'\.com$', '', domain_simple)
-        # is_pop_up = flask.request.args.get('is_pop_up', 'false') == 'true'
-        # is_pop_youtube = is_pop_up and domain_simple in ('youtube', 'youtu.be')
         monty = dict(
-            # domain=domain,
-            # domain_simple=domain_simple,
             matcher_groups=matcher_groups(url, NOEMBED_PATTERNS),
-            # TODO:  Really have to go through all patterns again?
-            # oembed={k: v for k, v in oembed_dict.items() if k != 'html'},
+            # TODO:  Do we really have to go through all patterns again?
             oembed=oembed_dict,
-            # is_pop_youtube=is_pop_youtube,
             target_origin=secure.credentials.Options.oembed_target_origin,
             THUMB_MAX_WIDTH=THUMB_MAX_WIDTH,
             THUMB_MAX_HEIGHT=THUMB_MAX_HEIGHT,
         )
         with html.head(newlines=True) as head:
-            # TODO:  head.title(something)  Could be caption eventually, idn here.
+            head.title("{idn}".format(idn=idn))
+            # TODO:  Add caption.
             head.css_stamped(AuthFliki.static_url('code/embed_content.css'))
             head.jquery(JQUERY_VERSION)
-            # head.script(type='text/javascript').raw_text('''
-            #     window.iFrameResizer = {
-            #         targetOrigin: "''' + secure.credentials.Options.oembed_target_origin + '''",
-            #         onMessage: function(message) {
-            #             console.log("Daughter Message In", message);
-            #         }
-            #     };
-            # \n''')
-            # head.js(
-            #     'https://cdn.jsdelivr.net/npm/iframe-resizer@4.1.1/js/'
-            #     'iframeResizer.contentWindow.js'
-            # )
-            # if is_pop_youtube:
-            #     head.js('https://www.youtube.com/iframe_api')
             head.js_stamped(AuthFliki.static_url('code/util.js'))
             head.js_stamped(AuthFliki.static_url('code/embed_content.js'))
             head.script(type='text/javascript').raw_text('''
@@ -2749,29 +2795,26 @@ def noembed_render(url):
                 embed_content_js(window, jQuery, MONTY);
             \n'''.format(json=json_pretty(monty)))
 
-        # html.body(newlines=True, **{'data-domain': domain})
         html.body()
-
-            # with html.body(newlines=True, **{'data-domain': domain}) as body:
-                # if not is_pop_youtube:
-                #     body.raw_text('')    # embeddable_html)
-                # with body as foot:
-
         return html.doctype_plus_html()
-#
-#
-# def json_safer(x):
-#     return flask.render_template_string('{{x|tojson(indent=4)}}', x=x)
 
 
 def noembed_get(url):
     """Get the noembed scoop on an embedded url."""
+    # if url == NON_ROUTABLE_URL:
+    #     noembed_request = url
+    # else:
+    #     noembed_request = 'https://noembed.com/embed?url=' + url
     noembed_request = 'https://noembed.com/embed?url=' + url
-    oembed_dict =  json_get(noembed_request)
+    oembed_dict = json_get(noembed_request)
+    if oembed_dict is None:
+        oembed_dict = dict(
+            error="Unable to load " + url
+        )
     return oembed_dict
 
 
-def instagram_render(url):
+def instagram_render(url, idn):
     """Render instagram-supplied html.  For use by an iframe of embedded media."""
     # TODO:  Pop-up is busted.  And there may be cruft here, like data-domain.
     matched = re.search(r'/p/(.*)', url)
@@ -2781,7 +2824,7 @@ def instagram_render(url):
         is_pop_up = flask.request.args.get('is_pop_up', 'false') == 'true'
         if is_pop_up:
             media_url = 'https://instagram.com/p/{code}'.format(code=code)
-            return noembed_render(media_url)
+            return noembed_render(media_url, idn)
         else:
             thumbnail_url = 'https://instagram.com/p/{code}/media/?size=t'.format(code=code)
             with FlikiHTML('html') as html:
@@ -2801,10 +2844,11 @@ def instagram_render(url):
         return "Unable to decode " + json.dumps(url)
 
 
-def error_render(message):
+def error_render(message, title=""):
     """Explain why this url can't be embedded."""
     with FlikiHTML('html') as html:
         with html.head(newlines=True) as head:
+            head.title(title)
             # head.js(AuthFliki.static_url('code/iframeResizer.contentWindow.js'))
             head.js('https://cdn.jsdelivr.net/npm/iframe-resizer@4.1.1/js/iframeResizer.contentWindow.js')
             # NOTE:  So there are fewer console warnings.
@@ -3117,8 +3161,7 @@ def ajax():
 
         elif action == 'noembed_meta':
             url = auth.form('url')
-            noembed_request = 'https://noembed.com/embed?url=' + url
-            oembed_dict = json_get(noembed_request)
+            oembed_dict = noembed_get(url)
             return valid_response('oembed', oembed_dict)
 
         else:
@@ -3168,9 +3211,94 @@ def ajax():
         )
 
 
+def retry(exception_to_check, tries=4, delay=3, delay_multiplier=2):
+    """
+    Retry function using an exponentially increasing delay.
+
+    Retry happens if decorated function raises exception_to_check.
+
+    1st try happens first.  If it raises exception_to_check,
+    2nd try happens after delay seconds.  If another exception
+    3rd try happens after delay * delay_multiplier seconds.  If another exception,
+    :
+    : (and so on)
+    :
+    Nth try happens (4th if tries is 4).  This time exception bubbles up to caller.
+
+    http://www.saltycrane.com/blog/2009/11/trying-out-retry-decorator-python/
+    original from: http://wiki.python.org/moin/PythonDecoratorLibrary#Retry
+
+    :param exception_to_check: the exception to check. may be a tuple of
+        exceptions to check
+    :type exception_to_check: Exception or tuple
+    :param tries: number of times to try (not retry) before giving up
+    :type tries: int
+    :param delay: initial delay between retries in seconds
+    :type delay: int
+    :param delay_multiplier: delay multiplier e.g. 2 will double the delay each retry
+    :type delay_multiplier: int
+    """
+    # THANKS:  @retry use example, https://stackoverflow.com/a/9446765/673991
+    def decorated_function(function_to_retry):
+
+        @functools.wraps(function_to_retry)
+        def retry_looper(*args, **kwargs):
+            tries_remaining, delay_next = tries, delay
+            while tries_remaining > 1:
+                try:
+                    return function_to_retry(*args, **kwargs)
+                except exception_to_check as e:
+                    print("{exception}, Retrying in {delay} seconds...".format(
+                        exception=str(e),
+                        delay=delay_next,
+                    ))
+                    time.sleep(delay_next)
+                    tries_remaining -= 1
+                    delay_next *= delay_multiplier
+            return function_to_retry(*args, **kwargs)   # final try, may raise exception
+
+        return retry_looper  # true decorator
+
+    return decorated_function
+
+
+@retry(urllib.error.URLError, tries=4, delay=3, delay_multiplier=2)
+def _urlopen_with_retries(url):
+    return urllib.request.urlopen(url)
+
+
+# EXAMPLE _urlopen_with_retries() failure:
+#     try:
+#         _urlopen_with_retries(NON_ROUTABLE_URL)
+#     except urllib.error.URLError:
+#         print("URLError as expected")
+#     else:
+#         print("THIS SHOULD NOT HAVE WORKED!")
+#     <urlopen error [WinError 10060] A connection attempt failed because the connected party
+#                                     did not properly respond after a period of time,
+#                                     or established connection failed because connected host
+#                                     has failed to respond>, Retrying in 3 seconds...
+#     <urlopen error [WinError 10060] A connection ........>, Retrying in 6 seconds...
+#     <urlopen error [WinError 10060] A connection ........>, Retrying in 12 seconds...
+#     URLError as expected
+
+
 def json_get(url):
-    """HTTP get a json resource.  Decode to unicode.  Output dict, list, or whatever."""
-    with urllib.request.urlopen(url) as response:
+    """
+    HTTP get a json resource.  Decode to unicode.  Output dict, list, or whatever.
+
+    Return None on failure to get the resource, after multiple tries.
+    """
+    try:
+        response = _urlopen_with_retries(url)
+    except urllib.error.URLError as e:
+        print("json_get gives up", str(e), url)
+        return None
+
+    with response:
+        # EXAMPLE:  Exception during poor internet connection:
+        #     urllib.error.URLError: <urlopen error [WinError 10053]
+        #     An established connection was aborted by the software in your host machine>
         response_headers = dict(response.info())
         # EXAMPLE:  {
         #     'Server': 'nginx/1.10.3',

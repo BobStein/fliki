@@ -1,4 +1,4 @@
-// Stuff for unslumping.org for now
+// Stuff for unslumping.org for now - OBSOLETE
 
 // noinspection JSUnusedGlobalSymbols
 /**

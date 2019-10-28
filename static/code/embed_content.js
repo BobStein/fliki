@@ -23,20 +23,21 @@
  * @param {function} $.getScript
  * @param {function} $.param
  *
- * @param {object}   MONTY
- * @param {array}    MONTY.matcher_groups
- * @param {object}   MONTY.oembed
- * @param {object}   MONTY.oembed.error
- * @param {object}   MONTY.oembed.height
- * @param {object}   MONTY.oembed.html
- * @param {object}   MONTY.oembed.thumbnail_url
- * @param {object}   MONTY.oembed.width
- * @param {string}   MONTY.target_origin
- * @param {string}   MONTY.THUMB_MAX_HEIGHT
- * @param {string}   MONTY.THUMB_MAX_WIDTH
+ * @param {object}      MONTY
+ * @param {array}       MONTY.matcher_groups
+ * @param {object|null} MONTY.oembed
+ * @param {object}      MONTY.oembed.error
+ * @param {object}      MONTY.oembed.height
+ * @param {object}      MONTY.oembed.html
+ * @param {object}      MONTY.oembed.thumbnail_url
+ * @param {object}      MONTY.oembed.width
+ * @param {string}      MONTY.target_origin
+ * @param {string}      MONTY.THUMB_MAX_HEIGHT
+ * @param {string}      MONTY.THUMB_MAX_WIDTH
  *
  * @property {object}   yt_player
  * @property {function} yt_player.getPlayerState
+ * @property {function} yt_player.pauseVideo
  * @property {function} yt_player.playVideo
  */
 function embed_content_js(window, $, MONTY) {
@@ -66,6 +67,7 @@ function embed_content_js(window, $, MONTY) {
     var is_auto_play = query_get('auto_play', 'false') === 'true';
     var is_pop_up = query_get('is_pop_up', 'false') === 'true';
     var domain_simple = simplified_domain_from_url(url_outer_iframe);
+    window.document.title = domain_simple + " - " + window.document.title;
     var is_youtube = (domain_simple === 'youtube' || domain_simple === 'youtu.be');
     var is_pop_youtube = is_pop_up && is_youtube;
 
@@ -73,6 +75,7 @@ function embed_content_js(window, $, MONTY) {
     // THANKS:  URL, https://developers.google.com/youtube/player_parameters#Manual_IFrame_Embeds
 
     var moment_called = new Date();
+    var yt_player = null;
 
     window.iFrameResizer = {
         targetOrigin: MONTY.target_origin,
@@ -91,6 +94,7 @@ function embed_content_js(window, $, MONTY) {
                 }
 
                 $body = $(window.document.body);
+                // noinspection JSIncompatibleTypesComparison
                 if (is_laden(MONTY.oembed.error)) {
                     var $p = $('<p>', {
                         'class': 'oembed-error',
@@ -112,30 +116,12 @@ function embed_content_js(window, $, MONTY) {
                     fix_embedded_content();
                     // TODO:  Trigger a resize, so containing iframe doesn't expose
                     //        a bit of blank area below this <p>.  Or something.
-                } else if (is_youtube && SHOW_YOUTUBE_THUMBS) {
-                    var src = MONTY.oembed.thumbnail_url;
-
-                    src = src.replace(/hqdefault/, 'default');
-                    // THANKS:  No black bars, https://stackoverflow.com/a/18978874/673991
-                    // SEE:  More on stupid mother effing over-effed-with ew-tube thumbnails
-                    //       https://stackoverflow.com/a/20542029/673991
-
-                    var $a = $('<a>', {
-                        href: url_outer_iframe,
-                        target: '_blank'
-                    });
-                    // noinspection HtmlRequiredAltAttribute,RequiredAttributes
-                    var $img = $('<img>', {
-                        'class': 'oembed-thumb',
-                        'data-iframe-width': 'x',
-                        src: src
-                    });
-                    $a.append($img);
-                    $body.prepend($a);
-                    // NOTE:  prepend() instead of append() or iFrameResizer could get a
-                    //        phantom div in BEFORE this element, because it is being an eager
-                    //        beaver and inserting a data-iframe-width=x attribute.
-                    fix_embedded_content();
+                    //        Sometimes the message is cut off (div needs to be bigger).
+                    //        Maybe this?
+                    //            parent_iframe().autoResize(false);
+                    //            parent_iframe().autoResize(true);
+                    console.debug("Noembed error on", contribution_idn, url_outer_iframe);
+                    parent_message('noembed-error-notify', { contribution_idn: contribution_idn });
                 } else if (is_pop_youtube) {
                     youtube_iframe_api(function () {
                         var $you_frame = $('<iframe>', {
@@ -147,10 +133,12 @@ function embed_content_js(window, $, MONTY) {
                             frameborder: '0',
                             allow: 'autoplay; fullscreen'
                             // enablejsapi: '1'
-                            // SEE:  enablejsapi, https://developers.google.com/youtube/iframe_api_reference#Examples
-                            // THANKS:  Doesn't work as attribute, https://stackoverflow.com/q/51109436/673991
-                            //          Required in src query string for onReady to get called.
                         });
+                        // SEE:  enablejsapi,
+                        //       https://developers.google.com/youtube/iframe_api_reference#Examples
+                        // THANKS:  Doesn't work as iframe element attribute,
+                        //          https://stackoverflow.com/q/51109436/673991
+                        //          Required instead in src query string for onReady to get called.
 
                         tag_width($you_frame);
                         fit_width(MONTY.THUMB_MAX_WIDTH, $you_frame);
@@ -169,24 +157,19 @@ function embed_content_js(window, $, MONTY) {
                         }, {
                             complete: function () {
                                 console.assert($('#youtube_iframe').length === 1);
+                                var first_state_change = true;
                                 // noinspection JSUnusedGlobalSymbols
-                                var yt_player = new window.YT.Player('youtube_iframe', {
+                                yt_player = new window.YT.Player('youtube_iframe', {
                                     events: {
                                         onReady: function (/*yt_event*/) {
                                             if (is_auto_play) {
                                                 // yt_event.target.playVideo();
                                                 yt_player.playVideo();
-
+                                                parent_message(
+                                                    'auto-play-begun',
+                                                    { contribution_idn: contribution_idn }
+                                                );
                                             }
-                                            // console.log(
-                                            //     "Yippee you ready",
-                                            //     contribution_idn,
-                                            //     type_name(yt_player),   // "Y"
-                                            //     type_name(yt_event),   // "Object"
-                                            //     type_name(yt_event.target),   // "Y"
-                                            //     yt_player.getPlayerState(),   // 5=cued
-                                            //     yt_event.data   // null
-                                            // );
                                             if (yt_player.getPlayerState() === window.YT.PlayerState.UNSTARTED) {
                                                 console.warn(
                                                     "Unstarted",
@@ -196,23 +179,20 @@ function embed_content_js(window, $, MONTY) {
                                             }
                                         },
                                         onStateChange: function (yt_event) {
-                                            // console.log(
-                                            //     "Player",
-                                            //     contribution_idn,
-                                            //     "state",
-                                            //     yt_player.getPlayerState(),
-                                            //     yt_event.data
-                                            // );
+                                            if (first_state_change) {
+                                                first_state_change = false;
+                                                parent_message(
+                                                    'auto-play-woke',
+                                                    { contribution_idn: contribution_idn }
+                                                );
+                                            }
                                             // noinspection JSRedundantSwitchStatement
                                             switch (yt_event.data) {
                                             case window.YT.PlayerState.ENDED:
                                                 if (is_auto_play) {
-                                                    parent_iframe().sendMessage(
-                                                        {
-                                                            action: 'auto-play-ended',
-                                                            contribution_idn: contribution_idn
-                                                        },
-                                                        window.iFrameResizer.targetOrigin
+                                                    parent_message(
+                                                        'auto-play-ended',
+                                                        { contribution_idn: contribution_idn }
                                                     );
                                                 }
                                                 break;
@@ -237,27 +217,58 @@ function embed_content_js(window, $, MONTY) {
                     //        5=>-1=>3=>    1=>0  --  usually
                     //        5=>-1=>3=>-1=>1=>0  --  once
                     //        2=>3=>1  --  clicking the timeline
+                    // State codes:
+                    // -1 – unstarted
+                    //  0 – ended
+                    //  1 – playing
+                    //  2 – paused
+                    //  3 – buffering
+                    //  5 – video cued
+                } else if (is_youtube && SHOW_YOUTUBE_THUMBS) {
+                    var src = MONTY.oembed.thumbnail_url;
+
+                    src = src.replace(/hqdefault/, 'default');
+                    // THANKS:  No black bars, https://stackoverflow.com/a/18978874/673991
+                    // SEE:  More on stupid mother effing over-effed-with ew-tube thumbnails
+                    //       https://stackoverflow.com/a/20542029/673991
+
+                    var $a = $('<a>', {
+                        href: url_outer_iframe,
+                        target: '_blank'
+                    });
+                    // noinspection HtmlRequiredAltAttribute,RequiredAttributes
+                    var $img = $('<img>', {
+                        'class': 'oembed-thumb',
+                        'data-iframe-width': 'x',
+                        src: src
+                    });
+                    $a.append($img);
+                    $body.prepend($a);
+                    // NOTE:  prepend() instead of append() or iFrameResizer could get a
+                    //        phantom div in BEFORE this element, because it is being an eager
+                    //        beaver and inserting a data-iframe-width=x attribute.
+                    fix_embedded_content();
                 } else {
                     $body.html(MONTY.oembed.html);
                     fix_embedded_content();
                     var interval = setInterval(function () {
                         // noinspection SpellCheckingInspection
                         if (num_cycles >= POLL_REPETITIONS) {
-                            if (num_changes === 0) {
-                                console.debug(
-                                    domain_simple, "- no changes"
-                                );
-                            } else {
-                                console.debug(
-                                    query_get('idn') + ".",
-                                    domain_simple, "-",
-                                    num_changes, "changes,",
-                                    "last", description_of_last_change,
-                                    "cycle", cycle_of_last_change, "of", POLL_REPETITIONS,
-                                    // "codes", JSON.stringify(MONTY.matcher_groups),
-                                    "lag", lag_report()
-                                );
-                            }
+                            // if (num_changes === 0) {
+                            //     console.debug(
+                            //         domain_simple, "- no changes"
+                            //     );
+                            // } else {
+                            //     console.debug(
+                            //         query_get('id_attribute') + ".",
+                            //         domain_simple, "-",
+                            //         num_changes, "changes,",
+                            //         "last", description_of_last_change,
+                            //         "cycle", cycle_of_last_change, "of", POLL_REPETITIONS,
+                            //         // "codes", JSON.stringify(MONTY.matcher_groups),
+                            //         "lag", lag_report()
+                            //     );
+                            // }
                             // EXAMPLE:
                             //     1871. youtu.be - 2 changes, last IFRAME.fit_width cycle 0 of 10 codes ["3j0ji-tn4Cc"] lag 551ms 78ms
                             //     1857. soundcloud - 2 changes, last IFRAME.fit_height(300x400-225x300) cycle 0 of 10 codes [] lag 548ms 83ms
@@ -276,19 +287,30 @@ function embed_content_js(window, $, MONTY) {
                             //     1739. youtube - 2 changes, last IFRAME.fit_width cycle 0 of 10 codes ["4e4eP_g2E7w"] lag 446ms 213ms
                             //     1733. youtube - 2 changes, last IFRAME.fit_width cycle 0 of 10 codes ["o9tDO3HK20Q"] lag 518ms 158ms
                             //     1849. youtube - 2 changes, last IFRAME.fit_width cycle 0 of 10 codes ["uwjbvhRReZo"] lag 585ms 8ms
-
                             // EXAMPLE:  (10 second delay!  Might explain why some contributions stay zero-size.)
                             //     1825. twitter - 14 changes, last TWITTER-WIDGET.fit_width cycle 10 of 10 lag 876ms 149ms
-
-                            // if (typeof window.parentIFrame === 'object') {
-                            //     // NOTE:  Step 1 in the mother-daughter message demo.
-                            //     window.parentIFrame.sendMessage(
-                            //         {'foo':'bar'},
-                            //         window.iFrameResizer.targetOrigin
-                            //     );
-                            // } else {
-                            //     console.error("");
-                            // }
+                            // EXAMPLE:
+                            //     14:28:43.268 embed_content.js?mtime=1571184096.953:273 1872. youtube - 2 changes, last IFRAME.fit_width cycle 0 of 10 lag 958ms 308ms
+                            //     14:28:43.277 embed_content.js?mtime=1571184096.953:273 1823. flickr - 6 changes, last tag_width cycle 3 of 10 lag 1157ms 317ms
+                            //     14:28:43.292 embed_content.js?mtime=1571184096.953:273 1874. youtube - 2 changes, last IFRAME.fit_width cycle 0 of 10 lag 810ms 324ms
+                            //     14:28:43.301 embed_content.js?mtime=1571184096.953:273 1871. youtu.be - 2 changes, last IFRAME.fit_width cycle 0 of 10 lag 735ms 327ms
+                            //     14:28:43.309 embed_content.js?mtime=1571184096.953:273 1834. youtube - 2 changes, last IFRAME.fit_width cycle 0 of 10 lag 697ms 334ms
+                            //     14:28:44.101 embed_content.js?mtime=1571184096.953:273 1831. youtube - 2 changes, last IFRAME.fit_width cycle 0 of 10 lag 1435ms 259ms
+                            //     14:28:44.110 embed_content.js?mtime=1571184096.953:273 1822. youtu.be - 2 changes, last IFRAME.fit_width cycle 0 of 10 lag 1180ms 266ms
+                            //     14:28:44.124 embed_content.js?mtime=1571184096.953:273 1813. twitter - 14 changes, last TWITTER-WIDGET.fit_width cycle 10 of 10 lag 1018ms 271ms
+                            //     14:28:44.174 embed_content.js?mtime=1571184096.953:273 1825. twitter - 16 changes, last TWITTER-WIDGET.fit_width cycle 10 of 10 lag 991ms 283ms
+                            //     14:28:44.327 embed_content.js?mtime=1571184096.953:273 1857. soundcloud - 3 changes, last IFRAME.fit_height(200x267-125x166) cycle 0 of 10 lag 1225ms 405ms
+                            //     14:28:44.463 embed_content.js?mtime=1571184096.953:273 1748. twitter - 15 changes, last TWITTER-WIDGET.fit_width cycle 10 of 10 lag 1256ms 52ms
+                            //     14:28:44.478 embed_content.js?mtime=1571184096.953:273 1754. flickr - 7 changes, last target_blank cycle 0 of 10 lag 1225ms 64ms
+                            //     14:28:44.847 embed_content.js?mtime=1571184096.953:273 1938. twitter - 14 changes, last TWITTER-WIDGET.fit_width cycle 10 of 10 lag 1149ms 159ms
+                            //     14:28:44.924 embed_content.js?mtime=1571184096.953:273 1795. dropbox - 5 changes, last IMG.fit_height(200x199-167x166) cycle 0 of 10 lag 1176ms 75ms
+                            //     14:28:44.924 embed_content.js?mtime=1571184096.953:273 1739. youtube - 2 changes, last IFRAME.fit_width cycle 0 of 10 lag 1045ms 103ms
+                            //     14:28:44.925 embed_content.js?mtime=1571184096.953:273 1733. youtube - 2 changes, last IFRAME.fit_width cycle 0 of 10 lag 1033ms 107ms
+                            //     14:28:44.925 embed_content.js?mtime=1571184096.953:273 1936. youtube - 2 changes, last IFRAME.fit_width cycle 0 of 10 lag 966ms 142ms
+                            //     14:28:44.925 embed_content.js?mtime=1571184096.953:273 1746. vimeo - 2 changes, last IFRAME.fit_width cycle 0 of 10 lag 1179ms 133ms
+                            //     14:28:44.925 embed_content.js?mtime=1571184096.953:273 1741. youtube - 2 changes, last IFRAME.fit_width cycle 0 of 10 lag 1217ms 148ms
+                            //     14:28:44.926 embed_content.js?mtime=1571184096.953:273 1851. youtu.be - 2 changes, last IFRAME.fit_width cycle 0 of 10 lag 951ms 204ms
+                            //     14:28:44.926 embed_content.js?mtime=1571184096.953:273 1849. youtube - 2 changes, last IFRAME.fit_width cycle 0 of 10 lag 926ms 216ms
                             clearInterval(interval);
                             return;
                         }
@@ -308,11 +330,20 @@ function embed_content_js(window, $, MONTY) {
                     height: message.height
                 });
                 break;
-            // case 'play-bot-start':
-            //     console.log("Think about starting video...");
-            //     // noinspection JSJQueryEfficiency,JSUnresolvedFunction
-            //     // $('#youtube_iframe')[0].playVideo();
-            //     break;
+            case 'pause':
+                if (yt_player !== null) {
+                    yt_player.pauseVideo();
+                } else {
+                    console.warn("Don't know how to pause", contribution_idn, url_outer_iframe);
+                }
+                break;
+            case 'resume':
+                if (yt_player !== null) {
+                    yt_player.playVideo();
+                } else {
+                    console.warn("Don't know how to resume", contribution_idn, url_outer_iframe);
+                }
+                break;
             default:
                 console.error(
                     "Unknown action, parent ==> child",
@@ -320,9 +351,6 @@ function embed_content_js(window, $, MONTY) {
                 );
                 break;
             }
-            // NOTE:  Step 3 in the mother-daughter message demo.
-            // console.log("Daughter Message In", window.parentIFrame.getId(), message);
-            // EXAMPLE:  Daughter Message In iframe_1849 {moo: "butter"}
         }
     };
 
@@ -339,7 +367,11 @@ function embed_content_js(window, $, MONTY) {
         window.iFrameResizer.onReady();
     }
 
-    // noinspection JSUnusedLocalSymbols
+    function parent_message(action, etc) {
+        var message = $.extend({ action: action }, etc);
+        parent_iframe().sendMessage(message, window.iFrameResizer.targetOrigin);
+    }
+
     function parent_iframe() {
         if (typeof window.parentIFrame === 'object') {
             return window.parentIFrame;

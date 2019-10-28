@@ -113,8 +113,8 @@ function js_for_meta_lex(window, $, MONTY) {
     // noinspection JSValidateTypes
     // noinspection JSUnresolvedVariable
     // noinspection JSUnusedLocalSymbols
-    // function experimental_markup_syntax() {
-    //     with (markup = jdom()) {   // Build the DOM directly.  Don't need no stinking HTML.
+    // function experimental_crazy_ideas_for_a_markup_syntax() {
+    //     with (markup = j_dom()) {   // Build the DOM directly.  Don't need no stinking HTML.
     //         body(function () {
     //             div(p("Hello"), p("world"));
     //             div(function () {
@@ -531,37 +531,6 @@ function js_for_meta_lex(window, $, MONTY) {
         return new Date(whn * 1000.0);
     }
 
-    /**
-     * Is a txt field nonempty?
-     *
-     * That is, not any of the following
-     *     "" is literally the contents in the lex.
-     *     undefined because the .wrend is missing a data-txt field.
-     *     null because null means null
-     *
-     * THANKS:  Nonnegative synonym for nonempty, https://english.stackexchange.com/a/102788/18673
-     *
-     * @param txt - e.g. the output of $data_idn(idn, 'txt')
-     * @return {boolean}
-     */
-    function is_laden(txt) {
-        return is_specified(txt) && txt !== "";
-    }
-    console.assert(is_laden(" "));
-    console.assert( ! is_laden(""));
-
-    function is_specified(x) {
-        return is_defined(x) && x !== null;
-    }
-    console.assert(is_specified('x'));
-    console.assert( ! is_specified(null));
-
-    function is_defined(x) {
-        return typeof x !== 'undefined';
-    }
-    console.assert(is_defined(42));
-    console.assert( ! is_defined(undefined));
-
     var SECOND = 1;
     var MINUTE = 60*SECOND;
     var HOUR = 60*MINUTE;
@@ -695,88 +664,18 @@ function js_for_meta_lex(window, $, MONTY) {
     console.assert("1s" === delta_format(1).description_short);
     console.assert("42.0 days" === delta_format(42*24*3600).description_long);
 
+    /**
+     * Convert x from an input range to an output range.  Interpolation if between.
+     *
+     * @param x
+     * @param i_min \ range of input - x is somewhere on this continuum
+     * @param i_max /
+     * @param o_min \ range of output
+     * @param o_max /
+     * @return {*} - the same point on the output range, as x was on the input range
+     */
     function scale(x, i_min, i_max, o_min, o_max) {
         return (x - i_min) * (o_max - o_min) / (i_max - i_min) + o_min;
     }
-    console.assert(0.5 === scale(50, 0,100, 0,1.0));
-
-    function has(collection, thing) {
-        if (typeof collection === 'undefined') {
-            return false;
-        } else if (collection instanceof Array) {
-            return $.inArray(thing, collection) !== -1;
-        } else if (collection instanceof Object) {
-            return collection.hasOwnProperty(thing);
-        } else if (typeof collection === 'string') {
-            return collection.indexOf(thing) !== -1;
-        } else {
-            console.error("Don't understand has(", type_name(collection), ", )");
-        }
-    }
-    console.assert( true === has([1, 2, 3], 2));
-    console.assert(false === has([1, 2, 3], 9));
-    console.assert( true === has({one:1, two:2, three:3}, 'three'));
-    console.assert(false === has({one:1, two:2, three:3}, 3));
-    console.assert( true === has('alphabet', 'a'));
-    console.assert(false === has('alphabet', 'z'));
-    console.assert(false === has(undefined, 'anything'));
-
-    function type_name(z) {
-        var the_name = typeof z;
-        if (the_name === 'object') {
-            the_name = z.constructor.name;
-        }
-        return the_name;
-    }
-    console.assert('number' === type_name(3));
-    console.assert('Date' === type_name(new Date()));
-
-    /**
-     * Loop through object or array.  Call back on each key-value pair.
-     *
-     * A drop-in replacement for jQuery.each() except:
-     *      `this` is the object -- UNLIKE JQUERY.EACH WHERE IT IS EACH VALUE!
-     *      SEE jQuery .call():  https://github.com/jquery/jquery/blob/438b1a3e8/src/core.js#L247
-     *      Reason for this incompatibility:  the one-line test #3 below
-     *                                        that modifies in-place.
-     * SEE:  $.each() bug for objects, https://stackoverflow.com/a/49652688/673991
-     *
-     * @param object - e.g. {a:1, b:2} or [1,2,3]
-     * @param callback - function called on each element of the array/object
-     *                   `this` is the object (not each value, as it is in jQuery.each())
-     *                   key, value are the parameters
-     *                       key is the name of the property for { objects }
-     *                       key is the index of the array for [ arrays ]
-     *                   return false (not just falsy) to prematurely terminate the looping
-     * @return {*} - returns the object, a convenience for chaining I guess, maybe $.each is like that.
-     */
-    // TODO:  Undo incompatibility with $.each() -- could be accomplished with closure.
-    // TODO:  async_interval, async_chunk, async_done optional parameters!
-    //        Unifying setTimeout() and $.each(), as it were.
-    //        async={interval: milliseconds, chunk:iterations_per_interval, done:callback}
-    //                         default 0           default 1                     default nothing
-    function looper(object, callback) {
-        for (var key in object) {
-            if (object.hasOwnProperty(key)) {
-                var return_value = callback.call(
-                    object,       // <-- 'this' is the container object
-                    key,          // <-- 1st parameter - key or property name
-                    object[key]   // <-- 2nd parameter - value
-                );
-                if (false === return_value) {
-                    break;
-                }
-            }
-        }
-        return object;
-    }
-    var looper_test = [];
-    looper({foo:1, length:0, bar:2}, function (k,v) { looper_test.push(k+"="+v); });
-    console.assert("foo=1,length=0,bar=2" === looper_test.join(","));
-
-    looper_test = [];
-    looper([1,2,42,8,9], function (i,v) {looper_test.push(i+"="+v); return v !== 42;});
-    console.assert("0=1,1=2,2=42" === looper_test.join(","));
-
-    console.assert('11,22,33' === looper([1,2,3], function (i, v) { this[i] = v*11; }).join());   // XXX
+    console.assert(0.5 === scale(50,   0,100,   0,1.0));
 }

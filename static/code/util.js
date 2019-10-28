@@ -65,8 +65,26 @@ console.assert('no.domain' === domain_from_url('https://e%ample.com/'));
 console.assert('no.domain' === domain_from_url('example.com'));
 console.assert('no.domain' === domain_from_url(''), JSON.stringify(domain_from_url('')));
 
+function $_from_class(class_) {
+    return $(selector_from_class(class_));
+}
+function $_from_id(id) {
+    return $(selector_from_id(id));
+}
+function selector_from_id(id) {
+    return '#' + $.escapeSelector(id);
+}
+function selector_from_class(class_) {
+    return '.' + $.escapeSelector(class_);
+}
+
 /**
- * Not undefined, not null, not the empty string.
+ * Is a txt field nonempty?  That is, not undefined, not null, and not the empty string.
+ *
+ * THANKS:  Nonnegative synonym for nonempty, https://english.stackexchange.com/a/102788/18673
+ *
+ * @param txt - usually a string, when null or undefined means the same as empty.
+ * @return {boolean}
  */
 function is_laden(txt) {
     return is_specified(txt) && txt !== "";
@@ -75,7 +93,7 @@ console.assert(is_laden(" "));
 console.assert( ! is_laden(""));
 
 /**
- * Not undefined, not null.
+ * Not undefined, and not null.
  */
 function is_specified(x) {
     return is_defined(x) && x !== null;
@@ -151,6 +169,53 @@ function random_element(an_array) {
     // THANKS:  https://stackoverflow.com/a/4550514/673991
 }
 console.assert(42 === random_element([42, 42, 42]));
+
+/**
+ * Loop through object or array.  Call back on each key-value pair.
+ *
+ * A drop-in replacement for jQuery.each() except:
+ *      `this` is the object -- UNLIKE JQUERY.EACH WHERE IT IS EACH VALUE!
+ *      SEE jQuery .call():  https://github.com/jquery/jquery/blob/438b1a3e8/src/core.js#L247
+ *      Reason for this incompatibility:  the one-line test #3 below
+ *                                        that modifies in-place.
+ * SEE:  $.each() bug for objects, https://stackoverflow.com/a/49652688/673991
+ *
+ * @param object - e.g. {a:1, b:2} or [1,2,3]
+ * @param callback - function called on each element of the array/object
+ *                   `this` is the object (not each value, as it is in jQuery.each())
+ *                   key, value are the parameters
+ *                       key is the name of the property for { objects }
+ *                       key is the index of the array for [ arrays ]
+ *                   return false (not just falsy) to prematurely terminate the looping
+ * @return {*} - returns the object, a convenience for chaining I guess, maybe $.each is like that.
+ */
+// TODO:  Undo incompatibility with $.each() -- could be accomplished with closure.
+// TODO:  async_interval, async_chunk, async_done optional parameters!
+//        Unifying setTimeout() and $.each(), as it were.
+//        async={interval: milliseconds, chunk:iterations_per_interval, done:callback}
+//                         default 0           default 1                     default nothing
+function looper(object, callback) {
+    for (var key in object) {
+        if (object.hasOwnProperty(key)) {
+            var return_value = callback.call(
+                object,       // <-- 'this' is the container object
+                key,          // <-- 1st parameter - key or property name
+                object[key]   // <-- 2nd parameter - value
+            );
+            if (false === return_value) {
+                break;
+            }
+        }
+    }
+    return object;
+}
+var looper_test = [];
+looper({foo:1, length:0, bar:2}, function (k,v) { looper_test.push(k+"="+v); });
+console.assert("foo=1,length=0,bar=2" === looper_test.join(","));
+
+looper_test = [];
+looper([1,2,42,8,9], function (i,v) {looper_test.push(i+"="+v); return v !== 42;});
+console.assert("0=1,1=2,2=42" === looper_test.join(","));
 
 /**
  * Polyfill for window.URLSearchParams.get(), so it works in IE11
