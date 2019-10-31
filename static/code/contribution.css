@@ -168,6 +168,14 @@ body.player-bot-playing #skip-button { display: inline-block; }
     color: white;
     font: small-caption;
 }
+.render-media .caption-bar {
+    -webkit-border-bottom-left-radius: 0.7em;
+            border-bottom-left-radius: 0.7em;
+        -moz-border-radius-bottomleft: 0.7em;
+   -webkit-border-bottom-right-radius: 0.7em;
+           border-bottom-right-radius: 0.7em;
+       -moz-border-radius-bottomright: 0.7em;
+}
 .was-submitted-anonymous .caption-bar {
     background-color: #B8A0A0;
 }
@@ -182,31 +190,32 @@ body.player-bot-playing #skip-button { display: inline-block; }
     clear: left;
     background-color: transparent;
     visibility: hidden;
-    overflow: hidden;
+    /*overflow: hidden;*/
     /* NOTE:  overflow hidden is SUPPOSED to give save-bar the height of its floating contents
               but in pop_up() $save_bar.height() was still zero.
               See https://stackoverflow.com/a/5369963/673991
     */
+    overflow: auto;
+    /* THANKS:  make outer big as inner, https://stackoverflow.com/a/8464523/673991 */
 }
+
                .sup-contribution.contribution-edit .save-bar,
 .dirty-nowhere .sup-contribution:hover             .save-bar {
     visibility: visible;
 }
 
-.save-bar {
-    overflow: auto;
-    /* THANKS:  make outer big as inner, https://stackoverflow.com/a/8464523/673991 */
+.save-bar button {
+    font: small-caption;
+    cursor: pointer;
 }
 .save-bar .full,
 .save-bar .unfull {
-    font: small-caption;
     float: left;
 }
 .save-bar .edit,
 .save-bar .cancel,
 .save-bar .discard,
 .save-bar .save {
-    font: small-caption;
     float: right;
 }
 .save-bar.abandon-alert .discard,
@@ -308,6 +317,12 @@ iframe { display:block; }
 
 .render-bar iframe {
     border: 1px solid black;
+    -webkit-border-top-left-radius: 0.7em;
+            border-top-left-radius: 0.7em;
+        -moz-border-radius-topleft: 0.7em;
+   -webkit-border-top-right-radius: 0.7em;
+           border-top-right-radius: 0.7em;
+       -moz-border-radius-topright: 0.7em;
 }
 
 .talkify-sentence-highlight {

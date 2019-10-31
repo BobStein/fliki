@@ -1429,7 +1429,7 @@ def login():
                 if login_result.user is None:
                     print("None user!")
                 else:
-                    if login_result.user.id is None or login_result.user.name is None:
+                    if login_result.user.id is None or login_result.user.name is None:   # Try #1
                         print(
                             "Fairly routine, user needed updating",
                             repr(login_result.user.id),
@@ -1438,6 +1438,14 @@ def login():
                         login_result.user.update()
                         # SEE:  about calling user.update() only if id or name is missing,
                         #       http://authomatic.github.io/authomatic/#log-the-user-in
+
+                    if login_result.user.id is None or login_result.user.name is None:   # Try #2
+                        print(
+                            "Freakish!  "
+                            "Updated, but something is STILL None, "
+                            "user id:", repr(login_result.user.id),
+                            "name:", repr(login_result.user.name)
+                        )
                     else:
 
                         # EXAMPLE:  2019.1028 - login_result.user
@@ -2801,10 +2809,6 @@ def noembed_render(url, idn):
 
 def noembed_get(url):
     """Get the noembed scoop on an embedded url."""
-    # if url == NON_ROUTABLE_URL:
-    #     noembed_request = url
-    # else:
-    #     noembed_request = 'https://noembed.com/embed?url=' + url
     noembed_request = 'https://noembed.com/embed?url=' + url
     oembed_dict = json_get(noembed_request)
     if oembed_dict is None:
