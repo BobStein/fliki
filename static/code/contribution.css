@@ -124,7 +124,7 @@ body.player-bot-playing #skip-button { display: inline-block; }
     min-width: 4em;
     min-height: 2em;
     box-sizing: border-box;
-    margin: 0.1em 0.1em 0 0.1em;
+    /*margin: 0.1em 0.1em 0 0.1em;*/
     line-height: 1.3em;   /* slightly closer together */
 }
 .was-submitted-anonymous .contribution {
@@ -167,6 +167,7 @@ body.player-bot-playing #skip-button { display: inline-block; }
     background-color: #AAAAAA;
     color: white;
     font: small-caption;
+    line-height: 1.4;
 }
 .render-media .caption-bar {
     -webkit-border-bottom-left-radius: 0.7em;
@@ -183,8 +184,8 @@ body.player-bot-playing #skip-button { display: inline-block; }
     /* NOTE:  This should come after was-submitted-anonymous, so as to override it. */
     background-color: #666666;
 }
-                   .caption-bar { padding:  0     0.666em 0.1em 0.666em; }
-.contribution-edit .caption-bar { padding: -0.1em 0.566em 0     0.566em; border: 0.1em inset; }
+                   .caption-bar { padding: 0 0.666em 0.3em 0.666em; }
+.contribution-edit .caption-bar { padding: 0 0.566em 0.2em 0.566em; border: 0.1em inset; }
 
 .sup-contribution .save-bar {
     clear: left;

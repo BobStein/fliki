@@ -217,6 +217,12 @@ looper_test = [];
 looper([1,2,42,8,9], function (i,v) {looper_test.push(i+"="+v); return v !== 42;});
 console.assert("0=1,1=2,2=42" === looper_test.join(","));
 
+function equal_ish(value1, value2, tolerance) {
+    return (value1 - tolerance < value2 && value2 < value1 + tolerance);
+}
+console.assert(  equal_ish(42.0, 42.1, 0.11));
+console.assert(! equal_ish(42.0, 42.1, 0.09));
+
 /**
  * Polyfill for window.URLSearchParams.get(), so it works in IE11
  *

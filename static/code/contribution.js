@@ -187,6 +187,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                           // annoying to show a tiny bit scrolled out of view)
         extreme: 40       // above extreme-max, display at soft-max.
     };
+    var MIN_CAPTION_WIDTH = 100;   // Prevent zero-width iframe from clobbering caption too.
 
     var is_editing_some_contribution = false;
     // TODO:  $(window.document.body).hasClass('edit-somewhere')
@@ -948,6 +949,9 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         $save_bar: { get: function () {
             return this.$sup.find('.save-bar');
         }},
+        $caption_bar: { get: function () {
+            return this.$sup.find('.caption-bar');
+        }},
         is_noembed_error: { get: function () {
             return this.$sup.hasClass('noembed-error');
         }},
@@ -984,6 +988,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         console.assert(typeof on_init === 'function', "Expecting on_init function, not", on_init);
         if (that.$iframe.length >= 1 && typeof that.$iframe[0].iFrameResizer !== 'object') {
             setTimeout(function () {
+                // noinspection JSUnusedGlobalSymbols
                 that.$iframe.iFrameResize({
                     log: false,
                     sizeWidth: true,
@@ -1021,7 +1026,18 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                             );
                             break;
                         }
-                    }/*,
+                    },
+                    onResized: function(stuff) {
+                        var msg_cont = Contribution_from_element(stuff.iframe);
+                        console.assert(
+                            msg_cont.exists(),
+                            stuff.iframe,
+                            stuff.iframe.parentElement,
+                            stuff.height, stuff.width, stuff.type
+                        );
+                        msg_cont.fix_caption_width(stuff.type);
+                    }
+                    /*,
                     targetOrigin: MONTY.OEMBED_OTHER_ORIGIN*/
                     // onInit: function resizer_init_callback(iframe) {
                     //     console.log("RESIZER_INIT_CALLBACK", iframe.id);
@@ -1029,6 +1045,44 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                 });
                 on_init();
             }, DELAY_IFRAME_RESIZER_INIT);
+        }
+    };
+
+    Contribution.prototype.fix_caption_width = function Contribution_fix_caption_width(etc) {
+        etc = etc || "";
+        var that = this;
+        var media_width = that.$iframe.outerWidth();
+        var wordy_width = that.$cont.outerWidth();   // in case ever used for quote contributions
+        var overall_width = media_width || wordy_width;
+        if (overall_width > MIN_CAPTION_WIDTH) {
+            if (equal_ish(overall_width, that.$caption_bar.outerWidth(), 1.0)) {
+                // width is already within 1 pixel, don't upset the UI.
+                console.log(
+                    that.id_attribute,
+                    "iframe caption NOT tweaked",
+                    that.$caption_bar.outerWidth(),
+                    "~~",
+                    overall_width,
+                    etc
+                );
+            } else {
+                console.log(
+                    that.id_attribute,
+                    "iframe caption tweak",
+                    that.$caption_bar.outerWidth(),
+                    "->",
+                    overall_width,
+                    etc
+                );
+                that.$caption_bar.outerWidth(overall_width);
+            }
+        } else {
+            console.log(
+                that.id_attribute,
+                "tiny iframe",
+                overall_width,
+                etc
+            );
         }
     };
 
@@ -1082,6 +1136,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         that.$sup.attr('data-domain', sanitized_domain_from_url(url));
         // NOTE:  that.$iframe may not exist yet, e.g. on page reload, or entering a new cont.
         //        If it did exist it gets displaced here, e.g. after an edit.
+        console.debug("iframe conception", that.id_attribute);
         var $iframe = $('<iframe>', {
             id: 'iframe_' + that.id_attribute,   // This is NOT how a pop-up gets made.
             src: iframe_src_from_url(url, that.id_attribute),
@@ -1089,6 +1144,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             allow: 'autoplay; fullscreen'
         });
         that.$render_bar.empty().append($iframe);
+        console.debug("iframe birth", that.id_attribute);
         $iframe.on('load', function () {
             console.log("IFRAME LOAD", that.id_attribute);
             // TODO:  Verify iframe load event happens on "all" browsers.

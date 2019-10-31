@@ -1431,9 +1431,9 @@ def login():
                 else:
                     if login_result.user.id is None or login_result.user.name is None:   # Try #1
                         print(
-                            "Fairly routine, user needed updating",
+                            "Fairly routine, user data needed updating",
                             repr(login_result.user.id),
-                            repr(login_result.user.name)
+                            repr(login_result.user.name),
                         )
                         login_result.user.update()
                         # SEE:  about calling user.update() only if id or name is missing,
@@ -1444,7 +1444,7 @@ def login():
                             "Freakish!  "
                             "Updated, but something is STILL None, "
                             "user id:", repr(login_result.user.id),
-                            "name:", repr(login_result.user.name)
+                            "name:", repr(login_result.user.name),
                         )
                     else:
 
