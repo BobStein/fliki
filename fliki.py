@@ -3065,6 +3065,7 @@ def ajax():
 
     try:
         action = auth.form('action')
+        # TODO:  class Action(Enumerant), or SomeClass.action = Action() instance or something.
         if action == 'answer':
             question_path = auth.form('question')
             answer_txt = auth.form('answer')
@@ -3167,6 +3168,10 @@ def ajax():
             url = auth.form('url')
             oembed_dict = noembed_get(url)
             return valid_response('oembed', oembed_dict)
+
+        elif action == 'notable_occurrence':
+            print("Notable Occurrence", auth.form('message'))
+            # TODO:  Database
 
         else:
             return invalid_response("Unknown action " + action)

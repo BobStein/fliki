@@ -35,7 +35,7 @@ console.assert('example' === simplified_domain_from_url('https://www.example.com
  *                    MIGHT return 'no.domain' if url is invalid.
  */
 function domain_from_url(url) {
-    if (typeof url === 'string' && url !== '') {
+    if (is_string(url) && url !== '') {
         var $a = $('<a>').prop('href', url);
         var href_back;
         try {
@@ -110,6 +110,10 @@ function is_defined(x) {
 console.assert(is_defined(42));
 console.assert( ! is_defined(undefined));
 
+function is_string(x) {
+    return typeof x === 'string';
+}
+
 function has(collection, thing) {
     if (typeof collection === 'undefined') {
         return false;
@@ -117,7 +121,7 @@ function has(collection, thing) {
         return $.inArray(thing, collection) !== -1;
     } else if (collection instanceof Object) {
         return collection.hasOwnProperty(thing);
-    } else if (typeof collection === 'string') {
+    } else if (is_string(collection)) {
         return collection.indexOf(thing) !== -1;
     } else {
         console.error("Don't understand has(", type_name(collection), ", )");
@@ -222,6 +226,58 @@ function equal_ish(value1, value2, tolerance) {
 }
 console.assert(  equal_ish(42.0, 42.1, 0.11));
 console.assert(! equal_ish(42.0, 42.1, 0.09));
+
+/**
+ * Report the time between a series of events.
+ *
+ * Example:
+ *     var t = Timing();
+ *     step_one();
+ *     t.moment("one");
+ *     step_two();
+ *     t.moment("two");
+ *     console.log(t.report());   // "1.701: one 1.650, two 0.051"
+ *
+ * @return {Timing}
+ * @constructor
+ */
+function Timing() {
+    if ( ! (this instanceof Timing)) {
+        return new Timing();
+    }
+    // THANKS:  Automatic 'new', https://stackoverflow.com/a/383503/673991
+
+    var that = this;
+    that.log = [];
+    that.moment(null);
+}
+
+/**
+ * @return {string}
+ */
+Timing.prototype.report = function Timing_report(after_total, between_times) {
+    if ( ! is_string(after_total)) after_total = ": ";
+    if ( ! is_string(between_times)) between_times = ", ";
+    var that = this;
+    if (that.log.length >= 2) {
+        var report_pieces = [];
+        for (var i = 1 ; i < that.log.length ; i++) {
+            var delta_milliseconds = that.log[i].ms - that.log[i-1].ms;
+            var delta_seconds = delta_milliseconds / 1000.0;
+            report_pieces.push(that.log[i].what + " " + delta_seconds.toFixed(3));
+        }
+        var overall_milliseconds = that.log[that.log.length-1].ms - that.log[0].ms;
+        var overall_seconds = overall_milliseconds / 1000.0;
+        return overall_seconds.toFixed(3) + after_total + report_pieces.join(between_times);
+    } else {
+        return "(nothing timing)"
+    }
+};
+
+Timing.prototype.moment = function Timing_moment(what) {
+    var that = this;
+    that.log.push({what:what, ms:(new Date()).getTime()});
+};
 
 /**
  * Polyfill for window.URLSearchParams.get(), so it works in IE11

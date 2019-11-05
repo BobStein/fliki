@@ -82,14 +82,17 @@ body.player-bot-playing #skip-button { display: inline-block; }
 }
 
 #enter_some_text,
-#enter_a_caption,
-#post_it_button {
+#enter_a_caption{
     display: block;
     margin: 0;
 }
 #enter_some_text {
     width: 18em;
     height: 5em;
+}
+#entry_feedback {
+    color: #C00000;
+    margin-left: 1em;
 }
 
 .container-entry,     /* the textarea and input field for contribution and caption */

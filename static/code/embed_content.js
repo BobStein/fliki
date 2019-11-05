@@ -70,28 +70,24 @@ function embed_content_js(window, $, MONTY) {
     window.document.title = domain_simple + " - " + window.document.title;
     var is_youtube = (domain_simple === 'youtube' || domain_simple === 'youtu.be');
     var is_pop_youtube = is_pop_up && is_youtube;
+    var is_dynamic = is_pop_youtube && is_auto_play;
 
     var YOUTUBE_EMBED_PREFIX = 'https://www.youtube.com/embed/';
     // THANKS:  URL, https://developers.google.com/youtube/player_parameters#Manual_IFrame_Embeds
 
-    var moment_called = new Date();
     var yt_player = null;
+    var t = Timing();
 
     window.iFrameResizer = {
         targetOrigin: MONTY.target_origin,
         onReady: function iframe_resizer_content_ready() {
-            var moment_resizer = new Date();
-            var lag_resizer = moment_resizer - moment_called;
-
+            t.moment("resizer");
+            if (is_dynamic) {
+                parent_message('auto-play-presaged', { contribution_idn: contribution_idn });
+                // NOTE:  Not yet begun, bit it's gonna.
+            }
             $(window.document).ready(function () {
-                var moment_jquery = new Date();
-                var lag_jquery = moment_jquery - moment_resizer;
-
-                function lag_report() {
-                    return lag_resizer.toFixed() + "ms " + lag_jquery.toFixed() + "ms";
-                    // EXAMPLE:  39-58ms for popup
-                    // EXAMPLE:  376-601ms for embedded thumbnails
-                }
+                t.moment("$");
 
                 $body = $(window.document.body);
                 // noinspection JSIncompatibleTypesComparison
@@ -124,6 +120,8 @@ function embed_content_js(window, $, MONTY) {
                     parent_message('noembed-error-notify', { contribution_idn: contribution_idn });
                 } else if (is_pop_youtube) {
                     youtube_iframe_api(function () {
+                        t.moment("yt-code");
+
                         var $you_frame = $('<iframe>', {
                             id: 'youtube_iframe',
                             width: MONTY.oembed.width,
@@ -144,33 +142,34 @@ function embed_content_js(window, $, MONTY) {
                         fit_width(MONTY.THUMB_MAX_WIDTH, $you_frame);
                         fit_height(MONTY.THUMB_MAX_HEIGHT, $you_frame);
                         $body.prepend($you_frame);
-
-                        console.log(
-                            "popup_" + contribution_idn + ".",
-                            domain_simple, "api ready,",
-                            "lag", lag_report()
-                        );
                         $you_frame.animate({
                             width: query_get('width'),
                             height: query_get('height'),
                             easing: 'linear'
                         }, {
                             complete: function () {
+                                t.moment("pop");
                                 console.assert($('#youtube_iframe').length === 1);
                                 var first_state_change = true;
+
                                 // noinspection JSUnusedGlobalSymbols
                                 yt_player = new window.YT.Player('youtube_iframe', {
                                     events: {
                                         onReady: function (/*yt_event*/) {
                                             if (is_auto_play) {
+                                                t.moment("yt-play");
                                                 // yt_event.target.playVideo();
                                                 yt_player.playVideo();
-                                                parent_message(
-                                                    'auto-play-begun',
-                                                    { contribution_idn: contribution_idn }
-                                                );
+                                                parent_message('auto-play-begun', {
+                                                    contribution_idn: contribution_idn
+                                                });
+                                                // NOTE:  Okay to yt_player.pauseVideo().
+
                                             }
-                                            if (yt_player.getPlayerState() === window.YT.PlayerState.UNSTARTED) {
+                                            if (
+                                                yt_player.getPlayerState() ===
+                                                window.YT.PlayerState.UNSTARTED
+                                            ) {
                                                 console.warn(
                                                     "Unstarted",
                                                     contribution_idn,
@@ -185,6 +184,19 @@ function embed_content_js(window, $, MONTY) {
                                                     'auto-play-woke',
                                                     { contribution_idn: contribution_idn }
                                                 );
+                                                t.moment("yt-state");
+
+                                                console.log(
+                                                    "popup_" + contribution_idn,
+                                                    domain_simple + ",",
+                                                    "lag", t.report()
+                                                );
+                                                // EXAMPLE (busy):  popup_1990 youtube, lag 11.025:
+                                                //     resizer 1.137, jquery 0.233, yt-code 0.834,
+                                                //     pop 0.414, yt-play 7.017, yt-state 1.390
+                                                // EXAMPLE (easy):  popup_1990 youtube, lag 1.125:
+                                                //     resizer 0.063, jquery 0.019, yt-code 0.092,
+                                                //     pop 0.466, yt-play 0.404, yt-state 0.081
                                             }
                                             // noinspection JSRedundantSwitchStatement
                                             switch (yt_event.data) {
@@ -199,6 +211,7 @@ function embed_content_js(window, $, MONTY) {
                                             default:
                                                 break;
                                             }
+                                            console.log("YT API", contribution_idn, yt_event.data);
                                         },
                                         onError: function (yt_event) {
                                             console.warn(
@@ -332,9 +345,18 @@ function embed_content_js(window, $, MONTY) {
                 break;
             case 'pause':
                 if (yt_player !== null) {
-                    yt_player.pauseVideo();
+                    if (typeof yt_player.pauseVideo === 'function') {
+                        yt_player.pauseVideo();
+                    } else {
+                        console.warn(
+                            "Unable to pause",
+                            contribution_idn,
+                            "with a",
+                            typeof yt_player.pauseVideo
+                        );
+                    }
                 } else {
-                    console.warn("Don't know how to pause", contribution_idn, url_outer_iframe);
+                    console.warn("Not ready to pause", contribution_idn, url_outer_iframe);
                 }
                 break;
             case 'resume':
@@ -531,8 +553,8 @@ function embed_content_js(window, $, MONTY) {
     function youtube_iframe_api(when_ready) {
         console.assert(_youtube_iframe_api_when_ready === null);
         console.assert( ! is_defined(window.YT));   // TODO:  Support multiple calls
-        $.getScript("https://www.youtube.com/iframe_api");
         _youtube_iframe_api_when_ready = when_ready;
+        $.getScript("https://www.youtube.com/iframe_api");
     }
 
     embed_content_js.youtube_iframe_api_ready = function () {
