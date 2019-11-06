@@ -357,18 +357,10 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         $(  '#skip-button').on('click', function () { bot.skip(); });
 
         $('#enter_some_text, #enter_a_caption')
-            .on('paste', function (evt) {
-                post_it_button_disabled_or_not();
-                text_or_caption_paste(evt);
-            })
-            .on('change input', function () {
-                post_it_button_disabled_or_not();
-                maybe_cancel_duplicate_feedback();
-            })
-            .on('keyup', function () {
-                post_it_button_disabled_or_not();
-            })
-            .on('drop', text_or_caption_drop)
+            .on('paste change input keyup', post_it_button_disabled_or_not)
+            .on('      change input',       maybe_cancel_feedback)
+            .on('paste',                    text_or_caption_paste)
+            .on('drop',                     text_or_caption_drop)
         ;
         $('#post_it_button').on('click', post_it_click);
 
@@ -2370,9 +2362,9 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     }
 
     /**
-     * Put elements in the #entry_feedback section.
+     * Put elements in the #entry_feedback span.
      *
-     * Call with no arguments to erase the feedback.
+     * Or call with no arguments to empty the feedback span.
      *
      * @return {string|jQuery|HTMLElement}
      */
@@ -2382,11 +2374,10 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         looper(arguments, function (_, argument) {
             $feedback.append(argument);
         });
-        console.warn("FEEDBACK", $feedback.text());
         return $feedback;
     }
 
-    function maybe_cancel_duplicate_feedback() {
+    function maybe_cancel_feedback() {
         var $feedback = $('#entry_feedback');
         var duplicate_url = $feedback.data('duplicate_url');
         if (is_specified(duplicate_url)) {
@@ -2394,7 +2385,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             if (duplicate_url === $enter_some_text.val()) {
                 console.log("(persisting duplicate condition)", duplicate_url);
             } else {
-                console.log("Cancel duplicate", duplicate_url, $enter_some_text.val());
+                console.log("Cancel duplicate feedback", duplicate_url, $enter_some_text.val());
                 entry_feedback();
                 $feedback.removeData('duplicate_url');
             }
