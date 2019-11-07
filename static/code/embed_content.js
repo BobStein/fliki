@@ -208,6 +208,22 @@ function embed_content_js(window, $, MONTY) {
                                                     );
                                                 }
                                                 break;
+                                            case window.YT.PlayerState.PAUSED:
+                                                if (is_auto_play) {
+                                                    parent_message(
+                                                        'auto-play-paused',
+                                                        { contribution_idn: contribution_idn }
+                                                    );
+                                                }
+                                                break;
+                                            case window.YT.PlayerState.PLAYING:
+                                                if (is_auto_play) {
+                                                    parent_message(
+                                                        'auto-play-playing',
+                                                        { contribution_idn: contribution_idn }
+                                                    );
+                                                }
+                                                break;
                                             default:
                                                 break;
                                             }

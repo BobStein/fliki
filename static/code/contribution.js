@@ -25,6 +25,7 @@
  * @param window.MutationObserver
  * @param window.speechSynthesis
  * @param window.SpeechSynthesisUtterance
+ * @param window.utter
  * @param $
  * @param qoolbar
  * @param MONTY
@@ -68,6 +69,8 @@
  * @property word.sbj
  * @property word.vrb
  * @property word.was_submitted_anonymous
+ *
+ * @property js_for_contribution.utter - so JS console has access to SpeechSynthesisUtterance object
  */
 function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
 
@@ -76,14 +79,9 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     //        Only do this for mobile users?
     //        Edit is just not that common a desired course of action.
 
-    var DO_DOCUMENT_CLICK_ENDS_CLEAN_EDIT = false;
+    var DOES_DOCUMENT_CLICK_END_CLEAN_EDIT = false;
     // NOTE:  Clicking on the document background ends a non-dirty edit.
     //        Makes more sense with DO_LONG_PRESS_EDIT.  Less so without it.
-
-    var ANON_V_ANON_BLURB = (
-        "You're here anonymously. " +
-        "Log in to see anonymous contributions other than yours."
-    );
 
     var DEBUG_SIZE_ADJUST = false;
 
@@ -137,6 +135,16 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         // THANKS:  https://www.fileformat.info/info/unicode/char/
     };
 
+    var GRIP_SYMBOL = UNICODE.VERTICAL_ELLIPSIS + UNICODE.VERTICAL_ELLIPSIS;
+
+    var ANON_V_ANON_BLURB = (
+        "You're here anonymously. " +
+        "Log in to see anonymous contributions other than yours."
+    );
+
+    var DRAG_TO_MY_BLURB = "or drag stuff here by its " + GRIP_SYMBOL;
+    var $drag_to_my_blurb = null;
+
     var me_name;
     var me_possessive;
     if (MONTY.is_anonymous || MONTY.me_txt === "") {
@@ -156,11 +164,6 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                                //                       id of this inner div is the id_attribute of the category
                                //                       Includes all div.sup-contribution elements,
                                //                       plus (for my_category) div.container-entry
-                               // MONTY.order.cont[][] is kind of a skeleton of $categories.
-                               // These should always be the same, the id_attribute of the contribution:
-                               //     $categories[cat].find('.contribution').eq(n).attr('id')
-                               //     $categories[cat].find('.contribution')[n].id
-                               //     MONTY.order.cont[cat][n]
 
     // Config options for size_adjust()
     var WIDTH_MAX_EM = {
@@ -246,7 +249,9 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         'Zira'    // this may be the default
     ];
 
+    // noinspection JSUndefinedPropertyAssignment
     var utter = null;
+
     var voices = null;
     var voice_weights;
     var voice_default = {name:"(unknown)", lang: ""};
@@ -357,8 +362,8 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         $(  '#skip-button').on('click', function () { bot.skip(); });
 
         $('#enter_some_text, #enter_a_caption')
-            .on('paste change input keyup', post_it_button_disabled_or_not)
-            .on('      change input',       maybe_cancel_feedback)
+            .on('paste change input keyup', post_it_button_looks)
+            .on(      'change input',       maybe_cancel_feedback)
             .on('paste',                    text_or_caption_paste)
             .on('drop',                     text_or_caption_drop)
         ;
@@ -404,9 +409,9 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         play_bot_default_others_if_empty_my_category();
         persist_select_element('#play_bot_from', SETTING_PLAY_BOT_FROM);
 
-        if (DO_DOCUMENT_CLICK_ENDS_CLEAN_EDIT) {
-            $(window.document).on('click', attempt_content_edit_abandon);
-        }
+        $(window.document).on('click', function () {
+            check_page_dirty(false, DOES_DOCUMENT_CLICK_END_CLEAN_EDIT);
+        });
         if (DO_LONG_PRESS_EDIT) {
             long_press('.sup-contribution', contribution_edit);
         }
@@ -417,13 +422,21 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         //        when the swiping happens to stray outside the div.contribution.
 
         $(window).on('beforeunload', function hesitate_to_unload_if_dirty_edit() {
-            return is_page_dirty() ? "Discard?" : undefined;
+            return check_page_dirty(true, true) ? "Discard?" : undefined;
         });
         // NOTE:  This helps prevent a user from losing work by inadvertently closing the page
         //        while in the middle of an entry or edit.
+        // TODO:  Radical idea:  save this in localStorage, and resurrect it later, instead?
+        //        Downside is it thwarts attempt to "clear" the page by reloading it.
+        //        Ugh might require "Resurrect abandoned work?" question on next load.  No!
+        //        If we do this, maybe there should be a "clear" button next to "post it".
+        //        In any case, the page should reload with red controls, scrolled into view. 
+        //        Whew that's a lot of work.
+        //        As well as creepy resurrection of possibly ancient work on some far future load.
+        //        Possibly for a different user on the same computer, that could be bad bad bad.
 
         caption_should_track_text_width();
-        post_it_button_disabled_or_not();
+        post_it_button_looks();
         initialize_contribution_sizes();
         settle_down();
         $(window.document).on(
@@ -477,14 +490,19 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     });
 
     function play_bot_default_others_if_empty_my_category() {
-        var $my_category = $categories[MONTY.IDN.CAT_MY];
-        var num_my_contributions = $my_category.find('.contribution').length;
+        var num_my_contributions = num_contributions_in_category(MONTY.IDN.CAT_MY);
         var $play_bot_from = $('#play_bot_from');
         var is_play_bot_from_my = $play_bot_from.val() === PLAY_BOT_FROM_MY;
         if (num_my_contributions === 0 && is_play_bot_from_my) {
             $play_bot_from.val(PLAY_BOT_FROM_OTHERS);
             console.log("My category is empty, defaulting play-bot to the other category.");
         }
+    }
+
+    function num_contributions_in_category(category_idn) {
+        var $category = $categories[category_idn];
+        var num_contributions = $category.find('.contribution').length;
+        return num_contributions;
     }
 
     function persist_select_element(selector, storage_name) {
@@ -538,7 +556,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
 
         that.state = that.State.MANUAL;
         that.last_tick_state = null;
-        that.ticks_this_state = 0;   // N means state is [N to N+1) seconds old
+        that.ticks_this_state = 0;    // N means state is [N to N+1) seconds old, if no pauses.
         that._interval_timer = null;
         that.ticker_interval_ms(1000);
         that.breather_seconds = null;
@@ -553,9 +571,9 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         NEXT_CONTRIBUTION: "Next contribution in playlist",
         MEDIA_READY: "The iframe is showing stuff",                            // static media
         MEDIA_STARTED: "The iframe is doing stuff, we'll know when it ends",   // dynamic media
+        MEDIA_PAUSE_IN_FORCE: "Both main page and iframe agree we're paused",
         SPEECH_SHOULD_PLAY: "The text was told to speak",
         SPEECH_STARTED: "The speaking has started",
-        MEDIA_TIMING: "Static media displayed for a fixed time",
         DONE_CONTRIBUTION: "Natural ending of a contribution in playlist",
         BREATHER: "Take a breather between popups.",
         BEGIN_ANOTHER: "Begin the next contribution.",
@@ -583,6 +601,8 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         var that = this;
         if (has(old_states, that.state)) {
             that.state = new_state;
+        } else if (new_state === that.state) {
+            console.warn("Transit, but already in state", that.state.name);
         } else {
             that.crash(
                 "TRANSIT CRASH expecting", old_states.map(function(s) { return s.name; }).join(","),
@@ -656,14 +676,37 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                     that.transit([that.State.PLAYING_CONTRIBUTION], that.State.MEDIA_READY);
                 });
                 that.pop_cont.$sup.on(that.pop_cont.Event.MEDIA_BEGUN, function () {
-                    that.transit([
-                        that.State.MEDIA_READY,
-                        that.State.MEDIA_STARTED   // redundant auto-play-presage is harmless
-                    ], that.State.MEDIA_STARTED);
+                    that.transit([that.State.MEDIA_READY], that.State.MEDIA_STARTED);
                 });
                 that.pop_cont.$sup.on(that.pop_cont.Event.MEDIA_ENDED, function () {
                     that.transit([that.State.MEDIA_STARTED], that.State.DONE_CONTRIBUTION);
                     that.pop_end();
+                });
+                that.pop_cont.$sup.on(that.pop_cont.Event.MEDIA_PLAYING, function () {
+                    if (that.is_paused) {
+                        console.debug("Resume initiated by embedded iframe");
+                        // NOTE:  Surprise - the embedded resume button was hit.
+                        //        main page <-- iframe
+                        that._pause_ends();
+                    } else {
+                        // NOTE:  Expected - main-page resume fed back by iframe, or
+                        //        Expected - play started from the beginning
+                        //        main page --> iframe
+                    }
+                });
+                that.pop_cont.$sup.on(that.pop_cont.Event.MEDIA_PAUSED, function () {
+                    if (that.is_paused) {
+                        // NOTE:  Expected - main-page pause fed back by iframe
+                        //        main page --> iframe
+                    } else {
+                        console.debug("Pause initiated by embedded iframe");
+                        // NOTE:  Surprise - the embedded pause button was hit.
+                        //        main page <-- iframe
+                        that._pause_begins();
+                    }
+                    that.transit([that.State.MEDIA_STARTED], that.State.MEDIA_PAUSE_IN_FORCE);
+                    // TODO:  Does this look better?
+                    //        that.transit(['MEDIA_STARTED'], 'MEDIA_PAUSE_IN_FORCE');
                 });
                 that.pop_cont.$sup.on(that.pop_cont.Event.SPEECH_PLAY, function () {
                     that.transit([that.State.PLAYING_CONTRIBUTION], that.State.SPEECH_SHOULD_PLAY);
@@ -693,21 +736,35 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             break;
         case that.State.MEDIA_STARTED:
             break;
+        case that.State.MEDIA_PAUSE_IN_FORCE:
+            break;
         case that.State.SPEECH_SHOULD_PLAY:
             // NOTE:  Wait at least 1 second to retry.
             //        Actual delays from speak-method to start-event in ms:
             //            27, 131, 11 - Chrome
             //            30 - Opera
             //            231, 170 - Firefox
-            if (that.ticks_this_state >= 1) {
-                console.warn("SPEECH FAILED TO START", that.ticks_this_state);
-                // TODO:  window.speechSynthesis.speak(utter);   again, a time or two
-                notable_occurrence("Speech failed to start {}".format(that.ticks_this_state));
+            if (that.ticks_this_state === 1) {   // Warn once, not again for 2, 3, 4...
+                var n_characters;
+                try {
+                    n_characters = utter.text.length.toString() + " characters";
+                } catch (e) {
+                    n_characters = "((" + e.message + "))";
+                }
+                var message = (
+                    "Speech " + n_characters +
+                    " failed to start " + that.ticks_this_state.toString()
+                );
+                notable_occurrence(message);
+                var states_before = speech_states();   // Attempt to discover if .cancel() will do anything.
+                window.speechSynthesis.cancel();   // Another attempt to fix text-not-speaking bug.
+                var states_between = speech_states();   // Attempt to discover if .cancel() will do anything.
+                window.speechSynthesis.speak(utter);   // Attempt to fix text-not-speaking bug.
+                var states_after = speech_states();
+                console.warn(message, utter, states_before, states_between, states_after);   // HACK:  Have a look at the utter object.
             }
             break;
         case that.State.SPEECH_STARTED:
-            break;
-        case that.State.MEDIA_TIMING:
             break;
         case that.State.DONE_CONTRIBUTION:
             if (that.cont.is_media) {
@@ -742,6 +799,9 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         }
     };
 
+    /**
+     * Like finite_state_machine() except this gets called while paused.
+     */
     Bot.prototype.maintain_pause = function Bot_maintain_pause() {
         var that = this;
 
@@ -757,10 +817,14 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         //        pause is in effect.
         //        Maybe the SPEECH_PLAY event is already enough, but it's possible SPEECH_WOKE
         //        should be the secondary check for pause, just in case.
+        // TODO:  Rewrite the above.  It's at least a little obsolete.
+        // TODO:  Write more or fewer TODO comments.  Somewhere or other.
 
         switch (that.state) {
         case that.State.MEDIA_STARTED:
             that.pause_media();
+            console.warn("Extra prodding media to pausing.");
+            // TODO:  This might come too early.  Do only after Event.MEDIA_WOKE?
             break;
         case that.State.SPEECH_SHOULD_PLAY:
             that.pause_speech();
@@ -768,12 +832,20 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         }
     };
 
+    /**
+     * Begin working with Contribution object, store it in that.pop_cont
+     *
+     * @param pop_cont
+     */
     Bot.prototype.pop_begin = function Bot_pop_begin(pop_cont) {
         var that = this;
         that.pop_end();
         that.pop_cont = pop_cont;
     };
 
+    /**
+     * Done working with Contribution object, if any.
+     */
     Bot.prototype.pop_end = function Bot_pop_end() {
         var that = this;
         if (that.pop_cont !== null) {
@@ -861,25 +933,39 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         message_embed('.pop-up', {action: 'pause'});
     };
 
-    Bot.prototype.pause = function Bot_pause() {
+    /**
+     * Pause initiated by either the main page or the embedded iframe.
+     */
+    Bot.prototype._pause_begins = function Bot_pause_begins() {
         var that = this;
         that.is_paused = true;
-        console.log("Pause player bot");
         $(window.document.body).addClass('player-bot-pausing');
-        that.pause_media();
-        that.pause_speech();
+    };
+
+    /**
+     * Pause initiated by the main page.
+     */
+    Bot.prototype.pause = function Bot_pause() {
+        var that = this;
+        that._pause_begins();
+        console.log("Pause initiated by main page");
+        that.pause_media();   // TODO:  Only from state MEDIA_STARTED or MEDIA_READY?
+        that.pause_speech();  // TODO:  Only from state SPEECH_STARTED or SPEECH_SHOULD_PLAY?
     };
 
     Bot.prototype._pause_ends = function Bot_pause_ends(/*unusual_reason*/) {
         var that = this;
         that.is_paused = false;
         $(window.document.body).removeClass('player-bot-pausing');
+        if (that.state === that.State.MEDIA_PAUSE_IN_FORCE) {
+            that.state = that.State.MEDIA_STARTED;
+        }
     };
 
     Bot.prototype.resume = function Bot_resume() {
         var that = this;
         that._pause_ends();
-        console.log("Resume player bot");
+        console.log("Resume initiated by main page");
         if (utter !== null) {
             window.speechSynthesis.resume();
         }
@@ -970,13 +1056,15 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     }
 
     Contribution.prototype.Event = {
-        SPEECH_PLAY: 'SPEECH_PLAY',   // speechSynthesis.speak() was just called
-        SPEECH_START: 'SPEECH_START', // SpeechSynthesisUtterance 'start' event
-        SPEECH_END: 'SPEECH_END',     // SpeechSynthesisUtterance 'end' event
-        MEDIA_INIT: 'MEDIA_INIT',     // e.g. youtube started playing
-        MEDIA_BEGUN: 'MEDIA_BEGUN',   // e.g. youtube auto-play started
-        MEDIA_WOKE: 'MEDIA_WOKE',     // e.g. youtube auto-play first state-change TODO:  Use this?
-        MEDIA_ENDED: 'MEDIA_ENDED'    // e.g. youtube auto-play played to the end
+        SPEECH_PLAY: 'SPEECH_PLAY',     // speechSynthesis.speak() was just called
+        SPEECH_START: 'SPEECH_START',   // SpeechSynthesisUtterance 'start' event
+        SPEECH_END: 'SPEECH_END',       // SpeechSynthesisUtterance 'end' event
+        MEDIA_INIT: 'MEDIA_INIT',       // e.g. youtube started playing
+        MEDIA_BEGUN: 'MEDIA_BEGUN',     // e.g. youtube auto-play started
+        MEDIA_WOKE: 'MEDIA_WOKE',       // e.g. youtube auto-play first state-change TODO:  Use this?
+        MEDIA_PAUSED: 'MEDIA_PAUSED',   // e.g. youtube auto-play paused
+        MEDIA_PLAYING: 'MEDIA_PLAYING', // e.g. youtube auto-play playing
+        MEDIA_ENDED: 'MEDIA_ENDED'      // e.g. youtube auto-play played to the end
     };
 
     function Contribution_loop(callback) {
@@ -1074,6 +1162,14 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                         case 'auto-play-ended':
                             console.log("Media ended", that.id_attribute, message.contribution_idn);
                             that.$sup.trigger(that.Event.MEDIA_ENDED);
+                            break;
+                        case 'auto-play-paused':
+                            console.log("Media paused", that.id_attribute, message.contribution_idn);
+                            that.$sup.trigger(that.Event.MEDIA_PAUSED);
+                            break;
+                        case 'auto-play-playing':
+                            console.log("Media playing", that.id_attribute, message.contribution_idn);
+                            that.$sup.trigger(that.Event.MEDIA_PLAYING);
                             break;
                         case 'noembed-error-notify':
                             // NOTE:  This happens when youtube oembed says "401 Unauthorized"
@@ -1301,14 +1397,93 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     /**
      * Is there unfinished entry or editing on the page?
      *
+     * Make red controls that could save unfinished work.
+     *
+     * @param do_scroll_into_view {boolean} - if reddening controls, also scroll entry into view?
+     * @param do_close_clean {boolean} - If an edit was started but no changes, do we just close it?
      * @return {boolean} - true = confirm exit, false = exit harmless, don't impede
      */
-    function is_page_dirty() {
-        return (
+    function check_page_dirty(do_close_clean, do_scroll_into_view) {
+        var is_dirty_entry = check_text_entry_dirty(do_scroll_into_view);
+        var is_dirty_edit = check_contribution_edit_dirty(do_scroll_into_view, do_close_clean);
+        // NOTE:  We want side effects from both these functions, the button reddening.
+        return is_dirty_entry || is_dirty_edit;
+    }
+
+    /**
+     * Are there unposted text or caption contents?
+     *
+     * If so, make the [post it] button red.
+     *
+     * @return {boolean}
+     */
+    function check_text_entry_dirty(do_scroll_into_view) {
+        if (
             $('#enter_some_text').val().length > 0 ||
-            $('#enter_a_caption').val().length > 0 ||
-            ! attempt_content_edit_abandon()
-        );
+            $('#enter_a_caption').val().length > 0
+        ) {
+            var $post_it_button = $('#post_it_button');
+            if ( ! $post_it_button.hasClass('abandon-alert')) {
+                $post_it_button.addClass('abandon-alert');
+                // TODO:  Is it annoying to redden the post-it when merely clicking on the
+                //        document background?
+                if (do_scroll_into_view) {
+                    scroll_into_view('#enter_some_text', {block: 'nearest', inline: 'nearest'});
+                }
+            }
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+    /**
+     * Is there an unsaved contribution edit in progress?
+     *
+     * If so, make its [save] and [discard] buttons red.
+     *
+     * @param do_scroll_into_view {boolean} - if reddening controls, also scroll edits into view?
+     * @param do_close_clean {boolean} - If an edit was started but no changes, do we just close it?
+     *     There are three callers to this function.
+     *     At the risk of taunting the stale-comment gods, here are those three three cases:
+     *     If unloading the page - doesn't matter, if a started edit was clean,
+     *                             then this returns false and page unloads without interruption.
+     *     If document click - depends on DOES_DOCUMENT_CLICK_END_CLEAN_EDIT.
+     *     If editing another contribution - yes, always want to silently close an old clean edit.
+     * @return {boolean} - true if a contribution was being edited and there are unsaved changes.
+     */
+    function check_contribution_edit_dirty(do_scroll_into_view, do_close_clean) {
+        if (is_editing_some_contribution) {
+            var $sup_cont = $cont_editing.closest('.sup-contribution');
+            if ($sup_cont.hasClass('edit-dirty')) {
+                var $save_bar = $save_bar_from_cont($cont_editing);
+                if ( ! $save_bar.hasClass('abandon-alert')) {
+                    $save_bar.addClass('abandon-alert');
+                    if (do_scroll_into_view) {
+                        scroll_into_view($cont_editing, {block: 'nearest', inline: 'nearest'});
+                        // NOTE:  Scroll the dirty contribution edit with its red buttons into view.
+                        //        But only do that once (that's what the.hasClass() is for)
+                        //        because we don't want a dirty edit to be repeatedly scrolling
+                        //        itself into view, if the user is up to something else.
+                    }
+                }
+                return true;
+            } else {   // edit was started but there were no changes (a "clean" edit)
+                if (do_close_clean) {
+                    contribution_edit_end();
+                }
+                return false;
+            }
+        } else {   // no edit was started
+            return false;
+        }
+    }
+
+    function scroll_into_view(element, options) {
+        ignore_exception(function () {
+            $(element)[0].scrollIntoView(options);
+            // SEE:  Browser scrollIntoView, https://caniuse.com/#search=scrollIntoView
+        });
     }
 
     function contribution_edit(evt) {
@@ -1492,7 +1667,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         talkify.messageHub.unsubscribe(BOT_CONTEXT, '*');
 
         if (utter !== null) {
-            $(utter).off();   // Otherwise an 'end' event comes in a split second later.
+            $(utter).off();   // Otherwise an 'end' event will come a split second later.
             utter = null;
             js_for_contribution.utter = utter;
 
@@ -1677,7 +1852,12 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                     // NOTE:  Not sure if this is the same bug, but sometimes speech was
                     //        not starting.
 
-                    utter.rate = 0.8;
+                    utter.rate = 0.75;
+
+                    utter.volume = 1.0;   // otherwise it's -1, wtf that means
+                    // Another attempt to fix text-not-speaking bug.
+                    utter.pitch = 1.0;    // otherwise it's -1, wtf that means
+                    // Another attempt to fix text-not-speaking bug.
 
                     // utter.voice = chooseWeighted(voices, voice_weights);
                     // console.log("Voice", utter.voice.name, utter.voice.lang);
@@ -1692,11 +1872,17 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                     //        Anyway, word boundaries are important because visual highlighting
                     //        of words seems more potent.  Combination visual and auditory.
 
+                    var states_before = speech_states();
+
+                    window.speechSynthesis.cancel();   // Another attempt to fix text-not-speaking bug.
+                    var states_between = speech_states();
                     window.speechSynthesis.speak(utter);
                     // NOTE:  Play audio even if not auto_play -- because there's no way
                     //        to start the speech otherwise.  (SpeechSynthesis has no
                     //        native control UX.)
                     // EXAMPLE:  Silent for UC Browser, Opera Mobile, IE11
+
+                    var states_after = speech_states();
 
                     console.log(
                         "Language",
@@ -1704,8 +1890,11 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                         voice_default.lang,
                         utter.voice,   // null in Chrome
                         typeof utter.lang, utter.lang,   // string '' in Chrome
-                        window.speechSynthesis.speaking ? "s+" : "s-",
-                        window.speechSynthesis.pending  ? "p+" : "p-"
+                        states_before,
+                        "->",
+                        states_between,
+                        "->",
+                        states_after
                     );
                     // NOTE:  Probe droid for occasional lack of speaking popup.
                     // EXAMPLE:  Microsoft Anna - English (United States) en-US
@@ -1785,7 +1974,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                         var speaking_node = $('<span>', {class:'speaking'})[0];
                         range_word.surroundContents(speaking_node);
                         // THANKS:  Range wrap, https://stackoverflow.com/a/6328906/673991
-                        speaking_node.scrollIntoView({
+                        scroll_into_view(speaking_node, {
                             behavior: 'smooth',
                             block: 'center',
                             inline: 'center'
@@ -1961,16 +2150,21 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                         function (message) {
                             // NOTE:  This event happens roughly 20Hz, 50ms.
                             var $highlight = $('.talkify-word-highlight');
-                            $highlight.each(function () {
-                                this.scrollIntoView({
-                                    behavior: 'smooth',
-                                    block: 'center',
-                                    inline: 'center'
-                                });
-                                // SEE:  Browser scrollIntoView, https://caniuse.com/#search=scrollIntoView
-                                // TODO:  Reduce frequency of this call by tagging span
-                                //        with .talkify-word-highlight-already-scrolled-into-view?
+                            // $highlight.each(function () {
+                            //     scroll_into_view(this, {
+                            //         behavior: 'smooth',
+                            //         block: 'center',
+                            //         inline: 'center'
+                            //     });
+                            // });
+                            scroll_into_view($highlight, {   // TODO:  This work without .each()?
+                                behavior: 'smooth',
+                                block: 'center',
+                                inline: 'center'
                             });
+                            // TODO:  Reduce frequency of this call by tagging element
+                            //        with .already-scrolled-into-view?
+                            //        Because this event happens 20Hz!
                             duration_report = message.duration.toFixed(1) + " seconds";
                         }
                     );
@@ -2007,6 +2201,13 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         return pop_cont;
     }
 
+    function speech_states() {
+        return (
+            (window.speechSynthesis.speaking ? "s+" : "s-") +
+            (window.speechSynthesis.pending  ? "p+" : "p-")
+        );
+    }
+
     function edit_submit($div, what, vrb, obj, then) {
         var new_text = $div.text();
         if ($div.data('original_text') === new_text) {
@@ -2022,34 +2223,6 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                 $div.attr('id', edit_word.idn);
                 then(edit_word);
             });
-        }
-    }
-
-    /**
-     * Are we able to abandon any other edit in progress?
-     *
-     * @return {boolean} - true if no edit, or it wasn't dirty. false if dirty edit in progress.
-     */
-    function attempt_content_edit_abandon() {
-        if (is_editing_some_contribution) {
-            var $sup_cont = $cont_editing.closest('.sup-contribution');
-            if ($sup_cont.hasClass('edit-dirty')) {
-                var $save_bar = $save_bar_from_cont($cont_editing);
-                if ( ! $save_bar.hasClass('abandon-alert')) {
-                    $save_bar.addClass('abandon-alert');
-                    ignore_exception(function () {
-                        $cont_editing[0].scrollIntoView({block: 'nearest', inline: 'nearest'});
-                    });
-                }
-                // NOTE:  Scroll the red buttons into view.
-                //        But only do that once because we don't want a dirty edit to be modal.
-                return false;
-            } else {
-                contribution_edit_end();
-                return true;
-            }
-        } else {
-            return true;
         }
     }
 
@@ -2101,7 +2274,10 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     }
 
     function contribution_edit_begin($cont) {
-        if (attempt_content_edit_abandon()) {
+        if ( ! check_contribution_edit_dirty(true, true)) {
+            // NOTE:  The above call may never have any side effects (and this branch is always
+            //        taken) because all edit buttons are invisible whenever an edit is in progress.
+            //        That invisibility hinges on the .dirty-nowhere selector in contribution.css.
             contribution_edit_show($cont);
             is_editing_some_contribution = true;
             $cont.data('original_text', $cont.text());
@@ -2416,7 +2592,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                     }
                 }
                 if (is_in_about(evt.related)) {
-                    if (!is_admin(MONTY.me_idn)) {
+                    if ( ! is_admin(MONTY.me_idn)) {
                         // NOTE:  Only the admin can move TO the about section.
                         return MOVE_CANCEL;
                     }
@@ -2432,6 +2608,10 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                 if (is_in_popup(evt.related)) {
                     console.warn("Whoa there, don't drag me bro.");
                     return MOVE_CANCEL;
+                }
+                if ($drag_to_my_blurb !== null) {
+                    $drag_to_my_blurb.remove();
+                    $drag_to_my_blurb = null;
                 }
             },
             onEnd: function sortable_drop(evt) {
@@ -2634,12 +2814,22 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         return $cat_of(element).attr('id') === MONTY.IDN.CAT_ANON.toString();
     }
 
-    function post_it_button_disabled_or_not() {
-        if ($('#enter_some_text').val().length === 0) {
+    /**
+     * Should the post-it button be disabled (can't submit)?  Or red (submit hint)?
+     */
+    function post_it_button_looks() {
+        var is_empty_text = $('#enter_some_text').val().length === 0;
+        var is_empty_caption = $('#enter_a_caption').val().length === 0;
+        if (is_empty_text) {
             $('#post_it_button').attr('disabled', 'disabled');
         } else {
             $('#post_it_button').removeAttr('disabled');
         }
+        if (is_empty_text && is_empty_caption) {
+            $('#post_it_button').removeClass('abandon-alert');
+        }
+        // NOTE:  Caption with empty text is a weird edge case.
+        //        Can't post it, but neither can you close the page without confirmation.
     }
 
     function post_it_click() {
@@ -2651,49 +2841,71 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             $text.focus();
             console.warn("Enter some content.");
         } else {
-            qoolbar.sentence({
-                vrb_idn: MONTY.IDN.CONTRIBUTE,
-                obj_idn: MONTY.IDN.QUOTE,
-                txt: text
-            }, function post_it_done_1(contribute_word) {
-                console.log("contribution", contribute_word);
-                var caption_sentence;
-                if (caption.length === 0) {
-                    caption_sentence = null;
-                } else {
-                    caption_sentence = {
-                        vrb_idn: MONTY.IDN.CAPTION,
-                        obj_idn: contribute_word.idn,
-                        txt: caption
-                    };
-                }
-                qoolbar.sentence(caption_sentence, function post_it_done_2(caption_word) {
-                    if (is_specified(caption_word)) {
-                        console.log("caption", caption_word);
-                        contribute_word.jbo = [caption_word];
-                    }
-                    // MONTY.words.cont.push(contribute_word);
-                    // Another good thing, that we don't have to do this.
-                    var $sup_cont = build_contribution_dom(contribute_word);
-                    var $cat = $categories[MONTY.IDN.CAT_MY];
-                    var $first_old_sup = $cat.find('.sup-contribution').first();
-                    if ($first_old_sup.length === 1) {
-                        $first_old_sup.before($sup_cont);
+
+            function failed_post(message) {
+                $('#post_it_button')
+                    .addClass('failed-post')
+                    .attr('title', "Post failed: " + message)
+                ;
+            }
+
+            function benefit_of_the_doubt_post() {
+                $('#post_it_button')
+                    .removeClass('failed-post')
+                    .removeAttr('title')
+                ;
+            }
+
+            benefit_of_the_doubt_post();
+
+            qoolbar.sentence(
+                {
+                    vrb_idn: MONTY.IDN.CONTRIBUTE,
+                    obj_idn: MONTY.IDN.QUOTE,
+                    txt: text
+                },
+                function post_it_done_1(contribute_word) {
+                    console.log("contribution", contribute_word);
+                    var caption_sentence;
+                    if (caption.length === 0) {
+                        caption_sentence = null;
                     } else {
-                        $cat.append($sup_cont);
+                        caption_sentence = {
+                            vrb_idn: MONTY.IDN.CAPTION,
+                            obj_idn: contribute_word.idn,
+                            txt: caption
+                        };
                     }
-                    // NOTE:  New .sup-contribution goes before leftmost .sup-contribution, if any.
-                    // safe_prepend(MONTY.order.cont, MONTY.IDN.CAT_MY, contribute_word.id_attribute);
-                    // Is it a good thing we don't have to do this now?  Let the DOM be the (digested) database?
-                    $text.val("");
-                    $caption_input.val("");
-                    render_bar($sup_cont);
-                    settle_down();
-                    setTimeout(function () {  // Give rendering some airtime.
-                        new_contribution_just_created();
-                    });
-                });
-            });
+                    qoolbar.sentence(
+                    caption_sentence,
+                        function post_it_done_2(caption_word) {
+                            if (is_specified(caption_word)) {
+                                console.log("caption", caption_word);
+                                contribute_word.jbo = [caption_word];
+                            }
+                            // MONTY.words.cont.push(contribute_word);
+                            // Another good thing, that we don't have to do this.
+                            var $sup_cont = build_contribution_dom(contribute_word);
+                            var $cat = $categories[MONTY.IDN.CAT_MY];
+                            var $first_old_sup = $cat.find('.sup-contribution').first();
+                            if ($first_old_sup.length === 1) {
+                                $first_old_sup.before($sup_cont);
+                            } else {
+                                $cat.append($sup_cont);
+                            }
+                            $text.val("");
+                            $caption_input.val("");
+                            render_bar($sup_cont);
+                            settle_down();
+                            setTimeout(function () {  // Give rendering some airtime.
+                                new_contribution_just_created();
+                            });
+                        },
+                        failed_post
+                    );
+                },
+                failed_post
+            );
         }
     }
 
@@ -2795,7 +3007,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         );
         $up_top.append($bot);
 
-        var $login_prompt = $('<div>', {id: 'login-prompt'});
+        var $login_prompt = $('<div>', {id: 'login-prompt', title: "your idn is " + MONTY.me_idn});
         $login_prompt.html(MONTY.login_html);
         $up_top.append($login_prompt);
 
@@ -2812,11 +3024,14 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         $entry.append($('<input>', {id: 'enter_a_caption', placeholder: "and a caption"}));
         $entry.append($('<button>', {id: 'post_it_button'}).text("post it"));
         $entry.append($('<span>', {id: 'entry_feedback'}));
+        // TODO:  Make global-ish variables.  E.g. $enter_some_text instead of $('#enter_some_text')
+        //        Likewise maybe use $categories[] more, instead of DOM selections.
         $categories[MONTY.IDN.CAT_MY].append($entry);
 
         if (MONTY.is_anonymous) {
-            var $anon_blurb = $('<p>', {class: 'double-anon-blurb'}).text(ANON_V_ANON_BLURB);
+            var $anon_blurb = $('<p>', {id: 'anon-v-anon-blurb'}).text(ANON_V_ANON_BLURB);
             $categories[MONTY.IDN.CAT_ANON].append($anon_blurb);
+
             $sup_categories[MONTY.IDN.CAT_ANON].addClass('double-anon');
             // Anonymous users see a faded anonymous category with explanation.
         }
@@ -3032,6 +3247,16 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         $('.sup-contribution').each(function () {
             render_bar($(this));
         });
+
+
+        if (num_contributions_in_category(MONTY.IDN.CAT_MY) === 0) {
+            $drag_to_my_blurb = $('<p>', {
+                id: 'drag-to-my-blurb'
+            }).text(
+                DRAG_TO_MY_BLURB
+            );
+            $categories[MONTY.IDN.CAT_MY].append($drag_to_my_blurb);
+        }
 
         $(window.document.body).append(
             $('<div>', {title: 'Authorization History Comment'}).append(
@@ -3264,7 +3489,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         $sup_contribution.append($save_bar);
         var $grip = $('<span>', {class: 'grip'});
         $caption_bar.append($grip);
-        $grip.text(UNICODE.VERTICAL_ELLIPSIS + UNICODE.VERTICAL_ELLIPSIS);
+        $grip.text(GRIP_SYMBOL);
         var $caption_span = $('<span>', {class: 'caption-span'});
         $caption_bar.append($caption_span);
         var caption_txt = latest_txt(contribution_word.jbo, MONTY.IDN.CAPTION);
@@ -3329,7 +3554,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         // THANKS:  leading spaces to nbsp, https://stackoverflow.com/a/4522228/673991
     }
 
-    function reconstitute_order_from_dom() {
+    function order_of_contributions_in_each_category() {
         var order = { cat:[], cont:{} };
 
         $('.category').each(function () {
@@ -3413,21 +3638,20 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
      * 2. Refresh the how-many numbers in anti-valved fields (stuff that shows when closed).
      */
     function settle_down() {
-        console.log(order_report(reconstitute_order_from_dom()));
+        console.log(order_report(order_of_contributions_in_each_category()));
         refresh_how_many();
     }
 
     function refresh_how_many() {
         looper(MONTY.cat.order, function recompute_category_anti_valves(_, cat) {
-            var how_many;
-            var $cat = $_from_id(cat);
-            var n_contributions = $cat.find('.contribution').length;
-            if (n_contributions === 0) {
-                how_many = "";
+            var num_cont_string;
+            var num_cont_int = num_contributions_in_category(cat);
+            if (num_cont_int === 0) {
+                num_cont_string = "";
             } else {
-                how_many = " (" + n_contributions.toString() + ")";
+                num_cont_string = " (" + num_cont_int.toString() + ")";
             }
-            $sup_categories[cat].find('.how-many').text(how_many);
+            $sup_categories[cat].find('.how-many').text(num_cont_string);
         });
     }
 

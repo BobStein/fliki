@@ -1775,7 +1775,8 @@ def unslumping_home_obsolete():
         \n''')
 
         with html.body() as body:
-            with body.div(id='login-prompt') as div_login:
+            user_idn_qstring = auth.qiki_user.idn.qstring()
+            with body.div(id='login-prompt', title='your idn is ' + user_idn_qstring) as div_login:
                 div_login.raw_text(auth.login_html())
             body.div(id='my-qoolbar')
             body.div(id='status')
@@ -2093,7 +2094,10 @@ def meta_lex():
         html.header("Lex")
 
         with html.body(class_='target-environment', newlines=True) as body:
-            body.div(id='login-prompt').raw_text(auth.login_html())
+            # body.div(id='login-prompt').raw_text(auth.login_html())
+            user_idn_qstring = auth.qiki_user.idn.qstring()
+            with body.div(id='login-prompt', title='your idn is ' + user_idn_qstring) as div_login:
+                div_login.raw_text(auth.login_html())
 
             words = auth.lex.find_words()
 
@@ -3172,6 +3176,7 @@ def ajax():
         elif action == 'notable_occurrence':
             print("Notable Occurrence", auth.form('message'))
             # TODO:  Database
+            return valid_response()
 
         else:
             return invalid_response("Unknown action " + action)
@@ -3352,11 +3357,11 @@ def matcher(url, pattern_list):
     return any_pattern_matched
 
 
-def valid_response(name, value):
-    return json_encode(dict([
-        ('is_valid', True),
-        (name, value)
-    ]))
+def valid_response(name=None, value=None):
+    if name is None or value is None:
+        return json_encode(dict([('is_valid', True)]))
+    else:
+        return json_encode(dict([('is_valid', True), (name, value)]))
 
 
 def invalid_response(error_message):

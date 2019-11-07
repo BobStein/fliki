@@ -107,6 +107,16 @@ body.player-bot-playing #skip-button { display: inline-block; }
             border-top-left-radius: 0.5em;
         -moz-border-radius-topleft: 0.5em;
 }
+.failed-post {
+    color: red;
+    border-color: red;
+    background-color: #FFE0E0;
+}
+/* NOTE:  This indicates the server is down and the post can't be saved.
+          It is a more severe reddening than the dirty-post abandon-alert red border
+          (e.g. from entering a quote then unloading the page).
+*/
+
 .contribution {
     white-space: pre-line/* !important*/;
     /* TODO:  Should this be important or not?
@@ -135,32 +145,34 @@ body.player-bot-playing #skip-button { display: inline-block; }
     background-color: #F4ECEC;
 }
 .contribution-edit .contribution {
-    /* NOTE:  This should come after was-submitted-anonymous, to override it. */
     background-color: white;
+    /* NOTE:  This should come after was-submitted-anonymous, to override it.
+              The white background is a visual cue that the content is editable. */
 
     display: inline-block;
-    /* THANKS:  Avoid Chrome LF-to-div conversion, https://stackoverflow.com/a/24689420/673991 */
-    /* NOTE:  This inserts an unsightly gap between contribution and caption,
-              but it fixes Chrome's dumb habit of changing Enter keystrokes to <div> blocks.
-              Hope it doesn't mess up the flow in some other circumstance.
-              It may cause clumsiness when editing "hard" returns.
-              Or the creeping upward of the whole div when you insert/delete hard returns. */
-    /* SEE:  More Chrome contenteditable issues, https://stackoverflow.com/q/6023307/673991 */
 }
-
-/* NOTE:  The display-inline-block directive above may no longer be necessary,
-          as it is overridden anyway by the four directives below
-          that deal with combinations of editing and render-able media. */
 
 .sup-contribution                                .contribution { display:block; }
 .sup-contribution.render-media                   .contribution { display:none; }
 .sup-contribution.contribution-edit              .contribution { display:inline-block; }
-.sup-contribution.render-media.contribution-edit .contribution { display:inline-block; }
+.sup-contribution.contribution-edit.render-media .contribution { display:inline-block; }
+
+    /* THANKS:  Avoid Chrome LF-to-div conversion,
+                https://stackoverflow.com/a/24689420/673991 */
+    /* NOTE:  The above inline-block setting prevents Chrome's dumb reaction to hard returns,
+              creating <div> elements when there are two consecutive, as if making paragraphs.
+              to represent hard returns.
+              Minor side effect, an unsightly gap between contribution and caption.
+              Major side effect, it causes the whole (outer) <div> to creep up and down
+              across the screen, as if position-relative top were changing.
+              Both side effects may be a reaction to overflow: auto
+     */
+    /* SEE:  More Chrome contenteditable issues, https://stackoverflow.com/q/6023307/673991 */
 
 .sup-contribution                                .render-bar { display:none; }
 .sup-contribution.render-media                   .render-bar { display:block; }
 .sup-contribution.contribution-edit              .render-bar { display:none; }
-.sup-contribution.render-media.contribution-edit .render-bar { display:none; }
+.sup-contribution.contribution-edit.render-media .render-bar { display:none; }
 
                    .contribution { padding: 0.5em 0.5em 0.7em 0.5em; }
 .contribution-edit .contribution { padding: 0.3em 0.3em 0.5em 0.3em; border: 0.2em inset; }
@@ -226,6 +238,10 @@ body.player-bot-playing #skip-button { display: inline-block; }
 .save-bar.abandon-alert .save {
     border-color: red;
 }
+#post_it_button.abandon-alert {
+    border-color: red;
+    /* NOTE:  Less severe than failed-post which reddens the whole button. */
+}
 
 .sup-contribution.pop-up                  .save-bar .edit    { display: none; }
 .sup-contribution.contribution-edit       .save-bar .edit    { display: none; }
@@ -263,9 +279,19 @@ body.player-bot-playing                   .save-bar   .full { display: none; }
                                                  -moz-opacity: 0.50;   /* Firefox */
                                                       opacity: 0.50;   /* Good browsers */
 }
-.double-anon-blurb {
+
+#anon-v-anon-blurb {
     font-family:  'Georgia', 'Garamond', serif;
     font-style: italic;
+    color: black;  /* which will look gray because 50% opacity */
+}
+
+#drag-to-my-blurb {
+    font-family:  'Georgia', 'Garamond', serif;
+    font-style: italic;
+    color: gray;
+    display: inline-block;
+    padding: 0 3em 0 3em;
 }
 
 /** qoolbar stuff **/
