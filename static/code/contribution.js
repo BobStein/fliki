@@ -1229,12 +1229,14 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                 //     etc
                 // );
             } else {
+                var w_old = that.$caption_bar.outerWidth();
+                var proportion =  w_old ? overall_width / w_old : 0.0;
                 console.log(
-                    that.id_attribute,
-                    "iframe caption tweak",
-                    that.$caption_bar.outerWidth().toFixed(1),
-                    "->",
-                    overall_width.toFixed(1),
+                    that.id_attribute + ".",
+                    "caption tweak",
+                    that.$caption_bar.outerWidth().toFixed(0), "->",
+                    overall_width.toFixed(0),
+                    (proportion*100.0).toFixed(0) + "%",
                     etc
                 );
                 that.$caption_bar.outerWidth(overall_width);

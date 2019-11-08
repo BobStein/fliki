@@ -459,6 +459,8 @@ function embed_content_js(window, $, MONTY) {
             fit_height(MONTY.THUMB_MAX_HEIGHT, $child);
             // fit_height(MONTY.THUMB_MAX_HEIGHT, $body);
 
+            // TODO:  Don't call both, only the larger one.
+
             // NOTE:  $child before $body fixes SoundCloud too skinny bug.
             //        Because $body shrinkage for some reason constricted $child width,
             //        but not its height.  So its skinny apparent aspect ratio was preserved.
@@ -484,7 +486,7 @@ function embed_content_js(window, $, MONTY) {
         cycle_of_last_change = num_cycles;
         description_of_last_change = description;
         num_changes++;
-        // console.log("CHANGE", description);
+        console.log(contribution_idn + ". CHANGE", description);
         // EXAMPLE:
         //    CHANGE IFRAME.fit_height(300x400-225x300)
         //    CHANGE TWITTER-WIDGET.fit_height(220x421.063-156.7461401262994x300)
@@ -509,39 +511,57 @@ function embed_content_js(window, $, MONTY) {
         }
     }
 
+    var FIT_FORGIVENESS = 5;
+    // NOTE:  This fixes the tweet-creep bug, where twitter contributions would repeatedly
+    //        shrink a TWITTER-WIDGET (yes that's a tag name) height over and over,
+    //        at the POLL_MILLISECONDS rate.  Caused by a very minor bug (or possibly some kind of
+    //        twitter shenanigans) where $e.width(x) resulted in $e.width() == x+3  D'oh!
+    //        Anyway it led to pedantic fit_width() persistently shrinking width (which had no
+    //        effect) along with a proportional shrinkage of height (which did have an effect).
+    //        So this value increases the likelihood fit_width() or fit_height() will just leave
+    //        the element alone.  In the problematic case, fit_width kept trying to set the width
+    //        of the TWITTER-WIDGET to 200, and kept seeing its width as 203.
+
+
     function fit_width(max_width, $element) {
-        if ($element.length === 1 && max_width < $element.width()) {
+        if ($element.length === 1 && max_width + FIT_FORGIVENESS < $element.width()) {
             var old_width = $element.width();
             var old_height = $element.height();
             var new_width = max_width;
-            var new_height = old_height * max_width / old_width;
+            var proportion = max_width / old_width;
+            var new_height = old_height * proportion;
             $element.height(new_height);
             $element.width(new_width);
             // NOTE:  Once thought I saw a clue that order matters.
             //        Or maybe I was just desperately trying stuff.
-            count_a_change($element[0].tagName + ".fit_width");
+            count_a_change(
+                $element[0].tagName + ".fit_width" + " " +
+                old_width.toFixed() + "x" +
+                old_height.toFixed() + " " +
+                new_width.toFixed() + "x" +
+                new_height.toFixed() + " " +
+                (proportion*100.0).toFixed(0) + "%"
+            );
         }
     }
 
     function fit_height(max_height, $element) {
-        if ($element.length === 1 && max_height < $element.height()) {
+        if ($element.length === 1 && max_height + FIT_FORGIVENESS < $element.height()) {
             var old_height = $element.height();
             var old_width = $element.width();
             var new_height = max_height;
-            var new_width = old_width * max_height / old_height;
+            var proportion = max_height / old_height;
+            var new_width = old_width * proportion;
             $element.width(new_width);
             $element.height(new_height);
             count_a_change(
-                $element[0].tagName + ".fit_height" +
-                "(" +
-                old_width.toFixed() +
-                "x" +
-                old_height.toFixed() +
-                "-" +
-                new_width.toFixed() +
-                "x" +
-                new_height.toFixed() +
-                ")"
+                $element[0].tagName + ".fit_height" + " " +
+                old_width.toFixed() + "x" +
+                old_height.toFixed() + " " +
+                new_width.toFixed() + "x" +
+                new_height.toFixed() + " " +
+                (proportion*100.0).toFixed(0) + "%"
+
             );
         }
     }
