@@ -1723,6 +1723,8 @@ def contribution_home(home_page_title):
                         cat=auth.monty_cat(),
                         WHAT_IS_THIS_THING=secure.credentials.Options.what_is_this_thing,
                         OEMBED_CLIENT_PREFIX=secure.credentials.Options.oembed_client_prefix,
+                        THUMB_MAX_WIDTH=THUMB_MAX_WIDTH,
+                        THUMB_MAX_HEIGHT=THUMB_MAX_HEIGHT,
 
                         # order=auth.cat_cont_order(),
                         # order.cat - list of categories in order

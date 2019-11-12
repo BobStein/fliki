@@ -298,3 +298,62 @@ Timing.prototype.moment = function Timing_moment(what) {
         };
     }
 })(window);
+
+fit_element.FIT_FORGIVENESS = 5;
+// NOTE:  This works around the tweet-creep bug, where a contribution would repeatedly shrink a
+//        tiny bit.  A TWITTER-WIDGET (yes that's a tag name) reduced height, over and over,
+//        at the POLL_MILLISECONDS rate.  Caused by a very minor bug (or possibly some kind of
+//        twitter shenanigans) where $e.width(N) resulted in $e.width() == N+3  D'oh!
+//        Anyway it led to pedantic fit_width() persistently shrinking width (which had no
+//        effect) along with a proportional shrinkage of height (which did have an effect).
+//        So this value increases the likelihood fit_width() or fit_height() will just leave
+//        the element alone.  In the problematic case, fit_width kept trying to set the width
+//        of the TWITTER-WIDGET to 200, and kept seeing its width as 203.
+
+/**
+ * Make sure an element isn't too big.  Shrink width & height so both fit, preserving aspect ratio.
+ *
+ * @param $element
+ * @param max_width
+ * @param max_height
+ * @param callback_shrinkage - optional callback, with text report on shrinkage, if any happened.
+ */
+
+function fit_element($element, max_width, max_height, callback_shrinkage) {
+    $element = $($element);
+    callback_shrinkage = callback_shrinkage || function () {};
+
+    if ($element.length === 1) {
+        var old_width = $element.width();
+        var old_height = $element.height();
+        if (
+            old_width > max_width + fit_element.FIT_FORGIVENESS ||
+            old_height > max_height + fit_element.FIT_FORGIVENESS
+        ) {
+            var shrink_factor_width = max_width / old_width;      // \ One of these (but not both)
+            var shrink_factor_height = max_height / old_height;   // / could be Infinity
+            var shrink_factor;
+            var shrink_who;
+            if (shrink_factor_width < shrink_factor_height) {
+                shrink_factor = shrink_factor_width;              // No way either of these...
+                shrink_who = "width";
+            } else {
+                shrink_factor = shrink_factor_height;             // ...could be Infinity.
+                shrink_who = "height";
+            }
+            console.assert(shrink_factor <= 1.0, shrink_factor);
+            var new_width = old_width * shrink_factor;
+            var new_height = old_height * shrink_factor;
+            $element.width(new_width);
+            $element.height(new_height);
+            callback_shrinkage(
+                $element[0].tagName + "." + shrink_who + " " +
+                old_width.toFixed() + "x" +
+                old_height.toFixed() + " " +
+                new_width.toFixed() + "x" +
+                new_height.toFixed() + " " +
+                (shrink_factor*100.0).toFixed(0) + "%"
+            );
+        }
+    }
+}

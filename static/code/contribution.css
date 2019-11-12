@@ -39,6 +39,11 @@ body.player-bot-playing #stop-button { display: inline-block; }
 body                    #skip-button { display: none; }
 body.player-bot-playing #skip-button { display: inline-block; }
 
+select#thumb-res        { text-align-last: right; margin-right: 0.1em; }
+select#thumb-res option { direction: rtl; }
+/* THANKS:  right-justified select options, with drop-down arrow on the right also,
+            https://stackoverflow.com/a/43919388/673991 */
+
 #login-prompt {
     float: right;
     text-align: right;
@@ -174,8 +179,18 @@ body.player-bot-playing #skip-button { display: inline-block; }
 .sup-contribution.contribution-edit              .render-bar { display:none; }
 .sup-contribution.contribution-edit.render-media .render-bar { display:none; }
 
+.render-bar img.thumb {
+    vertical-align: top;
+    /* THANKS:  Remove descender gap, https://stackoverflow.com/a/26608149/673991 */
+}
+
                    .contribution { padding: 0.5em 0.5em 0.7em 0.5em; }
 .contribution-edit .contribution { padding: 0.3em 0.3em 0.5em 0.3em; border: 0.2em inset; }
+
+.oembed-error {
+    background-color: #FFF8F0;
+    padding: 8px;
+}
 
 .caption-bar {
     clear: left;
@@ -345,7 +360,8 @@ iframe { display:block; }
 /* THANKS:  Remove space at bottom of a div with an iframe in it,
             https://stackoverflow.com/a/21025344/673991 */
 
-.render-bar iframe {
+.render-bar iframe,
+.render-bar img.thumb {
     border: 1px solid black;
     -webkit-border-top-left-radius: 0.7em;
             border-top-left-radius: 0.7em;

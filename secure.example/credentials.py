@@ -6,12 +6,12 @@ SEE:  Safe credential hosting, https://security.stackexchange.com/a/117634/20266
 Your MySQL server might be prepared with:   (((Suggest you edit, copy, paste, run this SQL.)))
 
     CREATE DATABASE `my_database`;
-    CREATE USER 'my_user'@'my.database.example.com';
-    ALTER USER  'my_user'@'my.database.example.com'
+    CREATE USER 'my_user'@'my.mysql.server.example.com';
+    ALTER USER  'my_user'@'my.mysql.server.example.com'
         IDENTIFIED BY 'my_password';
     GRANT CREATE, INSERT, SELECT
         ON `my_database`.*
-        TO 'my_user'@'my.database.example.com';
+        TO 'my_user'@'my.mysql.server.example.com';
 
 The secret keys may be created with:
 
@@ -39,7 +39,7 @@ The google credentials come from:
 
 for_fliki_lex_database = dict(
     language= 'MySQL',
-    host=     'my.database.example.com',   # or 'localhost' or '127.0.0.1'
+    host=     'my.mysql.server.example.com',   # or 'localhost' or '127.0.0.1'
     port=     3306,
     user=     'my_user',
     password= 'my_password',

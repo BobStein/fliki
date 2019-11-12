@@ -32,8 +32,8 @@
  * @param {object}      MONTY.oembed.thumbnail_url
  * @param {object}      MONTY.oembed.width
  * @param {string}      MONTY.target_origin
- * @param {string}      MONTY.THUMB_MAX_HEIGHT
- * @param {string}      MONTY.THUMB_MAX_WIDTH
+ * @param {number}      MONTY.THUMB_MAX_HEIGHT
+ * @param {number}      MONTY.THUMB_MAX_WIDTH
  *
  * @property {object}   yt_player
  * @property {function} yt_player.getPlayerState
@@ -139,8 +139,16 @@ function embed_content_js(window, $, MONTY) {
                         //          Required instead in src query string for onReady to get called.
 
                         tag_width($you_frame);
-                        fit_width(MONTY.THUMB_MAX_WIDTH, $you_frame);
-                        fit_height(MONTY.THUMB_MAX_HEIGHT, $you_frame);
+                        // fit_width(MONTY.THUMB_MAX_WIDTH, $you_frame);
+                        // fit_height(MONTY.THUMB_MAX_HEIGHT, $you_frame);
+                        fit_element(
+                            $you_frame,
+                            MONTY.THUMB_MAX_WIDTH,
+                            MONTY.THUMB_MAX_HEIGHT,
+                            function(report) {
+                                count_a_change(report)
+                            }
+                        );
                         $body.prepend($you_frame);
                         $you_frame.animate({
                             width: query_get('width'),
@@ -451,13 +459,36 @@ function embed_content_js(window, $, MONTY) {
             $body.css({width: pop_width, height: pop_height});
             $child.css({width: pop_width, height: pop_height});
         } else {
-            fit_width(MONTY.THUMB_MAX_WIDTH, $grandchild);
-            fit_width(MONTY.THUMB_MAX_WIDTH, $child);
-            // fit_width(MONTY.THUMB_MAX_WIDTH, $body);
+            // fit_width(MONTY.THUMB_MAX_WIDTH, $grandchild);
+            // fit_width(MONTY.THUMB_MAX_WIDTH, $child);
+            // // fit_width(MONTY.THUMB_MAX_WIDTH, $body);
+            //
+            // fit_height(MONTY.THUMB_MAX_HEIGHT, $grandchild);
+            // fit_height(MONTY.THUMB_MAX_HEIGHT, $child);
+            // // fit_height(MONTY.THUMB_MAX_HEIGHT, $body);
 
-            fit_height(MONTY.THUMB_MAX_HEIGHT, $grandchild);
-            fit_height(MONTY.THUMB_MAX_HEIGHT, $child);
-            // fit_height(MONTY.THUMB_MAX_HEIGHT, $body);
+            fit_element(
+                $grandchild,
+                MONTY.THUMB_MAX_WIDTH,
+                MONTY.THUMB_MAX_HEIGHT,
+                function(report) {
+                    count_a_change(domain_simple + " grandchild " + report)
+                }
+            );
+            setTimeout(function () {
+                fit_element(
+                    $child,
+                    MONTY.THUMB_MAX_WIDTH,
+                    MONTY.THUMB_MAX_HEIGHT,
+                    function(report) {
+                        count_a_change(domain_simple + " child " + report)
+                    }
+                );
+            });
+            // NOTE:  Shrinking the grandchild first seems to always mean we don't need to shrink
+            //        the child.  But this only works with the setTimeout().  Otherwise the child
+            //        always needs shrinking too, at least in Chrome.
+
 
             // TODO:  Don't call both, only the larger one.
 
@@ -511,60 +542,49 @@ function embed_content_js(window, $, MONTY) {
         }
     }
 
-    var FIT_FORGIVENESS = 5;
-    // NOTE:  This fixes the tweet-creep bug, where twitter contributions would repeatedly
-    //        shrink a TWITTER-WIDGET (yes that's a tag name) height over and over,
-    //        at the POLL_MILLISECONDS rate.  Caused by a very minor bug (or possibly some kind of
-    //        twitter shenanigans) where $e.width(x) resulted in $e.width() == x+3  D'oh!
-    //        Anyway it led to pedantic fit_width() persistently shrinking width (which had no
-    //        effect) along with a proportional shrinkage of height (which did have an effect).
-    //        So this value increases the likelihood fit_width() or fit_height() will just leave
-    //        the element alone.  In the problematic case, fit_width kept trying to set the width
-    //        of the TWITTER-WIDGET to 200, and kept seeing its width as 203.
 
-
-    function fit_width(max_width, $element) {
-        if ($element.length === 1 && max_width + FIT_FORGIVENESS < $element.width()) {
-            var old_width = $element.width();
-            var old_height = $element.height();
-            var new_width = max_width;
-            var proportion = max_width / old_width;
-            var new_height = old_height * proportion;
-            $element.height(new_height);
-            $element.width(new_width);
-            // NOTE:  Once thought I saw a clue that order matters.
-            //        Or maybe I was just desperately trying stuff.
-            count_a_change(
-                $element[0].tagName + ".fit_width" + " " +
-                old_width.toFixed() + "x" +
-                old_height.toFixed() + " " +
-                new_width.toFixed() + "x" +
-                new_height.toFixed() + " " +
-                (proportion*100.0).toFixed(0) + "%"
-            );
-        }
-    }
-
-    function fit_height(max_height, $element) {
-        if ($element.length === 1 && max_height + FIT_FORGIVENESS < $element.height()) {
-            var old_height = $element.height();
-            var old_width = $element.width();
-            var new_height = max_height;
-            var proportion = max_height / old_height;
-            var new_width = old_width * proportion;
-            $element.width(new_width);
-            $element.height(new_height);
-            count_a_change(
-                $element[0].tagName + ".fit_height" + " " +
-                old_width.toFixed() + "x" +
-                old_height.toFixed() + " " +
-                new_width.toFixed() + "x" +
-                new_height.toFixed() + " " +
-                (proportion*100.0).toFixed(0) + "%"
-
-            );
-        }
-    }
+    // function fit_width(max_width, $element) {
+    //     if ($element.length === 1 && max_width + FIT_FORGIVENESS < $element.width()) {
+    //         var old_width = $element.width();
+    //         var old_height = $element.height();
+    //         var new_width = max_width;
+    //         var proportion = max_width / old_width;
+    //         var new_height = old_height * proportion;
+    //         $element.height(new_height);
+    //         $element.width(new_width);
+    //         // NOTE:  Once thought I saw a clue that order matters.
+    //         //        Or maybe I was just desperately trying stuff.
+    //         count_a_change(
+    //             $element[0].tagName + ".fit_width" + " " +
+    //             old_width.toFixed() + "x" +
+    //             old_height.toFixed() + " " +
+    //             new_width.toFixed() + "x" +
+    //             new_height.toFixed() + " " +
+    //             (proportion*100.0).toFixed(0) + "%"
+    //         );
+    //     }
+    // }
+    //
+    // function fit_height(max_height, $element) {
+    //     if ($element.length === 1 && max_height + FIT_FORGIVENESS < $element.height()) {
+    //         var old_height = $element.height();
+    //         var old_width = $element.width();
+    //         var new_height = max_height;
+    //         var proportion = max_height / old_height;
+    //         var new_width = old_width * proportion;
+    //         $element.width(new_width);
+    //         $element.height(new_height);
+    //         count_a_change(
+    //             $element[0].tagName + ".fit_height" + " " +
+    //             old_width.toFixed() + "x" +
+    //             old_height.toFixed() + " " +
+    //             new_width.toFixed() + "x" +
+    //             new_height.toFixed() + " " +
+    //             (proportion*100.0).toFixed(0) + "%"
+    //
+    //         );
+    //     }
+    // }
 
     function youtube_embed_url(additional_parameters) {
         additional_parameters = additional_parameters || {};

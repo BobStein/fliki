@@ -52,6 +52,8 @@
  * @param MONTY.me_idn
  * @param MONTY.me_txt
  * @param MONTY.OEMBED_CLIENT_PREFIX
+ * @param MONTY.THUMB_MAX_HEIGHT
+ * @param MONTY.THUMB_MAX_WIDTH
  * @param MONTY.WHAT_IS_THIS_THING
  * @param MONTY.u
  * @param MONTY.u.is_admin
@@ -111,7 +113,11 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     //            The target origin provided (‘http://xxx’)
     //            does not match the recipient window’s origin (‘http://yyy’).
 
-    var MS_IFRAME_RECOVERY_CHECK = 3000;
+    var MS_IFRAME_RECOVERY_CHECK = 5000;
+    // TODO:  3 seconds seemed to brief, lots of churn.
+
+    var ALLOW_THUMBNAIL_RESOLUTION_SELECTION = false;
+    var DEFAULT_THUMBNAIL_RESOLUTION = 'mqdefault';
 
     // noinspection JSUnusedLocalSymbols
     var MOVE_AFTER_TARGET = 1,   // SortableJS shoulda defined these
@@ -144,6 +150,8 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
 
     var DRAG_TO_MY_BLURB = "or drag stuff here by its " + GRIP_SYMBOL;
     var $drag_to_my_blurb = null;
+
+    var MAX_CAPTION_LENGTH = 100;  // Because some oembed titles are huge
 
     var me_name;
     var me_possessive;
@@ -255,7 +263,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     var voices = null;
     var voice_weights;
     var voice_default = {name:"(unknown)", lang: ""};
-    var SECONDS_BREATHER_AT_YOUTUBE_END          = 2.0;
+    var SECONDS_BREATHER_AT_MEDIA_END          = 2.0;
     var SECONDS_BREATHER_AT_SPEECH_SYNTHESIS_END = 4.0;   // using window.speechSynthesis
     // var SECONDS_BREATHER_AT_TALKIFY_END          = 4.0;
     // var SECONDS_BREATHER_AT_OTHER_MEDIA_END      = 0.0;   // it was ALREADY a delay showing it
@@ -266,6 +274,21 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     // var work_in_a_pause = false;
 
     var bot;
+
+    function do_live_media_thumbs() {
+        if (ALLOW_THUMBNAIL_RESOLUTION_SELECTION) {
+            return $('#thumb-res').val() === 'live';
+        } else {
+            return false;
+        }
+    }
+    function media_thumb_resolution() {
+        if (ALLOW_THUMBNAIL_RESOLUTION_SELECTION) {
+            return $('#thumb-res').val();
+        } else {
+            return DEFAULT_THUMBNAIL_RESOLUTION;
+        }
+    }
 
 
     /////////////////////////////////////////////////////////////////////////////////////////
@@ -361,6 +384,8 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         $(  '#stop-button').on('click', function () { bot.stop(); });
         $(  '#skip-button').on('click', function () { bot.skip(); });
 
+        $('#thumb-res').on('change', function () { rebuild_all_render_bars(); });
+
         $('#enter_some_text, #enter_a_caption')
             .on('paste change input keyup', post_it_button_looks)
             .on(      'change input',       maybe_cancel_feedback)
@@ -435,7 +460,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         //        As well as creepy resurrection of possibly ancient work on some far future load.
         //        Possibly for a different user on the same computer, that could be bad bad bad.
 
-        caption_should_track_text_width();
+        entry_caption_same_width_as_textarea();
         post_it_button_looks();
         initialize_contribution_sizes();
         settle_down();
@@ -768,7 +793,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             break;
         case that.State.DONE_CONTRIBUTION:
             if (that.cont.is_media) {
-                that.end_one_begin_another(SECONDS_BREATHER_AT_YOUTUBE_END);
+                that.end_one_begin_another(SECONDS_BREATHER_AT_MEDIA_END);
             } else {
                 that.end_one_begin_another(SECONDS_BREATHER_AT_SPEECH_SYNTHESIS_END);
             }
@@ -1093,11 +1118,17 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         media_domain: { get: function () {
             return this.$sup.attr('data-domain') || null;
         }},
+        is_youtube: { get: function () {
+            return has(['youtube', 'youtu_be'], this.media_domain);
+        }},
         is_media: { get: function () {
             return this.$sup.hasClass('render-media');
         }},
         $iframe: { get: function () {
             return this.$render_bar.find('iframe');
+        }},
+        $img_thumb: { get: function () {
+            return this.$render_bar.find('img.thumb');
         }},
         iframe: { get: function () {
             return this.$iframe.get(0) || null;
@@ -1215,8 +1246,11 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         etc = etc || "";
         var that = this;
         var media_width = that.$iframe.outerWidth();
-        var wordy_width = that.$cont.outerWidth();   // in case ever used for quote contributions
-        var overall_width = media_width || wordy_width;
+        var thumb_width = that.$img_thumb.outerWidth();
+        var wordy_width = that.$cont.outerWidth();
+        // NOTE:  wordy_width is the last resort, in case ever used for quote contributions
+        //        But it has width even when invisible.  In that case choose media or thumb.
+        var overall_width = media_width || thumb_width || wordy_width;
         if (overall_width > MIN_CAPTION_WIDTH) {
             if (equal_ish(overall_width, that.$caption_bar.outerWidth(), 1.0)) {
                 // width is already within 1 pixel, don't upset the UI.
@@ -1290,21 +1324,85 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     };
 
     /**
-     * (Re)build the <iframe> element in the render bar.
+     * (Re)build the <iframe> element in the render bar on the media URL in the contribution text.
      *
      * Happens on page load, on entering a new contribution, or editing an old one.
-     *
-     * @param url - contents of the contribution, presumably a URL to media.
      */
-    Contribution.prototype.render_iframe = function Contribution_render_iframe(url) {
+    Contribution.prototype.render_iframe = function Contribution_render_iframe() {
         var that = this;
+        var media_url = that.text();
         that.$sup.addClass('render-media');
-        that.$sup.attr('data-domain', sanitized_domain_from_url(url));
+        that.$sup.attr('data-domain', sanitized_domain_from_url(media_url));
         // NOTE:  that.$iframe may not exist yet, e.g. on page reload, or entering a new cont.
         //        If it did exist it gets displaced here, e.g. after an edit.
+        if (do_live_media_thumbs()) {
+            that.live_media_iframe(media_url);
+        } else {
+            get_oembed("thumb", media_url, function got_thumb_oembed(oembed) {
+                if (typeof oembed.error === 'undefined') {
+                    if (typeof oembed.thumbnail_url === 'string') {
+                        that.thumb_media_iframe(
+                            media_url,
+                            oembed.thumbnail_url,
+                            oembed.caption_for_media
+                        );
+                    } else {   // oembed data is missing a thumbnail URL
+                        that.live_media_iframe(media_url);
+                    }
+                } else {   // oembed error message
+                    that.$render_bar.empty().text(oembed.error).addClass('oembed-error');
+                    // NOTE:  How the text gets its peachy background color.
+
+                    that.$sup.addClass('noembed-error');
+                    // NOTE:  How non-live thumbnails skip the bot.
+                }
+            });
+            // that.$render_bar.empty().append(media_thumb_resolution());
+            // that.$render_bar.empty().append($.toJSON(oembed));
+        }
+    };
+
+    Contribution.prototype.thumb_media_iframe = function Contribution_thumb_media_iframe(
+        url_contribution,
+        url_thumbnail_image,
+        caption
+    ) {
+        var that = this;
+        var $a = $('<a>', {
+            id: 'thumb_' + that.id_attribute,
+            href: url_contribution,
+            target: '_blank',
+            title: caption
+        });
+        // noinspection HtmlRequiredAltAttribute,RequiredAttributes
+        var $img = $('<img>', {
+            class: 'thumb',
+            alt: caption
+        });
+        that.$render_bar.empty().append($a);
+        $a.append($img);
+        $img.on('load', function render_img_load() {
+            fit_element(this, MONTY.THUMB_MAX_WIDTH, MONTY.THUMB_MAX_HEIGHT);
+            that.fix_caption_width('thumb rendering');
+        });
+        var src = url_thumbnail_image;
+        if (that.is_youtube) {
+            src = src.replace(/hqdefault/, media_thumb_resolution());
+        }
+        // NOTE:  .src is set below so .on('load') above is sure to happen.
+        $img.attr('src', src);
+    };
+
+    Contribution.prototype.live_media_iframe = function Contribution_live_media_iframe(
+        media_url, more_parameters
+    ) {
+        // TODO:  No need to pass media_url, it's gotta be that.text().  Okay make a that.media_url().
+        var that = this;
+        more_parameters = more_parameters || {};
+        more_parameters.idn = that.id_attribute;
         var $iframe = $('<iframe>', {
             id: 'iframe_' + that.id_attribute,   // This is NOT how a pop-up gets made.
-            src: iframe_src_from_url(url, that.id_attribute),
+            src: our_oembed_relay_url(media_url, more_parameters),
             allowfullscreen: 'allowfullscreen',
             allow: 'autoplay; fullscreen'
         });
@@ -1549,7 +1647,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                 var $caption_span = $sup_cont.find('.caption-span');
                 var cont_idn_new = $cont_editing.attr('id');
                 edit_submit($caption_span, "caption", MONTY.IDN.CAPTION, cont_idn_new, function () {
-                    render_bar($cont_editing);
+                    rebuild_a_render_bar($cont_editing);
                     contribution_edit_end();
                 });
             });
@@ -1784,9 +1882,11 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         //          (my own compendium) https://stackoverflow.com/a/44438131/673991
 
         if (cont.is_media) {
-            var $iframe = $popup.find('.render-bar iframe');
-            var old_src = $iframe.attr('src');
-            var new_src = old_src + '&' + $.param({
+            // var $iframe = $popup.find('.render-bar iframe');
+            // var old_src = $iframe.attr('src');
+            // var new_src = old_src + '&' + $.param({
+            var more_relay_parameters = {
+                idn: popup_cont_idn,
                 is_pop_up: true,
                 auto_play: auto_play.toString(),
                 width:  Math.round(window_width - 30),
@@ -1798,11 +1898,12 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                     - vertical_padding_in_css
                     - 30
                 )
-            });
+            };
             // NOTE:  Extra 30-pixel reduction in height and width.
             //        Tends to prevent scrollbars from spontaneously appearing.
             //        Someday a less crude way would be good.
-            $iframe.attr('src', new_src);
+            // $iframe.attr('src', new_src);
+            pop_cont.live_media_iframe(pop_cont.text(), more_relay_parameters);
             $popup.css({'background-color': 'rgba(0,0,0,0)'});
             pop_cont.resizer_init(
                 function pop_media_init() {
@@ -2342,16 +2443,16 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                     // NOTE:  Only insert a new oembed-supplied caption
                     //        if both text and caption were blank
                     //        BEFORE the pasting took place.
-                possible_incoming_media("paste", evt, pasted_text, function (url, title) {
+                get_oembed("paste", pasted_text, function (oembed) {
                     var $enter_some_text = $('#enter_some_text');
                     var $enter_a_caption = $('#enter_a_caption');
                     var is_new_text = (
-                        $enter_some_text.val().length === 0 ||   // was blank (is blank?? remove this?)
-                        $enter_some_text.val() === url           // must have pasted over all
+                        $enter_some_text.val().length === 0 ||    // was blank (is blank?? remove this?)
+                        $enter_some_text.val() === pasted_text    // must have pasted over all
                     );
                     var is_blank_caption = $enter_a_caption.val().length === 0;
                     if (is_new_text && is_blank_caption) {
-                        $enter_a_caption.val(title);
+                        $enter_a_caption.val(oembed.caption_for_media);
                         // NOTE:  Insert a caption when it was blank, and
                         //        the text is completely overwritten by the pasted url.
                         //        Unlike drop, pasting a URL into the caption does nothing special.
@@ -2399,15 +2500,14 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                         ) {
                             item.getAsString(function (might_be_url) {
                                 console.assert(is_string(might_be_url));
-                                possible_incoming_media(
+                                get_oembed(
                                     "drop",
-                                    evt,
                                     might_be_url,
-                                    function (url, title) {
+                                    function (oembed) {
                                         var $enter_some_text = $('#enter_some_text');
                                         var $enter_a_caption = $('#enter_a_caption');
-                                        $enter_some_text.val(url);
-                                        $enter_a_caption.val(title);
+                                        $enter_some_text.val(might_be_url);
+                                        $enter_a_caption.val(oembed.caption_for_media);
                                         // TODO:  Avoid dropping new text/caption when they're dirty.
                                         //        But do overwrite semi-dirty,
                                         //        that is already the result of earlier URL drop/paste.
@@ -2448,13 +2548,15 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     /**
      * Pasted or dropped contribution.
      *
-     * @param what - 'paste' or 'drop'
-     * @param evt - jQuery event object
-     * @param url {string} - that was pasted or dropped - POSSIBLY a URL.
-     * @param oembed_handler
+     * @param what - 'paste' or 'drop' or 'thumb'
+     * @param {string} media_url - that was pasted or dropped - POSSIBLY a URL.
+     * @param {function} oembed_handler - passed the oembed associative array, augmented with:
+     *                                    .caption_for_media = caption or author or error message
+     * @return {boolean} - true means we should eventually get a callback
+     *                          Except it will return true and not call back if the post fails.
      */
-    function possible_incoming_media(what, evt, url, oembed_handler) {
-        if (can_i_get_meta_about_it(url)) {
+    function get_oembed(what, media_url, oembed_handler) {
+        if (can_i_get_meta_about_it(media_url)) {
             /**
              * @param oembed_response
              * @param oembed_response.oembed
@@ -2464,27 +2566,32 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
              * @param oembed_response.oembed.url
              */
             qoolbar.post('noembed_meta', {
-                url: url
+                url: media_url
             }, function (oembed_response) {
-                console.log("noembed meta", what, oembed_response);
-                if (
-                    typeof oembed_response.oembed.title === 'string' &&
-                    typeof oembed_response.oembed.error === 'undefined'
-                ) {
-                    var title = oembed_response.oembed.title;
-                    if (title === oembed_response.oembed.url) {
-                        // NOTE:  Twitter does this, title same as url, WTF?!?
-                        //        https://twitter.com/ICRC/status/799571646331912192
-                        //        but in that case author_name === 'ICRC'
-                        //        Another example from facebook:
-                        //        https://www.facebook.com/priscila.s.iwama/videos/10204886348423453/
-                        title = oembed_response.oembed.author_name || null;
-                    }
-                    oembed_handler(url, title);
+                var oembed_object = oembed_response.oembed;
+                var is_title_a_copy_of_url = oembed_object.title === oembed_object.url;
+                // NOTE:  Twitter does this, title same as url, WTF?!?
+                //        https://twitter.com/ICRC/status/799571646331912192
+                //        possibly because Twitter titles contain the tweet, so can be long.
+                //        but in that case author_name === 'ICRC'
+                //        Another example from facebook:
+                //        https://www.facebook.com/priscila.s.iwama/videos/10204886348423453/
+                var is_error_usable = is_laden(oembed_object.error);
+                var is_title_usable = is_laden(oembed_object.title) && ! is_title_a_copy_of_url;
+                var is_author_usable = is_laden(oembed_object.author_name);
+                if (is_error_usable) {
+                    console.warn("Not an oembed URL", what, media_url, oembed_object.error);
+                    oembed_object.caption_for_media = "(" + oembed_object.error + ")";
+                } else if (is_title_usable) {
+                    oembed_object.caption_for_media = oembed_object.title;
+                } else if (is_author_usable) {
+                    oembed_object.caption_for_media = oembed_object.author_name;
                 } else {
-                    console.warn("Not an oembed URL", what, url, oembed_response.oembed.error);
-                    oembed_handler(url, oembed_response.oembed.error);
+                    oembed_object.caption_for_media = "(neither title nor author)";
                 }
+                var limited_caption = oembed_object.caption_for_media.substr(0, MAX_CAPTION_LENGTH);
+                oembed_object.caption_for_media = limited_caption;
+                oembed_handler(oembed_object);
             });
             // NOTE:  The following anti-bubbling, anti-propagation code
             //        COULD have been here, but it probably never does anything.
@@ -2501,7 +2608,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             var duplicate_id = null;
             Contribution_loop(function (cont) {
                 // TODO:  Instead, pass a category filter to Contribution_loop().
-                if (cont.text() === url && cont.is_my_category) {
+                if (cont.text() === media_url && cont.is_my_category) {
                     duplicate_id = cont.id_attribute;
                     return false;
                 }
@@ -2532,10 +2639,12 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                     //           e.g. youtube.com vs youtu.be
                     //           e.g. query string variables, such as t, feature
                     //        5. (swore there was another reason)
-                ).data('duplicate_url', url);
+                ).data('duplicate_url', media_url);
             }
+            return true;
         } else {
-            console.log("Incoming non-URL", what, url);
+            console.log("Incoming non-URL", what, media_url);
+            return false;
         }
     }
 
@@ -2700,6 +2809,8 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             var $element = $(this);
             $element.removeClass('size-adjust-once');
             size_adjust($element, WIDTH_MAX_EM, HEIGHT_MAX_EM);
+            var cont = Contribution_from_element($element);
+            cont.fix_caption_width('quote size adjust');
         });
     }
     function resizer_nudge_all() {
@@ -2897,7 +3008,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                             }
                             $text.val("");
                             $caption_input.val("");
-                            render_bar($sup_cont);
+                            rebuild_a_render_bar($sup_cont);
                             settle_down();
                             setTimeout(function () {  // Give rendering some airtime.
                                 new_contribution_just_created();
@@ -2935,10 +3046,10 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             associative_array[key] = [element];
         }
     }
-    var a = {};
-    safe_prepend(a, 'a', 99);   assert_json('{"a":[99]}', a);
-    safe_prepend(a, 'a', 98);   assert_json('{"a":[98,99]}', a);
-    safe_prepend(a, 'a', 97);   assert_json('{"a":[97,98,99]}', a);
+    var aa = {};
+    safe_prepend(aa, 'a', 99);   assert_json('{"a":[99]}', aa);
+    safe_prepend(aa, 'a', 98);   assert_json('{"a":[98,99]}', aa);
+    safe_prepend(aa, 'a', 97);   assert_json('{"a":[97,98,99]}', aa);
 
     function assert_json(json, object) {
         var json_actual = JSON.stringify(object);
@@ -3007,6 +3118,23 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             .append($('<option>', {value: PLAY_BOT_FROM_MY}).text("from my playlist"))
             .append($('<option>', {value: PLAY_BOT_FROM_OTHERS}).text("from others playlist"))
         );
+        if (ALLOW_THUMBNAIL_RESOLUTION_SELECTION) {
+            var $thumb_res = $('<select>', {id: 'thumb-res'});
+            // noinspection SpellCheckingInspection
+            looper([
+                'live',
+                '0', '1', '2', '3',
+                    'hqdefault',
+                    'mqdefault',
+                      'default',
+                    'sddefault',
+                'maxresdefault'
+            ], function (_, name) {
+                $thumb_res.append($('<option>', {value: name}).text(name));
+            });
+            $bot.append($thumb_res);
+            $bot.append("thumbnails");
+        }
         $up_top.append($bot);
 
         var $login_prompt = $('<div>', {id: 'login-prompt', title: "your idn is " + MONTY.me_idn});
@@ -3246,9 +3374,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
 
         // NOTE:  Now the contributions are in the DOM.
 
-        $('.sup-contribution').each(function () {
-            render_bar($(this));
-        });
+        rebuild_all_render_bars();
 
 
         if (num_contributions_in_category(MONTY.IDN.CAT_MY) === 0) {
@@ -3266,6 +3392,12 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             )
         );
         // NOTE:  Slightly less intrusive than in console.log().
+    }
+
+    function rebuild_all_render_bars() {
+        $('.sup-contribution').each(function () {
+            rebuild_a_render_bar(this);
+        });
     }
 
     function cont_list_from_query_string() {
@@ -3289,8 +3421,10 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         }
     }
 
-    function iframe_src_from_url(url, idn) {
-        return MONTY.OEMBED_CLIENT_PREFIX + "?" + $.param({url: url, idn: idn});
+    function our_oembed_relay_url(url, parameters) {
+        // TODO:  Pass url in the parameters
+        parameters.url = url;
+        return MONTY.OEMBED_CLIENT_PREFIX + "?" + $.param(parameters);
         // THANKS:  jQuery query string, https://stackoverflow.com/a/31599255/673991
     }
 
@@ -3505,14 +3639,14 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         return $sup_contribution;
     }
 
-    function render_bar(any_element_in_a_contribution) {
+    function rebuild_a_render_bar(any_element_in_a_contribution) {
+        // TODO:  This function and all his playmates should become Contribution methods.
         var $sup_cont = $(any_element_in_a_contribution).closest('.sup-contribution');
         console.assert($sup_cont.length === 1, $sup_cont, any_element_in_a_contribution);
         var $cont = $sup_cont.find('.contribution');
-        var cont_txt = $cont.text();
-        if (can_i_embed_it(cont_txt)) {
+        if (can_i_embed_it($cont.text())) {
             var cont = Contribution_from_element($sup_cont);   // Before it gets its $iframe!
-            cont.render_iframe(cont_txt);
+            cont.render_iframe();
         } else {
             render_text($sup_cont);
         }
@@ -3523,6 +3657,9 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         $sup_cont.removeAttr('data-domain');
         var $render_bar = $sup_cont.find('.render-bar');
         $render_bar.empty();
+        // var cont = Contribution_from_element($sup_cont);
+        // cont.fix_caption_width('quote rendering');
+        // console.log("render_text()", cont.id_attribute);
     }
 
     function could_be_url(text) {
@@ -3696,7 +3833,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     /**
      * Try to keep the caption input and textarea same width.  If not, no sweat.
      */
-    function caption_should_track_text_width() {
+    function entry_caption_same_width_as_textarea() {
         if (typeof window.MutationObserver === 'function') {
             var $enter_some_text = $('#enter_some_text');
             var $enter_a_caption = $('#enter_a_caption');
