@@ -2607,7 +2607,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             //       https://stackoverflow.com/q/8414154/673991
             var duplicate_id = null;
             Contribution_loop(function (cont) {
-                // TODO:  Instead, pass a category filter to Contribution_loop().
+                // TODO:  Instead, pass a category filter to Contribution_loop() for my-category.
                 if (cont.text() === media_url && cont.is_my_category) {
                     duplicate_id = cont.id_attribute;
                     return false;
@@ -2616,30 +2616,29 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             if (duplicate_id === null) {
                 entry_feedback();
             } else {
-                entry_feedback(
-                    "(possible duplicate)"
-                    // ,
-                    // $('<a>', {href: "#" + duplicate_id}).text("Scroll to it.")
-                    // TODO:  This link is seductively simple, but it's busted.  Maybe someday, but:
-                    //        1. The .contribution element is display:none for media.
-                    //           Anchor links won't budge for invisible elements.
-                    //        2. The duplicate contribution may be inside a closed category.
-                    //           (Or in the trash, in which case it's not a duplicate.
-                    //           Whoa that has to be fixed now!  Done.)
-                    //           Furthermore, a duplicate
-                    //           from "other" or "anon" categories should be handled differently,
-                    //           e.g. "GMTA!  John Doe already contributed that. Move it here?"
-                    //           And one day if there are user-defined categories those will be
-                    //           weird cases too.  We may WANT a duplicate.
-                    //           Or maybe there shouldn't be user categories ever, just tags
-                    //           (i.e. qoolbar verbs) and the pseudo-categories that implies.
-                    //        3. Merely scrolling to it is not much help.  It should be haloed,
-                    //           ala Stack Overflow's fading orange background indication.
-                    //        4. A similar but not identical URL won't be detected.
-                    //           e.g. youtube.com vs youtu.be
-                    //           e.g. query string variables, such as t, feature
-                    //        5. (swore there was another reason)
-                ).data('duplicate_url', media_url);
+                entry_feedback("(possible duplicate)").data('duplicate_url', media_url);
+                // ,
+                // $('<a>', {href: "#" + duplicate_id}).text("Scroll to it.")
+                // TODO:  This link is seductively simple, but it's busted.  Maybe someday, but:
+                //        1. The .contribution element is display:none for media.
+                //           Anchor links won't budge for invisible elements.
+                //        2. The duplicate contribution may be inside a closed category.
+                //           (Or in the trash, in which case it's not a duplicate.
+                //           Whoa that has to be fixed now!  Done.)
+                //           Furthermore, a duplicate
+                //           from "other" or "anon" categories should be handled differently,
+                //           e.g. "GMTA!  John Doe already contributed that. Move it here?"
+                //           And one day if there are user-defined categories those will be
+                //           weird cases too.  We may WANT a duplicate.
+                //           Or maybe there shouldn't be user categories ever, just tags
+                //           (i.e. qoolbar verbs) and the pseudo-categories that implies.
+                //        3. Merely scrolling to it is not much help.  It should be haloed,
+                //           ala Stack Overflow's fading orange background indication.
+                //        4. A similar but not identical URL won't be detected.
+                //           e.g. youtube.com vs youtu.be
+                //           e.g. query string variables, such as t, feature
+                //        5. (swore there was another reason)
+                console.log("Possible duplicate", duplicate_id, "'" + media_url + "'");
             }
             return true;
         } else {
