@@ -142,7 +142,7 @@ def flask_earliest_convenience():
 @flask_app.before_request
 def before_request():
     parts = urllib.parse.urlparse(flask.request.url)
-    print("Before request", repr(parts))
+    # print("Before request", repr(parts))
 
     if parts.netloc in secure.credentials.Options.redirect_domain_port:
         # noinspection PyProtectedMember

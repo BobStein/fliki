@@ -1335,7 +1335,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                 var youtube_id = null;
                 looper(MONTY.YOUTUBE_PATTERNS, function (_, pattern) {
                     var match_object = media_url.match(RegExp(pattern));
-                    if (match_object.length >= 1) {
+                    if (match_object && match_object.length >= 1) {
                         youtube_id = match_object[1];
                         return false;
                     }
