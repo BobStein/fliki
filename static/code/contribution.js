@@ -65,6 +65,7 @@
  * @param MONTY.w.obj
  * @param MONTY.w.txt
  * @param MONTY.w.num
+ * @param MONTY.YOUTUBE_PATTERNS
  * @param talkify
  *
  * @property word
@@ -224,21 +225,6 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     var SETTING_PLAY_BOT_FROM = 'setting.play_bot.from';
     var PLAY_BOT_FROM_MY = 'CAT_MY';          // \ human-understandable values for #play_bot_from
     var PLAY_BOT_FROM_OTHERS = 'CAT_THEIR';   // / options, machine use ala MONTY.IDN['CAT_THEIR']
-
-    // var MEDIA_ZERO_TIME = 0;
-    // var MEDIA_INFINITE_PATIENCE = 1000 * 1000 * 365 * 24 * 60 * 60 * 1000;
-    // var MEDIA_SECONDS_TABLE = {
-    //     youtube: MEDIA_INFINITE_PATIENCE,
-    //     youtu_be: MEDIA_INFINITE_PATIENCE,
-    //     // vimeo: 600,   // TODO automate playing for vimeo videos
-    //
-    //     default: 10,   // other media is a static image
-    //     no_media: MEDIA_INFINITE_PATIENCE,   // text being read aloud
-    //     no_domain: MEDIA_ZERO_TIME     // badly formatted URL
-    // };
-    // TODO:  Better way to prevent pausing youtube or talkify to result MUCH LATER
-    //        in a jarring timeout and resumption of the bot with the next contribution.
-    //        Now that's done with MEDIA_INFINITE_PATIENCE of a million years.
 
     var MEDIA_STATIC_SECONDS = 10;   // How long to display media we don't know how to automate.
 
@@ -1112,6 +1098,12 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         $caption_bar: { get: function () {
             return this.$sup.find('.caption-bar');
         }},
+        $caption_span: { get: function () {
+            return this.$sup.find('.caption-span');
+        }},
+        caption_text: { get: function () {
+            return this.$caption_span.text();
+        }},
         is_noembed_error: { get: function () {
             return this.$sup.hasClass('noembed-error');
         }},
@@ -1338,31 +1330,61 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         if (do_live_media_thumbs()) {
             that.live_media_iframe(media_url);
         } else {
-            get_oembed("thumb", media_url, function got_thumb_oembed(oembed) {
-                if (typeof oembed.error === 'undefined') {
-                    if (typeof oembed.thumbnail_url === 'string') {
-                        that.thumb_media_iframe(
-                            media_url,
-                            oembed.thumbnail_url,
-                            oembed.caption_for_media
-                        );
-                    } else {   // oembed data is missing a thumbnail URL
-                        that.live_media_iframe(media_url);
+            var do_we_need_to_bother_with_oembed = true;
+            if (that.is_youtube) {
+                var youtube_id = null;
+                looper(MONTY.YOUTUBE_PATTERNS, function (_, pattern) {
+                    var match_object = media_url.match(RegExp(pattern));
+                    if (match_object.length >= 1) {
+                        youtube_id = match_object[1];
+                        return false;
                     }
-                } else {   // oembed error message
-                    that.$render_bar.empty().text(oembed.error).addClass('oembed-error');
-                    // NOTE:  How the text gets its peachy background color.
-
-                    that.$sup.addClass('noembed-error');
-                    // NOTE:  How non-live thumbnails skip the bot.
+                });
+                if (youtube_id !== null) {
+                    var thumb_url = youtube_mq_url(youtube_id);
+                    that.thumb_media_img(media_url, thumb_url, "YouTube page for " + that.caption_text);
+                    do_we_need_to_bother_with_oembed = false;
                 }
-            });
-            // that.$render_bar.empty().append(media_thumb_resolution());
-            // that.$render_bar.empty().append($.toJSON(oembed));
+            }
+            if (do_we_need_to_bother_with_oembed) {
+                get_oembed("thumb", media_url, function got_thumb_oembed(oembed) {
+                    if (typeof oembed.error === 'undefined') {
+                        if (typeof oembed.thumbnail_url === 'string') {
+                            that.thumb_media_img(
+                                media_url,
+                                oembed.thumbnail_url,
+                                oembed.caption_for_media
+                            );
+                        } else {   // oembed data is missing a thumbnail URL
+                            that.live_media_iframe(media_url);
+                        }
+                    } else {   // oembed error message
+                        that.$render_bar.empty().text(oembed.error).addClass('oembed-error');
+                        // NOTE:  How the text gets its peachy background color.
+
+                        that.$sup.addClass('noembed-error');
+                        // NOTE:  How non-live thumbnails skip the bot.
+                    }
+                });
+                // that.$render_bar.empty().append(media_thumb_resolution());
+                // that.$render_bar.empty().append($.toJSON(oembed));
+            }
         }
     };
 
-    Contribution.prototype.thumb_media_iframe = function Contribution_thumb_media_iframe(
+    /**
+     * Generate medium-quality thumbnail URL from 11-character YouTube id.
+     *
+     * THANKS:  https://stackoverflow.com/a/2068371/673991
+     *
+     * @param youtube_id - e.g. '3SwNXQMoNps'
+     * @return {string} - e.g. 'https://img.youtube.com/vi/3SwNXQMoNps/mqdefault.jpg'
+     */
+    function youtube_mq_url(youtube_id) {
+        return 'https://img.youtube.com/vi/' + youtube_id + '/mqdefault.jpg';
+    }
+
+    Contribution.prototype.thumb_media_img = function Contribution_thumb_media_img(
         url_contribution,
         url_thumbnail_image,
         caption
@@ -1605,7 +1627,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             if ($clicked_on.is('.contribution')) {
                 cont.$cont.focus();
             } else if ($clicked_on.closest('.caption-bar').length > 0) {
-                cont.$sup.find('.caption-span').focus();
+                cont.$caption_span.focus();
             }
             // NOTE:  Luckily .focus() allows the click that began editing to also place the caret.
             //        Except it doesn't do that in IE11, requiring another click.
@@ -1616,13 +1638,12 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     function contribution_cancel() {
         var cont = Contribution_from_element(this);
         console.assert(cont.exists(), this);
-        var $caption_span = cont.$sup.find('.caption-span');
         console.assert(is_editing_some_contribution);
         // If not editing, how was the cancel button visible?
         if (is_editing_some_contribution) {
             if (cont.$sup.hasClass('edit-dirty')) {
                 $cont_editing.text($cont_editing.data('original_text'));
-                $caption_span.text($caption_span.data('original_text'));
+                cont.$caption_span.text(cont.$caption_span.data('original_text'));
             }
             contribution_edit_end();
         }

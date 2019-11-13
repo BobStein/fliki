@@ -67,6 +67,45 @@ NON_ROUTABLE_IP_ADDRESS = '10.255.255.1'   # THANKS:  https://stackoverflow.com/
 NON_ROUTABLE_URL = 'https://' + NON_ROUTABLE_IP_ADDRESS + '/'   # for testing only
 HIDE_AJAX_NOEMBED_META = True
 
+
+YOUTUBE_PATTERNS = [
+    "https?://(?:[^\\.]+\\.)?youtube\\.com/watch/?\\?(?:.+&)?v=([^&]+)",
+    "https?://(?:[^\\.]+\\.)?(?:youtu\\.be|youtube\\.com/embed)/([a-zA-Z0-9_-]+)",
+]
+# THANKS:  Media URL patterns, https://noembed.com/providers
+
+
+# noinspection SpellCheckingInspection
+NOEMBED_PATTERNS = YOUTUBE_PATTERNS + [
+    "https?://(?:www\\.)?vimeo\\.com/.+",
+
+    "https?://(?:www|mobile\\.)?twitter\\.com/(?:#!/)?([^/]+)/status(?:es)?/(\\d+)",
+    "https?://twitter\\.com/.*/status/.*",
+
+    "https?://.*\\.flickr\\.com/photos/.*",
+    "https?://flic\\.kr/p/.*",
+
+    "https?://www\\.(dropbox\\.com/s/.+\\.(?:jpg|png|gif))",
+    "https?://db\\.tt/[a-zA-Z0-9]+",
+
+    "https?://soundcloud\\.com/.*",
+
+    "https?://www\\.dailymotion\\.com/video/.*",
+
+    # NON_ROUTABLE_URL,   # Also works as a pattern.  The dots are tacky though.
+]
+
+INSTAGRAM_PATTERNS = [
+    "https?://instagram\\.com/p/.*",
+    "https?://instagr\\.am/p/.*",
+    "https?://www\\.instagram\\.com/p/.*",
+    "https?://www\\.instagr\\.am/p/.*",
+    "https?://instagram\\.com/p/.*",
+    "https?://instagr\\.am/p/.*",
+    "https?://www\\.instagram\\.com/p/.*",
+    "https?://www\\.instagr\\.am/p/.*",
+]
+
 time_lex = qiki.TimeLex()
 t_last_anonymous_question = time_lex.now_word()
 t_last_anonymous_answer = time_lex.now_word()
@@ -1748,6 +1787,7 @@ def contribution_home(home_page_title):
                         OEMBED_CLIENT_PREFIX=secure.credentials.Options.oembed_client_prefix,
                         THUMB_MAX_WIDTH=THUMB_MAX_WIDTH,
                         THUMB_MAX_HEIGHT=THUMB_MAX_HEIGHT,
+                        YOUTUBE_PATTERNS=YOUTUBE_PATTERNS,
 
                         # order=auth.cat_cont_order(),
                         # order.cat - list of categories in order
@@ -2725,41 +2765,6 @@ def safe_txt(w):
         return "[non-word {}]".format(w.idn.qstring())
     except qiki.Listing.NotAListing:
         return "[non-listing {}]".format(w.idn.qstring())
-
-
-# noinspection SpellCheckingInspection
-NOEMBED_PATTERNS = [
-    "https?://(?:[^\\.]+\\.)?youtube\\.com/watch/?\\?(?:.+&)?v=([^&]+)",
-    "https?://(?:[^\\.]+\\.)?(?:youtu\\.be|youtube\\.com/embed)/([a-zA-Z0-9_-]+)",
-
-    "https?://(?:www\\.)?vimeo\\.com/.+",
-
-    "https?://(?:www|mobile\\.)?twitter\\.com/(?:#!/)?([^/]+)/status(?:es)?/(\\d+)",
-    "https?://twitter\\.com/.*/status/.*",
-
-    "https?://.*\\.flickr\\.com/photos/.*",
-    "https?://flic\\.kr/p/.*",
-
-    "https?://www\\.(dropbox\\.com/s/.+\\.(?:jpg|png|gif))",
-    "https?://db\\.tt/[a-zA-Z0-9]+",
-
-    "https?://soundcloud\\.com/.*",
-
-    "https?://www\\.dailymotion\\.com/video/.*",
-
-    # NON_ROUTABLE_URL,   # Also works as a pattern.  The dots are tacky though.
-]
-
-INSTAGRAM_PATTERNS = [
-    "https?://instagram\\.com/p/.*",
-    "https?://instagr\\.am/p/.*",
-    "https?://www\\.instagram\\.com/p/.*",
-    "https?://www\\.instagr\\.am/p/.*",
-    "https?://instagram\\.com/p/.*",
-    "https?://instagr\\.am/p/.*",
-    "https?://www\\.instagram\\.com/p/.*",
-    "https?://www\\.instagr\\.am/p/.*",
-]
 
 
 if secure.credentials.Options.oembed_server_prefix is not None:
