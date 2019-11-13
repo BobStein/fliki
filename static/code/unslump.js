@@ -16,7 +16,7 @@ function js_for_unslumping(window, $, MONTY) {
     // SEE:  SelectJS options, https://github.com/SortableJS/Sortable#user-content-options
 
     qoolbar.ajax_url(MONTY.AJAX_URL);
-    $(document).ready(function() {
+    $(function document_ready() {
         $('#my_contributions, #their_contributions').sortable({
             animation: 150,
             group: 'contributions',

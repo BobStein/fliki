@@ -326,7 +326,11 @@ function fit_element($element, max_width, max_height, callback_shrinkage) {
     if ($element.length === 1) {
         var old_width = $element.width();
         var old_height = $element.height();
-        if (
+        if (old_width === 0 || old_height === 0) {
+            // Silently leave alone zero-area element.  Must not be done loading yet.
+        } else if ($element.data('fit-element-tried')) {
+            // Silently leave alone if we already tried to resize it.
+        } else if (
             old_width > max_width + fit_element.FIT_FORGIVENESS ||
             old_height > max_height + fit_element.FIT_FORGIVENESS
         ) {
@@ -346,14 +350,68 @@ function fit_element($element, max_width, max_height, callback_shrinkage) {
             var new_height = old_height * shrink_factor;
             $element.width(new_width);
             $element.height(new_height);
-            callback_shrinkage(
-                $element[0].tagName + "." + shrink_who + " " +
-                old_width.toFixed() + "x" +
-                old_height.toFixed() + " " +
-                new_width.toFixed() + "x" +
-                new_height.toFixed() + " " +
-                (shrink_factor*100.0).toFixed(0) + "%"
-            );
+            $element.data('fit-element-tried', true);
+            var actual_width = $element.width();
+            var actual_height = $element.height();
+            var got_desired_width = equal_ish(actual_width, new_width, 1.0);
+            var got_desired_height = equal_ish(actual_height, new_height, 1.0);
+            if (got_desired_width && got_desired_height) {
+                callback_shrinkage(
+                    $element[0].tagName + "." + shrink_who + " " +
+                    old_width.toFixed() + "x" +
+                    old_height.toFixed() + " " +
+                    new_width.toFixed() + "x" +
+                    new_height.toFixed() + " " +
+                    (shrink_factor*100.0).toFixed(0) + "%"
+                );
+            } else {   // didn't get the dimensions we asked for
+                // NOTE:  Twitter sends us here somehow.
+                callback_shrinkage(
+                    "DIVERT " +
+                    $element[0].tagName + "." + shrink_who + " " +
+                    old_width.toFixed() + "x" +
+                    old_height.toFixed() + " " +
+                    new_width.toFixed() + "x" +
+                    new_height.toFixed() + " " +
+                    actual_width.toFixed() + "x" +
+                    actual_height.toFixed() + " " +
+                    (shrink_factor*100.0).toFixed(0) + "%"
+                );
+
+                // $element.width(old_width);
+                // $element.height(old_height);
+                // var revert_width = $element.width();
+                // var revert_height = $element.height();
+                // var able_to_revert_width = equal_ish(revert_width, old_width, 1.0);
+                // var able_to_revert_height = equal_ish(revert_height, old_height, 1.0);
+                // if (able_to_revert_width && able_to_revert_height) {
+                //     callback_shrinkage(
+                //         "REVERT " +
+                //         $element[0].tagName + "." + shrink_who + " " +
+                //         old_width.toFixed() + "x" +
+                //         old_height.toFixed() + " " +
+                //         new_width.toFixed() + "x" +
+                //         new_height.toFixed() + " " +
+                //         actual_width.toFixed() + "x" +
+                //         actual_height.toFixed() + " " +
+                //         (shrink_factor*100.0).toFixed(0) + "%"
+                //     );
+                // } else {
+                //     callback_shrinkage(
+                //         "PREVENTED " +
+                //         $element[0].tagName + "." + shrink_who + " " +
+                //         old_width.toFixed() + "x" +
+                //         old_height.toFixed() + " " +
+                //         new_width.toFixed() + "x" +
+                //         new_height.toFixed() + " " +
+                //         actual_width.toFixed() + "x" +
+                //         actual_height.toFixed() + " " +
+                //         revert_width.toFixed() + "x" +
+                //         revert_height.toFixed() + " " +
+                //         (shrink_factor*100.0).toFixed(0) + "%"
+                //     );
+                // }
+            }
         }
     }
 }

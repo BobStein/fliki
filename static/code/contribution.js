@@ -339,7 +339,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     // (UC Browser 7)
 
 
-    $(window.document).ready(function document_ready() {
+    $(function document_ready() {
         if (typeof window.speechSynthesis === 'object') {
             window.speechSynthesis.onvoiceschanged = function () {
                 // THANKS:  voices ready, https://stackoverflow.com/a/22978802/673991

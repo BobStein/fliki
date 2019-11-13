@@ -86,7 +86,7 @@ function embed_content_js(window, $, MONTY) {
                 parent_message('auto-play-presaged', { contribution_idn: contribution_idn });
                 // NOTE:  Not yet begun, bit it's gonna.
             }
-            $(window.document).ready(function () {
+            $(function document_ready() {
                 t.moment("$");
 
                 $body = $(window.document.body);

@@ -63,7 +63,7 @@ function js_for_meta_lex(window, $, MONTY) {
     //        Which should be zero, no matter the time zone,
     //        because both are seconds since 1970 UTC.
 
-    $(document).ready(function() {
+    $(function document_ready() {
         console.time('total');
         console.time('render_word');
         array_async($sentence_renderings, render_word, 6, 100, function() {

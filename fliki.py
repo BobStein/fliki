@@ -61,8 +61,8 @@ NUM_QOOL_VERB_NEW = qiki.Number(1)
 NUM_QOOL_VERB_DELETE = qiki.Number(0)
 MINIMUM_SECONDS_BETWEEN_ANONYMOUS_QUESTIONS = 10
 MINIMUM_SECONDS_BETWEEN_ANONYMOUS_ANSWERS = 60
-THUMB_MAX_WIDTH = 200
-THUMB_MAX_HEIGHT = 166
+THUMB_MAX_WIDTH = 160
+THUMB_MAX_HEIGHT = 128
 NON_ROUTABLE_IP_ADDRESS = '10.255.255.1'   # THANKS:  https://stackoverflow.com/a/904609/673991
 NON_ROUTABLE_URL = 'https://' + NON_ROUTABLE_IP_ADDRESS + '/'   # for testing only
 HIDE_AJAX_NOEMBED_META = True
@@ -2107,7 +2107,7 @@ def slam_test():
             body.button("go", id='go')
         with html.footer() as foot:
             foot.script('''
-                $(document).ready(function () {
+                $(function document_ready() {
                     qoolbar.ajax_url("'''  + AJAX_URL + '''");
                     var in_process = false;
                     var counter = 0;
