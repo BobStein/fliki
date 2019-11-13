@@ -52,7 +52,7 @@ JQUERY_VERSION = '3.4.1'   # https://developers.google.com/speed/libraries/#jque
 JQUERYUI_VERSION = '1.12.1'   # https://developers.google.com/speed/libraries/#jquery-ui
 DO_MINIFY = False
 config_names = ('AJAX_URL', 'JQUERY_VERSION', 'JQUERYUI_VERSION')
-config_dict = {name: globals()[name] for name in config_names}
+config_dict = {name: globals()[name] for name in config_names}      # TODO:  Enumerant class
 SCRIPT_DIRECTORY = os.path.dirname(os.path.realpath(__file__))   # e.g. '/var/www/flask'
 PARENT_DIRECTORY = os.path.dirname(SCRIPT_DIRECTORY)             # e.g. '/var/www'
 GIT_SHA = git.Repo(SCRIPT_DIRECTORY).head.object.hexsha
@@ -64,7 +64,8 @@ MINIMUM_SECONDS_BETWEEN_ANONYMOUS_ANSWERS = 60
 THUMB_MAX_WIDTH = 200
 THUMB_MAX_HEIGHT = 166
 NON_ROUTABLE_IP_ADDRESS = '10.255.255.1'   # THANKS:  https://stackoverflow.com/a/904609/673991
-NON_ROUTABLE_URL = 'https://' + NON_ROUTABLE_IP_ADDRESS + '/'
+NON_ROUTABLE_URL = 'https://' + NON_ROUTABLE_IP_ADDRESS + '/'   # for testing only
+HIDE_AJAX_NOEMBED_META = True
 
 time_lex = qiki.TimeLex()
 t_last_anonymous_question = time_lex.now_word()
@@ -97,6 +98,26 @@ flask_app.secret_key = secure.credentials.flask_secret_key
 @flask_app.before_first_request
 def flask_earliest_convenience():
     version_report()
+
+
+@flask_app.before_request
+def before_request():
+    parts = urllib.parse.urlparse(flask.request.url)
+
+    if parts.netloc in secure.credentials.Options.redirect_domain_port:
+        # noinspection PyProtectedMember
+        new_parts = parts._replace(
+            netloc=secure.credentials.Options.redirect_domain_port[parts.netloc]
+        )
+        # NOTE:  This strips off the port number, if there was any.
+        # SEE:  _replace() method suggestion
+        #       https://docs.python.org/library/urllib.parse.html#urllib.parse.urlparse
+        # THANKS:  hostname and port substitution, https://stackoverflow.com/a/21629125/673991
+        # THANKS:  redirect to www., https://stackoverflow.com/a/10964868/673991
+        print("Redirect", parts.netloc, new_parts.netloc, file=sys.stderr)
+        new_url = urllib.parse.urlunparse(parts)
+        return flask.redirect(new_url, code=301)
+        # TODO:  Remember how http is getting redirected to https.
 
 
 class WorkingIdns(object):
@@ -1181,7 +1202,7 @@ class Auth(object):
 
 class AuthFliki(Auth):
     """Fliki / Authomatic specific implementation of logging in"""
-    def __init__(self):
+    def __init__(self, hide_print=False):
         setup_application_context()
         self.is_online = flask.g.is_online
         if self.is_online:
@@ -1200,12 +1221,13 @@ class AuthFliki(Auth):
                 "logged in" if self.is_authenticated else "" +
                 "anonymous" if self.is_anonymous else ""
             )
-            print(
-                "AUTH",
-                self.qiki_user.idn.qstring(),
-                auth_anon,
-                self.qiki_user.txt
-            )
+            if not hide_print:
+                print(
+                    "AUTH",
+                    self.qiki_user.idn.qstring(),
+                    auth_anon,
+                    self.qiki_user.txt
+                )
             self.path_word = None
             self.browse_word = None
 
@@ -2740,6 +2762,7 @@ INSTAGRAM_PATTERNS = [
 
 
 if secure.credentials.Options.oembed_server_prefix is not None:
+    # noinspection SpellCheckingInspection
     @flask_app.route(secure.credentials.Options.oembed_server_prefix, methods=('GET', 'HEAD'))
     def oembed_html():
         """
@@ -2749,8 +2772,12 @@ if secure.credentials.Options.oembed_server_prefix is not None:
 
         EXAMPLE:  url=https://www.youtube.com/watch?v=o9tDO3HK20Q
         EXAMPLE:  url=https://www.instagram.com/p/BkVQRWuDigy/
+
         """
-        print("oembed_html", json.dumps(flask.request.full_path))
+        # print("oembed_html", json.dumps(flask.request.full_path))
+        # EXAMPLE:
+        #     oembed_html "/meta/oembed/?idn=1938&url=https%3A%2F%2Ftwitter.com
+        #                  %2FICRC%2Fstatus%2F799571646331912192"
         url = flask.request.args.get('url')
         idn = flask.request.args.get('idn', default="(idn unknown)")
         if matcher(url, NOEMBED_PATTERNS):
@@ -3059,7 +3086,9 @@ def native_num(num):
 @flask_app.route(AJAX_URL, methods=('POST',))
 def ajax():
 
-    auth = AuthFliki()
+    hide_print = flask.request.form.get('action', '_') == 'noembed_meta' and HIDE_AJAX_NOEMBED_META
+    auth = AuthFliki(hide_print=hide_print)
+
     if not auth.is_online:
         return invalid_response("ajax offline")
 
@@ -3218,13 +3247,19 @@ def ajax():
 
         t_end = time.time()
         qc_end = auth.lex.query_count
-        print(
-            "Ajax {action}, {qc} queries, {t:.3f} sec".format(
-                action=repr(action),
-                qc=qc_end - qc_start,
-                t=t_end - t_start
+
+        ok_to_print = True
+        if action == 'noembed_meta' and HIDE_AJAX_NOEMBED_META:
+            ok_to_print = False
+
+        if ok_to_print:
+            print(
+                "Ajax {action}, {qc} queries, {t:.3f} sec".format(
+                    action=repr(action),
+                    qc=qc_end - qc_start,
+                    t=t_end - t_start
+                )
             )
-        )
 
 
 def retry(exception_to_check, tries=4, delay=3, delay_multiplier=2):

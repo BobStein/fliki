@@ -121,7 +121,10 @@ class Options(object):
     home_page_title = "My Title"
     enable_answer_qiki = False
     what_is_this_thing = "my thing"
-    session_domain = "my.main.fliki.example.com"
+    session_domain = "my.main.fliki.example.com"   # or None
+    redirect_domain_port = {
+        'some.other.domain.example.com:443': session_domain + ':443',
+    }
     system_administrator_users = [
         MY_GOOGLE_IDN,
     ]
