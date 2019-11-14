@@ -184,6 +184,16 @@ select#thumb-res option { direction: rtl; }
     /* THANKS:  Remove descender gap, https://stackoverflow.com/a/26608149/673991 */
 }
 
+.thumb-loading {
+    width: 160px;
+    height: 90px;
+}
+
+.thumb-loaded {
+    max-width: 160px;
+    max-height: 128px;
+}
+
                    .contribution { padding: 0.5em 0.5em 0.7em 0.5em; }
 .contribution-edit .contribution { padding: 0.3em 0.3em 0.5em 0.3em; border: 0.2em inset; }
 

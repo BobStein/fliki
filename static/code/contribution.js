@@ -1398,13 +1398,15 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         });
         // noinspection HtmlRequiredAltAttribute,RequiredAttributes
         var $img = $('<img>', {
-            class: 'thumb',
+            class: 'thumb thumb-loading',
             alt: caption
         });
         that.$render_bar.empty().append($a);
         $a.append($img);
         $img.on('load', function render_img_load() {
-            fit_element(this, MONTY.THUMB_MAX_WIDTH, MONTY.THUMB_MAX_HEIGHT);
+            $img.removeClass('thumb-loading');
+            $img.addClass('thumb-loaded');
+            // fit_element(this, MONTY.THUMB_MAX_WIDTH, MONTY.THUMB_MAX_HEIGHT);
             that.fix_caption_width('thumb rendering');
         });
         var src = url_thumbnail_image;
