@@ -3112,8 +3112,9 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         var $status_prompt = $('<div>', {id: 'status-prompt'});
         $status_prompt.text("");
         if (cont_only !== null) {
-            $status_prompt.append("only id_attribute " + cont_only.join(", ") + " - ");
+            $status_prompt.append("contribution " + cont_only.join(", ") + " - ");
             $status_prompt.append($('<a>', {href: url_with_no_query_string()}).text("see all"));
+            $status_prompt.append(" ");
         }
         $up_top.append($status_prompt);
 
@@ -3435,6 +3436,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             return null;
         } else {
             var cont_array = cont_filter.split(',');
+            window.document.title += " - " + cont_filter;
             return cont_array;
         }
     }

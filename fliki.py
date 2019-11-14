@@ -154,8 +154,8 @@ def before_request():
         #       https://docs.python.org/library/urllib.parse.html#urllib.parse.urlparse
         # THANKS:  hostname and port substitution, https://stackoverflow.com/a/21629125/673991
         # THANKS:  redirect to www., https://stackoverflow.com/a/10964868/673991
-        print("Redirect", parts.netloc, new_parts.netloc, file=sys.stderr)
-        new_url = urllib.parse.urlunparse(parts)
+        new_url = urllib.parse.urlunparse(new_parts)
+        print("DISABLED redirect", parts.netloc, new_parts.netloc, new_url, file=sys.stderr)
         return flask.redirect(new_url, code=301)
         # TODO:  Remember how http is getting redirected to https.
 
@@ -1711,6 +1711,30 @@ def cache_bust(s):
 
 @flask_app.route('/', methods=('GET', 'HEAD'))
 def home_or_root_directory():
+    parts = urllib.parse.urlparse(flask.request.url)
+    # print("Before request", repr(parts))
+
+    if parts.netloc in secure.credentials.Options.redirect_domain_port:
+        # noinspection PyProtectedMember
+        new_parts = parts._replace(
+            netloc=secure.credentials.Options.redirect_domain_port[parts.netloc]
+        )
+        # NOTE:  This strips off the port number, if there was any.
+        # SEE:  _replace() method suggestion
+        #       https://docs.python.org/library/urllib.parse.html#urllib.parse.urlparse
+        # THANKS:  hostname and port substitution, https://stackoverflow.com/a/21629125/673991
+        # THANKS:  redirect to www., https://stackoverflow.com/a/10964868/673991
+        new_url = urllib.parse.urlunparse(new_parts)
+        print("Punting to", parts.netloc, new_parts.netloc, new_url, file=sys.stderr)
+        # return flask.redirect(new_url, code=301)
+        with FlikiHTML('html') as html:
+            with html.body() as body:
+                body.text("Please click on ")
+                with body.a(href=new_url) as a:
+                    a.text(new_url)
+                    # HACK:  Because redirect infinite loops, %^&*!
+            return html.doctype_plus_html()
+
     return contribution_home(secure.credentials.Options.home_page_title)
 
 
@@ -1800,13 +1824,15 @@ def contribution_home(home_page_title):
                     monty.update(words_for_js)
                     script.raw_text('var MONTY = {json};\n'.format(json=json_pretty(monty)))
                     script.raw_text('js_for_contribution(window, jQuery, qoolbar, MONTY, talkify);\n')
-    t_end = time.time()
-    q_end = auth.lex.query_count
-    print("/meta/contrib {q:d} queries, {t:.3f} sec".format(
-        q=q_end - q_start,
-        t=t_end - t_start,
-    ))
-    return html.doctype_plus_html()
+            t_end = time.time()
+            q_end = auth.lex.query_count
+            print("/meta/contrib {q:d} queries, {t:.3f} sec".format(
+                q=q_end - q_start,
+                t=t_end - t_start,
+            ))
+            return html.doctype_plus_html()
+
+    return "Please wait a bit..."   # TODO:  Never gets here.
 
 
 # TODO:  New sections:
