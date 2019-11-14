@@ -1403,11 +1403,12 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         });
         that.$render_bar.empty().append($a);
         $a.append($img);
+        that.fix_caption_width('thumb loading');
         $img.on('load', function render_img_load() {
             $img.removeClass('thumb-loading');
             $img.addClass('thumb-loaded');
             // fit_element(this, MONTY.THUMB_MAX_WIDTH, MONTY.THUMB_MAX_HEIGHT);
-            that.fix_caption_width('thumb rendering');
+            that.fix_caption_width('thumb loaded');
         });
         var src = url_thumbnail_image;
         if (that.is_youtube) {

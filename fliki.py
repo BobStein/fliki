@@ -155,9 +155,9 @@ def before_request():
         # THANKS:  hostname and port substitution, https://stackoverflow.com/a/21629125/673991
         # THANKS:  redirect to www., https://stackoverflow.com/a/10964868/673991
         new_url = urllib.parse.urlunparse(new_parts)
-        print("DISABLED redirect", parts.netloc, new_parts.netloc, new_url, file=sys.stderr)
+        print("REDIRECT from", parts.netloc, "to", new_url, file=sys.stderr)
         return flask.redirect(new_url, code=301)
-        # TODO:  Remember how http is getting redirected to https.
+        # TODO:  Remember how it happens that http is getting redirected to https.
 
 
 class WorkingIdns(object):
@@ -1711,29 +1711,28 @@ def cache_bust(s):
 
 @flask_app.route('/', methods=('GET', 'HEAD'))
 def home_or_root_directory():
-    parts = urllib.parse.urlparse(flask.request.url)
-    # print("Before request", repr(parts))
-
-    if parts.netloc in secure.credentials.Options.redirect_domain_port:
-        # noinspection PyProtectedMember
-        new_parts = parts._replace(
-            netloc=secure.credentials.Options.redirect_domain_port[parts.netloc]
-        )
-        # NOTE:  This strips off the port number, if there was any.
-        # SEE:  _replace() method suggestion
-        #       https://docs.python.org/library/urllib.parse.html#urllib.parse.urlparse
-        # THANKS:  hostname and port substitution, https://stackoverflow.com/a/21629125/673991
-        # THANKS:  redirect to www., https://stackoverflow.com/a/10964868/673991
-        new_url = urllib.parse.urlunparse(new_parts)
-        print("Punting to", parts.netloc, new_parts.netloc, new_url, file=sys.stderr)
-        # return flask.redirect(new_url, code=301)
-        with FlikiHTML('html') as html:
-            with html.body() as body:
-                body.text("Please click on ")
-                with body.a(href=new_url) as a:
-                    a.text(new_url)
-                    # HACK:  Because redirect infinite loops, %^&*!
-            return html.doctype_plus_html()
+    # parts = urllib.parse.urlparse(flask.request.url)
+    # # print("Before request", repr(parts))
+    #
+    # if parts.netloc in secure.credentials.Options.redirect_domain_port:
+    #     # noinspection PyProtectedMember
+    #     new_parts = parts._replace(
+    #         netloc=secure.credentials.Options.redirect_domain_port[parts.netloc]
+    #     )
+    #     # NOTE:  This strips off the port number, if there was any.
+    #     # SEE:  _replace() method suggestion
+    #     #       https://docs.python.org/library/urllib.parse.html#urllib.parse.urlparse
+    #     # THANKS:  hostname and port substitution, https://stackoverflow.com/a/21629125/673991
+    #     # THANKS:  redirect to www., https://stackoverflow.com/a/10964868/673991
+    #     new_url = urllib.parse.urlunparse(new_parts)
+    #     print("Punting to", parts.netloc, new_parts.netloc, new_url, file=sys.stderr)
+    #     # return flask.redirect(new_url, code=301)
+    #     with FlikiHTML('html') as html:
+    #         with html.body() as body:
+    #             body.text("Please click on ")
+    #             with body.a(href=new_url) as a:
+    #                 a.text(new_url)
+    #         return html.doctype_plus_html()
 
     return contribution_home(secure.credentials.Options.home_page_title)
 
