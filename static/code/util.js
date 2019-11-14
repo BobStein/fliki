@@ -320,6 +320,37 @@ fit_element.FIT_FORGIVENESS = 5;
  */
 
 function fit_element($element, max_width, max_height, callback_shrinkage) {
+    if ($element.length === 1) {
+        var old_width = $element.width();
+        var old_height = $element.height();
+        $element.css('max-width', max_width);
+        $element.css('max-height', max_height);
+        var actual_width = $element.width();
+        var actual_height = $element.height();
+        var did_change_width = actual_width !== old_width;
+        var did_change_height = actual_height !== old_height;
+        var reports = [];
+        if (actual_width > max_width + 1.0) {
+            reports.push("BUST-WIDTH " + (actual_width - max_width).toFixed(0) + "px");
+        }
+        if (actual_height > max_height + 1.0) {
+            reports.push("BUST-HEIGHT " + (actual_height - max_height).toFixed(0) + "px");
+        }
+        if (did_change_width) {
+            reports.push("w " + old_width.toFixed(0) + " -> " + actual_width.toFixed(0));
+        }
+        if (did_change_height) {
+            reports.push("h " + old_height.toFixed(0) + " -> " + actual_height.toFixed(0));
+        }
+        if (reports.length > 0) {
+            callback_shrinkage(reports.join(", "));
+        }
+    }
+}
+
+
+// noinspection JSUnusedGlobalSymbols
+function fit_element_the_hard_way($element, max_width, max_height, callback_shrinkage) {
     $element = $($element);
     callback_shrinkage = callback_shrinkage || function () {};
 

@@ -142,22 +142,22 @@ def flask_earliest_convenience():
 @flask_app.before_request
 def before_request():
     parts = urllib.parse.urlparse(flask.request.url)
-    # print("Before request", repr(parts))
-
     if parts.netloc in secure.credentials.Options.redirect_domain_port:
+        new_netloc = secure.credentials.Options.redirect_domain_port[parts.netloc]
+
         # noinspection PyProtectedMember
-        new_parts = parts._replace(
-            netloc=secure.credentials.Options.redirect_domain_port[parts.netloc]
-        )
-        # NOTE:  This strips off the port number, if there was any.
-        # SEE:  _replace() method suggestion
+        new_parts = parts._replace(netloc=new_netloc)
+        # NOTE:  netloc is host:port, but ports 80 or 443 are implicit
+        # SEE:  _replace() method suggestion,
         #       https://docs.python.org/library/urllib.parse.html#urllib.parse.urlparse
         # THANKS:  hostname and port substitution, https://stackoverflow.com/a/21629125/673991
-        # THANKS:  redirect to www., https://stackoverflow.com/a/10964868/673991
+
         new_url = urllib.parse.urlunparse(new_parts)
-        print("REDIRECT from", parts.netloc, "to", new_url, file=sys.stderr)
+        print("REDIRECT from", parts.netloc, "to", new_url)
         return flask.redirect(new_url, code=301)
-        # TODO:  Remember how it happens that http is getting redirected to https.
+        # THANKS:  Domain change with redirect, https://stackoverflow.com/a/10964868/673991
+
+        # NOTE:  apache .conf RewriteRule can redirect http to https
 
 
 class WorkingIdns(object):

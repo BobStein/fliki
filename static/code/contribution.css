@@ -185,12 +185,12 @@ select#thumb-res option { direction: rtl; }
     /* THANKS:  Remove descender gap, https://stackoverflow.com/a/26608149/673991 */
 }
 
-.thumb-loading {
+.thumb-loading {   /* expected aspect ratio of youtube thumbnails, half typical mq 320x180 */
     width: 160px;
     height: 90px;
 }
 
-.thumb-loaded {
+.thumb-loaded {   /* constraining box for fully loaded media thumbnails and iframe */
     max-width: 160px;
     max-height: 128px;
 }

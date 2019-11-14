@@ -767,12 +767,9 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                     " failed to start " + that.ticks_this_state.toString()
                 );
                 notable_occurrence(message);
-                var states_before = speech_states();   // Attempt to discover if .cancel() will do anything.
                 window.speechSynthesis.cancel();   // Another attempt to fix text-not-speaking bug.
-                var states_between = speech_states();   // Attempt to discover if .cancel() will do anything.
                 window.speechSynthesis.speak(utter);   // Attempt to fix text-not-speaking bug.
-                var states_after = speech_states();
-                console.warn(message, utter, states_before, states_between, states_after);   // HACK:  Have a look at the utter object.
+                // NOTE:  This is a workaround for the text-not-speaking bug.
             }
             break;
         case that.State.SPEECH_STARTED:
@@ -1342,7 +1339,19 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                 });
                 if (youtube_id !== null) {
                     var thumb_url = youtube_mq_url(youtube_id);
-                    that.thumb_media_img(media_url, thumb_url, "YouTube page for " + that.caption_text);
+                    that.thumb_media_img(
+                        media_url,
+                        thumb_url,
+                        "YouTube page for " + that.caption_text,
+                        function youtube_img_error() {
+                            console.warn(
+                                "YouTube broken thumb",
+                                thumb_url,
+                                "-- revert to iframe"
+                            );
+                            that.live_media_iframe(media_url);
+                        }
+                    );
                     do_we_need_to_bother_with_oembed = false;
                 }
             }
@@ -1353,7 +1362,16 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                             that.thumb_media_img(
                                 media_url,
                                 oembed.thumbnail_url,
-                                oembed.caption_for_media
+                                oembed.caption_for_media,
+                                function thumb_url_error() {
+                                    console.warn(
+                                        that.media_domain,
+                                        "busted thumb",
+                                        oembed.thumbnail_url,
+                                        "-- revert to iframe"
+                                    );
+                                    that.live_media_iframe(media_url);
+                                }
                             );
                         } else {   // oembed data is missing a thumbnail URL
                             that.live_media_iframe(media_url);
@@ -1387,7 +1405,8 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     Contribution.prototype.thumb_media_img = function Contribution_thumb_media_img(
         url_contribution,
         url_thumbnail_image,
-        caption
+        caption,
+        img_error_callback
     ) {
         var that = this;
         var $a = $('<a>', {
@@ -1409,6 +1428,9 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             $img.addClass('thumb-loaded');
             // fit_element(this, MONTY.THUMB_MAX_WIDTH, MONTY.THUMB_MAX_HEIGHT);
             that.fix_caption_width('thumb loaded');
+        });
+        $img.on('error', function render_img_error() {
+            img_error_callback();
         });
         var src = url_thumbnail_image;
         if (that.is_youtube) {
@@ -2002,6 +2024,8 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                     var states_before = speech_states();
 
                     window.speechSynthesis.cancel();   // Another attempt to fix text-not-speaking bug.
+                    // NOTE:  This cancel appears to be the trick that fixed it.
+
                     var states_between = speech_states();
                     window.speechSynthesis.speak(utter);
                     // NOTE:  Play audio even if not auto_play -- because there's no way

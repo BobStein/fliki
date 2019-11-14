@@ -80,6 +80,10 @@ class Options(object):
                                         In particular, this domain will stomp on any 3rd-level
                                         fliki server set to e.g. session_domain = 'sub.example.com'
 
+    redirect_domain_port - dictionary of domain-port redirection directives
+                           {'f.com': 't.com'} redirects domain only, port 80 or 443 implied
+                           {'f.com:5000': 't.com:4000'} redirects domain and port number
+
     oembed_server_prefix - the relative URL where this oembed server will pay out oembed contents,
                            or None to disable the oembed server here.
                            An active oembed server will expect an incoming url=x query string.
@@ -123,7 +127,7 @@ class Options(object):
     what_is_this_thing = "my thing"
     session_domain = "my.main.fliki.example.com"   # or None
     redirect_domain_port = {
-        'some.other.domain.example.com:443': session_domain + ':443',
+        'some.other.domain.example.com': session_domain,
     }
     system_administrator_users = [
         MY_GOOGLE_IDN,
