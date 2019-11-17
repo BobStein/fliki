@@ -141,14 +141,16 @@ function embed_content_js(window, $, MONTY) {
                         tag_width($you_frame);
                         // fit_width(MONTY.THUMB_MAX_WIDTH, $you_frame);
                         // fit_height(MONTY.THUMB_MAX_HEIGHT, $you_frame);
-                        fit_element(
-                            $you_frame,
-                            MONTY.THUMB_MAX_WIDTH,
-                            MONTY.THUMB_MAX_HEIGHT,
-                            function (report) {
-                                count_a_change(report)
-                            }
-                        );
+                        // fit_element(
+                        //     $you_frame,
+                        //     MONTY.THUMB_MAX_WIDTH,
+                        //     MONTY.THUMB_MAX_HEIGHT,
+                        //     function (report) {
+                        //         count_a_change(report)
+                        //     }
+                        // );
+                        $you_frame.width(MONTY.THUMB_MAX_WIDTH);
+                        $you_frame.height(MONTY.THUMB_MAX_HEIGHT);
                         $body.prepend($you_frame);
                         $you_frame.animate({
                             width: query_get('width'),
