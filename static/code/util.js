@@ -330,11 +330,12 @@ function fit_element($element, max_width, max_height, callback_shrinkage) {
         var did_change_width = actual_width !== old_width;
         var did_change_height = actual_height !== old_height;
         var reports = [];
-        if (actual_width > max_width + 1.0) {
-            reports.push("BUST-WIDTH " + (actual_width - max_width).toFixed(0) + "px");
+        if (actual_width > max_width + 1.0 && ! $element.data('bust-width-notified')) {
+            $element.data('bust-width-notified', true);
+            reports.push("BUST-WIDTH " + (actual_width - max_width).toFixed(0) + "px too wide");
         }
         if (actual_height > max_height + 1.0) {
-            reports.push("BUST-HEIGHT " + (actual_height - max_height).toFixed(0) + "px");
+            reports.push("BUST-HEIGHT " + (actual_height - max_height).toFixed(0) + "px too high");
         }
         if (did_change_width) {
             reports.push("w " + old_width.toFixed(0) + " -> " + actual_width.toFixed(0));

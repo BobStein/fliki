@@ -403,6 +403,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             .on('input', '.contribution, .caption-span', contribution_dirty)
             .on('click', '.contribution', stop_propagation)
             .on('click', '.caption-bar, .save-bar', stop_propagation)
+            .on('click', '.render-bar .thumb-link', thumb_click)
             .on('click', '.save-bar .edit',    contribution_edit)
             .on('click', '.save-bar .cancel',  contribution_cancel)
             .on('click', '.save-bar .discard', contribution_cancel)
@@ -1435,6 +1436,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         var that = this;
         var $a = $('<a>', {
             id: 'thumb_' + that.id_attribute,
+            class: 'thumb-link',
             href: url_contribution,
             target: '_blank',
             title: caption
@@ -1860,6 +1862,15 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             clearTimeout(breather_timer);
             breather_timer = null;
         }
+    }
+
+    function thumb_click(evt) {
+        var cont = Contribution_from_element(this);
+        console.log("thumb click", cont.id_attribute);
+        pop_up(cont, true);
+        evt.stopPropagation();
+        evt.preventDefault();
+        return false;
     }
 
     function pop_up(cont, auto_play) {
