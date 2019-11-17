@@ -145,7 +145,7 @@ function embed_content_js(window, $, MONTY) {
                             $you_frame,
                             MONTY.THUMB_MAX_WIDTH,
                             MONTY.THUMB_MAX_HEIGHT,
-                            function(report) {
+                            function (report) {
                                 count_a_change(report)
                             }
                         );
@@ -471,7 +471,7 @@ function embed_content_js(window, $, MONTY) {
                 $grandchild,
                 MONTY.THUMB_MAX_WIDTH,
                 MONTY.THUMB_MAX_HEIGHT,
-                function(report) {
+                function (report) {
                     count_a_change(domain_simple + " grandchild " + report)
                 }
             );
@@ -480,7 +480,7 @@ function embed_content_js(window, $, MONTY) {
                     $child,
                     MONTY.THUMB_MAX_WIDTH,
                     MONTY.THUMB_MAX_HEIGHT,
-                    function(report) {
+                    function (report) {
                         count_a_change(domain_simple + " child " + report)
                     }
                 );

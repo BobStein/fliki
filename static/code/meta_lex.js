@@ -66,7 +66,7 @@ function js_for_meta_lex(window, $, MONTY) {
     $(function document_ready() {
         console.time('total');
         console.time('render_word');
-        array_async($sentence_renderings, render_word, 6, 100, function() {
+        array_async($sentence_renderings, render_word, 6, 100, function after_rendering_words() {
             console.timeEnd('render_word');
             // console.log("Sessions", session_list);
             // console.log("numberings", $.map(session_list, value_from_idn));
@@ -79,7 +79,7 @@ function js_for_meta_lex(window, $, MONTY) {
             //     listing_words {0q82_A7__8A059E058E6A6308C8B0_1D0B00: {...},
             //                    0q82_A7__8A05F9A0A1873A14BD1C_1D0B00: {...}, 0q82_A8__82AB_1D0300: {...},
             //                    0q82_A8__830425_1D0400: {...}, 0q82_A8__83044D_1D0400: {...}, ...}
-            setTimeout(function() {
+            setTimeout(function () {
                 console.time('whn_delta');
                 whn_delta_render();
                 console.timeEnd('whn_delta');
@@ -142,8 +142,8 @@ function js_for_meta_lex(window, $, MONTY) {
     function whn_delta_render() {
 
         function point_join(array_of_points) {
-            return array_of_points.map(function(p) {
-                return p.map(function(x) {
+            return array_of_points.map(function each_point(p) {
+                return p.map(function each_coordinate(x) {
                     return x.toString();
                 }).join(',');
             }).join(' ');

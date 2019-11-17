@@ -125,7 +125,11 @@ flask_app = flask.Flask(
     static_folder='static'
 )
 flask_app.config.update(
-    SESSION_COOKIE_DOMAIN = secure.credentials.Options.session_domain
+    # SERVER_NAME=secure.credentials.Options.server_domain_port,
+    # NOTE:  setting SERVER_NAME has benefits:  url_for() can be used with app_context()
+    #        setting SERVER_NAME has drawbacks:  alternate domain hits get 404
+
+    SESSION_COOKIE_DOMAIN=secure.credentials.Options.session_cookie_domain,
     # NOTE:  Without this, two different fliki servers running on different subdomains
     #        could share the same set of session variables.
     # SEE:  Session domain, https://flask.palletsprojects.com/en/1.1.x/config/#SESSION_COOKIE_DOMAIN
@@ -162,14 +166,15 @@ def before_request():
 
 class WorkingIdns(object):
 
-    # TODO:  The instance of this class, "IDN" should probably be a member of
-    #        LexFliki, except we don't want the lookups here to run every
-    #        session.  For a given lex (database) these idns will never change.
+    # NOTE:  For a given lex (database) these idns will never change.
     #        The instantiation of LexFliki actually represents a *connection* to the lex,
     #        which comes and goes every session (i.e. every HTTP request-response cycle.
     #        What object can better represent the lex itself, including these idns?
     def __init__(self, lex):
-        with flask_app.app_context():   # FIXME:  WTF is this called??
+        with flask_app.app_context():
+            # FIXME:  Why the eff is app_context() called??
+            #         Maybe so this class can be instantiated once at server startup to
+            #         detect errors with IDN definitions a little earlier.
             if lex is not None:
                 self.LEX               = lex.noun(u'lex').idn
                 self.VERB              = lex.noun(u'verb').idn
@@ -227,25 +232,45 @@ class WorkingIdns(object):
 
                 self.FIELD_FLUB        = lex.verb(u'field flub').idn   # report of some wrongness from the field
 
+                self.MEDIA = lex.noun(u'media').idn
+                self.HANDLE = lex.verb(u'handle').idn
+                self.MATCH = lex.verb(u'match').idn
+
+                # TODO:  Remove patterns (set num=0) that aren't in YOUTUBE_PATTERNS, or something.
+                # for match_word in lex.find_words(vrb=self.MATCH, obj=self.YOUTUBE_MEDIA_HANDLER):
+                #     if match_word not in self.youtube_matches:
+                #         match_word.over_write(num=0)
+                # for handle_word in lex.find_words(vrb=self.HANDLE, obj=self.MEDIA):
+                #     if handle_word not in [self.YOUTUBE_MEDIA_HANDLER]:
+                #         handle_word.over_write(num=0)
+                # or:
+                # for spec in lex.find(vrb=[self.MATCH, self.HANDLE]):
+                #     if spec not in [self.YOUTUBE_MEDIA_HANDLER] + self.youtube_matches:
+                #         spec.over_write(num=0)
+
     def dictionary_of_qstrings(self):
-        of_idns = dict_from_object(self)
-        assert \
-            all(isinstance(idn, qiki.Number) for idn in of_idns.values()), \
-            "Expecting Numbers.  These are not: " + repr(
-                {n: type_name(x) for n, x in of_idns.items() if not isinstance(x, qiki.Number)}
-            ) + "  Did you forget `.idn` at the end?"
+        of_idns = self.idn_from_symbol()
         of_qstrings = {name: idn.qstring() for name, idn in of_idns.items()}
         return of_qstrings
 
     def dictionary_of_ints(self):
-        of_idns = dict_from_object(self)
-        assert \
-            all(isinstance(idn, qiki.Number) for idn in of_idns.values()), \
-            "Expecting Numbers.  These are not: " + repr(
-                {n: type_name(x) for n, x in of_idns.items() if not isinstance(x, qiki.Number)}
-            ) + "  Did you forget `.idn` at the end?"
+        of_idns = self.idn_from_symbol()
         of_ints = {name: int(idn) for name, idn in of_idns.items()}
         return of_ints
+
+    def idn_from_symbol(self):
+        dict_members = dict_from_object(self)
+        # members = dict_from_object(LexFliki._IDNS_READ_ONCE_AT_STARTUP).values()
+        dict_idns = {k: v for k, v in dict_members.items() if isinstance(v, qiki.Number)}
+        assert \
+            all(isinstance(idn, qiki.Number) for idn in dict_idns.values()), \
+            "Expecting Numbers.  These are not: " + repr(
+                {n: type_name(x) for n, x in dict_idns.items() if not isinstance(x, qiki.Number)}
+            ) + "  Did you forget `.idn` at the end?"
+        return dict_idns
+
+    def idns(self):
+        return self.idn_from_symbol().values()
 
 
 def dict_from_object(o):
@@ -284,6 +309,20 @@ class LexFliki(qiki.LexMySQL):
                 if self.sbj.is_anonymous:
                     dictionary['was_submitted_anonymous'] = True
                 return dictionary
+
+            @property
+            def name(self):
+                if self.is_lex():
+                    return "Lex"
+                else:
+                    raise NotImplementedError("WordFlikiSentence " + repr(self) + " has no name.")
+
+            @property
+            def is_admin(self):
+                if self.is_lex():
+                    return False
+                else:
+                    raise NotImplementedError("WordFlikiSentence " + repr(self) + " is neither admin nor not.")
 
             # TODO:  @property is_anonymous() too ?
 
@@ -445,10 +484,14 @@ class LexFliki(qiki.LexMySQL):
 
         if LexFliki._IDNS_READ_ONCE_AT_STARTUP is None:
             LexFliki._IDNS_READ_ONCE_AT_STARTUP = WorkingIdns(self)
-            idns = dict_from_object(LexFliki._IDNS_READ_ONCE_AT_STARTUP).values()
+            # members = dict_from_object(LexFliki._IDNS_READ_ONCE_AT_STARTUP).values()
+            # idns = [member for member in members if isinstance(member, qiki.Number)]
+            idns = LexFliki._IDNS_READ_ONCE_AT_STARTUP.idns()
             LexFliki._txt_from_idn = {idn: self[idn].txt for idn in idns}
         self.IDN = LexFliki._IDNS_READ_ONCE_AT_STARTUP
         self.txt_from_idn = LexFliki._txt_from_idn
+        self.youtube_media_handler = None
+        self.youtube_matches = None
 
     def _execute(self, cursor, query, parameters=()):
         self.query_count += 1
@@ -569,6 +612,32 @@ class LexFliki(qiki.LexMySQL):
     #         super(LexFliki, self).populate_word_from_idn(word, idn)
     #     return True
 
+    def install_youtube_matches(self):
+
+        self.youtube_media_handler = self.create_word(
+            sbj=self[self],
+            vrb=self.IDN.HANDLE,
+            obj=self.IDN.MEDIA,
+            txt=static_code_url('media_youtube.js', _external=True),
+            num=1,
+            use_already=True,
+        ).idn
+        self.youtube_matches = []
+        for pattern in YOUTUBE_PATTERNS:
+            specs = dict(
+                sbj=self[self],
+                vrb=self.IDN.MATCH,
+                obj=self.youtube_media_handler,
+                txt=pattern,
+            )
+            already_words = self.find_words(**specs)
+            if len(already_words) > 0 and already_words[-1].num == 1:
+                '''Already got a word'''
+            else:
+                new_word = self.create_word(num=1, **specs)
+                self.youtube_matches.append(new_word)
+                print("New matcher", new_word.idn, new_word.obj.txt, pattern)
+
 
 def connect_lex():
     try:
@@ -578,6 +647,14 @@ def connect_lex():
         return None
     else:
         return lex
+
+
+def static_url(relative_path, **kwargs):
+    return flask.url_for('static', filename=relative_path, **kwargs)
+
+
+def static_code_url( relative_path, **kwargs):
+    return static_url('code/' + relative_path, **kwargs)
 
 
 _ = WorkingIdns(connect_lex()).dictionary_of_ints()  # catch missing ".idn"
@@ -881,8 +958,8 @@ class Auth(object):
     def then_url(self, new_url):
         raise NotImplementedError
 
-    def static_url(self, relative_path):
-        raise NotImplementedError
+    # def static_url(self, relative_path):
+    #     raise NotImplementedError
 
     @abc.abstractmethod
     def form(self, variable_name):
@@ -1197,24 +1274,29 @@ class Auth(object):
     def vetted_find_by_verbs(self, verbs):
         qc = list()
         qc.append(self.lex.query_count)
-        vetted_list = self.vet(self.lex.find_words(vrb=verbs))
+        vetted_list = self.vet(self.lex.find_words(vrb=verbs, idn_ascending=True))
         qc.append(self.lex.query_count)
-        if len(vetted_list) > 0:
-            max_idn = vetted_list[-1].idn
-        else:
-            max_idn = 0
-        max_idint = int(max_idn)
-        vetted_array = [None] * (max_idint + 1)
+        # if len(vetted_list) > 0:
+        #     max_idn = vetted_list[-1].idn
+        # else:
+        #     max_idn = 0
+        # max_idint = int(max_idn)
+        # vetted_array = [None] * (max_idint + 1)
         user_table = dict()
         for word in vetted_list:
-            idint = int(word.idn)
-            assert 0 <= idint <= max_idint, str(idint)
-            vetted_array[idint] = word
+            # idint = int(word.idn)
+            # assert 0 <= idint <= max_idint, str(idint)
+            # vetted_array[idint] = word
 
             user_qstring = word.sbj.idn.qstring()
             if user_qstring not in user_table:   # conserves number of queries
+                # if word.sbj.is_lex():
+                #     name_short = "Lex"
+                # else:
+                #     name_short = word.sbj.name
+                name_short = word.sbj.name
                 user_table[user_qstring] = dict(
-                    name_short=word.sbj.name,
+                    name_short=name_short,
                     name_long=word.sbj.txt,
                     is_admin=word.sbj.is_admin,
                 )
@@ -1225,7 +1307,7 @@ class Auth(object):
         print("Vetted deltas", ",".join(str(x) for x in qc_delta))
         return dict(
             u=user_table,
-            w=vetted_array,
+            w=vetted_list,
         )
         # TODO:  Do this some other way without so many holes?
         #        Could provide a dict by idn, and a list of idns in chronological order
@@ -1391,10 +1473,6 @@ class AuthFliki(Auth):
             raise self.FormVariableMissing("No form variable " + variable_name)
         else:
             return value
-
-    @classmethod
-    def static_url(cls, relative_path):
-        return flask.url_for('static', filename=relative_path)
 
 
 def is_qiki_user_anonymous(user_word):
@@ -1566,7 +1644,10 @@ def login():
                         display_name = login_result.user.name or ''
                         print("Logging in", qiki_user.index, qiki_user.idn.qstring())
                         # EXAMPLE:   Logging in 0q8A_059E058E6A6308C8B0 0q82_15__8A059E058E6A6308C8B0_1D0B00
-                        lex[lex](lex.IDN.ICONIFY, use_already=True)[qiki_user.idn] = avatar_width, avatar_url
+                        lex[lex](lex.IDN.ICONIFY, use_already=True)[qiki_user.idn] = (
+                            avatar_width,
+                            avatar_url
+                        )
                         lex[lex](lex.IDN.NAME, use_already=True)[qiki_user.idn] = display_name
                         flask_login.login_user(flask_user)
                         return flask.redirect(get_then_url())
@@ -1681,7 +1762,7 @@ class FlikiHTML(web_html.WebHTML):
                 rel='shortcut icon',
                 href=flask.url_for('qiki_javascript', filename='favicon.ico')
             )
-            head.css_stamped(flask.url_for('static', filename='code/meta_lex.css'))
+            head.css_stamped(static_code_url('meta_lex.css'))
             head.css_stamped(flask.url_for('qiki_javascript', filename='qoolbar.css'))
             return head
 
@@ -1696,7 +1777,7 @@ class FlikiHTML(web_html.WebHTML):
     @classmethod
     def os_path_from_url(cls, url):
         url_parse = Parse(url)
-        if url_parse.remove_prefix(flask.url_for('static', filename='')):
+        if url_parse.remove_prefix(static_url('')):
             return os_path_static(url_parse.remains)
         elif url_parse.remove_prefix(flask.url_for('qiki_javascript', filename='')):
             return os_path_qiki_javascript(url_parse.remains)
@@ -1769,23 +1850,26 @@ def contribution_home(home_page_title):
     if auth.is_enough_anonymous_patience(MINIMUM_SECONDS_BETWEEN_ANONYMOUS_QUESTIONS):
         with FlikiHTML('html') as html:
             with html.header(home_page_title) as head:
-                head.css_stamped(auth.static_url('code/contribution.css'))
+                head.css_stamped(static_code_url('contribution.css'))
                 head.css('https://fonts.googleapis.com/css?family=Literata&display=swap')
                 head.css('https://fonts.googleapis.com/icon?family=Material+Icons')
             html.body("Loading...")
             with html.footer() as foot:
                 foot.js('https://cdn.jsdelivr.net/npm/sortablejs@1.9.0/Sortable.js')
-                foot.comment("SEE:  /meta/static/code/Sortable-LICENSE.txt")
+                # foot.comment("SEE:  /meta/static/code/Sortable-LICENSE.txt")
                 foot.js('https://cdn.jsdelivr.net/npm/jquery-sortablejs@1.0.0/jquery-sortable.js')
-                foot.comment("SEE:  /meta/static/code/jquery-sortable-LICENSE.txt")
-                # foot.js(auth.static_url('code/iframeResizer.js'))
+                # foot.comment("SEE:  /meta/static/code/jquery-sortable-LICENSE.txt")
+                # foot.js(static_code_url('iframeResizer.js'))
                 # foot.comment("SEE:  /meta/static/code/iframe-resizer-LICENSE.txt")
                 foot.js('https://cdn.jsdelivr.net/npm/iframe-resizer@4.1.1/js/iframeResizer.min.js')
-                foot.js('https://use.fontawesome.com/49adfe8390.js')
-                foot.js('https://cdn.jsdelivr.net/npm/talkify-tts@2.6.0/dist/talkify.min.js')
+                # foot.js('https://use.fontawesome.com/49adfe8390.js')   # req by talkify
+                # foot.js('https://cdn.jsdelivr.net/npm/talkify-tts@2.6.0/dist/talkify.min.js')
 
-                foot.js_stamped(auth.static_url('code/util.js'))
-                foot.js_stamped(auth.static_url('code/contribution.js'))
+                foot.js_stamped(static_code_url('util.js'))
+                foot.js_stamped(static_code_url('contribution.js'))
+
+                auth.lex.install_youtube_matches()
+
                 verbs = []
                 verbs += auth.get_category_idns_in_order()
                 verbs += [
@@ -1793,6 +1877,8 @@ def contribution_home(home_page_title):
                     auth.lex.IDN.UNSLUMP_OBSOLETE,
                     auth.lex.IDN.CAPTION,
                     auth.lex.IDN.EDIT,
+                    auth.lex.IDN.MATCH,
+                    auth.lex.IDN.HANDLE,
                 ]
                 words_for_js = auth.vetted_find_by_verbs(verbs)
                 with foot.script() as script:
@@ -1822,7 +1908,9 @@ def contribution_home(home_page_title):
                     )
                     monty.update(words_for_js)
                     script.raw_text('var MONTY = {json};\n'.format(json=json_pretty(monty)))
-                    script.raw_text('js_for_contribution(window, jQuery, qoolbar, MONTY, talkify);\n')
+                    script.raw_text(
+                        'js_for_contribution(window, jQuery, qoolbar, MONTY, window.talkify);\n'
+                    )
             t_end = time.time()
             q_end = auth.lex.query_count
             print("/meta/contrib {q:d} queries, {t:.3f} sec".format(
@@ -1850,7 +1938,7 @@ def unslumping_home_obsolete():
     auth.hit(auth.current_path)   # e.g. "/home"
     with FlikiHTML('html') as html:
         head = html.header("Ump The Former")
-        head.css_stamped(auth.static_url('code/contribution.css'))
+        head.css_stamped(static_code_url('contribution.css'))
         head.style('''
             /** Vestigial stuff for unslumping_home_obsolete() **/
             .deleted_hide,
@@ -2024,7 +2112,7 @@ def unslumping_home_obsolete():
                 foot = body.footer()
                 foot.js('https://cdn.jsdelivr.net/npm/sortablejs@1.9.0/Sortable.js')
                 foot.js('https://cdn.jsdelivr.net/npm/jquery-sortablejs@1.0.0/jquery-sortable.js')
-                foot.js_stamped(auth.static_url('code/unslump.js'))
+                foot.js_stamped(static_code_url('unslump.js'))
                 with foot.script() as script:
                     script.raw_text('\n')
                     monty = dict(
@@ -2268,12 +2356,12 @@ def meta_lex():
             t_lex = time.time()
             qc_foot = auth.lex.query_count
             with body.footer() as foot:
-                foot.js_stamped(auth.static_url('code/d3.js'))
+                foot.js_stamped(static_code_url('d3.js'))
                 # TODO:  Is d3.js here just to draw delta-time triangles?  If so replace it.
                 #        Or use it for cool stuff.
                 #        Like better drawn words or links between words!
-                foot.js_stamped(auth.static_url('code/util.js'))
-                foot.js_stamped(auth.static_url('code/meta_lex.js'))
+                foot.js_stamped(static_code_url('util.js'))
+                foot.js_stamped(static_code_url('meta_lex.js'))
                 with foot.script() as script:
                     script.raw_text('\n')
                     monty = dict(
@@ -2313,7 +2401,7 @@ def url_from_question(question_text):
 
 
 @flask_app.route('/meta/all', methods=('GET', 'HEAD'))
-def meta_all():
+def legacy_meta_all():
     # TODO:  verb filter checkboxes (show/hide each one, especially may want to hide "questions")
 
     auth = AuthFliki()
@@ -2707,7 +2795,7 @@ class AgoLex(DeltaTimeLex):
 
 
 @flask_app.route('/meta/all words', methods=('GET', 'HEAD'))   # the older, simpler way
-def legacy_meta_all_words():
+def legacy_even_older_meta_all_words():
     """Primitive dump entire lex."""
     # NOTE:  The following logs itself, but that gets to be annoying:
     #            the_path = flask.request.url
@@ -2833,6 +2921,7 @@ if secure.credentials.Options.oembed_server_prefix is not None:
                     but_why=but_why,
                 ),
                 title=idn,
+                # TODO:  simplified domain - idn
             )
 
 
@@ -2858,10 +2947,10 @@ def noembed_render(url, idn):
         with html.head(newlines=True) as head:
             head.title("{idn}".format(idn=idn))
             # TODO:  Add caption.
-            head.css_stamped(AuthFliki.static_url('code/embed_content.css'))
+            head.css_stamped(static_code_url('embed_content.css'))
             head.jquery(JQUERY_VERSION)
-            head.js_stamped(AuthFliki.static_url('code/util.js'))
-            head.js_stamped(AuthFliki.static_url('code/embed_content.js'))
+            head.js_stamped(static_code_url('util.js'))
+            head.js_stamped(static_code_url('embed_content.js'))
             head.script(type='text/javascript').raw_text('''
                 var MONTY = {json};
                 embed_content_js(window, jQuery, MONTY);
@@ -2871,13 +2960,13 @@ def noembed_render(url, idn):
         return html.doctype_plus_html()
 
 
-def noembed_get(url):
+def noembed_get(media_url):
     """Get the noembed scoop on an embedded url."""
-    noembed_request = 'https://noembed.com/embed?url=' + url
+    noembed_request = 'https://noembed.com/embed?url=' + media_url
     oembed_dict = json_get(noembed_request)
     if oembed_dict is None:
         oembed_dict = dict(
-            error="Unable to load " + url
+            error="Unable to load " + media_url
         )
     return oembed_dict
 
@@ -2917,7 +3006,7 @@ def error_render(message, title=""):
     with FlikiHTML('html') as html:
         with html.head(newlines=True) as head:
             head.title(title)
-            # head.js(AuthFliki.static_url('code/iframeResizer.contentWindow.js'))
+            # head.js(static_code_url('iframeResizer.contentWindow.js'))
             head.js('https://cdn.jsdelivr.net/npm/iframe-resizer@4.1.1/js/iframeResizer.contentWindow.js')
             # NOTE:  So there are fewer console warnings.
 

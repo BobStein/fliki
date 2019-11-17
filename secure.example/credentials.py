@@ -71,14 +71,16 @@ MY_GOOGLE_IDN = '0q82_88__8A088888888888888888_1D0B00'
 
 class Options(object):
     """
-    session_domain = None - the server's domain and each sub-domain will have separate sessions
-    session_domain = 3rd-level-domain - e.g. 'sub.example.com'
+    session_cookie_domain = None - the server's domain and each sub-domain will have separate
+                                        sessions
+    session_cookie_domain = 3rd-level-domain - e.g. 'sub.example.com'
                                         only this domain (and maybe -- eye roll -- sub-sub-domains)
                                         will use sessions created here
-    session_domain = 2nd-level-domain - e.g. 'example.com'
+    session_cookie_domain = 2nd-level-domain - e.g. 'example.com'
                                         this domain and subdomains will share sessions
                                         In particular, this domain will stomp on any 3rd-level
-                                        fliki server set to e.g. session_domain = 'sub.example.com'
+                                        fliki server set to e.g. session_cookie_domain =
+                                        'sub.example.com'
 
     redirect_domain_port - dictionary of domain-port redirection directives
                            {'f.com': 't.com'} redirects domain only, port 80 or 443 implied
@@ -125,9 +127,11 @@ class Options(object):
     home_page_title = "My Title"
     enable_answer_qiki = False
     what_is_this_thing = "my thing"
-    session_domain = "my.main.fliki.example.com"   # or None
+    server_domain = "my.main.fliki.example.com"
+    server_domain_port = server_domain   # 80 or 443 implicit
+    session_cookie_domain = server_domain   # or None
     redirect_domain_port = {
-        'some.other.domain.example.com': session_domain,
+        'some.other.domain.example.com': server_domain_port,
     }
     system_administrator_users = [
         MY_GOOGLE_IDN,

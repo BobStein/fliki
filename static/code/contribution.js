@@ -14,6 +14,7 @@
  * @param window.clipboardData
  * @param window.document
  * @param window.document.body
+ * @param window.document.currentScript
  * @param window.document.fullScreen
  * @param window.document.mozFullScreen
  * @param window.document.webkitIsFullScreen
@@ -44,6 +45,9 @@
  * @param MONTY.IDN.CONTRIBUTE
  * @param MONTY.IDN.EDIT
  * @param MONTY.IDN.FIELD_FLUB
+ * @param MONTY.IDN.HANDLE
+ * @param MONTY.IDN.MATCH
+ * @param MONTY.IDN.MEDIA
  * @param MONTY.IDN.QUOTE
  * @param MONTY.IDN.REORDER
  * @param MONTY.IDN.UNSLUMP_OBSOLETE
@@ -260,6 +264,16 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     // var work_in_a_pause = false;
 
     var bot;
+
+    var txt_from_idn = {};
+    looper(MONTY.IDN, function(name, idn) {
+        txt_from_idn[idn] = name;
+    });
+
+    var handler_from_idn = {};   // associative array mapping idn to handler url
+    var handlers_and_patterns = [];   // array of regular expression and handler associations.
+
+
 
     function do_live_media_thumbs() {
         if (ALLOW_THUMBNAIL_RESOLUTION_SELECTION) {
@@ -616,7 +630,9 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             console.warn("Transit, but already in state", that.state.name);
         } else {
             that.crash(
-                "TRANSIT CRASH expecting", old_states.map(function(s) { return s.name; }).join(","),
+                "TRANSIT CRASH expecting", old_states.map(function get_state_name(s) {
+                    return s.name;
+                }).join(","),
                 "  not", that.state.name,
                 "  before", new_state.name
             );
@@ -1162,7 +1178,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                     sizeWidth: true,
                     sizeHeight: true,
                     widthCalculationMethod: 'taggedElement',
-                    onMessage: function (twofer) {
+                    onMessage: function iframe_incoming_message(twofer) {
                         var message = twofer.message;
                         // noinspection JSRedundantSwitchStatement
                         switch (message.action) {
@@ -1208,7 +1224,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                             break;
                         }
                     },
-                    onResized: function(stuff) {
+                    onResized: function iframe_resized_itself(stuff) {
                         var msg_cont = Contribution_from_element(stuff.iframe);
                         console.assert(
                             msg_cont.exists(),
@@ -1232,6 +1248,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     };
 
     Contribution.prototype.fix_caption_width = function Contribution_fix_caption_width(etc) {
+        // noinspection JSUnusedAssignment
         etc = etc || "";
         var that = this;
         var media_width = that.$iframe.outerWidth();
@@ -1252,20 +1269,22 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                 //     etc
                 // );
             } else {
-                var w_old = that.$caption_bar.outerWidth();
-                var proportion =  w_old ? overall_width / w_old : 0.0;
-                console.log(
-                    that.id_attribute + ".",
-                    "caption tweak",
-                    that.$caption_bar.outerWidth().toFixed(0), "->",
-                    overall_width.toFixed(0),
-                    (proportion*100.0).toFixed(0) + "%",
-                    etc
-                );
+                // var w_old = that.$caption_bar.outerWidth();
+                // var proportion =  w_old ? overall_width / w_old : 0.0;
+                // console.log(
+                //     that.id_attribute + ".",
+                //     "caption tweak",
+                //     that.$caption_bar.outerWidth().toFixed(0), "->",
+                //     overall_width.toFixed(0),
+                //     (proportion*100.0).toFixed(0) + "%",
+                //     etc
+                // );
+                // EXAMPLE:  caption tweak 296 -> 162 55% thumb loading
+                // EXAMPLE:  caption tweak 221 -> 210 95% quote size adjust
                 that.$caption_bar.outerWidth(overall_width);
             }
         } else {
-            // NOTE:  overall_width === 2 is common temporarily
+            // NOTE:  overall_width === 2 is common, but temporary
             // console.log(
             //     that.id_attribute,
             //     "tiny iframe",
@@ -1312,6 +1331,18 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         }
     };
 
+    function youtube_id_from_url(url) {
+        var youtube_id = null;
+        looper(MONTY.YOUTUBE_PATTERNS, function (_, pattern) {
+            var match_object = url.match(RegExp(pattern));
+            if (match_object && match_object.length >= 1) {
+                youtube_id = match_object[1];
+                return false;
+            }
+        });
+        return youtube_id;
+    }
+
     /**
      * (Re)build the <iframe> element in the render bar on the media URL in the contribution text.
      *
@@ -1329,14 +1360,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         } else {
             var do_we_need_to_bother_with_oembed = true;
             if (that.is_youtube) {
-                var youtube_id = null;
-                looper(MONTY.YOUTUBE_PATTERNS, function (_, pattern) {
-                    var match_object = media_url.match(RegExp(pattern));
-                    if (match_object && match_object.length >= 1) {
-                        youtube_id = match_object[1];
-                        return false;
-                    }
-                });
+                var youtube_id = youtube_id_from_url(media_url);
                 if (youtube_id !== null) {
                     var thumb_url = youtube_mq_url(youtube_id);
                     that.thumb_media_img(
@@ -1423,20 +1447,21 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         that.$render_bar.empty().append($a);
         $a.append($img);
         that.fix_caption_width('thumb loading');
-        $img.on('load', function render_img_load() {
+        $img.one('load.thumb', function render_img_load() {
+            $img.off('.thumb');
             $img.removeClass('thumb-loading');
             $img.addClass('thumb-loaded');
-            // fit_element(this, MONTY.THUMB_MAX_WIDTH, MONTY.THUMB_MAX_HEIGHT);
             that.fix_caption_width('thumb loaded');
         });
-        $img.on('error', function render_img_error() {
+        $img.one('error.thumb', function render_img_error() {
+            $img.off('.thumb');
             img_error_callback();
         });
         var src = url_thumbnail_image;
         if (that.is_youtube) {
             src = src.replace(/hqdefault/, media_thumb_resolution());
         }
-        // NOTE:  .src is set below so .on('load') above is sure to happen.
+        // NOTE:  .src is set below so either load or error above is sure to happen.
         $img.attr('src', src);
     };
 
@@ -1808,10 +1833,11 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             talkify_done();
             talkify_done = null;
         }
-        talkify.messageHub.unsubscribe(BOT_CONTEXT, '*.player.tts.ended');
-        talkify.messageHub.unsubscribe(BOT_CONTEXT, '*.player.tts.timeupdated');
-        talkify.messageHub.unsubscribe(BOT_CONTEXT, '*');
-
+        if (is_specified(talkify)) {
+            talkify.messageHub.unsubscribe(BOT_CONTEXT, '*.player.tts.ended');
+            talkify.messageHub.unsubscribe(BOT_CONTEXT, '*.player.tts.timeupdated');
+            talkify.messageHub.unsubscribe(BOT_CONTEXT, '*');
+        }
         if (utter !== null) {
             $(utter).off();   // Otherwise an 'end' event will come a split second later.
             utter = null;
@@ -2191,160 +2217,163 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                     //        Which I recall was more legible than the Chrome browser speech,
                     //        (though less so than the Edge browser speech), and is reasonably
                     //        priced, but any metering of an uber free service is vexing.
+
                     // noinspection UnreachableCodeJS
-                    talkify.config.remoteService.host = 'https://talkify.net';
-                    talkify.config.remoteService.apiKey = '084ff0b0-89a3-4284-96a1-205b5a2072c0';
-                    talkify.config.ui.audioControls = {
-                        enabled: false, //<-- Disable to get the browser built in audio controls
-                        container: document.getElementById("player-bot")
-                    };
-                    talkify_player = new talkify.TtsPlayer();
-                    talkify_player.enableTextHighlighting();
+                    if (is_specified(talkify)) {
+                        talkify.config.remoteService.host = 'https://talkify.net';
+                        talkify.config.remoteService.apiKey = '084ff0b0-89a3-4284-96a1-205b5a2072c0';
+                        talkify.config.ui.audioControls = {
+                            enabled: false, //<-- Disable to get the browser built in audio controls
+                            container: document.getElementById("player-bot")
+                        };
+                        talkify_player = new talkify.TtsPlayer();
+                        talkify_player.enableTextHighlighting();
 
-                    talkify_player.setRate(-1.0);   // a little slower than the default
-                    // SEE:  Rate codes, https://github.com/Hagsten/Talkify#user-content-talkify-hosted-only
+                        talkify_player.setRate(-1.0);   // a little slower than the default
+                        // SEE:  Rate codes, https://github.com/Hagsten/Talkify#user-content-talkify-hosted-only
 
-                    talkify_voice_name = random_element(TALKIFY_VOICES_ENGLISH);
-                    talkify_player.forceVoice({name: talkify_voice_name});
-                    // SEE:  Voice names,
-                    //       https://github.com/Hagsten/Talkify/issues/20#issuecomment-347837787-permalink
-                    //       https://jsfiddle.net/mknm62nx/1/
-                    //       https://talkify.net/api/speech/v1/voices?key= + talkify api key
+                        talkify_voice_name = random_element(TALKIFY_VOICES_ENGLISH);
+                        talkify_player.forceVoice({name: talkify_voice_name});
+                        // SEE:  Voice names,
+                        //       https://github.com/Hagsten/Talkify/issues/20#issuecomment-347837787-permalink
+                        //       https://jsfiddle.net/mknm62nx/1/
+                        //       https://talkify.net/api/speech/v1/voices?key= + talkify api key
 
-                    var popup_cont_node_list = document.querySelectorAll(popup_cont_selector);
-                    // NOTE:  Although $(popup_cont_selector) appears to work, the doc calls for
-                    //        "DOM elements" and the example passes a NodeList object.
-                    //        https://github.com/Hagsten/Talkify#play-all-top-to-bottom
+                        var popup_cont_node_list = document.querySelectorAll(popup_cont_selector);
+                        // NOTE:  Although $(popup_cont_selector) appears to work, the doc calls for
+                        //        "DOM elements" and the example passes a NodeList object.
+                        //        https://github.com/Hagsten/Talkify#play-all-top-to-bottom
 
-                    talkify_playlist = new talkify.playlist()
-                        .begin()
-                        .usingPlayer(talkify_player)
-                        // .withTextInteraction()
-                        .withElements(popup_cont_node_list)
-                        .build();
+                        talkify_playlist = new talkify.playlist()
+                            .begin()
+                            .usingPlayer(talkify_player)
+                            // .withTextInteraction()
+                            .withElements(popup_cont_node_list)
+                            .build();
 
-                    talkify_playlist.play();
-                    // NOTE:  Play now, if not auto_play pause later.
+                        talkify_playlist.play();
+                        // NOTE:  Play now, if not auto_play pause later.
 
-                    // console.log("Talkie", talkify_player, talkify_playlist);
-                    // EXAMPLE talkify_player (type talkify.TtsPlayer) members:
-                    //     audioSource: {play: ƒ, pause: ƒ, isPlaying: ƒ, paused: ƒ, currentTime: ƒ, …}
-                    //     correlationId: "8e90fbe4-607f-4a82-97af-6802a18e430b"
-                    //     createItems: ƒ (text)
-                    //     currentContext: {item: {…}, positions: Array(86)}
-                    //     disableTextHighlighting: ƒ ()
-                    //     dispose: ƒ ()
-                    //     enableTextHighlighting: ƒ ()
-                    //     forceLanguage: ƒ (culture)
-                    //     forceVoice: ƒ (voice)
-                    //     forcedVoice: null
-                    //     isPlaying: ƒ ()
-                    //     isPlaying: ƒ ()
-                    //     pause: ƒ ()
-                    //     paused: ƒ ()
-                    //     play: ƒ ()
-                    //     playAudio: ƒ (item)
-                    //     playItem: ƒ (item)
-                    //     playText: ƒ (text)
-                    //     playbar: {instance: null}
-                    //     setRate: ƒ (r)
-                    //     settings: {useTextHighlight: true, referenceLanguage: {…}, lockedLanguage: null, rate: 1, useControls: false}
-                    //     subscribeTo: ƒ (subscriptions)
-                    //     withReferenceLanguage: ƒ (refLang)
-                    //     wordHighlighter: {start: ƒ, highlight: ƒ, dispose: ƒ}
-                    // EXAMPLE talkify_playlist (type Object, e.g. {}) members:
-                    //     disableTextInteraction: ƒ ()
-                    //     dispose: ƒ ()
-                    //     enableTextInteraction: ƒ ()
-                    //     getQueue: ƒ ()
-                    //     insert: ƒ insertElement(element)
-                    //     isPlaying: ƒ isPlaying()
-                    //     pause: ƒ pause()
-                    //     play: ƒ play(item)
-                    //     replayCurrent: ƒ replayCurrent()
-                    //     setPlayer: ƒ (p)
-                    //     startListeningToVoiceCommands: ƒ ()
-                    //     stopListeningToVoiceCommands: ƒ ()
+                        // console.log("Talkie", talkify_player, talkify_playlist);
+                        // EXAMPLE talkify_player (type talkify.TtsPlayer) members:
+                        //     audioSource: {play: ƒ, pause: ƒ, isPlaying: ƒ, paused: ƒ, currentTime: ƒ, …}
+                        //     correlationId: "8e90fbe4-607f-4a82-97af-6802a18e430b"
+                        //     createItems: ƒ (text)
+                        //     currentContext: {item: {…}, positions: Array(86)}
+                        //     disableTextHighlighting: ƒ ()
+                        //     dispose: ƒ ()
+                        //     enableTextHighlighting: ƒ ()
+                        //     forceLanguage: ƒ (culture)
+                        //     forceVoice: ƒ (voice)
+                        //     forcedVoice: null
+                        //     isPlaying: ƒ ()
+                        //     isPlaying: ƒ ()
+                        //     pause: ƒ ()
+                        //     paused: ƒ ()
+                        //     play: ƒ ()
+                        //     playAudio: ƒ (item)
+                        //     playItem: ƒ (item)
+                        //     playText: ƒ (text)
+                        //     playbar: {instance: null}
+                        //     setRate: ƒ (r)
+                        //     settings: {useTextHighlight: true, referenceLanguage: {…}, lockedLanguage: null, rate: 1, useControls: false}
+                        //     subscribeTo: ƒ (subscriptions)
+                        //     withReferenceLanguage: ƒ (refLang)
+                        //     wordHighlighter: {start: ƒ, highlight: ƒ, dispose: ƒ}
+                        // EXAMPLE talkify_playlist (type Object, e.g. {}) members:
+                        //     disableTextInteraction: ƒ ()
+                        //     dispose: ƒ ()
+                        //     enableTextInteraction: ƒ ()
+                        //     getQueue: ƒ ()
+                        //     insert: ƒ insertElement(element)
+                        //     isPlaying: ƒ isPlaying()
+                        //     pause: ƒ pause()
+                        //     play: ƒ play(item)
+                        //     replayCurrent: ƒ replayCurrent()
+                        //     setPlayer: ƒ (p)
+                        //     startListeningToVoiceCommands: ƒ ()
+                        //     stopListeningToVoiceCommands: ƒ ()
 
-                    var duration_report = "unknown duration";
+                        var duration_report = "unknown duration";
 
-                    var pause_once = ! auto_play;
+                        var pause_once = ! auto_play;
 
-                    var this_player = talkify_player;
-                    // NOTE:  Local "copy" of player needed in case pop_down_all() happens
-                    //        before the callback below has fully popped up.
+                        var this_player = talkify_player;
+                        // NOTE:  Local "copy" of player needed in case pop_down_all() happens
+                        //        before the callback below has fully popped up.
 
-                    talkify.messageHub.subscribe(BOT_CONTEXT, '*', function (message, topic) {
-                        // var members = message ? Object.keys(message).join() : "(no message)";
-                        console.debug("talkify", topic/*, members*/);
-                        // EXAMPLE topics (context.type.action only, GUID context removed)
-                        //         and message members:
-                        //     player.*.prepareplay     \  text,preview,element,originalElement,
-                        //     player.tts.loading        > isPlaying,isLoading
-                        //     player.tts.loaded        /
-                        //     player.tts.play          item,positions,currentTime
-                        //     player.tts.timeupdated   currentTime,duration
-                        //     player.tts.pause         (no message)
-                        //     player.tts.ended         ((same members as loaded))
-                        if (/\.play$/.test(topic)) {
-                            if (pause_once) {
-                                pause_once = false;
-                                this_player.pause();
-                                // NOTE:  Crude, mfing way to support manual-only playing.
-                                //        Without this, player is inoperative.
+                        talkify.messageHub.subscribe(BOT_CONTEXT, '*', function (message, topic) {
+                            // var members = message ? Object.keys(message).join() : "(no message)";
+                            console.debug("talkify", topic/*, members*/);
+                            // EXAMPLE topics (context.type.action only, GUID context removed)
+                            //         and message members:
+                            //     player.*.prepareplay     \  text,preview,element,originalElement,
+                            //     player.tts.loading        > isPlaying,isLoading
+                            //     player.tts.loaded        /
+                            //     player.tts.play          item,positions,currentTime
+                            //     player.tts.timeupdated   currentTime,duration
+                            //     player.tts.pause         (no message)
+                            //     player.tts.ended         ((same members as loaded))
+                            if (/\.play$/.test(topic)) {
+                                if (pause_once) {
+                                    pause_once = false;
+                                    this_player.pause();
+                                    // NOTE:  Crude, mfing way to support manual-only playing.
+                                    //        Without this, player is inoperative.
+                                }
                             }
-                        }
-                    });
-                    talkify.messageHub.subscribe(
-                        BOT_CONTEXT,
-                        '*.player.tts.timeupdated',
-                        function (message) {
-                            // NOTE:  This event happens roughly 20Hz, 50ms.
-                            var $highlight = $('.talkify-word-highlight');
-                            // $highlight.each(function () {
-                            //     scroll_into_view(this, {
-                            //         behavior: 'smooth',
-                            //         block: 'center',
-                            //         inline: 'center'
-                            //     });
-                            // });
-                            scroll_into_view($highlight, {   // TODO:  This work without .each()?
-                                behavior: 'smooth',
-                                block: 'center',
-                                inline: 'center'
-                            });
-                            // TODO:  Reduce frequency of this call by tagging element
-                            //        with .already-scrolled-into-view?
-                            //        Because this event happens 20Hz!
-                            duration_report = message.duration.toFixed(1) + " seconds";
-                        }
-                    );
-                    talkify.messageHub.subscribe(
-                        BOT_CONTEXT,
-                        '*.player.tts.ended',
-                        function (/*message, topic*/) {
-                            pop_cont.$sup.trigger(pop_cont.Event.SPEECH_END);
-                            // console.log("talkify ended", popup_cont_idn, message, topic);
-                            // EXAMPLE:  topic
-                            //     23b92641-e7dc-46af-9f9b-cbed4de70fe4.player.tts.ended
-                            // EXAMPLE:  message object members:
-                            //     element: div#popup_1024.contribution.talkify-highlight
-                            //     isLoading: false
-                            //     isPlaying: false
-                            //     originalElement: div#popup_1024.contribution
-                            //     preview: "this is just a test"
-                            //     text: "this is just a te
-                            //     st"
-                        }
-                    );
-                    talkify_done = function () {
-                        console.log(
-                            "talkify", popup_cont_idn,
-                            "voice", talkify_voice_name,
-                            duration_report
+                        });
+                        talkify.messageHub.subscribe(
+                            BOT_CONTEXT,
+                            '*.player.tts.timeupdated',
+                            function (message) {
+                                // NOTE:  This event happens roughly 20Hz, 50ms.
+                                var $highlight = $('.talkify-word-highlight');
+                                // $highlight.each(function () {
+                                //     scroll_into_view(this, {
+                                //         behavior: 'smooth',
+                                //         block: 'center',
+                                //         inline: 'center'
+                                //     });
+                                // });
+                                scroll_into_view($highlight, {   // TODO:  This work without .each()?
+                                    behavior: 'smooth',
+                                    block: 'center',
+                                    inline: 'center'
+                                });
+                                // TODO:  Reduce frequency of this call by tagging element
+                                //        with .already-scrolled-into-view?
+                                //        Because this event happens 20Hz!
+                                duration_report = message.duration.toFixed(1) + " seconds";
+                            }
                         );
-                    };
-                    pop_cont.$sup.trigger(pop_cont.Event.SPEECH_PLAY);
+                        talkify.messageHub.subscribe(
+                            BOT_CONTEXT,
+                            '*.player.tts.ended',
+                            function (/*message, topic*/) {
+                                pop_cont.$sup.trigger(pop_cont.Event.SPEECH_END);
+                                // console.log("talkify ended", popup_cont_idn, message, topic);
+                                // EXAMPLE:  topic
+                                //     23b92641-e7dc-46af-9f9b-cbed4de70fe4.player.tts.ended
+                                // EXAMPLE:  message object members:
+                                //     element: div#popup_1024.contribution.talkify-highlight
+                                //     isLoading: false
+                                //     isPlaying: false
+                                //     originalElement: div#popup_1024.contribution
+                                //     preview: "this is just a test"
+                                //     text: "this is just a te
+                                //     st"
+                            }
+                        );
+                        talkify_done = function () {
+                            console.log(
+                                "talkify", popup_cont_idn,
+                                "voice", talkify_voice_name,
+                                duration_report
+                            );
+                        };
+                        pop_cont.$sup.trigger(pop_cont.Event.SPEECH_PLAY);
+                    }
                 }
             });
         }
@@ -3145,26 +3174,11 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
 
         var $bot = $('<div>', {id: 'player-bot'});
 
-        $bot.append($('<button>', {id: 'play-button'})
-            .append($icon('play_arrow'))
-            .append(" play")
-        );
-        $bot.append($('<button>', {id: 'pause-button'})
-            .append($icon('pause'))
-            .append(" pause")
-        );
-        $bot.append($('<button>', {id: 'resume-button'})
-            .append($icon('play_arrow'))
-            .append(" resume")
-        );
-        $bot.append($('<button>', {id: 'stop-button'})
-            .append($icon('stop'))
-            .append(" stop")
-        );
-        $bot.append($('<button>', {id: 'skip-button'})
-            .append($icon('skip_next'))
-            .append(" skip")
-        );
+        $bot.append($('<button>', {id: 'play-button'}).append($icon('play_arrow')).append(" play"));
+        $bot.append($('<button>', {id: 'pause-button'}).append($icon('pause')).append(" pause"));
+        $bot.append($('<button>', {id: 'resume-button'}).append($icon('play_arrow')).append(" resume"));
+        $bot.append($('<button>', {id: 'stop-button'}).append($icon('stop')).append(" stop"));
+        $bot.append($('<button>', {id: 'skip-button'}).append($icon('skip_next')).append(" skip"));
         $bot.append($('<select>', {id: 'play_bot_sequence'})
             .append($('<option>', {value: PLAY_BOT_SEQUENCE_RANDOM}).text("random"))
             .append($('<option>', {value: PLAY_BOT_SEQUENCE_ORDER}).text("in order"))
@@ -3356,6 +3370,45 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                         //        but by then x will have been displaced by A's edit word.
                     }
                     break;
+                case MONTY.IDN.HANDLE:
+                    console.log("Handler", word.idn, word.txt);
+                    handler_from_idn[word.idn] = word.txt;
+                    break;
+                case MONTY.IDN.MATCH:
+                    var pattern_string = word.txt;
+                    var handler_idn = word.obj;
+                    if (has(handler_from_idn, handler_idn)) {
+                        var handler_url = handler_from_idn[handler_idn];
+                        var pattern_regexp;
+                        try {
+                            pattern_regexp = new RegExp(pattern_string);
+                        } catch (e) {
+                            console.error("Broken pattern", word.idn, pattern_string, e.toString());
+                            pattern_regexp = null;
+                        }
+                        if (pattern_regexp !== null) {
+                            console.log("Media pattern", pattern_string, "handled by", handler_url);
+                            handlers_and_patterns.push({
+                                pattern: pattern_string,
+                                regexp: pattern_regexp,
+                                handler_url: handler_url
+                            });
+                        }
+                    } else {
+                        console.warn("Unrecognized handler word", handler_idn);
+                    }
+                    // var handler_word = find_word(handler_idn);
+                    // if (handler_word === null) {
+                    //     console.warn("Unrecognized handler word", handler_idn);
+                    // } else {
+                    //     var handler_url = handler_word.txt;
+                    //     console.log("Media pattern", pattern, "handled by", handler_url);
+                    //     handlers_and_patterns.push({
+                    //         pattern: pattern,
+                    //         handler: handler_url
+                    //     });
+                    // }
+                    break;
                 default:
                     if (has(MONTY.cat.order, word.vrb)) {
                         if (has($sup_contributions, word.obj)) {
@@ -3412,41 +3465,130 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                             //               Then the drag gets here
                             //               because it uses the id_attribute of the edit word.
                         }
+                    } else {
+                        console.warn(
+                            "Not dealing with idn",
+                            word.idn,
+                            "verb",
+                            txt_from_idn[word.vrb] || "(idn )" + word.vrb.toString()
+                        );
                     }
                     break;
                 }
             }
         });
-        looper(conts_in_cat, function (cat, conts) {
-            looper(conts, function (_, cont) {
-                $categories[cat].append($sup_contributions[cont]);
-            });
-        });
-
-        looper(MONTY.cat.order, function (_, idn) {
-            $(window.document.body).append($sup_categories[idn]);
-        });
-
-        // NOTE:  Now the contributions are in the DOM.
-
-        rebuild_all_render_bars();
-
-
-        if (num_contributions_in_category(MONTY.IDN.CAT_MY) === 0) {
-            $drag_to_my_blurb = $('<p>', {
-                id: 'drag-to-my-blurb'
-            }).text(
-                DRAG_TO_MY_BLURB
-            );
-            $categories[MONTY.IDN.CAT_MY].append($drag_to_my_blurb);
-        }
-
+        // MONTY.w loop is done, stow the auth_log somewhere.
         $(window.document.body).append(
             $('<div>', {title: 'Authorization History Comment'}).append(
                 $('<!-- \n' + auth_log.join("\n") + '\n-->')
             )
         );
-        // NOTE:  Slightly less intrusive than in console.log().
+        // NOTE:  Slightly less intrusive than console.log(auth_log).
+
+        /**
+         * Put the contributions in the category DOMs.
+         */
+        looper(conts_in_cat, function (cat_idn, cont_idns) {
+            looper(cont_idns, function (_, cont_idn) {
+                $categories[cat_idn].append($sup_contributions[cont_idn]);
+            });
+        });
+        /**
+         * Put the categories in the page DOM.
+         */
+        looper(MONTY.cat.order, function (_, idn) {
+            $(window.document.body).append($sup_categories[idn]);
+        });
+        // NOTE:  Now all contribution elements are in the DOM.
+        //        Everything after this requires the contributions be in the DOM.
+
+
+
+        // rebuild_all_render_bars();   // Oops, load the handlers first.
+
+        if (num_contributions_in_category(MONTY.IDN.CAT_MY) === 0) {
+            $drag_to_my_blurb = $('<p>', { id: 'drag-to-my-blurb' }).text(DRAG_TO_MY_BLURB);
+            $categories[MONTY.IDN.CAT_MY].append($drag_to_my_blurb);
+        }
+
+        // Which handlers are matched by some contribution?
+        var handlers_we_need = {};
+        Contribution_loop(function each_handling_possibility(cont) {
+            var matches = [];
+            looper(handlers_and_patterns, function (_, h_and_p) {
+                if (h_and_p.regexp.test(cont.text())) {
+                    matches.push(h_and_p);
+                }
+            });
+            switch (matches.length) {
+            case 0:
+                break;
+            case 1:
+                var h_and_p = matches[0];
+                handlers_we_need[h_and_p.handler_url] = {};
+                break;
+            default:
+                console.warn("Multiple matches!", cont.text());
+                looper(matches, function (_, h_and_p) {
+                    console.warn("\t", h_and_p.pattern, h_and_p.handler_url);
+                });
+                break;
+            }
+        });
+        // Load the handlers we actually need.
+        var promises = [];
+        looper(handlers_we_need, function (handler_url, handler_info) {
+            _media_object = null;
+            var getter_promise = $.getScript(handler_url).done(function handler_script_done(
+                script_itself,
+                result_name,
+                jqxhr
+            ) {
+                handler_info.media = _media_object;
+                console.log(
+                    "Handler initialized!",
+                    result_name,   // 'success'
+                    handler_url,
+                    script_itself.length,
+                    jqxhr,
+                    _media_object
+                );
+                _media_object = null;
+            });
+            promises.push(getter_promise);
+        });
+        $.when.apply($, promises).then(function () {
+            looper(handlers_and_patterns, function (_, h_and_p) {
+                h_and_p.media = handlers_we_need[h_and_p.handler_url].media;
+            });
+            console.log("Handlers", handlers_we_need);
+            console.log("Patterns", handlers_and_patterns);
+            rebuild_all_render_bars();
+        });
+
+    }
+
+    var _media_object;
+    // TODO:  Wiser concurrency, or asynchronicity, or something.
+    //        https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Statements/async_function
+
+    js_for_contribution.media_register = function js_for_contribution_media_register(media) {
+        console.assert(_media_object === null, _media_object);   // clue to out-of-order media call.
+        _media_object = media;
+        $(media.current_script).attr('data_media', 'moo');
+        console.log("media hit", media.current_script, window.document.currentScript);
+    };
+
+    // noinspection JSUnusedLocalSymbols
+    function word_from_idn(idn) {
+        var the_word = null;
+        looper(MONTY.w, function (_, word) {
+            if (word.idn === idn) {
+                the_word = word;
+                return false;
+            }
+        });
+        return the_word;
     }
 
     function rebuild_all_render_bars() {
@@ -3742,7 +3884,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         if ( ! is_laden(text)) {
             return "";
         }
-        return text.replace(/^[ \t]+/gm, function(spaces) {
+        return text.replace(/^[ \t]+/gm, function each_indentation(spaces) {
             return new Array(spaces.length + 1).join(UNICODE.EN_SPACE);
             // NOTE:  UNICODE.NBSP is too narrow and UNICODE.EM_SPACE is too wide.
         });
@@ -3764,10 +3906,10 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     }
 
     function order_report(order) {
-        var cont_nonempty = order.cat.filter(function(cat) {
+        var cont_nonempty = order.cat.filter(function (cat) {
             return has(order.cont, cat) && order.cont[cat].length > 0
         });
-        var cont_strings = cont_nonempty.map(function(cat) {
+        var cont_strings = cont_nonempty.map(function (cat) {
             var first_words = order.cont[cat].map(function (cont) {
                 console.assert(is_laden(cont), cat, "`" + cont + "`", order.cont[cat]);
                 return safe_string(first_word_from_cont(cont));
