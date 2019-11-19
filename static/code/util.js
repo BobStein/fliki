@@ -79,7 +79,7 @@ function selector_from_class(class_) {
 }
 
 /**
- * Is a txt field nonempty?  That is, not undefined, not null, and not the empty string.
+ * Is a string nonempty?  That is, not undefined, not null, and not the empty string.
  *
  * THANKS:  Nonnegative synonym for nonempty, https://english.stackexchange.com/a/102788/18673
  *

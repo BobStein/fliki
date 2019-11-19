@@ -124,6 +124,8 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     var ALLOW_THUMBNAIL_RESOLUTION_SELECTION = false;
     var DEFAULT_THUMBNAIL_RESOLUTION = 'mqdefault';
 
+    var MEDIA_HANDLER_LOAD_SECONDS = 10.0;
+
     // noinspection JSUnusedLocalSymbols
     var MOVE_AFTER_TARGET = 1,   // SortableJS shoulda defined these
         MOVE_BEFORE_TARGET = -1,
@@ -270,8 +272,10 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         txt_from_idn[idn] = name;
     });
 
-    var handler_from_idn = {};   // associative array mapping idn to handler url
-    var handlers_and_patterns = [];   // array of regular expression and handler associations.
+    // A media handler is a JavaScript file that calls js_for_contribution.media_register()
+    // A media pattern is a regular expression associated with a media handler.
+    var media_handlers = {};   // map idn to handler (url, etc.)
+    var media_patterns = {};   // map idn to pattern (regexp, handler, etc.)
 
 
 
@@ -426,6 +430,8 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             .on('keyup', function (evt) {
                 if (evt.key === 'Escape') {
                     bot.stop();
+                    check_contribution_edit_dirty(false, true);
+                    // TODO:  Return false if handled?  So Escape doesn't do other things?
                 }
             })
         ;
@@ -1345,18 +1351,30 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     }
 
     /**
-     * (Re)build the <iframe> element in the render bar on the media URL in the contribution text.
+     * (Re)build the render bar element contents, using the media URL in the contribution text.
      *
      * Happens on page load, on entering a new contribution, or editing an old one.
      */
-    Contribution.prototype.render_iframe = function Contribution_render_iframe() {
+    Contribution.prototype.render_media = function Contribution_render_media() {
+        // NOTE:  that.$iframe may not exist yet, e.g. on page reload, or entering a new cont.
+        //        If it did exist it gets displaced here, e.g. after an edit.
         var that = this;
         var media_url = that.text();
         that.$sup.addClass('render-media');
         that.$sup.attr('data-domain', sanitized_domain_from_url(media_url));
-        // NOTE:  that.$iframe may not exist yet, e.g. on page reload, or entering a new cont.
-        //        If it did exist it gets displaced here, e.g. after an edit.
-        if (do_live_media_thumbs()) {
+        var media_pattern = that.$sup.data('media-pattern');
+        if (is_specified(media_pattern) && is_specified(media_pattern.handler) && is_specified(media_pattern.media)) {
+            var media_match = that.$sup.data('media-match');
+            console.log(
+                "Media", that.id_attribute,
+                "pattern", media_pattern.idn,
+                "handler", media_pattern.handler.idn,
+                sanitized_domain_from_url(media_pattern.handler.url),
+                media_pattern.handler.media.description_short,
+                media_match.slice(1).join(" ")
+            );
+            media_pattern.handler.media.render_thumb(that, media_url, media_match);
+        } else if (do_live_media_thumbs()) {
             that.live_media_iframe(media_url);
         } else {
             var do_we_need_to_bother_with_oembed = true;
@@ -1428,7 +1446,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     }
 
     Contribution.prototype.thumb_media_img = function Contribution_thumb_media_img(
-        url_contribution,
+        media_url,
         url_thumbnail_image,
         caption,
         img_error_callback
@@ -1437,7 +1455,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         var $a = $('<a>', {
             id: 'thumb_' + that.id_attribute,
             class: 'thumb-link',
-            href: url_contribution,
+            href: media_url,
             target: '_blank',
             title: caption
         });
@@ -1470,7 +1488,8 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     Contribution.prototype.live_media_iframe = function Contribution_live_media_iframe(
         media_url, more_parameters
     ) {
-        // TODO:  No need to pass media_url, it's gotta be that.text().  Okay make a that.media_url().
+        // TODO:  No need to pass media_url, it's gotta be that.text().
+        //        Okay make a that.media_url().  Return null if no URL.
         var that = this;
         more_parameters = more_parameters || {};
         more_parameters.idn = that.id_attribute;
@@ -1577,7 +1596,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
      * @param do_close_clean {boolean} - If an edit was started but no changes, do we just close it?
      * @return {boolean} - true = confirm exit, false = exit harmless, don't impede
      */
-    function check_page_dirty(do_close_clean, do_scroll_into_view) {
+    function check_page_dirty(do_scroll_into_view, do_close_clean) {
         var is_dirty_entry = check_text_entry_dirty(do_scroll_into_view);
         var is_dirty_edit = check_contribution_edit_dirty(do_scroll_into_view, do_close_clean);
         // NOTE:  We want side effects from both these functions, the button reddening.
@@ -1618,12 +1637,14 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
      *
      * @param do_scroll_into_view {boolean} - if reddening controls, also scroll edits into view?
      * @param do_close_clean {boolean} - If an edit was started but no changes, do we just close it?
-     *     There are three callers to this function.
+     *     There are five callers to this function.
      *     At the risk of taunting the stale-comment gods, here are those three three cases:
      *     If unloading the page - doesn't matter, if a started edit was clean,
      *                             then this returns false and page unloads without interruption.
      *     If document click - depends on DOES_DOCUMENT_CLICK_END_CLEAN_EDIT.
      *     If editing another contribution - yes, always want to silently close an old clean edit.
+     *     Escape key - yes, Escape closes a clean edit.  And reddens a dirty edit.
+     *     Thumb-click - yes, popping up media closes a clean edit.
      * @return {boolean} - true if a contribution was being edited and there are unsaved changes.
      */
     function check_contribution_edit_dirty(do_scroll_into_view, do_close_clean) {
@@ -1748,7 +1769,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                 try {
                     resizer = iframe.iFrameResizer;
                 } catch (e) {
-                    console.error("iframe without a resizer??", e.toString(), iframe.id);
+                    console.error("iframe without a resizer??", e.message, iframe.id);
                     callback_bad("No resizer " + selector_or_element.toString());
                     return
                 }
@@ -1865,12 +1886,14 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     }
 
     function thumb_click(evt) {
-        var cont = Contribution_from_element(this);
-        console.log("thumb click", cont.id_attribute);
-        pop_up(cont, true);
-        evt.stopPropagation();
-        evt.preventDefault();
-        return false;
+        if (! check_contribution_edit_dirty(false, true)) {
+            var cont = Contribution_from_element(this);
+            console.log("thumb click", cont.id_attribute);
+            pop_up(cont, true);
+            evt.stopPropagation();
+            evt.preventDefault();
+            return false;
+        }
     }
 
     function pop_up(cont, auto_play) {
@@ -1968,6 +1991,8 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             // var $iframe = $popup.find('.render-bar iframe');
             // var old_src = $iframe.attr('src');
             // var new_src = old_src + '&' + $.param({
+            // $iframe.attr('src', new_src);
+
             var more_relay_parameters = {
                 idn: popup_cont_idn,
                 is_pop_up: true,
@@ -1985,8 +2010,10 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             // NOTE:  Extra 30-pixel reduction in height and width.
             //        Tends to prevent scrollbars from spontaneously appearing.
             //        Someday a less crude way would be good.
-            // $iframe.attr('src', new_src);
+
             pop_cont.live_media_iframe(pop_cont.text(), more_relay_parameters);
+            // NOTE:  This is what overrides the thumbnail and makes it a video.
+
             $popup.css({'background-color': 'rgba(0,0,0,0)'});
             pop_cont.resizer_init(
                 function pop_media_init() {
@@ -3314,6 +3341,8 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             var $sup;
             var $cont;
             var $caption_span;
+            var handler_idn;
+            var handler_url;
             if (word !== null) {
                 switch (word.vrb) {
                 case MONTY.IDN.CONTRIBUTE:
@@ -3382,43 +3411,56 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                     }
                     break;
                 case MONTY.IDN.HANDLE:
-                    console.log("Handler", word.idn, word.txt);
-                    handler_from_idn[word.idn] = word.txt;
+                    handler_idn = word.idn;
+                    handler_url = word.txt;
+                    console.log("Media handler defined:", handler_idn,handler_url);
+                    media_handlers[handler_idn] = {
+                        idn: handler_idn,
+                        url: handler_url,
+                        need_load: false,
+                        did_load: false,
+                        did_fail: false,
+                        did_register: false,
+                        num_handled: 0
+                    };
                     break;
                 case MONTY.IDN.MATCH:
+                    handler_idn = word.obj;
+                    var pattern_idn = word.idn;
                     var pattern_string = word.txt;
-                    var handler_idn = word.obj;
-                    if (has(handler_from_idn, handler_idn)) {
-                        var handler_url = handler_from_idn[handler_idn];
+                    var media_handler = media_handlers[handler_idn];
+                    if (is_defined(media_handler)) {
                         var pattern_regexp;
                         try {
                             pattern_regexp = new RegExp(pattern_string);
                         } catch (e) {
-                            console.error("Broken pattern", word.idn, pattern_string, e.toString());
+                            console.warn(
+                                "Media pattern", pattern_idn,
+                                "is a bad regular expression", pattern_string,
+                                e.message
+                            );
                             pattern_regexp = null;
                         }
                         if (pattern_regexp !== null) {
-                            console.log("Media pattern", pattern_string, "handled by", handler_url);
-                            handlers_and_patterns.push({
-                                pattern: pattern_string,
+                            console.log(
+                                "Media pattern defined:", pattern_idn,
+                                pattern_string,
+                                "handled by", media_handler.idn
+                            );
+                            media_patterns[pattern_idn] = {
+                                idn: pattern_idn,
+                                string: pattern_string,
                                 regexp: pattern_regexp,
-                                handler_url: handler_url
-                            });
+                                handler: media_handler,
+                                num_match: 0
+                            };
                         }
                     } else {
-                        console.warn("Unrecognized handler word", handler_idn);
+                        console.warn(
+                            "Unrecognized media handler", handler_idn,
+                            "for pattern", pattern_idn
+                        );
                     }
-                    // var handler_word = find_word(handler_idn);
-                    // if (handler_word === null) {
-                    //     console.warn("Unrecognized handler word", handler_idn);
-                    // } else {
-                    //     var handler_url = handler_word.txt;
-                    //     console.log("Media pattern", pattern, "handled by", handler_url);
-                    //     handlers_and_patterns.push({
-                    //         pattern: pattern,
-                    //         handler: handler_url
-                    //     });
-                    // }
                     break;
                 default:
                     if (has(MONTY.cat.order, word.vrb)) {
@@ -3510,85 +3552,223 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         looper(MONTY.cat.order, function (_, idn) {
             $(window.document.body).append($sup_categories[idn]);
         });
+
+
+
         // NOTE:  Now all contribution elements are in the DOM.
-        //        Everything after this requires the contributions be in the DOM.
+        //        Everything below requires this.
 
 
-
-        // rebuild_all_render_bars();   // Oops, load the handlers first.
 
         if (num_contributions_in_category(MONTY.IDN.CAT_MY) === 0) {
             $drag_to_my_blurb = $('<p>', { id: 'drag-to-my-blurb' }).text(DRAG_TO_MY_BLURB);
             $categories[MONTY.IDN.CAT_MY].append($drag_to_my_blurb);
         }
 
+        // TODO:  Make parts of the following re-entrant, so it can be called after
+        //        contributions are posted or edited.
+
         // Which handlers are matched by some contribution?
-        var handlers_we_need = {};
+        looper(media_handlers, function (_, handler) {
+            handler.need_load = false;
+            handler.num_handled = 0;
+        });
+        looper(media_patterns, function (_, pattern) {
+            pattern.num_match = 0;
+        });
         Contribution_loop(function each_handling_possibility(cont) {
-            var matches = [];
-            looper(handlers_and_patterns, function (_, h_and_p) {
-                if (h_and_p.regexp.test(cont.text())) {
-                    matches.push(h_and_p);
+            var patterns_that_matched = [];
+            var match_objects_that_matched = [];
+            var might_be_a_media_url = cont.text();
+            looper(media_patterns, function (_, pattern) {
+                var match_object = might_be_a_media_url.match(pattern.regexp);   // the big match
+                if (match_object !== null) {
+                    patterns_that_matched.push(pattern);
+                    match_objects_that_matched.push(match_object);
                 }
             });
-            switch (matches.length) {
+            switch (patterns_that_matched.length) {
             case 0:
+                // Guess it's not a media url.
+                cont.$sup.removeData('media-pattern');
                 break;
             case 1:
-                var h_and_p = matches[0];
-                handlers_we_need[h_and_p.handler_url] = {};
+                var media_pattern = patterns_that_matched[0];
+                media_pattern.handler.need_load = true;
+                cont.$sup.data('media-pattern', media_pattern);
+                cont.$sup.data('media-match', match_objects_that_matched[0]);
+                media_pattern.num_match++;
+                media_pattern.handler.num_handled++;
                 break;
             default:
-                console.warn("Multiple matches!", cont.text());
-                looper(matches, function (_, h_and_p) {
-                    console.warn("\t", h_and_p.pattern, h_and_p.handler_url);
+                console.warn("Multiple media pattern matches!", might_be_a_media_url);
+                looper(patterns_that_matched, function (_, media_pattern) {
+                    console.warn(
+                        "\t", media_pattern.string,
+                        "->", media_pattern.handler.url
+                    );
                 });
+                cont.$sup.removeData('media-pattern');
+                // TODO:  Referee among multiple handlers.
+                //        (And btw it should be quite benign if multiple patterns lead to the SAME
+                //        handler.)
                 break;
             }
         });
-        // Load the handlers we actually need.
-        var promises = [];
-        looper(handlers_we_need, function (handler_url, handler_info) {
-            _media_object = null;
-            var getter_promise = $.getScript(handler_url).done(function handler_script_done(
-                script_itself,
-                result_name,
-                jqxhr
-            ) {
-                handler_info.media = _media_object;
-                console.log(
-                    "Handler initialized!",
-                    result_name,   // 'success'
-                    handler_url,
-                    script_itself.length,
-                    jqxhr,
-                    _media_object
-                );
-                _media_object = null;
-            });
-            promises.push(getter_promise);
-        });
-        $.when.apply($, promises).then(function () {
-            looper(handlers_and_patterns, function (_, h_and_p) {
-                h_and_p.media = handlers_we_need[h_and_p.handler_url].media;
-            });
-            console.log("Handlers", handlers_we_need);
-            console.log("Patterns", handlers_and_patterns);
-            rebuild_all_render_bars();
-        });
 
+        // Load the handlers we actually need.
+        // var promises = [];
+        var first_load_crisis = true;
+        looper(media_handlers, function (_, handler) {
+            if (handler.need_load) {
+
+                // _media_object = null;
+                // var getter_promise = $.getScript(handler_url).done(function handler_script_done(
+                //     script_itself,
+                //     result_name,
+                //     jqxhr
+                // ) {
+                //     handler_info.media = _media_object;
+                //     console.log(
+                //         "Handler initialized!",
+                //         result_name,   // 'success'
+                //         handler_url,
+                //         script_itself.length,
+                //         jqxhr,
+                //         _media_object
+                //     );
+                //     _media_object = null;
+                // });
+                // promises.push(getter_promise);
+                // THANKS?  Is .done() better?  https://stackoverflow.com/a/39526723/673991
+
+                handler.$script = $('<script>');
+                // TODO:  RequireJS instead?
+                handler.$script.data('handler-idn', handler.idn);
+                $(window.document.body).append(handler.$script);
+                handler.$script.one('load.script2', function () {
+                    handler.$script.off('.script2');
+                    handler.did_load = true;
+                    // handler.media = _media_object;
+                    console.log(
+                        "Media handler loaded:", handler.$script.attr('src'),
+                        "idn", handler.idn, "==", handler.$script.data('handler-idn')
+                    );
+                    if ( ! handler.did_register) {
+                        console.error("HANDLER", handler.idn, "DID NOT REGISTER", handler.url);
+                        // TODO:  Does loaded REALLY always include executed?  We assume so here.
+                        //        https://stackoverflow.com/q/14565365/673991
+                    }
+                    are_we_done_loading_handlers();
+                });
+                handler.$script.one('error.script2', function (evt) {
+                    handler.$script.off('.script2');
+                    handler.did_fail = true;
+                    console.error(
+                        "Media handler", handler.idn,
+                        "error, script", handler.url,
+                        evt
+                    );
+                    if (first_load_crisis) {
+                        first_load_crisis = false;
+                        alert("Unable to register all media handlers. You may want to reload.");
+                        // FIXME:  Whole page is busted if we can't load all media handlers.
+                        //         Is there a less troglodytic way to handle this, NPI?
+                        //         How about a red status message up-top?
+                        //         And/or a red line around media we can't handle, yes that's better
+                        //         Oh god, and fallback to another handler, which means
+                        //         we do want redundant patterns and handlers.
+                    }
+                });
+                handler.$script.attr('src', handler.url);
+                // SEE:  src after on-error, https://api.jquery.com/error/#entry-longdesc
+            }
+            setTimeout(function () {
+                var all_ok = true;
+                var num_needed = 0;
+                var num_loaded = 0;
+                var num_failed = 0;
+                var num_limbo = 0;
+                looper(media_handlers, function(_, handler) {
+                    if (handler.need_load) {
+                        num_needed++;
+                        if (handler.did_load) {
+                            num_loaded++;
+                        } else if (handler.did_fail) {
+                            num_failed++;
+                            all_ok = false;
+                        } else {
+                            num_limbo++;
+                            // Limbo.  WTF happened to our handler script load?
+                            console.warn("Media handler timeout", handler);
+                            all_ok = false;
+                        }
+                    }
+                });
+                var console_reporter = all_ok ? console.log : console.warn;
+                console_reporter(
+                    num_needed.toString(),
+                    "of",
+                    Object.keys(media_handlers).length.toString(),
+                    "media handlers needed,",
+                    num_loaded, "loaded,",
+                    num_failed, "failed,",
+                    num_limbo, "unaccounted for"
+                );
+            }, MEDIA_HANDLER_LOAD_SECONDS * 1000);
+        });
+        // $.when.apply($, promises).then(function () {
+        //     looper(pattern_table, function (_, h_and_p) {
+        //         h_and_p.media = handlers_we_need[h_and_p.handler_url].media;
+        //     });
+        //     console.log("Handlers", handlers_we_need);
+        //     console.log("Patterns", pattern_table);
+        //     rebuild_all_render_bars();
+        // });
     }
 
-    var _media_object;
+    // var _media_object;
     // TODO:  Wiser concurrency, or asynchronicity, or something.
     //        https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Statements/async_function
 
     js_for_contribution.media_register = function js_for_contribution_media_register(media) {
-        console.assert(_media_object === null, _media_object);   // clue to out-of-order media call.
-        _media_object = media;
-        $(media.current_script).attr('data_media', 'moo');
-        console.log("media hit", media.current_script, window.document.currentScript);
+        // console.assert(_media_object === null, _media_object);   // clue to out-of-order media call.
+        // _media_object = media;
+        // $(media.current_script).attr('data_media', 'moo');
+        var $script = $(window.document.currentScript);
+        console.assert($script.length === 1, "currentScript broke", window.document.currentScript);
+        var handler_idn = $script.data('handler-idn');
+        console.assert(is_defined(handler_idn), "handler-idn broke", $script);
+        var handler = media_handlers[handler_idn];
+        console.assert(is_defined(handler), "handler object broke", handler_idn, media_handlers);
+        if (is_defined(handler)) {
+            console.log("Media handler registered:", media.description_long);
+            handler.media = media;
+            handler.did_register = true;
+        }
     };
+
+    function are_we_done_loading_handlers() {
+        var all_loaded = true;
+        looper(media_handlers, function (_, handler) {
+            if (handler.need_load && ! handler.did_load) {
+                all_loaded = false;
+                return false;
+            }
+        });
+        // TODO:  Use .entries() and .reduce()?
+        //        all_done = Object.entries(media_handlers).reduce(
+        //            (done, handler) => done && !handler.need_load,
+        //            true
+        //        )
+        //        But is that harder to follow?  And if I have to ask the answer is yes?
+        // TODO:  all_done = Object.entries(media_handlers).all(handler => ! handler.need_load);
+        if (all_loaded) {
+            console.log("Media handlers", media_handlers);
+            console.log("Media patterns", media_patterns);
+            rebuild_all_render_bars();
+        }
+    }
 
     // noinspection JSUnusedLocalSymbols
     function word_from_idn(idn) {
@@ -3855,7 +4035,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         var $cont = $sup_cont.find('.contribution');
         if (can_i_embed_it($cont.text())) {
             var cont = Contribution_from_element($sup_cont);   // Before it gets its $iframe!
-            cont.render_iframe();
+            cont.render_media();
         } else {
             render_text($sup_cont);
         }
@@ -4229,3 +4409,9 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         qoolbar.post('notable_occurrence', {message: message});
     }
 }
+
+// NOTE:  Reasons why IE11 won't work:
+//        window.document.currentScript is needed to match media handler code and objects.
+//        window.speechSynthesis to speak quotes
+//        window.SpeechSynthesisUtterance is where it actually crashes
+//        $('iframe').on('load') event never happens.

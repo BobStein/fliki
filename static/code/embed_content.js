@@ -66,6 +66,9 @@ function embed_content_js(window, $, MONTY) {
     var contribution_idn = query_get('idn');
     var is_auto_play = query_get('auto_play', 'false') === 'true';
     var is_pop_up = query_get('is_pop_up', 'false') === 'true';
+    var oppressed_width = query_get('width', 'auto');
+    var oppressed_height = query_get('height', 'auto');
+
     var domain_simple = simplified_domain_from_url(url_outer_iframe);
     window.document.title = domain_simple + " - " + window.document.title;
     var is_youtube = (domain_simple === 'youtube' || domain_simple === 'youtu.be');
@@ -153,8 +156,8 @@ function embed_content_js(window, $, MONTY) {
                         $you_frame.height(MONTY.THUMB_MAX_HEIGHT);
                         $body.prepend($you_frame);
                         $you_frame.animate({
-                            width: query_get('width'),
-                            height: query_get('height'),
+                            width: oppressed_width,
+                            height: oppressed_height,
                             easing: 'linear'
                         }, {
                             complete: function () {
@@ -354,7 +357,7 @@ function embed_content_js(window, $, MONTY) {
                             return;
                         }
                         num_cycles++;
-                        fix_embedded_content();
+                        fix_embedded_content();   // Again, after provider processing.
                     }, POLL_MILLISECONDS);
                 }
             });
@@ -456,10 +459,8 @@ function embed_content_js(window, $, MONTY) {
         tag_width($grandchild);
 
         if (is_pop_up) {
-            var pop_width = query_get('width', 'auto');
-            var pop_height = query_get('height', 'auto');
-            $body.css({width: pop_width, height: pop_height});
-            $child.css({width: pop_width, height: pop_height});
+            $body.css({width: oppressed_width, height: oppressed_height});
+            $child.css({width: oppressed_width, height: oppressed_height});
         } else {
             // fit_width(MONTY.THUMB_MAX_WIDTH, $grandchild);
             // fit_width(MONTY.THUMB_MAX_WIDTH, $child);
