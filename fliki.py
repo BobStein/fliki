@@ -614,27 +614,40 @@ class LexFliki(qiki.LexMySQL):
 
     def install_youtube_matches(self):
 
-        self.youtube_media_handler = self.create_word(
+        handler_specs = dict(
             sbj=self[self],
             vrb=self.IDN.HANDLE,
             obj=self.IDN.MEDIA,
             txt=static_code_url('media_youtube.js', _external=True),
-            num=1,
-            use_already=True,
-        ).idn
+        )
+        existent_handler_words = self.find_words(**handler_specs)
+        if len(existent_handler_words) > 0 and existent_handler_words[-1].num != 0:
+            handler_word = existent_handler_words[-1]
+        else:
+            handler_word = self.create_word(num=1, **handler_specs)
+        self.youtube_media_handler = handler_word.idn
+        # self.youtube_media_handler = self.create_word(
+        #     sbj=self[self],
+        #     vrb=self.IDN.HANDLE,
+        #     obj=self.IDN.MEDIA,
+        #     txt=static_code_url('media_youtube.js', _external=True),
+        #     num=1,
+        #     use_already=True,
+        # ).idn
+
         self.youtube_matches = []
         for pattern in YOUTUBE_PATTERNS:
-            specs = dict(
+            pattern_specs = dict(
                 sbj=self[self],
                 vrb=self.IDN.MATCH,
                 obj=self.youtube_media_handler,
                 txt=pattern,
             )
-            already_words = self.find_words(**specs)
-            if len(already_words) > 0 and already_words[-1].num == 1:
+            existent_pattern_words = self.find_words(**pattern_specs)
+            if len(existent_pattern_words) > 0 and existent_pattern_words[-1].num != 0:
                 '''Already got a word'''
             else:
-                new_word = self.create_word(num=1, **specs)
+                new_word = self.create_word(num=1, **pattern_specs)
                 self.youtube_matches.append(new_word)
                 print("New matcher", new_word.idn, new_word.obj.txt, pattern)
 
@@ -777,41 +790,45 @@ class Auth(object):
 
         try:
             session_qstring = self.session_qstring
-            session_uuid = self.session_uuid
         except (KeyError, IndexError, AttributeError):
-            '''Missing qstring and/or uuid session variable.  Start over.'''
-            # TODO:  Remark if this was NOT starting from scratch?
+            print("BAD QSTRING")
             self.session_new()
         else:
             try:
-                session_idn = qiki.Number.from_qstring(session_qstring)
-                self.session_verb = self.lex[session_idn]
-            except ValueError:
-                print("BAD SESSION IDENTIFIER", session_qstring)
+                session_uuid = self.session_uuid
+            except (KeyError, IndexError, AttributeError):
+                print("BAD UUID SESSION VARIABLE")
                 self.session_new()
             else:
-                if not self.session_verb.exists():
-                    print("NO SUCH SESSION IDENTIFIER", session_qstring)
-                    self.session_new()
-                elif (
-                    self.session_verb.sbj.idn != self.lex.IDN.LEX or
-                    self.session_verb.vrb.idn != self.lex.IDN.DEFINE or
-                    self.session_verb.obj.idn != self.lex.IDN.BROWSE
-                ):
-                    print("NOT A SESSION IDENTIFIER", session_qstring)
-                    self.session_new()
-                elif self.session_verb.txt != session_uuid:
-                    print(
-                        "NOT A RECOGNIZED SESSION",
-                        session_qstring,
-                        "is the idn, but",
-                        self.session_verb.txt,
-                        "!=",
-                        session_uuid
-                    )
+                try:
+                    session_idn = qiki.Number.from_qstring(session_qstring)
+                    self.session_verb = self.lex[session_idn]
+                except ValueError:
+                    print("BAD SESSION IDENTIFIER", session_qstring)
                     self.session_new()
                 else:
-                    '''old session word is good, keep it'''
+                    if not self.session_verb.exists():
+                        print("NO SUCH SESSION IDENTIFIER", session_qstring)
+                        self.session_new()
+                    elif (
+                        self.session_verb.sbj.idn != self.lex.IDN.LEX or
+                        self.session_verb.vrb.idn != self.lex.IDN.DEFINE or
+                        self.session_verb.obj.idn != self.lex.IDN.BROWSE
+                    ):
+                        print("NOT A SESSION IDENTIFIER", session_qstring)
+                        self.session_new()
+                    elif self.session_verb.txt != session_uuid:
+                        print(
+                            "NOT A RECOGNIZED SESSION",
+                            session_qstring,
+                            "is the idn, but",
+                            self.session_verb.txt,
+                            "!=",
+                            session_uuid
+                        )
+                        self.session_new()
+                    else:
+                        '''old session word is good, keep it'''
 
         if self.is_authenticated:
             self.qiki_user = self.lex.word_google_class(self.authenticated_id())
@@ -847,11 +864,12 @@ class Auth(object):
         if len(ip_words) == 0 or ip_words[-1].txt != ip_address_txt:
             self.qiki_user(self.lex.IDN.IP_ADDRESS_TAG, use_already=False)[self.session_verb] = ip_address_txt
             # TODO:  How could this get a duplicate key?
-            #        mysql.connector.errors.IntegrityError: 1062 (23000): Duplicate entry '\x821' for key 'PRIMARY'
+            #        mysql.connector.errors.IntegrityError: 1062 (23000):
+            #        Duplicate entry '\x821' for key 'PRIMARY'
             #        '\x821' === Number('0q82_31').raw, which is the idn for session_verb
             #        (i.e. the obj=WORD.BROWSE word)
             #        override_idn should have been None all the way down
-            #        So was this a race condition in word in lex.max_idn()??
+            #        So was this a race condition in word.py in lex.max_idn()??
             #        That function does cause nested cursors.
 
         ua_words = self.lex.find_words(
@@ -1690,7 +1708,7 @@ assert 'qux' == url_var('http://example.com/',         'foo', 'qux')
 
 
 @flask_app.route('/module/qiki-javascript/<path:filename>')
-def qiki_javascript(filename):
+def static_response_from_qiki_javascript(filename):
     """
     Make a pseudo-static directory out of the qiki-javascript repo.
 
@@ -1721,6 +1739,10 @@ def os_path_static(relative_url):
 def os_path_qiki_javascript(relative_url):
     return flask.safe_join(PARENT_DIRECTORY, 'qiki-javascript', relative_url)
     # NOTE:  Assume the fliki and qiki-javascript repos are in sibling directories.
+
+
+def web_path_qiki_javascript(relative_url):
+    return flask.url_for('static_response_from_qiki_javascript', filename=relative_url)
 
 
 class Parse(object):
@@ -1760,18 +1782,18 @@ class FlikiHTML(web_html.WebHTML):
             head.meta(name='viewport', content='width=device-width, initial-scale=0.7')
             head.link(
                 rel='shortcut icon',
-                href=flask.url_for('qiki_javascript', filename='favicon.ico')
+                href=web_path_qiki_javascript('favicon.ico')
             )
             head.css_stamped(static_code_url('meta_lex.css'))
-            head.css_stamped(flask.url_for('qiki_javascript', filename='qoolbar.css'))
+            head.css_stamped(web_path_qiki_javascript('qoolbar.css'))
             return head
 
     def footer(self):
         self(newlines=True)
         self.jquery(JQUERY_VERSION)
         self.js('//ajax.googleapis.com/ajax/libs/jqueryui/{}/jquery-ui.min.js'.format(JQUERYUI_VERSION))
-        self.js_stamped(flask.url_for('qiki_javascript', filename='jquery.hotkeys.js'))
-        self.js_stamped(flask.url_for('qiki_javascript', filename='qoolbar.js'))
+        self.js_stamped(web_path_qiki_javascript('jquery.hotkeys.js'))
+        self.js_stamped(web_path_qiki_javascript('qoolbar.js'))
         return self
 
     @classmethod
@@ -1779,7 +1801,7 @@ class FlikiHTML(web_html.WebHTML):
         url_parse = Parse(url)
         if url_parse.remove_prefix(static_url('')):
             return os_path_static(url_parse.remains)
-        elif url_parse.remove_prefix(flask.url_for('qiki_javascript', filename='')):
+        elif url_parse.remove_prefix(web_path_qiki_javascript('')):
             return os_path_qiki_javascript(url_parse.remains)
         else:
             raise RuntimeError("Unrecognized url " + url)
@@ -2951,10 +2973,10 @@ def noembed_render(url, idn):
             head.jquery(JQUERY_VERSION)
             head.js_stamped(static_code_url('util.js'))
             head.js_stamped(static_code_url('embed_content.js'))
-            head.script(type='text/javascript').raw_text('''
-                var MONTY = {json};
-                embed_content_js(window, jQuery, MONTY);
-            \n'''.format(json=json_pretty(monty)))
+            with head.script(type='text/javascript') as script:
+                script.raw_text('\n')
+                script.raw_text('var MONTY = {json};\n'.format(json=json_pretty(monty)))
+                script.raw_text('embed_content_js(window, jQuery, MONTY);\n')
 
         html.body()
         return html.doctype_plus_html()
@@ -3050,7 +3072,7 @@ def answer_qiki(url_suffix):
     """
 
     if url_suffix == 'favicon.ico':
-        return qiki_javascript(filename=url_suffix)
+        return static_response_from_qiki_javascript(filename=url_suffix)
         # SEE:  favicon.ico in root, https://realfavicongenerator.net/faq#why_icons_in_root
 
     if not secure.credentials.Options.enable_answer_qiki:
@@ -3205,20 +3227,24 @@ def native_num(num):
 
 @flask_app.route(AJAX_URL, methods=('POST',))
 def ajax():
-
-    hide_print = flask.request.form.get('action', '_') == 'noembed_meta' and HIDE_AJAX_NOEMBED_META
-    auth = AuthFliki(hide_print=hide_print)
-
-    if not auth.is_online:
-        return invalid_response("ajax offline")
-
     t_start = time.time()
-    qc_start = auth.lex.query_count
-
-    lex = auth.lex
+    auth = None
     action = None
+    qc_start = None
 
     try:
+        hide_print = (
+            flask.request.form.get('action', '_') == 'noembed_meta' and
+            HIDE_AJAX_NOEMBED_META
+        )
+        auth = AuthFliki(hide_print=hide_print)
+
+        if not auth.is_online:
+            return invalid_response("ajax offline")
+
+        qc_start = auth.lex.query_count
+
+        lex = auth.lex
         action = auth.form('action')
         # TODO:  class Action(Enumerant), or SomeClass.action = Action() instance or something.
         if action == 'answer':
@@ -3364,22 +3390,24 @@ def ajax():
         return invalid_response("request error")
 
     finally:
-
         t_end = time.time()
-        qc_end = auth.lex.query_count
+        if auth is None:
+            print("AJAX CRASH, {t:.3f} sec".format(t=t_end - t_start))
+        else:
+            qc_end = auth.lex.query_count
 
-        ok_to_print = True
-        if action == 'noembed_meta' and HIDE_AJAX_NOEMBED_META:
-            ok_to_print = False
+            ok_to_print = True
+            if action == 'noembed_meta' and HIDE_AJAX_NOEMBED_META:
+                ok_to_print = False
 
-        if ok_to_print:
-            print(
-                "Ajax {action}, {qc} queries, {t:.3f} sec".format(
-                    action=repr(action),
-                    qc=qc_end - qc_start,
-                    t=t_end - t_start
+            if ok_to_print:
+                print(
+                    "Ajax {action}, {qc} queries, {t:.3f} sec".format(
+                        action=repr(action),
+                        qc=qc_end - qc_start,
+                        t=t_end - t_start
+                    )
                 )
-            )
 
 
 def retry(exception_to_check, tries=4, delay=3, delay_multiplier=2):

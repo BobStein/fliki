@@ -38,6 +38,12 @@
 // TODO:  verb filter checkboxes (show/hide each one, especially may want to hide "questions")
 function js_for_meta_lex(window, $, MONTY) {
 
+    var MIN_SHOW_DELTA_SECONDS = 10;   // Below this, delta-whn times are hidden, unless you hover.
+    var MAX_SCRUNCH_DELTA_SECONDS = .1;  // Below this delta-whn, sentences are scrunched together.
+
+    var LIGHTEST_GRAY = 216;   // XXX:  D.R.Y. crime - qoolbar.js .target-environment rgb(216,216,216)
+    var DARKEST_GRAY = 0;
+
     var UNICODE = {
         NBSP: '\u00A0',
         LEFT_DOUBLE_QUOTE: '\u201C',
@@ -170,21 +176,38 @@ function js_for_meta_lex(window, $, MONTY) {
             var triangle_string = point_join(triangle_array);
             return triangle_string;
         });
-        var LIGHTEST = 216;   // XXX:  D.R.Y. crime - qoolbar.js .target-environment rgb(216,216,216)
-        var DARKEST = 0;
         triangle.attr('fill', function (b) {
-            return gray_scale(log_time_scale(b ? b.num : 0, LIGHTEST, DARKEST));
+            return gray_scale(log_time_scale(b ? b.num : 0, LIGHTEST_GRAY, DARKEST_GRAY));
         });
 
         triangle.append('title').text(tooltip_delta);
 
-        var label = svg.append('text');
-        label.text(function (b) { return b ? b.description_short : ""; });
-        label.attr('x', '1');
-        label.attr('y', '12');
-        label.attr('class', function (b) { return (b ? b.num : 0) < 10 ? 'whn-label hide' : 'whn-label'; });
-        label.attr('fill', function (b) { return (b ? b.num : 0) < 60 ? 'black' : 'white'; });
-        label.append('title').text(tooltip_delta);
+        var text_element = svg.append('text');
+        text_element.text(function (b) { return b ? b.description_short : ""; });
+        text_element.attr('x', '1');
+        text_element.attr('y', '12');
+        text_element.attr('fill', function (b) { return (b ? b.num : 0) < 60 ? 'black' : 'white'; });
+        text_element.attr('class', function (b) {
+            var classes = ['whn-label'];
+            if (is_specified(b)) {
+                if (b.num <= MAX_SCRUNCH_DELTA_SECONDS) {
+                    classes.push('whn-scrunch');
+                }
+                if (b.num < MIN_SHOW_DELTA_SECONDS) {
+                    classes.push('whn-hide');
+                }
+            } else {
+                classes.push('whn-hide');
+            }
+            return classes.join(' ');
+        });
+        text_element.append('title').text(tooltip_delta);
+
+        $('.whn-scrunch').each(function () {
+            var $srend = $(this).closest('.srend');
+            $srend.addClass('whn-scrunch');
+        });
+        // NOTE:  Use jQuery to migrate the whn-scrunch class up to the li.srend element.
     }
 
     function render_word(word) {
@@ -381,14 +404,15 @@ function js_for_meta_lex(window, $, MONTY) {
         var $span = $word.find('.whn');   // $('<span>', {class: 'whn'});
         $span.addClass(delta.units_long);
         $span.text(delta.description_short);
+        var fractional = whn_seconds % 1.0;
         $span.attr(
             'title',
             (
                 delta.description_long +
                 " ago: " +
-                word_date.toUTCString() +
+                amend_timestamp_with_fractional_seconds(word_date.toUTCString(), fractional) +
                 " -or- " +
-                word_date.toLocaleString() +
+                amend_timestamp_with_fractional_seconds(word_date.toLocaleString(), fractional) +
                 " local"
             )
         );
@@ -404,6 +428,26 @@ function js_for_meta_lex(window, $, MONTY) {
             whn_delta.push(between);
         }
     }
+
+    function amend_timestamp_with_fractional_seconds(timestamp, fractional_seconds) {
+        var fractional_seconds_string = strip_leading_zeros(fractional_seconds.toFixed(3));
+        var amended_timestamp = timestamp.replace(
+            /\d\d:\d\d:\d\d/,
+            "$&" + fractional_seconds_string
+        );
+        return amended_timestamp;
+    }
+    console.assert(
+        'Sat, 23 Nov 2019 16:30:44.388 GMT' === amend_timestamp_with_fractional_seconds(
+        'Sat, 23 Nov 2019 16:30:44 GMT', 0.388)
+    );
+
+    function strip_leading_zeros(s) {
+        return s.replace(/^0+/, '');
+        // THANKS:  aggressive zero-stripping, https://stackoverflow.com/a/6676498/673991
+    }
+    console.assert('.425' === strip_leading_zeros('0.425'));
+    console.assert('' === strip_leading_zeros('0'));
 
     /**
      * The bottom triangle shows the time between the last word,
@@ -438,20 +482,23 @@ function js_for_meta_lex(window, $, MONTY) {
         }
     }
 
+    // var MINIMUM_RENDERED_SECONDS = 1;
+    var MINIMUM_RENDERED_SECONDS = 0.1;
+    var MAXIMUM_RENDERED_SECONDS = 3600*24*365*100;
     /**
      * Convert seconds to a log scale.
      *
      * @param seconds
-     * @param output_1_second - output value to represent 1s or shorter
-     * @param output_100_years - output value to represent 100Y or longer
+     * @param output_min_seconds - output value to represent e.g. 1 for 1s or shorter
+     * @param output_max_seconds - output value to represent e.g. 3600*24*365*100 for 100Y or longer
      * @return {*}
      */
-    function log_time_scale(seconds, output_1_second, output_100_years) {
+    function log_time_scale(seconds, output_min_seconds, output_max_seconds) {
         var log_sec = Math.log(seconds);
-        var omin = output_1_second;
-        var omax = output_100_years;
-        var log_min = Math.log(1);
-        var log_max = Math.log(3600*24*365*100);
+        var omin = output_min_seconds;
+        var omax = output_max_seconds;
+        var log_min = Math.log(MINIMUM_RENDERED_SECONDS);
+        var log_max = Math.log(MAXIMUM_RENDERED_SECONDS);
         var output = scale(log_sec, log_min, log_max, omin, omax);
         output = Math.min(output, Math.max(omin, omax));
         output = Math.max(output, Math.min(omin, omax));
@@ -531,6 +578,7 @@ function js_for_meta_lex(window, $, MONTY) {
         return new Date(whn * 1000.0);
     }
 
+    var MILLISECOND = 0.001;
     var SECOND = 1;
     var MINUTE = 60*SECOND;
     var HOUR = 60*MINUTE;
@@ -538,11 +586,18 @@ function js_for_meta_lex(window, $, MONTY) {
     var MONTH = 30*DAY;
     var YEAR = 365*DAY;
 
-    var UP_TO_SECOND = 99.4*SECOND;   // 99s -> 2m
-    var UP_TO_MINUTE = 99.4*MINUTE;   // 99m -> 2h
-    var UP_TO_HOUR   = 48.4*HOUR;     // 48h -> 2d
-    var UP_TO_DAY    = 99.4*DAY;      // 99d -> 3M
-    var UP_TO_MONTH  = 24.4*MONTH;    // 24M -> 2Y
+    // The following are thresholds.
+    //     at and below which, we display this ---vvvv    vvvv--- above which, we display this
+    var EXACTLY_ZERO    = 0.0000000000000;    //    z -> 0ms ____  <-- at exactly zero, display z
+    //                    0.5*MILLISECOND;    //  0ms -> 1ms ___ `-- between these -- 0ms
+    var UP_TO_MILLI     = 95*MILLISECOND;     // 95ms -> .01s _ `--- between these -- 1ms to 95ms
+    var UP_TO_FRACTION  = 0.95*SECOND;        // .95s -> 1s __ `---- between these - .01s to .95s
+    var UP_TO_SECOND    = 99.4*SECOND;        //  99s -> 2m _ `----- between these --- 1s to 99s
+    var UP_TO_MINUTE    = 99.4*MINUTE;        //  99m -> 2h  `------ between these --- 2m to 99m
+    var UP_TO_HOUR      = 48.4*HOUR;          //  48h -> 2d ___                        2h to 48h
+    var UP_TO_DAY       = 99.4*DAY;           //  99d -> 3M __ `---- between these --- 2d to 99d
+    var UP_TO_MONTH     = 24.4*MONTH;         //  24M -> 2Y _ `----- between these --- 3M to 24M
+                                              //             `--------- above this --- 2Y to 999Y...
 
     // CAUTION:  Because these "constants" are defined here,
     //           delta_format() can be called before it works.
@@ -618,13 +673,26 @@ function js_for_meta_lex(window, $, MONTY) {
         function div1(n, d) {
             return (n/d).toFixed(1);
         }
+        function div2(n, d) {
+            return (n/d).toFixed(2);
+        }
 
         var word = {num: sec};
-        if (sec === 0.000000000000000) {
+        if (sec === EXACTLY_ZERO) {
             word.amount_short = "";
             word.amount_long = "";
             word.units_short = "z";
             word.units_long = "zero";
+        } else if (sec <=          UP_TO_MILLI) {
+            word.amount_short = div(sec, MILLISECOND);
+            word.amount_long = div1(sec, MILLISECOND);
+            word.units_short = "ms";
+            word.units_long = "milliseconds";
+        } else if (sec <=          UP_TO_FRACTION) {
+            word.amount_short = strip_leading_zeros(div1(sec, SECOND));
+            word.amount_long = div2(sec, SECOND);
+            word.units_short = "s";
+            word.units_long = "seconds";
         } else if (sec <=          UP_TO_SECOND) {
             word.amount_short = div(sec, SECOND);
             word.amount_long = div1(sec, SECOND);

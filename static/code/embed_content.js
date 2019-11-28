@@ -413,7 +413,7 @@ function embed_content_js(window, $, MONTY) {
     } else {
         // NOTE:  Make this page work stand-alone.  For development purposes.
         //        That is, when browsing a URL like this:
-        //
+        //        https://unslumping.org/meta/oembed/?url=https://www.youtu.be/3SwNXQMoNps
         console.log("Stand-alone embed.");
         window.iFrameResizer.onReady();
     }

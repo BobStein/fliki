@@ -152,9 +152,16 @@ ol.lex-list > li.srend:before {
     font-family: 'Arial Narrow', sans-serif;
     font-size: 0.6em;
 }
-.hide {
-    display: none;
+                      .whn-hide { display: none; }
+svg:hover             .whn-hide { display: block; }
+svg:hover + svg       .whn-hide { display: block; }
+svg:hover + svg:hover .whn-hide { display: block; }   /* \ Why don't either of    */
+svg       + svg:hover .whn-hide { display: block; }   /* / these have any effect? */
+
+.srend.whn-scrunch {
+    margin-bottom: -.3em;
 }
+
 .srend {
     position: relative;
 }

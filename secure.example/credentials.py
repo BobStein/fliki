@@ -1,4 +1,8 @@
 """
+secure.template/credentials.py
+------------------------------
+Copy to secure/credentials.py and change everything with "my" or "88"
+
 Credentials and configuration options for a fliki server.  (((THIS FILE IS A TEMPLATE)))
 
 SEE:  Safe credential hosting, https://security.stackexchange.com/a/117634/20266
@@ -40,7 +44,7 @@ The google credentials come from:
 for_fliki_lex_database = dict(
     language= 'MySQL',
     host=     'my.mysql.server.example.com',   # or 'localhost' or '127.0.0.1'
-    port=     3306,
+    port=     8888,   # defaults to 3306
     user=     'my_user',
     password= 'my_password',
     database= 'my_database',
@@ -71,6 +75,10 @@ MY_GOOGLE_IDN = '0q82_88__8A088888888888888888_1D0B00'
 
 class Options(object):
     """
+    what_is_this_thing - name for the site's content.  For unslumping.org this is set to "unslumping".
+                         If you set it to "stuff" then anonymous users see "my stuff" as the top
+                         category.  Logged in user Jan sees "Jan's stuff".
+
     session_cookie_domain = None - the server's domain and each sub-domain will have separate
                                         sessions
     session_cookie_domain = 3rd-level-domain - e.g. 'sub.example.com'
@@ -124,19 +132,19 @@ class Options(object):
                               apparently postMessage isn't needed for everything.)
     SEE:  targetOrigin, https://developer.mozilla.org/en-US/docs/Web/API/Window/postMessage
     """
-    home_page_title = "My Title"
+    home_page_title = "my title"
     enable_answer_qiki = False
-    what_is_this_thing = "my thing"
-    server_domain = "my.main.fliki.example.com"
+    what_is_this_thing = "thing"   # So user Fred would see "Fred's thing" as the top category.
+    server_domain = "my.example.com"
     server_domain_port = server_domain   # 80 or 443 implicit
     session_cookie_domain = server_domain   # or None
     redirect_domain_port = {
-        'some.other.domain.example.com': server_domain_port,
+        'www.my.example.com': server_domain_port,
     }
     system_administrator_users = [
         MY_GOOGLE_IDN,
     ]
     oembed_server_prefix = '/meta/oembed/'   # should start and end with slash
-    oembed_client_prefix = 'https://my.other.fliki.example.com/meta/oembed/'   # should end with slash
-    oembed_other_origin  = 'https://my.other.fliki.example.com/'
-    oembed_target_origin = 'https://my.main.fliki.example.com/'
+    oembed_client_prefix = 'https://my.other.example.com/meta/oembed/'   # should end with slash
+    oembed_other_origin  = 'https://my.other.example.com/'
+    oembed_target_origin = 'https://my.example.com/'

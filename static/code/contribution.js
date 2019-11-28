@@ -155,7 +155,13 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         "Log in to see anonymous contributions other than yours."
     );
 
-    var DRAG_TO_MY_BLURB = "or drag stuff here by its " + GRIP_SYMBOL;
+    // var DRAG_TO_MY_BLURB = "or drag stuff here by its " + GRIP_SYMBOL;
+    // var DRAG_TO_MY_BLURB = "drag " + GRIP_SYMBOL + " here";
+    var DRAG_TO_MY_BLURB = "This is the place for stuff that unslumps you.";
+    // NOTE:  Thinking this category confusion will go away,
+    //        that dragging from "their" to "my" is not the way.
+
+
     var $drag_to_my_blurb = null;
 
     var MAX_CAPTION_LENGTH = 100;  // Because some oembed titles are huge
@@ -429,6 +435,9 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
 
             .on('keyup', function (evt) {
                 if (evt.key === 'Escape') {
+                    // THANKS:  Escape event, https://stackoverflow.com/a/3369624/673991
+                    // THANKS:  Escape event, https://stackoverflow.com/a/46064532/673991
+                    // SEE:  evt.key values, https://developer.mozilla.org/en-US/search?q=key+values
                     bot.stop();
                     check_contribution_edit_dirty(false, true);
                     // TODO:  Return false if handled?  So Escape doesn't do other things?
@@ -3587,34 +3596,48 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                     match_objects_that_matched.push(match_object);
                 }
             });
-            switch (patterns_that_matched.length) {
+
+            function use_match(n) {
+                var media_pattern = patterns_that_matched[n];
+                media_pattern.handler.need_load = true;
+                cont.$sup.data('media-pattern', media_pattern);
+                cont.$sup.data('media-match', match_objects_that_matched[n]);
+                media_pattern.num_match++;
+                media_pattern.handler.num_handled++;
+            }
+
+            var num_matches = patterns_that_matched.length;
+            switch (num_matches) {
             case 0:
                 // Guess it's not a media url.
                 cont.$sup.removeData('media-pattern');
                 break;
             case 1:
-                var media_pattern = patterns_that_matched[0];
-                media_pattern.handler.need_load = true;
-                cont.$sup.data('media-pattern', media_pattern);
-                cont.$sup.data('media-match', match_objects_that_matched[0]);
-                media_pattern.num_match++;
-                media_pattern.handler.num_handled++;
+                use_match(0);
                 break;
             default:
-                console.warn("Multiple media pattern matches!", might_be_a_media_url);
-                looper(patterns_that_matched, function (_, media_pattern) {
-                    console.warn(
-                        "\t", media_pattern.string,
-                        "->", media_pattern.handler.url
-                    );
-                });
-                cont.$sup.removeData('media-pattern');
+                console.warn(
+                    patterns_that_matched.length.toString(),
+                    "media pattern matches!",
+                    patterns_that_matched.map(function (pattern) { return pattern.idn; }).join(" "),
+                    might_be_a_media_url
+                );
+                // looper(patterns_that_matched, function (_, media_pattern) {
+                //     console.warn(
+                //         "\t", media_pattern.string,
+                //         "->", media_pattern.handler.url
+                //     );
+                // });
+                // cont.$sup.removeData('media-pattern');
                 // TODO:  Referee among multiple handlers.
                 //        (And btw it should be quite benign if multiple patterns lead to the SAME
-                //        handler.)
+                //        handler URL.)
+                use_match(num_matches - 1);
                 break;
             }
         });
+
+
 
         // Load the handlers we actually need.
         // var promises = [];
@@ -3993,7 +4016,10 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
      * @return {jQuery}
      */
     function build_contribution_dom(contribution_word) {
-        var $sup_contribution = $('<div>', {class: 'sup-contribution word'});
+        var $sup_contribution = $('<div>', {
+            class: 'sup-contribution word',
+            original_id: contribution_word.idn
+        });
         var $contribution = $('<div>', {
             id: contribution_word.idn,
             class: 'contribution size-adjust-once'
