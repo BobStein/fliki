@@ -451,7 +451,11 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         persist_select_element('#play_bot_from', SETTING_PLAY_BOT_FROM);
 
         $(window.document).on('click', function () {
-            check_page_dirty(false, DOES_DOCUMENT_CLICK_END_CLEAN_EDIT);
+            var dont_scroll_dirty_entry_into_view_on_document_click = false;
+            check_page_dirty(
+                dont_scroll_dirty_entry_into_view_on_document_click,
+                DOES_DOCUMENT_CLICK_END_CLEAN_EDIT
+            );
         });
         if (DO_LONG_PRESS_EDIT) {
             long_press('.sup-contribution', contribution_edit);
@@ -463,7 +467,12 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         //        when the swiping happens to stray outside the div.contribution.
 
         $(window).on('beforeunload', function hesitate_to_unload_if_dirty_edit() {
-            return check_page_dirty(true, true) ? "Discard?" : undefined;
+            var do_scroll_dirty_entry_into_view_on_page_unload = true;
+            var do_hinder_page_unload = check_page_dirty(
+                do_scroll_dirty_entry_into_view_on_page_unload,
+                true
+            );
+            return do_hinder_page_unload ? "Discard?" : undefined;
         });
         // NOTE:  This helps prevent a user from losing work by inadvertently closing the page
         //        while in the middle of an entry or edit.
@@ -1613,11 +1622,11 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     }
 
     /**
-     * Are there unposted text or caption contents?
+     * Are there unposted text or caption entry fields?
      *
      * If so, make the [post it] button red.
      *
-     * @return {boolean}
+     * @return {boolean} - false means the fields are both empty, i.e. clean
      */
     function check_text_entry_dirty(do_scroll_into_view) {
         if (
@@ -1631,6 +1640,8 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                 //        document background?
                 if (do_scroll_into_view) {
                     scroll_into_view('#enter_some_text', {block: 'nearest', inline: 'nearest'});
+                    // NOTE:  Reluctantly scroll dirty entry into view, if user seems to digress.
+                    //        Ala scroll_into_view() call in check_contribution_edit_dirty()
                 }
             }
             return true;
@@ -3071,8 +3082,9 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         if (is_empty_text && is_empty_caption) {
             $('#post_it_button').removeClass('abandon-alert');
         }
-        // NOTE:  Caption with empty text is a weird edge case.
-        //        Can't post it, but neither can you close the page without confirmation.
+        // NOTE:  Non-empty caption with an empty text-area is a weird edge case.
+        //        Post-it button is disabled, so you can't post it,
+        //        but neither can you close the page without confirmation.
     }
 
     function post_it_click() {
@@ -3086,6 +3098,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         } else {
 
             function failed_post(message) {
+                post_it_button_looks();
                 $('#post_it_button')
                     .addClass('failed-post')
                     .attr('title', "Post failed: " + message)
@@ -3138,6 +3151,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                             }
                             $text.val("");
                             $caption_input.val("");
+                            post_it_button_looks();
                             rebuild_a_render_bar($sup_cont);
                             settle_down();
                             setTimeout(function () {  // Give rendering some airtime.

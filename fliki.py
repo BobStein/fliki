@@ -490,7 +490,6 @@ class LexFliki(qiki.LexMySQL):
             LexFliki._txt_from_idn = {idn: self[idn].txt for idn in idns}
         self.IDN = LexFliki._IDNS_READ_ONCE_AT_STARTUP
         self.txt_from_idn = LexFliki._txt_from_idn
-        self.youtube_media_handler = None
         self.youtube_matches = None
 
     def _execute(self, cursor, query, parameters=()):
@@ -614,42 +613,47 @@ class LexFliki(qiki.LexMySQL):
 
     def install_youtube_matches(self):
 
+        handler_url = static_code_url('media_youtube.js', _external=True)
         handler_specs = dict(
             sbj=self[self],
             vrb=self.IDN.HANDLE,
             obj=self.IDN.MEDIA,
-            txt=static_code_url('media_youtube.js', _external=True),
+            txt=handler_url,
         )
-        existent_handler_words = self.find_words(**handler_specs)
-        if len(existent_handler_words) > 0 and existent_handler_words[-1].num != 0:
-            handler_word = existent_handler_words[-1]
+        handlers_with_same_url = self.find_words(**handler_specs)
+        is_latest_handler_nonzero = (
+            len(handlers_with_same_url) > 0 and
+            handlers_with_same_url[-1].num != 0
+            # TODO:  Less strict match on URL?
+        )
+        # NOTE:  Provide a way in the future to turn a handler url "off".
+        #        If so, this turns it on again.
+        #        Possible textbook case of future anticipation being a bad idea.
+        if is_latest_handler_nonzero:
+            handler_word = handlers_with_same_url[-1]
         else:
             handler_word = self.create_word(num=1, **handler_specs)
-        self.youtube_media_handler = handler_word.idn
-        # self.youtube_media_handler = self.create_word(
-        #     sbj=self[self],
-        #     vrb=self.IDN.HANDLE,
-        #     obj=self.IDN.MEDIA,
-        #     txt=static_code_url('media_youtube.js', _external=True),
-        #     num=1,
-        #     use_already=True,
-        # ).idn
 
         self.youtube_matches = []
         for pattern in YOUTUBE_PATTERNS:
-            pattern_specs = dict(
+            matcher_specs = dict(
                 sbj=self[self],
                 vrb=self.IDN.MATCH,
-                obj=self.youtube_media_handler,
+                # obj=handler_word.idn,
                 txt=pattern,
             )
-            existent_pattern_words = self.find_words(**pattern_specs)
-            if len(existent_pattern_words) > 0 and existent_pattern_words[-1].num != 0:
+            existent_matcher_words = self.find_words(**matcher_specs)
+            is_latest_matcher_with_this_pattern_nonzero_and_same_url = (
+                len(existent_matcher_words) > 0 and
+                existent_matcher_words[-1].num != 0 and
+                existent_matcher_words[-1].obj.txt == handler_word.txt   # aka handler_url
+            )
+            if is_latest_matcher_with_this_pattern_nonzero_and_same_url:
                 '''Already got a word'''
             else:
-                new_word = self.create_word(num=1, **pattern_specs)
-                self.youtube_matches.append(new_word)
-                print("New matcher", new_word.idn, new_word.obj.txt, pattern)
+                matcher_word = self.create_word(obj=handler_word.idn, num=1, **matcher_specs)
+                self.youtube_matches.append(matcher_word)
+                print("New matcher", matcher_word.idn, matcher_word.txt, matcher_word.obj.txt)
 
 
 def connect_lex():
