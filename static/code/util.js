@@ -89,8 +89,10 @@ function selector_from_class(class_) {
 function is_laden(txt) {
     return is_specified(txt) && txt !== "";
 }
-console.assert(is_laden(" "));
-console.assert( ! is_laden(""));
+console.assert(false === is_laden(null));
+console.assert(false === is_laden(""));
+console.assert( true === is_laden(" "));
+console.assert( true === is_laden(0));
 
 /**
  * Not undefined, and not null.
@@ -98,8 +100,10 @@ console.assert( ! is_laden(""));
 function is_specified(x) {
     return is_defined(x) && x !== null;
 }
-console.assert(is_specified('x'));
-console.assert( ! is_specified(null));
+console.assert(false === is_specified(undefined));
+console.assert(false === is_specified(null));
+console.assert( true === is_specified(0));
+console.assert( true === is_specified(''));
 
 /**
  * Not undefined.
@@ -107,12 +111,14 @@ console.assert( ! is_specified(null));
 function is_defined(x) {
     return typeof x !== 'undefined';
 }
-console.assert(is_defined(42));
-console.assert( ! is_defined(undefined));
+console.assert(false === is_defined(undefined));
+console.assert( true === is_defined(0));
 
 function is_string(x) {
     return typeof x === 'string';
 }
+console.assert( true === is_string(''));
+console.assert(false === is_string(0));
 
 function has(collection, thing) {
     if (typeof collection === 'undefined') {

@@ -24,6 +24,7 @@ import logging
 import os
 import re
 import sys
+import threading
 import time
 
 import traceback
@@ -293,9 +294,16 @@ class GoogleFlaskUser(flask_login.UserMixin):
 
 class LexFliki(qiki.LexMySQL):
 
+    _credentials = secure.credentials.for_fliki_lex_database
+
     _IDNS_READ_ONCE_AT_STARTUP = None
 
-    def __init__(self, **kwargs):
+    _global_lock = threading.Lock()
+    # NOTE:  Redefining a singleton lock here, just for all the LexFliki instances,
+    #        has the effect of limiting the resolving of race conditions.
+    #        Other LexMySQL classes and instances are not involved.
+
+    def __init__(self):
         self.query_count = 0
         # NOTE:  lex.IDN is made for use by e.g. cat_cont_order(),
         #        and therefore for spoofing by test_fliki.py which would test cat_cont_order()
@@ -480,7 +488,7 @@ class LexFliki(qiki.LexMySQL):
         # NOTE:  Shouldn't need self.IDN, and can't have it, until this Lex is initialized.
         #        One way this may break is if read_word() for a suffixed word
         #        were somehow called by the Lex initialization.
-        super(LexFliki, self).__init__(word_class=WordFlikiSentence, **kwargs)
+        super(LexFliki, self).__init__(word_class=WordFlikiSentence, **self._credentials)
 
         if LexFliki._IDNS_READ_ONCE_AT_STARTUP is None:
             LexFliki._IDNS_READ_ONCE_AT_STARTUP = WorkingIdns(self)
@@ -658,7 +666,7 @@ class LexFliki(qiki.LexMySQL):
 
 def connect_lex():
     try:
-        lex = LexFliki(**secure.credentials.for_fliki_lex_database)
+        lex = LexFliki()
     except LexFliki.ConnectError as e:
         print("CANNOT CONNECT", str(e))
         return None
