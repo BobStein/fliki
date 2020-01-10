@@ -1,5 +1,7 @@
 /* util.js */
 
+// THANKS:  Remove "var" warnings, EcmaScript 6 to 5, https://stackoverflow.com/q/54551923/673991
+
 function sanitized_domain_from_url(url) {
     var domain_simple = simplified_domain_from_url(url);
     var ALL_GROUPS_OF_NON_ALPHANUMERICS = /[^0-9A-Za-z]+/g;

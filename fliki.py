@@ -338,7 +338,7 @@ class LexFliki(qiki.LexMySQL):
 
         class WordFlikiUser(qiki.Word):
             """
-            Words that can be the sbj of a lex sentence.  Anonymous and logged in users.
+            Can be the sbj of a LexFliki sentence.  Anonymous or logged in.
 
             word.is_admin determination:
                 secure.credentials.Options.system_administrator_users
@@ -371,7 +371,7 @@ class LexFliki(qiki.LexMySQL):
                 Short name for the user.
 
                 NOTE:  This has to be a decorated method, not a property variable,
-                       because self._name is determined when the word becomes choate.
+                       because self._name is determined after the word becomes choate.
                 """
                 self._choate()
                 return self._name
@@ -492,8 +492,6 @@ class LexFliki(qiki.LexMySQL):
 
         if LexFliki._IDNS_READ_ONCE_AT_STARTUP is None:
             LexFliki._IDNS_READ_ONCE_AT_STARTUP = WorkingIdns(self)
-            # members = dict_from_object(LexFliki._IDNS_READ_ONCE_AT_STARTUP).values()
-            # idns = [member for member in members if isinstance(member, qiki.Number)]
             idns = LexFliki._IDNS_READ_ONCE_AT_STARTUP.idns()
             LexFliki._txt_from_idn = {idn: self[idn].txt for idn in idns}
         self.IDN = LexFliki._IDNS_READ_ONCE_AT_STARTUP
@@ -662,6 +660,12 @@ class LexFliki(qiki.LexMySQL):
                 matcher_word = self.create_word(obj=handler_word.idn, num=1, **matcher_specs)
                 self.youtube_matches.append(matcher_word)
                 print("New matcher", matcher_word.idn, matcher_word.txt, matcher_word.obj.txt)
+                # FIXME:  Avoid competition between e.g. unslumping.org and new.unslumping.org
+                #         which happens when somebody browses new.unslumping.org
+                #         (Wait, wtf is browsing new.unslumping.org?!?)
+                #         which installs handlers for new.unslumping.org
+                #         then later the normal browse installs handlers for unslumping.org.
+                #         The problem is one fliki server (and its database) hosts both domains.
 
 
 def connect_lex():

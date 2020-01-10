@@ -169,9 +169,10 @@ select#thumb-res option { direction: rtl; }
               creating <div> elements when there are two consecutive, as if making paragraphs.
               to represent hard returns.
               Minor side effect, an unsightly gap between contribution and caption.
-              Major side effect, it causes the whole (outer) <div> to creep up and down
+       TODO:  Major side effect, it causes the whole (outer) <div> to creep up and down
               across the screen, as if position-relative top were changing.
               Both side effects may be a reaction to overflow: auto
+       SEE:  work_around_jumpy_contenteditable_chrome_bug()
      */
     /* SEE:  More Chrome contenteditable issues, https://stackoverflow.com/q/6023307/673991 */
 

@@ -126,6 +126,8 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
 
     var MEDIA_HANDLER_LOAD_SECONDS = 10.0;
 
+    var EXPERIMENTAL_RED_WORD_READING = false;
+
     // noinspection JSUnusedLocalSymbols
     var MOVE_AFTER_TARGET = 1,   // SortableJS shoulda defined these
         MOVE_BEFORE_TARGET = -1,
@@ -442,6 +444,9 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                     check_contribution_edit_dirty(false, true);
                     // TODO:  Return false if handled?  So Escape doesn't do other things?
                 }
+            })
+            .on('blur keyup paste input', '[contenteditable=true]', function () {
+                work_around_jumpy_contenteditable_chrome_bug(this);
             })
         ;
 
@@ -1347,7 +1352,6 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         var that = this;
         var $iframe = that.$iframe;
         if (
-            $iframe !== null &&
             $iframe.is(':visible') &&
             ($iframe.width() === 0 || $iframe.height() === 0)
         ) {
@@ -1692,6 +1696,25 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         } else {   // no edit was started
             return false;
         }
+    }
+
+    /**
+     * SEE:  About this bug in contribution.css
+     *
+     * Note, if 1px instead of 0.1px, contribution element would have been seen to jitter
+     * vertically 1 pixel when editing, on every keystroke, paste, etc.
+     *
+     * TODO:  Only burden the UI with this in Chrome.  Safari too?  Opera?
+     *        Better yet, detect the bug.  But I don't know a way to do that.
+     *
+     * @param element - e.g. $('.contribution')
+     */
+    function work_around_jumpy_contenteditable_chrome_bug(element) {
+        var $element = $(element);
+        $element.css('top', '0.1px');
+        setTimeout(function () {
+            $element.css('top', '0px');
+        });
     }
 
     function scroll_into_view(element, options) {
@@ -2216,32 +2239,31 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                         });
                         // SEE:  Highlight speech, https://stackoverflow.com/a/38122794/673991
                         // SEE:  Select speech, https://stackoverflow.com/a/50285928/673991
-                        return;
 
 
-
-                        // NOTE:  The following experimental code would render the word being
-                        //        spoken, in red, on top of the same word in the paragraph.
-                        // noinspection UnreachableCodeJS
-                        var r = range_word.getBoundingClientRect();
-                        console.log("Bound", the_word, r.x, r.y);
-                        if ($svg !== null) {
-                            $svg.remove();
+                        if (EXPERIMENTAL_RED_WORD_READING) {
+                            // NOTE:  The following experimental code would render the word being
+                            //        spoken, in red, on top of the same word in the paragraph.
+                            var r = range_word.getBoundingClientRect();
+                            console.log("Bound", the_word, r.x, r.y);
+                            if ($svg !== null) {
+                                $svg.remove();
+                            }
+                            var svg_top = r.top - $popup.position().top;
+                            var svg_left = r.left - $popup.position().left;
+                            $svg = $('<svg>', {
+                                height: r.height,
+                                width: r.width,
+                                style: (
+                                    'position:absolute;color:red;font: 16px Literata,serif;' +
+                                    'top:'+svg_top.toString()+'px;' +
+                                    'left:'+svg_left.toString()+'px;'
+                                )
+                            }).append($('<text>', {fill:'red !important'}).append(the_word));
+                            $popup.append($svg);
+                            // TODO:  Needs to scroll word into view,
+                            //        and then also position the svg right onto the scrolled word.
                         }
-                        var svg_top = r.top - $popup.position().top;
-                        var svg_left = r.left - $popup.position().left;
-                        $svg = $('<svg>', {
-                            height: r.height,
-                            width: r.width,
-                            style: (
-                                'position:absolute;color:red;font: 16px Literata,serif;' +
-                                'top:'+svg_top.toString()+'px;' +
-                                'left:'+svg_left.toString()+'px;'
-                            )
-                        }).append($('<text>', {fill:'red !important'}).append(the_word));
-                        $popup.append($svg);
-                        // TODO:  Needs to scroll word into view,
-                        //        and then also position the svg right onto the scrolled word.
                     });
                     $(utter).on('end', function (evt) {
                         $pop_cont.text(pop_text);
