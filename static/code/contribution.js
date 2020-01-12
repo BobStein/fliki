@@ -15,9 +15,13 @@
  * @param window.document
  * @param window.document.body
  * @param window.document.currentScript
+ * @param window.document.exitFullscreen
  * @param window.document.fullScreen
+ * @param window.document.mozCancelFullScreen
  * @param window.document.mozFullScreen
+ * @param window.document.msExitFullscreen
  * @param window.document.webkitIsFullScreen
+ * @param window.document.webkitExitFullscreen
  * @param window.localStorage
  * @param window.localStorage.getItem({string})
  * @param window.localStorage.setItem
@@ -273,7 +277,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     var breather_timer = null;
     // var work_in_a_pause = false;
 
-    var bot;
+    var bot = null;
 
     var txt_from_idn = {};
     looper(MONTY.IDN, function(name, idn) {
@@ -284,7 +288,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     // A media pattern is a regular expression associated with a media handler.
     var media_handlers = {};   // map idn to handler (url, etc.)
     var media_patterns = {};   // map idn to pattern (regexp, handler, etc.)
-
+    var isFullScreen;
 
 
     function do_live_media_thumbs() {
@@ -494,15 +498,36 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         post_it_button_looks();
         initialize_contribution_sizes();
         settle_down();
+
+        bot = Bot();
+        // NOTE:  Must happen after Bot.prototype.ticker_interval_ms has been set.
+        //        I.e. it must be immune to the issue that function declarations are hoisted
+        //        but function expressions are not.  So the constructor is hoisted
+        //        but the methods are not.
+        //        So bot is constructed in jQuery ready handler,
+        //        which must be after whole .js file has executed.
+        //        But it's also constructed before full-screen event handler installed.
+
         $(window.document).on(
-            'webkitfullscreenchange mozfullscreenchange fullscreenchange',
+            'webkitfullscreenchange ' +
+               'mozfullscreenchange ' +
+                  'fullscreenchange',
             function full_screen_change() {
                 // noinspection JSUnresolvedVariable
-                var isFullScreen = window.document.fullScreen ||
-                                   window.document.mozFullScreen ||
-                                   window.document.webkitIsFullScreen;
-                var which_way = isFullScreen ? "ENTER" : "EXIT";
-                console.debug(which_way, "full screen");
+                isFullScreen = window.document.fullScreen ||
+                               window.document.mozFullScreen ||
+                               window.document.webkitIsFullScreen;
+                var is_entering = isFullScreen;
+                var is_exiting = ! isFullScreen;
+                var which_way = is_entering ? "ENTER" : "EXIT";
+                console.debug(
+                    which_way,
+                    "full screen",
+                    window.innerWidth.toString() + "x" + window.innerHeight.toString()
+                );
+                if (is_exiting) {
+                    bot.on_exit_full_screen();
+                }
             }
         );
 
@@ -535,12 +560,6 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             //        That has to happen after a delay due to provider tricks with the
             //        embedded html (see noembed_render()).
         }
-
-        bot = Bot();
-        // NOTE:  Must happen after Bot.prototype.ticker_interval_ms has been set.
-        //        I.e. it must be immune to the issue that function declarations are hoisted
-        //        but function expressions are not.  So the constructor is hoisted
-        //        but the methods are not.
 
     });
 
@@ -604,10 +623,8 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         // THANKS:  Automatic 'new', https://stackoverflow.com/a/383503/673991
 
         var that = this;
-        // NOTE:  `that` instead of `this` in all methods, so anonymous callbacks don't shadow it.
         // THANKS:  that = this, https://alistapart.com/article/getoutbindingsituations/#snippet26
-
-        // var that = new Object({});
+        //          `that` is set in all methods, so anonymous callbacks don't shadow `this`.
 
         that.state = that.State.MANUAL;
         that.last_tick_state = null;
@@ -623,6 +640,8 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     Bot.prototype.State = Enumerate({
         MANUAL: "Normal, manual site operation",
         START_AUTO: "Play starts",
+        PREP_CONTRIBUTION: "Prepare for next contribution",
+        UNFULL_CONTRIBUTION: "Exiting full screen before the next contribution",
         NEXT_CONTRIBUTION: "Next contribution in playlist",
         MEDIA_READY: "The iframe is showing stuff",                            // static media
         MEDIA_STARTED: "The iframe is doing stuff, we'll know when it ends",   // dynamic media
@@ -695,6 +714,16 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         } while (did_fsm_change_state);
     };
 
+    Bot.prototype.on_exit_full_screen = function Bot_on_exit_full_screen() {
+        var that = this;
+        if (that.state === that.State.UNFULL_CONTRIBUTION) {
+            console.debug("Moving on after exiting full screen.");
+            that.state = that.State.NEXT_CONTRIBUTION;
+            // TODO:  Hasten to finite_state_machine() for this step?
+            //        Instead of waiting (for 0-1 seconds)?
+        }
+    };
+
     Bot.prototype.finite_state_machine = function Bot_finite_state_machine() {
         var that = this;
 
@@ -706,7 +735,35 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             console.log("playlist", list_play_bot.join(","));
             index_play_bot = 0;
             that.media_beginning();
-            that.state = that.State.NEXT_CONTRIBUTION;
+            that.state = that.State.PREP_CONTRIBUTION;
+            break;
+        case that.State.PREP_CONTRIBUTION:
+            if (isFullScreen) {
+                console.debug("Full screen.  Ending that first, before next contribution.");
+                // NOTE:  Otherwise, the next eager-beaver pop_up() used to get full-screen values
+                //        for window width and height, passing them on to the iframe
+                //        embed_content.js.
+                //        This fixes the bug where YouTube controls were out of reach, because the
+                //        next popup iframe was sized for full-screen, not for the restored browser
+                //        window in effect by the time it actually animated its pop up.
+                //        Then, it was the removing of the iframe from the DOM that implicitly
+                //        exited full screen.  Now, we do that explicitly.
+                // TODO:  Preserve full-screen and bring it back for the next pop-up.
+                //        (This code is more than a dirty sweeping the bug under the carpet.  Yes,
+                //        it is that, but it also has much of the code needed to do it the right
+                //        way.  I.e. now we SHOULD be arranging for pop_up() call below to somehow
+                //        make a full-screen iframe.)
+                exit_full_screen();
+                that.state = that.State.UNFULL_CONTRIBUTION;
+            } else {
+                that.state = that.State.NEXT_CONTRIBUTION;
+            }
+            break;
+        case that.State.UNFULL_CONTRIBUTION:
+            if (that.ticks_this_state >= 5) {
+                console.warn("Unable to exit full screen, moving on anyway.");
+                that.state = that.State.NEXT_CONTRIBUTION;
+            }
             break;
         case that.State.NEXT_CONTRIBUTION:
             if (index_play_bot >= list_play_bot.length) {
@@ -737,6 +794,13 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                 });
                 that.pop_cont.$sup.on(that.pop_cont.Event.MEDIA_ENDED, function () {
                     that.transit([that.State.MEDIA_STARTED], that.State.DONE_CONTRIBUTION);
+                    that.transit(
+                        [
+                            that.State.MEDIA_STARTED,
+                            that.State.MEDIA_PAUSE_IN_FORCE   // paused, then immediately ended
+                        ],
+                        that.State.DONE_CONTRIBUTION
+                    );
                     that.pop_end();
                 });
                 that.pop_cont.$sup.on(that.pop_cont.Event.MEDIA_PLAYING, function () {
@@ -761,7 +825,13 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                         //        main page <-- iframe
                         that._pause_begins();
                     }
-                    that.transit([that.State.MEDIA_STARTED], that.State.MEDIA_PAUSE_IN_FORCE);
+                    that.transit(
+                        [
+                            that.State.MEDIA_STARTED,
+                            that.State.MEDIA_PAUSE_IN_FORCE   // redundant pause events
+                        ],
+                        that.State.MEDIA_PAUSE_IN_FORCE
+                    );
                     // TODO:  Does this look better?
                     //        that.transit(['MEDIA_STARTED'], 'MEDIA_PAUSE_IN_FORCE');
                 });
@@ -838,9 +908,11 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             that.pop_end();
             pop_down_all();
             index_play_bot++;
-            that.state = that.State.NEXT_CONTRIBUTION;
+            that.state = that.State.PREP_CONTRIBUTION;
             break;
         case that.State.CRASHED:
+            // NOTE:  Leaving things messy, for study.
+            that.state = that.State.MANUAL;
             break;
         case that.State.END_AUTO:
             that.media_ending();
@@ -1508,7 +1580,8 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     };
 
     Contribution.prototype.live_media_iframe = function Contribution_live_media_iframe(
-        media_url, more_parameters
+        media_url,
+        more_parameters
     ) {
         // TODO:  No need to pass media_url, it's gotta be that.text().
         //        Okay make a that.media_url().  Return null if no URL.
@@ -1521,7 +1594,9 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             allowfullscreen: 'allowfullscreen',
             allow: 'autoplay; fullscreen'
         });
-        that.$render_bar.empty().append($iframe);
+
+        that.$render_bar.empty().append($iframe);   // The iframe is dead, long live the iframe.
+
         $iframe.on('load', function () {
             // console.log("IFRAME LOAD", that.id_attribute);
             // DONE:  Verify iframe load event happens on "all" browsers.
@@ -1574,8 +1649,14 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     /**
      * Enumeration with names, values, and optional descriptions.
      *
-     * @param enumeration - e.g. {NAME1: {description: "one}, NAME2: {description: "two"}}
-     * @return {object} - returns the enumeration object of objects, with name and value members added.
+     * @param enumeration - e.g. {NAME1: {description: "one"}, NAME2: "two"}
+     * @return {object} - returns the enumeration object of objects,
+     *                    each one of which has name and value members.
+     *                    e.g. {
+     *                        NAME1: {name: 'NAME1', description: "one", value: 0},
+     *                        NAME2: {name: 'NAME2', description: "two", value: 1},
+     *                        number_of_values: 2
+     *                    }
      */
     // SEE:  Debate on value order, https://stackoverflow.com/q/5525795/673991
     function Enumerate(enumeration) {
@@ -1795,6 +1876,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
 
     /**
      * Do something with the iFrameResizer object.  Call back if there is one.  Explain if not.
+     *
      * @param selector_or_element - e.g. '.pop-up', $popup
      * @param {function} callback_good - pass it the iFrameResizer object, if up and running
      * @param {function} callback_bad - pass it an explanation if not
@@ -1834,8 +1916,9 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             function (why) {
                 // console.warn("Cannot iframe", message.action, "--", why);
                 // Cannot pause or resume text -- no iframe
-                // Redundant un-pop-up, because BEGIN_ANOTHER state does a precautionary pop-down
-                //                      before it punts to NEXT_CONTRIBUTION which pops up.
+                // NOTE:  This harmlessly happens because of the redundant un-pop-up,
+                //        when BEGIN_ANOTHER state does a precautionary pop_down_all()
+                //        before it punts to NEXT_CONTRIBUTION which pops up.
             }
         );
     }
@@ -1955,6 +2038,15 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         var offset = cont.$sup.offset();
         var window_width = $(window).width();
         var window_height = $(window).height();
+        console.debug(
+            "WINDOW",
+
+            window_width.toString() + "x" + window_height.toString(),
+            // EXAMPLE:  1369x630 - browser window WITHOUT scrollbars
+
+            window.innerWidth.toString() + "x" + window.innerHeight.toString()
+            // EXAMPLE:  1386x630 - browser window WITH scrollbars
+        );
         var render_width = cont.$render_bar.width();
         var render_height = cont.$render_bar.height();
         var caption_height = cont.$sup.find('.caption-bar').height();
@@ -2031,11 +2123,6 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         //          (my own compendium) https://stackoverflow.com/a/44438131/673991
 
         if (cont.is_media) {
-            // var $iframe = $popup.find('.render-bar iframe');
-            // var old_src = $iframe.attr('src');
-            // var new_src = old_src + '&' + $.param({
-            // $iframe.attr('src', new_src);
-
             var more_relay_parameters = {
                 idn: popup_cont_idn,
                 is_pop_up: true,
@@ -4386,6 +4473,21 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     ////////////////////////////
     ////// Generic stuff follows
     ////////////////////////////
+
+    function exit_full_screen() {
+        // THANKS:  Exit full screen, https://stackoverflow.com/a/36672683/673991
+        if (window.document.exitFullscreen) {
+            window.document.exitFullscreen();
+        } else if (window.document.webkitExitFullscreen) {
+            window.document.webkitExitFullscreen();
+        } else if (window.document.mozCancelFullScreen) {
+            window.document.mozCancelFullScreen();
+        } else if (window.document.msExitFullscreen) {
+            window.document.msExitFullscreen();
+        } else {
+            console.error("No function to exit full screen.");
+        }
+    }
 
     /**
      * Handler to e.g. avoid document click immediately undoing long-press
