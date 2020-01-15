@@ -1447,6 +1447,8 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     /**
      * (Re)build the render bar element contents, using the media URL in the contribution text.
      *
+     * Use the registered media handler, if the pattern matches.
+     *
      * Happens on page load, on entering a new contribution, or editing an old one.
      */
     Contribution.prototype.render_media = function Contribution_render_media() {
@@ -1457,7 +1459,11 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         that.$sup.addClass('render-media');
         that.$sup.attr('data-domain', sanitized_domain_from_url(media_url));
         var media_pattern = that.$sup.data('media-pattern');
-        if (is_specified(media_pattern) && is_specified(media_pattern.handler) && is_specified(media_pattern.media)) {
+        if (
+            is_specified(media_pattern) &&
+            is_specified(media_pattern.handler) &&
+            is_specified(media_pattern.media)
+        ) {
             var media_match = that.$sup.data('media-match');
             console.log(
                 "Media", that.id_attribute,
@@ -1591,7 +1597,9 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         var $iframe = $('<iframe>', {
             id: 'iframe_' + that.id_attribute,   // This is NOT how a pop-up gets made.
             src: our_oembed_relay_url(media_url, more_parameters),
-            allowfullscreen: 'allowfullscreen',
+                  allowFullScreen : 'true',
+               mozallowFullScreen : 'true',
+            webkitallowFullScreen : 'true',
             allow: 'autoplay; fullscreen'
         });
 
@@ -2791,6 +2799,12 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         }
     }
 
+    /**
+     * Has this URL been contributed already?  Something to check on paste or drop.
+     *
+     * @param contribution_text - if it's a media url, check if it's been contributed already.
+     *                            Because I kept finding duplicates.
+     */
     function duplicate_check(contribution_text) {
         if (can_i_get_meta_about_it(contribution_text)) {
             var duplicate_id = null;
@@ -3732,7 +3746,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             var num_matches = patterns_that_matched.length;
             switch (num_matches) {
             case 0:
-                // Guess it's not a media url.
+                // Guess it's not a media url.  Or not one we can handle.
                 cont.$sup.removeData('media-pattern');
                 break;
             case 1:

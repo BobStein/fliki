@@ -5,6 +5,7 @@
  * @param window
  * @param window.document
  * @param window.iFrameResizer
+ * @param window.location.href
  * @param window.parentIFrame
  * @param window.parentIFrame.getId
  * @param window.URLSearchParams
@@ -130,8 +131,31 @@ function embed_content_js(window, $, MONTY) {
                             width: MONTY.oembed.width,
                             height: MONTY.oembed.height,
                             type: 'text/html',
-                            src: youtube_embed_url({enablejsapi: '1'}),
+                            src: youtube_embed_url({
+                                enablejsapi: '1'
+
+                                // , origin: 'http://example.com'
+                                // , origin: 'locavore.unslumping.org'
+                                // , origin: 'http://localhost.visibone.com'
+                                // , origin: 'http://localhost.visibone.com/'
+                                // , origin: 'http://localhost.visibone.com:5000/'
+                                // , origin: 'http://locavore.unslumping.org'
+                                // , origin: 'http://locavore.unslumping.org/'
+                                // , origin: 'http://locavore.unslumping.org:5000/'
+                                // , origin: 'http://locavore.unslumping.org:5000/meta/oembed/'
+                                // , origin: 'http://locavore.unslumping.org:5000/meta/oembed/?idn=popup_1990&is_pop_up=true&auto_play=false&width=1710&height=719&url=https%3A%2F%2Fwww.youtube.com%2Fwatch%3Fv%3D3SwNXQMoNps%26rel%3D0'
+                                // , origin: 'http://locavore.unslumping.org:5000/meta/oembed/?idn=popup_1990&is_pop_up=true&auto_play=true&width=1349&height=544&url=https%3A%2F%2Fwww.youtube.com%2Fwatch%3Fv%3D3SwNXQMoNps%26rel%3D0'
+                                // , origin: window.location.href
+                                // FIXME:  Why do none of the above work??
+                                //         Symptom, Bot play pops up but the video doesn't start.
+                                //         Possible cause, domains resolve to 127.0.0.1?
+                                //         Possible cause, not https??
+                                // https://developers.google.com/youtube/player_parameters#origin
+                            }),
                             frameborder: '0',
+                                  allowFullScreen : 'true',
+                               mozallowFullScreen : 'true',
+                            webkitallowFullScreen : 'true',
                             allow: 'autoplay; fullscreen'
                             // enablejsapi: '1'
                         });
@@ -140,6 +164,14 @@ function embed_content_js(window, $, MONTY) {
                         // THANKS:  Doesn't work as iframe element attribute,
                         //          https://stackoverflow.com/q/51109436/673991
                         //          Required instead in src query string for onReady to get called.
+                        // THANKS:  inner full screen, https://stackoverflow.com/a/25308193/673991
+                        //          Firefox requires both inner and outer iframes to have
+                        //          allowFullScreen attribute(s) set.  (This iframe is inner.)
+                        //          The allow attribute is not enough.
+                        //          This was true 2019.0113 in Firefox 72, despite:
+                        //          https://developer.mozilla.org/en-US/docs/Web/HTML/Element/iframe
+                        //              allowfullscreen ...  is considered a legacy attribute
+                        //              and redefined as allow="fullscreen".
 
                         tag_width($you_frame);
                         // fit_width(MONTY.THUMB_MAX_WIDTH, $you_frame);

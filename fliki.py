@@ -467,7 +467,9 @@ class LexFliki(qiki.LexMySQL):
                     except AttributeError:
                         parts.append("(indeterminate user agent)")
                     else:
+                        # noinspection PyUnresolvedReferences
                         parts.append(user_agent_object.browser)   # "(browser?)")
+                        # noinspection PyUnresolvedReferences
                         parts.append(user_agent_object.platform)   # "(platform?)")
 
                 # TODO:  Make ip address, user agent, browser, platform
@@ -617,9 +619,10 @@ class LexFliki(qiki.LexMySQL):
     #         super(LexFliki, self).populate_word_from_idn(word, idn)
     #     return True
 
-    def install_youtube_matches(self):
+    def install_all_matchers(self):
+        self.install_matcher(YOUTUBE_PATTERNS, static_code_url('media_youtube.js', _external=True))
 
-        handler_url = static_code_url('media_youtube.js', _external=True)
+    def install_matcher(self, patterns, handler_url):
         handler_specs = dict(
             sbj=self[self],
             vrb=self.IDN.HANDLE,
@@ -641,7 +644,7 @@ class LexFliki(qiki.LexMySQL):
             handler_word = self.create_word(num=1, **handler_specs)
 
         self.youtube_matches = []
-        for pattern in YOUTUBE_PATTERNS:
+        for pattern in patterns:
             matcher_specs = dict(
                 sbj=self[self],
                 vrb=self.IDN.MATCH,
@@ -656,6 +659,12 @@ class LexFliki(qiki.LexMySQL):
             )
             if is_latest_matcher_with_this_pattern_nonzero_and_same_url:
                 '''Already got a word'''
+                print(
+                    "old matcher, pattern",
+                    int(existent_matcher_words[-1].idn),
+                    "handler",
+                    int(handler_word.idn)
+                )
             else:
                 matcher_word = self.create_word(obj=handler_word.idn, num=1, **matcher_specs)
                 self.youtube_matches.append(matcher_word)
@@ -1473,6 +1482,11 @@ class AuthFliki(Auth):
 
     @property
     def current_host(self):
+        """
+        Domain we're serving.  Port is appended if not 80.
+
+        EXAMPLE:  'unslumping.org:8080'
+        """
         return flask.request.host
 
     @property
@@ -1906,7 +1920,27 @@ def contribution_home(home_page_title):
                 foot.js_stamped(static_code_url('util.js'))
                 foot.js_stamped(static_code_url('contribution.js'))
 
-                auth.lex.install_youtube_matches()
+                serving_domain_port = secure.credentials.Options.server_domain_port
+                if auth.current_host == serving_domain_port:
+                    auth.lex.install_all_matchers()
+                else:
+                    print(
+                        "Serving from {request_domain}, not {serving_domain_port} "
+                        "-- so not installing matchers".format(
+                            request_domain=auth.current_host,
+                            serving_domain_port=serving_domain_port,
+                        )
+                    )
+                    # NOTE:  Avoids the minor problem when browsing from an alternate domain.
+                    #        We don't want to install new matcher URLs with this alternate domain.
+                    #        Helps when browsing from the alternate domain for testing.
+                    #        Maybe a better solution is to only serve /meta/oembed/ hits from the
+                    #        alternate domain.  Create an additional flask application instance??
+                    #        Then we could set SERVER_NAME in both of them.
+                    # TODO:  Sheesh, I shouldn't even be keeping this alternate domain browsing,
+                    #        all unofficial domains should be redirected, e.g. www.un to un.
+                    # SEE:  2-domain Flask, e.g. @application.route('/', host=SECOND_DOMAIN)
+                    #       https://blog.easyaspy.org/post/7/2019-04-28-two-domains-one-flask
 
                 verbs = []
                 verbs += auth.get_category_idns_in_order()
@@ -2384,6 +2418,7 @@ def meta_lex():
                         listing_log(word.obj, iconify=word.txt, name=word.obj.txt)
                     elif vrb_z == Z.USER_AGENT_TAG:
                         ua = werkzeug.useragents.UserAgent(word.txt)
+                        # noinspection PyUnresolvedReferences
                         listing_log(
                             word.sbj,
                             user_agent=word.txt,

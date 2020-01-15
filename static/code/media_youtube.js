@@ -1,6 +1,7 @@
 // YouTube media handler
+
 (function (window, $) {
-    // noinspection JSUnusedGlobalSymbols
+    // noinspection JSUnusedGlobalSymbols,JSUnusedLocalSymbols
     js_for_contribution.media_register({
         description_short: "youtube",   // should be unique within a domain
         description_long: "YouTube handler for fliki Contribution applications",
@@ -11,7 +12,7 @@
                 cont,
                 media_url,
                 youtube_id,
-                function youtube_img_error() {
+                function youtube_render_thumb_fallback_to_iframe() {
                     live_media_iframe(cont, media_url, youtube_id);
                 }
             );
@@ -24,8 +25,20 @@
     });
 
     function live_media_iframe(cont, media_url, youtube_id, more_parameters) {
+        // TODO:  e.g. <iframe src="https://www.youtube.com/embed/o9tDO3HK20Q?enablejsapi=1" ...>
+        //        Same object generation as $('<iframe>', {...}); in embed_content.js
+        //        We will bypass fliki <iframe src=".../meta/oembed/...">
+        //        because we already know how to handle youtube media.
     }
 
+    /**
+     * Create an <img> DOM object.  Install it on a contribution's render bar.
+     *
+     * @param cont
+     * @param media_url
+     * @param youtube_id
+     * @param error_callback
+     */
     function thumb_media_img(cont, media_url, youtube_id, error_callback) {
         var thumb_url = youtube_mq_url(youtube_id);
         var caption = "YouTube page for " + cont.caption_text;
@@ -55,10 +68,17 @@
             console.log("YouTube broken thumb", thumb_url);
             error_callback();
         });
-        // NOTE:  .src is set below so either load or error above is sure to happen.
+        // NOTE:  .src is set after the load and error event handlers,
+        //        so one of those handlers is sure to get called.
         $img.attr('src', thumb_url);
     }
 
+    /**
+     * Medium quality thumbnail jpeg.
+     *
+     * @param youtube_id - e.g. 'o9tDO3HK20Q'
+     * @return {string}
+     */
     function youtube_mq_url(youtube_id) {
         return 'https://img.youtube.com/vi/' + youtube_id + '/mqdefault.jpg';
     }
