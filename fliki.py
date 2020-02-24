@@ -66,7 +66,7 @@ THUMB_MAX_WIDTH = 160
 THUMB_MAX_HEIGHT = 128
 NON_ROUTABLE_IP_ADDRESS = '10.255.255.1'   # THANKS:  https://stackoverflow.com/a/904609/673991
 NON_ROUTABLE_URL = 'https://' + NON_ROUTABLE_IP_ADDRESS + '/'   # for testing only
-HIDE_AJAX_NOEMBED_META = True
+SHOW_LOG_AJAX_NOEMBED_META = True
 
 
 YOUTUBE_PATTERNS = [
@@ -1969,6 +1969,10 @@ def contribution_home(home_page_title):
                         THUMB_MAX_WIDTH=THUMB_MAX_WIDTH,
                         THUMB_MAX_HEIGHT=THUMB_MAX_HEIGHT,
                         YOUTUBE_PATTERNS=YOUTUBE_PATTERNS,
+                        MEDIA_HANDLERS=[
+                            static_code_url('media_youtube.js', _external=True),
+                            static_code_url('media_instagram.js', _external=True),
+                        ],
 
                         # order=auth.cat_cont_order(),
                         # order.cat - list of categories in order
@@ -3286,7 +3290,7 @@ def ajax():
     try:
         hide_print = (
             flask.request.form.get('action', '_') == 'noembed_meta' and
-            HIDE_AJAX_NOEMBED_META
+            not SHOW_LOG_AJAX_NOEMBED_META
         )
         auth = AuthFliki(hide_print=hide_print)
 
@@ -3448,7 +3452,7 @@ def ajax():
             qc_end = auth.lex.query_count
 
             ok_to_print = True
-            if action == 'noembed_meta' and HIDE_AJAX_NOEMBED_META:
+            if action == 'noembed_meta' and not SHOW_LOG_AJAX_NOEMBED_META:
                 ok_to_print = False
 
             if ok_to_print:

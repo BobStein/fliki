@@ -22,12 +22,16 @@
  * @param window.document.msExitFullscreen
  * @param window.document.webkitIsFullScreen
  * @param window.document.webkitExitFullscreen
+ * @param window.innerHeight
+ * @param window.innerWidth
  * @param window.localStorage
  * @param window.localStorage.getItem({string})
  * @param window.localStorage.setItem
  * @param window.location
  * @param window.location.href
  * @param window.MutationObserver
+ * @param window.qiki
+ * @param window.qiki.media_register
  * @param window.speechSynthesis
  * @param window.SpeechSynthesisUtterance
  * @param window.utter
@@ -284,10 +288,11 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         txt_from_idn[idn] = name;
     });
 
-    // A media handler is a JavaScript file that calls js_for_contribution.media_register()
+    // A media handler is a JavaScript file that calls window.qiki.media_register()
     // A media pattern is a regular expression associated with a media handler.
     var media_handlers = {};   // map idn to handler (url, etc.)
     var media_patterns = {};   // map idn to pattern (regexp, handler, etc.)
+    var INSTAGRAM_HANDLER_IDN = 99899;   // HACK
     var isFullScreen;
 
 
@@ -776,6 +781,12 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                 that.crash("Missing contribution", cont_idn, index_play_bot);
                 break;
             }
+            // TODO:  Fix the following dumb noinspection.  Or wait and pray Jetbrains fixes it.
+            //        Otherwise it generates the following warning:
+            //            Condition is always false since types
+            //            '{get: (function(): jQuery | null)} | {get: function(): *}'
+            //            and 'string' have no overlap
+            // noinspection JSIncompatibleTypesComparison
             if (that.cont.media_domain === 'no_domain') {
                 // NOTE:  A badly formatted URL should not be popped up at all.
                 console.log("Zero time for", that.cont.id_attribute);
@@ -1222,9 +1233,18 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         is_noembed_error: { get: function () {
             return this.$sup.hasClass('noembed-error');
         }},
-        media_domain: { get: function () {
-            return this.$sup.attr('data-domain') || null;
-        }},
+        media_domain: {
+            /**
+             * Compact domain for a media link (e.g. "youtube")
+             *
+             * @return {string|null} or null if not a link, or "no_domain" if bad link.
+             */
+            // TODO:  This JSDoc header STILL doesn't obviate the need for a
+            //        noinspection JSIncompatibleTypesComparison
+            get: function () {
+                return this.$sup.attr('data-domain') || null;
+            }
+        },
         is_youtube: { get: function () {
             return has(['youtube', 'youtu_be'], this.media_domain);
         }},
@@ -1399,6 +1419,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     Contribution.prototype.resizer_nudge = function Contribution_resizer_nudge() {
         var that = this;
         var iframe = that.iframe;
+        // noinspection JSIncompatibleTypesComparison
         if (iframe !== null) {
             iframe.iFrameResizer.resize();
         }
@@ -1462,7 +1483,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         if (
             is_specified(media_pattern) &&
             is_specified(media_pattern.handler) &&
-            is_specified(media_pattern.media)
+            is_specified(media_pattern.handler.media)
         ) {
             var media_match = that.$sup.data('media-match');
             console.log(
@@ -1520,7 +1541,12 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                             that.live_media_iframe(media_url);
                         }
                     } else {   // oembed error message
-                        that.$render_bar.empty().text(oembed.error).addClass('oembed-error');
+                        var error_message = oembed.error;
+                        // noinspection JSIncompatibleTypesComparison
+                        if (that.media_domain !== 'no_domain') {
+                            error_message += " for '" + that.media_domain + "'";
+                        }
+                        that.$render_bar.empty().text(error_message).addClass('oembed-error');
                         // NOTE:  How the text gets its peachy background color.
 
                         that.$sup.addClass('noembed-error');
@@ -1590,7 +1616,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         more_parameters
     ) {
         // TODO:  No need to pass media_url, it's gotta be that.text().
-        //        Okay make a that.media_url().  Return null if no URL.
+        //        Okay make a that.media_url().  Return null if no URL in that.text().
         var that = this;
         more_parameters = more_parameters || {};
         more_parameters.idn = that.id_attribute;
@@ -1894,6 +1920,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         var cont = Contribution_from_element(selector_or_element);
         if (cont.exists()) {
             var iframe = cont.iframe;
+            // noinspection JSIncompatibleTypesComparison
             if (iframe === null) {
                 // NOTE:  E.g. harmlessly trying to use a cont with no render-bar iframe.
                 callback_bad("No iframe " + selector_or_element.toString());
@@ -3588,11 +3615,14 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                             pattern_regexp = null;
                         }
                         if (pattern_regexp !== null) {
-                            console.log(
-                                "Media pattern defined:", pattern_idn,
-                                pattern_string,
-                                "handled by", media_handler.idn
-                            );
+                            // console.log(
+                            //     "Media pattern defined:", pattern_idn,
+                            //     pattern_string,
+                            //     "handled by", media_handler.idn
+                            // );
+                            // EXAMPLE:  Media pattern defined: 3288
+                            //           https?://(?:[^\.]+\.)?(?:youtu\.be|youtube\.com/embed)/([a-zA-Z0-9_-]+)
+                            //           handled by 2222
                             media_patterns[pattern_idn] = {
                                 idn: pattern_idn,
                                 string: pattern_string,
@@ -3714,65 +3744,20 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         // TODO:  Make parts of the following re-entrant, so it can be called after
         //        contributions are posted or edited.
 
-        // Which handlers are matched by some contribution?
-        looper(media_handlers, function (_, handler) {
-            handler.need_load = false;
-            handler.num_handled = 0;
-        });
-        looper(media_patterns, function (_, pattern) {
-            pattern.num_match = 0;
-        });
-        Contribution_loop(function each_handling_possibility(cont) {
-            var patterns_that_matched = [];
-            var match_objects_that_matched = [];
-            var might_be_a_media_url = cont.text();
-            looper(media_patterns, function (_, pattern) {
-                var match_object = might_be_a_media_url.match(pattern.regexp);   // the big match
-                if (match_object !== null) {
-                    patterns_that_matched.push(pattern);
-                    match_objects_that_matched.push(match_object);
-                }
-            });
+        assign_media_patterns_and_flag_handlers_to_load();
 
-            function use_match(n) {
-                var media_pattern = patterns_that_matched[n];
-                media_pattern.handler.need_load = true;
-                cont.$sup.data('media-pattern', media_pattern);
-                cont.$sup.data('media-match', match_objects_that_matched[n]);
-                media_pattern.num_match++;
-                media_pattern.handler.num_handled++;
-            }
 
-            var num_matches = patterns_that_matched.length;
-            switch (num_matches) {
-            case 0:
-                // Guess it's not a media url.  Or not one we can handle.
-                cont.$sup.removeData('media-pattern');
-                break;
-            case 1:
-                use_match(0);
-                break;
-            default:
-                console.warn(
-                    patterns_that_matched.length.toString(),
-                    "media pattern matches!",
-                    patterns_that_matched.map(function (pattern) { return pattern.idn; }).join(" "),
-                    might_be_a_media_url
-                );
-                // looper(patterns_that_matched, function (_, media_pattern) {
-                //     console.warn(
-                //         "\t", media_pattern.string,
-                //         "->", media_pattern.handler.url
-                //     );
-                // });
-                // cont.$sup.removeData('media-pattern');
-                // TODO:  Referee among multiple handlers.
-                //        (And btw it should be quite benign if multiple patterns lead to the SAME
-                //        handler URL.)
-                use_match(num_matches - 1);
-                break;
-            }
-        });
+
+        media_handlers[INSTAGRAM_HANDLER_IDN] = {
+            idn: INSTAGRAM_HANDLER_IDN,
+            url: MONTY.MEDIA_HANDLERS[1],   // HACK
+            need_load: true,
+            did_load: false,
+            did_fail: false,
+            did_register: false,
+            num_handled: 0
+        };
+
 
 
 
@@ -3843,40 +3828,40 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                 handler.$script.attr('src', handler.url);
                 // SEE:  src after on-error, https://api.jquery.com/error/#entry-longdesc
             }
-            setTimeout(function () {
-                var all_ok = true;
-                var num_needed = 0;
-                var num_loaded = 0;
-                var num_failed = 0;
-                var num_limbo = 0;
-                looper(media_handlers, function(_, handler) {
-                    if (handler.need_load) {
-                        num_needed++;
-                        if (handler.did_load) {
-                            num_loaded++;
-                        } else if (handler.did_fail) {
-                            num_failed++;
-                            all_ok = false;
-                        } else {
-                            num_limbo++;
-                            // Limbo.  WTF happened to our handler script load?
-                            console.warn("Media handler timeout", handler);
-                            all_ok = false;
-                        }
-                    }
-                });
-                var console_reporter = all_ok ? console.log : console.warn;
-                console_reporter(
-                    num_needed.toString(),
-                    "of",
-                    Object.keys(media_handlers).length.toString(),
-                    "media handlers needed,",
-                    num_loaded, "loaded,",
-                    num_failed, "failed,",
-                    num_limbo, "unaccounted for"
-                );
-            }, MEDIA_HANDLER_LOAD_SECONDS * 1000);
         });
+        setTimeout(function () {
+            var all_ok = true;
+            var num_needed = 0;
+            var num_loaded = 0;
+            var num_failed = 0;
+            var num_limbo = 0;
+            looper(media_handlers, function(_, handler) {
+                if (handler.need_load) {
+                    num_needed++;
+                    if (handler.did_load) {
+                        num_loaded++;
+                    } else if (handler.did_fail) {
+                        num_failed++;
+                        all_ok = false;
+                    } else {
+                        num_limbo++;
+                        // Limbo.  WTF happened to our handler script load?
+                        console.warn("Media handler timeout", handler);
+                        all_ok = false;
+                    }
+                }
+            });
+            var console_reporter = all_ok ? console.log : console.warn;
+            console_reporter(
+                num_needed.toString(),
+                "of",
+                Object.keys(media_handlers).length.toString(),
+                "media handlers needed,",
+                num_loaded, "loaded,",
+                num_failed, "failed,",
+                num_limbo, "unaccounted for"
+            );
+        }, MEDIA_HANDLER_LOAD_SECONDS * 1000);
         // $.when.apply($, promises).then(function () {
         //     looper(pattern_table, function (_, h_and_p) {
         //         h_and_p.media = handlers_we_need[h_and_p.handler_url].media;
@@ -3891,7 +3876,8 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     // TODO:  Wiser concurrency, or asynchronicity, or something.
     //        https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Statements/async_function
 
-    js_for_contribution.media_register = function js_for_contribution_media_register(media) {
+    window.qiki = window.qiki || {};
+    window.qiki.media_register = function js_for_contribution_media_register(media) {
         // console.assert(_media_object === null, _media_object);   // clue to out-of-order media call.
         // _media_object = media;
         // $(media.current_script).attr('data_media', 'moo');
@@ -3901,12 +3887,89 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         console.assert(is_defined(handler_idn), "handler-idn broke", $script);
         var handler = media_handlers[handler_idn];
         console.assert(is_defined(handler), "handler object broke", handler_idn, media_handlers);
+        if (handler_idn === INSTAGRAM_HANDLER_IDN) {
+            looper(media.url_patterns, function (index, url_pattern) {
+                console.log("Instagram pattern", url_pattern);
+                var pattern_idn = INSTAGRAM_HANDLER_IDN + 100 + index;
+                media_patterns[pattern_idn] = {
+                    idn: pattern_idn,
+                    string: url_pattern,
+                    regexp: new RegExp(url_pattern),
+                    handler: handler,
+                    num_match: 0
+                };
+            });
+        }
         if (is_defined(handler)) {
             console.log("Media handler registered:", media.description_long);
             handler.media = media;
             handler.did_register = true;
         }
     };
+
+    function assign_media_patterns_and_flag_handlers_to_load() {
+        // TODO:  This should also happen when any contribution is created or edited.
+        // Which handlers are matched by some contribution?
+        looper(media_handlers, function (_, handler) {
+            handler.need_load = false;
+            handler.num_handled = 0;
+        });
+        looper(media_patterns, function (_, pattern) {
+            pattern.num_match = 0;
+        });
+        Contribution_loop(function each_handling_possibility(cont) {
+            var patterns_that_matched = [];
+            var match_objects_that_matched = [];
+            var might_be_a_media_url = cont.text();
+            looper(media_patterns, function (_, pattern) {
+                var match_object = might_be_a_media_url.match(pattern.regexp);   // the big match
+                if (match_object !== null) {
+                    patterns_that_matched.push(pattern);
+                    match_objects_that_matched.push(match_object);
+                }
+            });
+
+            function use_match(n) {
+                var media_pattern = patterns_that_matched[n];
+                media_pattern.handler.need_load = true;
+                cont.$sup.data('media-pattern', media_pattern);
+                cont.$sup.data('media-match', match_objects_that_matched[n]);
+                // CAUTION:  data names are inexplicably fudged to camel case by the HTML DOM
+                // SEE:  https://developer.mozilla.org/en-US/docs/Web/API/HTMLOrForeignElement/dataset
+                // SEE:  https://html.spec.whatwg.org/multipage/dom.html#dom-dataset
+                // SEE:  comments, https://stackoverflow.com/a/20985285/673991
+                media_pattern.num_match++;
+                media_pattern.handler.num_handled++;
+            }
+
+            var num_matches = patterns_that_matched.length;
+            switch (num_matches) {
+            case 0:
+                // Guess it's not a media url.  Or not one we can handle.
+                cont.$sup.removeData('media-pattern');
+                break;
+            case 1:
+                use_match(0);
+                break;
+            default:
+                // console.warn(
+                //     patterns_that_matched.length.toString(),
+                //     "media pattern matches!",
+                //     patterns_that_matched.map(function (pattern) { return pattern.idn; }).join(" "),
+                //     might_be_a_media_url
+                // );
+                // EXAMPLE:  contribution.js?mtime=1582501822.196:3932 13 media pattern matches!
+                //           2174 2186 2217 2223 2252 2999 3001 3003 3005 3010 3271 3287 3343
+                //           https://www.youtube.com/watch?v=3SwNXQMoNps&rel=0
+
+                // TODO:  Referee among multiple handlers.
+                //        (And btw it should be quite benign if multiple patterns lead to the SAME
+                //        handler URL.)
+                use_match(num_matches - 1);
+                break;
+            }
+        });
+    }
 
     function are_we_done_loading_handlers() {
         var all_loaded = true;
@@ -3924,6 +3987,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         //        But is that harder to follow?  And if I have to ask the answer is yes?
         // TODO:  all_done = Object.entries(media_handlers).all(handler => ! handler.need_load);
         if (all_loaded) {
+            assign_media_patterns_and_flag_handlers_to_load();
             console.log("Media handlers", media_handlers);
             console.log("Media patterns", media_patterns);
             rebuild_all_render_bars();

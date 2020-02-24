@@ -2,9 +2,14 @@
 
 (function (window, $) {
     // noinspection JSUnusedGlobalSymbols,JSUnusedLocalSymbols
-    js_for_contribution.media_register({
+    window.qiki.media_register({
         description_short: "youtube",   // should be unique within a domain
-        description_long: "YouTube handler for fliki Contribution applications",
+        description_long: "YouTube handler for qiki media applications",
+        url_patterns: [
+            "https?://(?:[^\\.]+\\.)?youtube\\.com/watch/?\\?(?:.+&)?v=([^&]+)",
+            "https?://(?:[^\\.]+\\.)?(?:youtu\\.be|youtube\\.com/embed)/([a-zA-Z0-9_-]+)"
+            // THANKS:  Media URL patterns, https://noembed.com/providers
+        ],
         render_thumb: function youtube_render_thumb(cont, media_url, media_match) {
             var youtube_id = media_match[1];
             console.assert(typeof youtube_id === 'string' && youtube_id.length === 11);
@@ -27,8 +32,9 @@
     function live_media_iframe(cont, media_url, youtube_id, more_parameters) {
         // TODO:  e.g. <iframe src="https://www.youtube.com/embed/o9tDO3HK20Q?enablejsapi=1" ...>
         //        Same object generation as $('<iframe>', {...}); in embed_content.js
-        //        We will bypass fliki <iframe src=".../meta/oembed/...">
+        //        We will bypass <iframe src=".../meta/oembed/...">
         //        because we already know how to handle youtube media.
+        //        (In other words without cross-site iframe??)
     }
 
     /**
