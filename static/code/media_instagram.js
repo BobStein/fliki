@@ -6,10 +6,10 @@
         description_short: "instagram",   // should be unique within a domain
         description_long: "Instagram handler for qiki media applications",
         url_patterns: [
-            "^https?://www\\.instagram\\.com/p/([^/]+)/?$",
-                  "^https?://instagram\\.com/p/([^/]+)/?$",
-            "^https?://www\\.instagr\\.am/p/([^/]+)/?$",
-                  "^https?://instagr\\.am/p/([^/]+)/?$"
+            RegExp("^https?://www\\.instagram\\.com/p/([^/]+)/?$"),
+            RegExp(      "^https?://instagram\\.com/p/([^/]+)/?$"),
+            RegExp("^https?://www\\.instagr\\.am/p/([^/]+)/?$"),
+            RegExp(      "^https?://instagr\\.am/p/([^/]+)/?$")
         ],
         render_thumb: function instagram_render_thumb(cont, media_url, media_match) {
             var media_id = media_match[1];

@@ -233,9 +233,9 @@ class WorkingIdns(object):
 
                 self.FIELD_FLUB        = lex.verb(u'field flub').idn   # report of some wrongness from the field
 
-                self.MEDIA = lex.noun(u'media').idn
-                self.HANDLE = lex.verb(u'handle').idn
-                self.MATCH = lex.verb(u'match').idn
+                # self.MEDIA = lex.noun(u'media').idn
+                # self.HANDLE = lex.verb(u'handle').idn
+                # self.MATCH = lex.verb(u'match').idn
 
                 # TODO:  Remove patterns (set num=0) that aren't in YOUTUBE_PATTERNS, or something.
                 # for match_word in lex.find_words(vrb=self.MATCH, obj=self.YOUTUBE_MEDIA_HANDLER):
@@ -619,62 +619,62 @@ class LexFliki(qiki.LexMySQL):
     #         super(LexFliki, self).populate_word_from_idn(word, idn)
     #     return True
 
-    def install_all_matchers(self):
-        self.install_matcher(YOUTUBE_PATTERNS, static_code_url('media_youtube.js', _external=True))
-
-    def install_matcher(self, patterns, handler_url):
-        handler_specs = dict(
-            sbj=self[self],
-            vrb=self.IDN.HANDLE,
-            obj=self.IDN.MEDIA,
-            txt=handler_url,
-        )
-        handlers_with_same_url = self.find_words(**handler_specs)
-        is_latest_handler_nonzero = (
-            len(handlers_with_same_url) > 0 and
-            handlers_with_same_url[-1].num != 0
-            # TODO:  Less strict match on URL?
-        )
-        # NOTE:  Provide a way in the future to turn a handler url "off".
-        #        If so, this turns it on again.
-        #        Possible textbook case of future anticipation being a bad idea.
-        if is_latest_handler_nonzero:
-            handler_word = handlers_with_same_url[-1]
-        else:
-            handler_word = self.create_word(num=1, **handler_specs)
-
-        self.youtube_matches = []
-        for pattern in patterns:
-            matcher_specs = dict(
-                sbj=self[self],
-                vrb=self.IDN.MATCH,
-                # obj=handler_word.idn,
-                txt=pattern,
-            )
-            existent_matcher_words = self.find_words(**matcher_specs)
-            is_latest_matcher_with_this_pattern_nonzero_and_same_url = (
-                len(existent_matcher_words) > 0 and
-                existent_matcher_words[-1].num != 0 and
-                existent_matcher_words[-1].obj.txt == handler_word.txt   # aka handler_url
-            )
-            if is_latest_matcher_with_this_pattern_nonzero_and_same_url:
-                '''Already got a word'''
-                print(
-                    "old matcher, pattern",
-                    int(existent_matcher_words[-1].idn),
-                    "handler",
-                    int(handler_word.idn)
-                )
-            else:
-                matcher_word = self.create_word(obj=handler_word.idn, num=1, **matcher_specs)
-                self.youtube_matches.append(matcher_word)
-                print("New matcher", matcher_word.idn, matcher_word.txt, matcher_word.obj.txt)
-                # FIXME:  Avoid competition between e.g. unslumping.org and new.unslumping.org
-                #         which happens when somebody browses new.unslumping.org
-                #         (Wait, wtf is browsing new.unslumping.org?!?)
-                #         which installs handlers for new.unslumping.org
-                #         then later the normal browse installs handlers for unslumping.org.
-                #         The problem is one fliki server (and its database) hosts both domains.
+    # def install_all_matchers(self):
+    #     self.install_matcher(YOUTUBE_PATTERNS, static_code_url('media_youtube.js', _external=True))
+    #
+    # def install_matcher(self, patterns, handler_url):
+    #     handler_specs = dict(
+    #         sbj=self[self],
+    #         vrb=self.IDN.HANDLE,
+    #         obj=self.IDN.MEDIA,
+    #         txt=handler_url,
+    #     )
+    #     handlers_with_same_url = self.find_words(**handler_specs)
+    #     is_latest_handler_nonzero = (
+    #         len(handlers_with_same_url) > 0 and
+    #         handlers_with_same_url[-1].num != 0
+    #         # TODO:  Less strict match on URL?
+    #     )
+    #     # NOTE:  Provide a way in the future to turn a handler url "off".
+    #     #        If so, this turns it on again.
+    #     #        Possible textbook case of future anticipation being a bad idea.
+    #     if is_latest_handler_nonzero:
+    #         handler_word = handlers_with_same_url[-1]
+    #     else:
+    #         handler_word = self.create_word(num=1, **handler_specs)
+    #
+    #     self.youtube_matches = []
+    #     for pattern in patterns:
+    #         matcher_specs = dict(
+    #             sbj=self[self],
+    #             vrb=self.IDN.MATCH,
+    #             # obj=handler_word.idn,
+    #             txt=pattern,
+    #         )
+    #         existent_matcher_words = self.find_words(**matcher_specs)
+    #         is_latest_matcher_with_this_pattern_nonzero_and_same_url = (
+    #             len(existent_matcher_words) > 0 and
+    #             existent_matcher_words[-1].num != 0 and
+    #             existent_matcher_words[-1].obj.txt == handler_word.txt   # aka handler_url
+    #         )
+    #         if is_latest_matcher_with_this_pattern_nonzero_and_same_url:
+    #             '''Already got a word'''
+    #             print(
+    #                 "old matcher, pattern",
+    #                 int(existent_matcher_words[-1].idn),
+    #                 "handler",
+    #                 int(handler_word.idn)
+    #             )
+    #         else:
+    #             matcher_word = self.create_word(obj=handler_word.idn, num=1, **matcher_specs)
+    #             self.youtube_matches.append(matcher_word)
+    #             print("New matcher", matcher_word.idn, matcher_word.txt, matcher_word.obj.txt)
+    #             # FIXME:  Avoid competition between e.g. unslumping.org and new.unslumping.org
+    #             #         which happens when somebody browses new.unslumping.org
+    #             #         (Wait, wtf is browsing new.unslumping.org?!?)
+    #             #         which installs handlers for new.unslumping.org
+    #             #         then later the normal browse installs handlers for unslumping.org.
+    #             #         The problem is one fliki server (and its database) hosts both domains.
 
 
 def connect_lex():
@@ -1920,27 +1920,27 @@ def contribution_home(home_page_title):
                 foot.js_stamped(static_code_url('util.js'))
                 foot.js_stamped(static_code_url('contribution.js'))
 
-                serving_domain_port = secure.credentials.Options.server_domain_port
-                if auth.current_host == serving_domain_port:
-                    auth.lex.install_all_matchers()
-                else:
-                    print(
-                        "Serving from {request_domain}, not {serving_domain_port} "
-                        "-- so not installing matchers".format(
-                            request_domain=auth.current_host,
-                            serving_domain_port=serving_domain_port,
-                        )
-                    )
-                    # NOTE:  Avoids the minor problem when browsing from an alternate domain.
-                    #        We don't want to install new matcher URLs with this alternate domain.
-                    #        Helps when browsing from the alternate domain for testing.
-                    #        Maybe a better solution is to only serve /meta/oembed/ hits from the
-                    #        alternate domain.  Create an additional flask application instance??
-                    #        Then we could set SERVER_NAME in both of them.
-                    # TODO:  Sheesh, I shouldn't even be keeping this alternate domain browsing,
-                    #        all unofficial domains should be redirected, e.g. www.un to un.
-                    # SEE:  2-domain Flask, e.g. @application.route('/', host=SECOND_DOMAIN)
-                    #       https://blog.easyaspy.org/post/7/2019-04-28-two-domains-one-flask
+                # serving_domain_port = secure.credentials.Options.server_domain_port
+                # if auth.current_host == serving_domain_port:
+                #     auth.lex.install_all_matchers()
+                # else:
+                #     print(
+                #         "Serving from {request_domain}, not {serving_domain_port} "
+                #         "-- so not installing matchers".format(
+                #             request_domain=auth.current_host,
+                #             serving_domain_port=serving_domain_port,
+                #         )
+                #     )
+                #     # NOTE:  Avoids the minor problem when browsing from an alternate domain.
+                #     #        We don't want to install new matcher URLs with this alternate domain.
+                #     #        Helps when browsing from the alternate domain for testing.
+                #     #        Maybe a better solution is to only serve /meta/oembed/ hits from the
+                #     #        alternate domain.  Create an additional flask application instance??
+                #     #        Then we could set SERVER_NAME in both of them.
+                #     # TODO:  Sheesh, I shouldn't even be keeping this alternate domain browsing,
+                #     #        all unofficial domains should be redirected, e.g. www.un to un.
+                #     # SEE:  2-domain Flask, e.g. @application.route('/', host=SECOND_DOMAIN)
+                #     #       https://blog.easyaspy.org/post/7/2019-04-28-two-domains-one-flask
 
                 verbs = []
                 verbs += auth.get_category_idns_in_order()
@@ -1949,8 +1949,8 @@ def contribution_home(home_page_title):
                     auth.lex.IDN.UNSLUMP_OBSOLETE,
                     auth.lex.IDN.CAPTION,
                     auth.lex.IDN.EDIT,
-                    auth.lex.IDN.MATCH,
-                    auth.lex.IDN.HANDLE,
+                    # auth.lex.IDN.MATCH,
+                    # auth.lex.IDN.HANDLE,
                 ]
                 words_for_js = auth.vetted_find_by_verbs(verbs)
                 with foot.script() as script:

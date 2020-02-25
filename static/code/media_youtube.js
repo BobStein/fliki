@@ -6,8 +6,8 @@
         description_short: "youtube",   // should be unique within a domain
         description_long: "YouTube handler for qiki media applications",
         url_patterns: [
-            "https?://(?:[^\\.]+\\.)?youtube\\.com/watch/?\\?(?:.+&)?v=([^&]+)",
-            "https?://(?:[^\\.]+\\.)?(?:youtu\\.be|youtube\\.com/embed)/([a-zA-Z0-9_-]+)"
+            RegExp("^https?://(?:[^.]+\\.)?youtube\\.com/watch/?\\?(?:.+&)?v=([^&]+)$"),
+            RegExp("^https?://(?:[^.]+\\.)?(?:youtu\\.be|youtube\\.com/embed)/([a-zA-Z0-9_-]+)$")
             // THANKS:  Media URL patterns, https://noembed.com/providers
         ],
         render_thumb: function youtube_render_thumb(cont, media_url, media_match) {
