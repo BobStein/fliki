@@ -1493,7 +1493,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         if (scan.is_handled) {
             console.log(
                 "Sophisticated Media", that.id_attribute,
-                "handler", scan.handler.idn,
+                "handler", scan.handler_index,
                 scan.handler.media.description_short,
                 scan.match_object.slice(1).join(" ")
             );
@@ -3996,9 +3996,10 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         var return_object = {
             is_handled: false,
             handler: null,
+            handler_index: null,
             match_object: null
         };
-        looper(media_handlers, function (_, media_handler) {
+        looper(media_handlers, function (handler_index, media_handler) {
             if (media_handler.did_register) {
                 console.assert(is_specified(media_handler.media), media_handler);
                 looper(media_handler.media.url_patterns, function (_, url_pattern) {
@@ -4007,6 +4008,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                         return_object = {
                             is_handled: true,
                             handler: media_handler,
+                            handler_index: handler_index,
                             match_object: match_object
                         };
                         return false;
