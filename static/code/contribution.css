@@ -1,9 +1,20 @@
 /* css for the contribution.js. */
 
+#up-top-spacer {
+    width: 100%;
+    height: 1.25em;
+}
 #up-top {
     overflow: hidden;
     /* THANKS:  Outer div tall as inner divs, https://stackoverflow.com/a/804936/673991 */
     margin-bottom: 0.1em;
+    position: fixed;
+    left: 0;
+    right: 0;
+    top: 0;
+    z-index: 2;
+    padding: 0.1em 0.1em 0 0.1em;
+    background-color: white;
 }
 
 #status-prompt,

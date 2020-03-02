@@ -65,7 +65,7 @@ MINIMUM_SECONDS_BETWEEN_ANONYMOUS_ANSWERS = 60
 THUMB_MAX_WIDTH = 160
 THUMB_MAX_HEIGHT = 128
 NON_ROUTABLE_IP_ADDRESS = '10.255.255.1'   # THANKS:  https://stackoverflow.com/a/904609/673991
-NON_ROUTABLE_URL = 'https://' + NON_ROUTABLE_IP_ADDRESS + '/'   # for testing only
+NON_ROUTABLE_URL = 'https://' + NON_ROUTABLE_IP_ADDRESS + '/'   # for testing
 SHOW_LOG_AJAX_NOEMBED_META = True
 
 
@@ -76,8 +76,20 @@ YOUTUBE_PATTERNS = [
 # THANKS:  Media URL patterns, https://noembed.com/providers
 
 
+INSTAGRAM_PATTERNS = [
+    "https?://instagram\\.com/p/.*",
+    "https?://instagr\\.am/p/.*",
+    "https?://www\\.instagram\\.com/p/.*",
+    "https?://www\\.instagr\\.am/p/.*",
+    "https?://instagram\\.com/p/.*",
+    "https?://instagr\\.am/p/.*",
+    "https?://www\\.instagram\\.com/p/.*",
+    "https?://www\\.instagr\\.am/p/.*",
+]
+
+
 # noinspection SpellCheckingInspection
-NOEMBED_PATTERNS = YOUTUBE_PATTERNS + [
+NOEMBED_PATTERNS = YOUTUBE_PATTERNS + INSTAGRAM_PATTERNS + [
     "https?://(?:www\\.)?vimeo\\.com/.+",
 
     "https?://(?:www|mobile\\.)?twitter\\.com/(?:#!/)?([^/]+)/status(?:es)?/(\\d+)",
@@ -89,22 +101,11 @@ NOEMBED_PATTERNS = YOUTUBE_PATTERNS + [
     "https?://www\\.(dropbox\\.com/s/.+\\.(?:jpg|png|gif))",
     "https?://db\\.tt/[a-zA-Z0-9]+",
 
-    "https?://soundcloud\\.com/.*",
+    "https?://soundcloud\\.com/.*",   # but it can't currently be animated
 
     "https?://www\\.dailymotion\\.com/video/.*",
 
-    # NON_ROUTABLE_URL,   # Also works as a pattern.  The dots are tacky though.
-]
-
-INSTAGRAM_PATTERNS = [
-    "https?://instagram\\.com/p/.*",
-    "https?://instagr\\.am/p/.*",
-    "https?://www\\.instagram\\.com/p/.*",
-    "https?://www\\.instagr\\.am/p/.*",
-    "https?://instagram\\.com/p/.*",
-    "https?://instagr\\.am/p/.*",
-    "https?://www\\.instagram\\.com/p/.*",
-    "https?://www\\.instagr\\.am/p/.*",
+    # NON_ROUTABLE_URL,   # for testing
 ]
 
 time_lex = qiki.TimeLex()
@@ -232,22 +233,6 @@ class WorkingIdns(object):
                 #        use_already looks at the latest s,v,o match.
 
                 self.FIELD_FLUB        = lex.verb(u'field flub').idn   # report of some wrongness from the field
-
-                # self.MEDIA = lex.noun(u'media').idn
-                # self.HANDLE = lex.verb(u'handle').idn
-                # self.MATCH = lex.verb(u'match').idn
-
-                # TODO:  Remove patterns (set num=0) that aren't in YOUTUBE_PATTERNS, or something.
-                # for match_word in lex.find_words(vrb=self.MATCH, obj=self.YOUTUBE_MEDIA_HANDLER):
-                #     if match_word not in self.youtube_matches:
-                #         match_word.over_write(num=0)
-                # for handle_word in lex.find_words(vrb=self.HANDLE, obj=self.MEDIA):
-                #     if handle_word not in [self.YOUTUBE_MEDIA_HANDLER]:
-                #         handle_word.over_write(num=0)
-                # or:
-                # for spec in lex.find(vrb=[self.MATCH, self.HANDLE]):
-                #     if spec not in [self.YOUTUBE_MEDIA_HANDLER] + self.youtube_matches:
-                #         spec.over_write(num=0)
 
     def dictionary_of_qstrings(self):
         of_idns = self.idn_from_symbol()
@@ -512,67 +497,6 @@ class LexFliki(qiki.LexMySQL):
         except (AttributeError, ValueError) as e:
             raise ValueError("Not a Listing idn: " + repr(idn) + " - " + six.text_type(e))
 
-    # def google_txt_from_idn(self, idn):
-    #     namings = self.find_words(
-    #         sbj=self.IDN_LEX,   # TODO:  sbj=meta_idn?  Meaning the listing tags the user with their name.
-    #         vrb=self.IDN.NAME,
-    #         obj=idn,
-    #     )
-    #     try:
-    #         latest_naming = namings[0]   # FIXME:  This appears to get the EARLIEST naming.
-    #     except IndexError:
-    #         user_name = "(unnamed googloid {})".format(idn)
-    #     else:
-    #         user_name = latest_naming.txt
-    #     return user_name
-    #
-    # def anon_txt_from_idn(self, idn):
-    #     # TODO:  move this logic to WordAnon._from_idn() or something.
-    #     _, session_id = self.split_listing_idn(idn)
-    #     parts = []
-    #     ips = self.find_words(
-    #         sbj=idn,   # TODO:  sbj=meta_idn here too?
-    #         vrb=self.IDN.IP_ADDRESS_TAG,
-    #         obj=session_id,
-    #     )
-    #     try:
-    #         parts.append(six.text_type(ips[-1].txt))
-    #         # TODO:  Not just the latest IP address EVER, but the latest one tagged
-    #         #        in the context this txt will be USED.  (Somehow.)
-    #         #        This would depend on the sentence_word.whn for which
-    #         #        the idn passed to this function == sentence_word.sbj.idn
-    #         #        So above lex.find_words(idn_max = sentence_word.sbj.idn) or something.
-    #     except IndexError:
-    #         '''session was never ip-address-tagged'''
-    #
-    #     parts.append("session #" + render_num(session_id))
-    #
-    #     uas = self.root_lex.find_words(
-    #         sbj=idn,
-    #         vrb=self.IDN.USER_AGENT_TAG,
-    #         obj=session_id,
-    #         # TODO:  Combine these two find_words() calls.
-    #     )
-    #     try:
-    #         user_agent_str = six.text_type(uas[-1].txt)
-    #     except IndexError:
-    #         '''session was never user-agent-tagged'''
-    #     else:
-    #         try:
-    #             user_agent_object = werkzeug.useragents.UserAgent(user_agent_str)
-    #         except AttributeError:
-    #             parts.append("(indeterminate user agent)")
-    #         else:
-    #             parts.append(user_agent_object.browser)   # "(browser?)")
-    #             parts.append(user_agent_object.platform)   # "(platform?)")
-    #
-    #     # TODO:  Make ip address, user agent, browser, platform
-    #     #        separately available in anon and google word instances too.
-    #
-    #     parts_not_null = (p for p in parts if p is not None)
-    #     session_description = " ".join(parts_not_null)
-    #     return session_description
-
     def read_word(self, idn_ish):
         if idn_ish is None:
             return super(LexFliki, self).read_word(None)
@@ -601,80 +525,6 @@ class LexFliki(qiki.LexMySQL):
             return the_word
 
         return super(LexFliki, self).read_word(idn)
-
-    # def populate_word_from_idn(self, word, idn):
-    #     if idn.is_suffixed():
-    #         # meta_idn, _ = self.split_listing_idn(idn)
-    #         assert self.IDN is not None
-    #         if word.meta_idn == self.IDN.ANONYMOUS_LISTING:
-    #             txt = self.anon_txt_from_idn(idn)
-    #         elif word.meta_idn == self.IDN.GOOGLE_LISTING:
-    #             txt = self.google_txt_from_idn(idn)
-    #         else:
-    #             # raise ValueError("Unexpected Listing meta-idn " + repr(meta_idn) + " from " + repr(idn))
-    #             txt = "goof user"   # return False
-    #
-    #         word.populate_from_num_txt(qiki.Number(1), qiki.Text(txt))
-    #     else:
-    #         super(LexFliki, self).populate_word_from_idn(word, idn)
-    #     return True
-
-    # def install_all_matchers(self):
-    #     self.install_matcher(YOUTUBE_PATTERNS, static_code_url('media_youtube.js', _external=True))
-    #
-    # def install_matcher(self, patterns, handler_url):
-    #     handler_specs = dict(
-    #         sbj=self[self],
-    #         vrb=self.IDN.HANDLE,
-    #         obj=self.IDN.MEDIA,
-    #         txt=handler_url,
-    #     )
-    #     handlers_with_same_url = self.find_words(**handler_specs)
-    #     is_latest_handler_nonzero = (
-    #         len(handlers_with_same_url) > 0 and
-    #         handlers_with_same_url[-1].num != 0
-    #         # TODO:  Less strict match on URL?
-    #     )
-    #     # NOTE:  Provide a way in the future to turn a handler url "off".
-    #     #        If so, this turns it on again.
-    #     #        Possible textbook case of future anticipation being a bad idea.
-    #     if is_latest_handler_nonzero:
-    #         handler_word = handlers_with_same_url[-1]
-    #     else:
-    #         handler_word = self.create_word(num=1, **handler_specs)
-    #
-    #     self.youtube_matches = []
-    #     for pattern in patterns:
-    #         matcher_specs = dict(
-    #             sbj=self[self],
-    #             vrb=self.IDN.MATCH,
-    #             # obj=handler_word.idn,
-    #             txt=pattern,
-    #         )
-    #         existent_matcher_words = self.find_words(**matcher_specs)
-    #         is_latest_matcher_with_this_pattern_nonzero_and_same_url = (
-    #             len(existent_matcher_words) > 0 and
-    #             existent_matcher_words[-1].num != 0 and
-    #             existent_matcher_words[-1].obj.txt == handler_word.txt   # aka handler_url
-    #         )
-    #         if is_latest_matcher_with_this_pattern_nonzero_and_same_url:
-    #             '''Already got a word'''
-    #             print(
-    #                 "old matcher, pattern",
-    #                 int(existent_matcher_words[-1].idn),
-    #                 "handler",
-    #                 int(handler_word.idn)
-    #             )
-    #         else:
-    #             matcher_word = self.create_word(obj=handler_word.idn, num=1, **matcher_specs)
-    #             self.youtube_matches.append(matcher_word)
-    #             print("New matcher", matcher_word.idn, matcher_word.txt, matcher_word.obj.txt)
-    #             # FIXME:  Avoid competition between e.g. unslumping.org and new.unslumping.org
-    #             #         which happens when somebody browses new.unslumping.org
-    #             #         (Wait, wtf is browsing new.unslumping.org?!?)
-    #             #         which installs handlers for new.unslumping.org
-    #             #         then later the normal browse installs handlers for unslumping.org.
-    #             #         The problem is one fliki server (and its database) hosts both domains.
 
 
 def connect_lex():
@@ -1092,198 +942,6 @@ class Auth(object):
             self.lex.IDN.CAT_TRASH,
             self.lex.IDN.CAT_ABOUT,
         ]
-
-    # def cat_cont_words(self):
-    #     """
-    #     Get all the category and contribution words, plus objectifiers.
-    #
-    #     Verbs we're interested in:
-    #         'contribute'
-    #         'unslump'
-    #
-    #     Objectifying (*1) verbs we're interested in:
-    #         category verbs, i.e. [lex](define)[category]
-    #         'caption'
-    #
-    #     Return dictionary:
-    #         cat:  dictionary of category words, keyed by their idn qstring
-    #         cont:  list of contribution words, in chronological order
-    #
-    #     A word is represented in JSON as an object with properties idn, sbj, vrb, obj, etc.
-    #
-    #     (*1) Contribution objectifiers are words whose obj is a contribution.
-    #          They're tagged onto each contribution they objectify through its jbo field.
-    #          Get it?  jbo is obj backwards.
-    #     """
-    #     lex = self.lex
-    #
-    #     category_verb_list = lex.find_words(idn=self.get_category_idns_in_order())
-    #
-    #     # objectifying_verbs = category_verb_list + [lex[lex.IDN.CAPTION]]
-    #     # FIXME:  Gasp!  We (and contribution.js) never use the categorizing verbs here!
-    #     #         Only cat_cont_order() uses them, and not via this return value!
-    #     #         This should cut down a lot on bytes transferred, if there's a lot of rearranging.
-    #
-    #     objectifying_verbs = [lex.IDN.CAPTION]
-    #
-    #     # resource_nouns = lex.find_words(obj=lex.IDN.RESOURCE)
-    #     # print("Resources", json_encode(resource_nouns))
-    #     # EXAMPLE:  Resources [{
-    #     #               "idn":"0q83_058C",
-    #     #               "sbj":"0q80",
-    #     #               "vrb":"0q82_01",
-    #     #               "obj":"0q83_058B",
-    #     #               "whn":1562431607.118508,
-    #     #               "txt":"quote"
-    #     #           }]
-    #
-    #     contributed_resources = []
-    #
-    #     do_grandfather_in_obsolete_unslump_verb = True
-    #
-    #     if do_grandfather_in_obsolete_unslump_verb:
-    #         contributed_resources += lex.find_words(
-    #             vrb=lex.IDN.UNSLUMP_OBSOLETE,
-    #             # The object of all unslump verbs was the lex itself.
-    #             jbo_vrb=objectifying_verbs,
-    #             jbo_ascending=True,
-    #         )
-    #
-    #     contributed_resources += lex.find_words(
-    #         vrb=lex.IDN.CONTRIBUTE,
-    #         # obj=resource_nouns,     # Why was I afraid resource_nouns would be huge?
-    #         #                         # There's just one now:  quote.
-    #         #                         # Does it help or hinder to limit by these?
-    #         #                         # It could allow other resources to be added someday.
-    #         #                         # They wouldn't show because we don't know how to render them
-    #         #                         # Though we could just render
-    #         #                         # "some kinda unfamiliar resource, here's the text..."
-    #         jbo_vrb=objectifying_verbs,
-    #         jbo_ascending=True,
-    #     )
-    #
-    #     vetted_contributions = self.vet(contributed_resources)
-    #
-    #     # category_words_by_qstring = {w.idn.qstring() : w for w in category_verb_list}
-    #     category_words_by_int = {int(w.idn) : w for w in category_verb_list}
-    #     # TODO:  All contribute.js needs from the category words
-    #     #        (i.e. return-value.cat) is their txt.
-    #     #        {w.idn.qstring() : w.txt for w in category_verb_list}
-    #     #        {i.qstring() : self.lex[i].txt for i in self.get_category_idns_in_order()}
-    #
-    #     # TODO:  Heck all it needs from return-value.cont is its txt and its jbo[].txt.
-    #     #        And then only once at startup.
-    #     #        So that could come down by ajax, and perhaps be better garbage collected.
-    #     #        Or come in pieces, see https://stackoverflow.com/a/18964123/673991
-    #
-    #     return dict(
-    #         cat=category_words_by_int,
-    #         cont=vetted_contributions,
-    #     )
-
-    # def cat_cont_order(self):
-    #     """
-    #     Determine the order of categories and contributions.
-    #
-    #     All contributions are included,
-    #     except anonymous users don't see contributions from other anonymous users,
-    #     but only a users's own reordering is included.
-    #
-    #     Verbs we're interested in:
-    #         'contribute'
-    #         'unslump'
-    #         category verbs, i.e. [lex](define)[category]
-    #
-    #     (*2) error messages marked may be untestable
-    #
-    #     Return dictionary:
-    #         cat:  list of category idns, in chronological order
-    #         cont:  dictionary keyed by category idn qstring,
-    #                of lists of contribution idns,
-    #                in the order they should appear
-    #
-    #     An idn is represented in JSON as a literal integer if possible,
-    #                                      otherwise by its qstring.
-    #     """
-    #     # TODO:  Should this and cat_cont_words() create one ordered dictionary instead?
-    #     cat_order = self.get_category_idns_in_order()
-    #     cont_order = dict()   # dictionary of contribution lists, keyed by category
-    #     cat_from_cont = dict()  # current category of each contribution
-    #     error_messages = list()
-    #
-    #     words = self.vet(self.lex.find_words())
-    #     # TODO:  Restrict verbs
-    #
-    #     def error(*args):
-    #         error_messages.append(" ".join(str(arg) for arg in args))
-    #
-    #     def cat_room(cat):
-    #         cat = self.idn(cat)
-    #         if cat not in cont_order:
-    #             cont_order[cat] = []
-    #
-    #     def add_cont(cat, cont, into):
-    #         cat = self.idn(cat)
-    #         cont = self.idn(cont)
-    #         if cat not in cat_order:
-    #             error("CAT", cat, "unknown")   # (*2)
-    #             return
-    #         cat_from_cont[cont] = cat
-    #         cat_room(cat)
-    #         if not 0 <= into <= len(cont_order[cat]):
-    #             error("CAT insert", into, "not in", len(cont_order[cat]))   # (*2)
-    #             return
-    #         cont_order[cat].insert(into, cont)
-    #
-    #     def remove_cont(cont):
-    #         cont = self.idn(cont)
-    #         if cont not in cat_from_cont:
-    #             error("CAT unrecorded for", cont)
-    #             return
-    #         old_cat = cat_from_cont[cont]
-    #         if old_cat not in cont_order:
-    #             error("CAT", old_cat, "has no contribution list")   # (*2)
-    #             return
-    #         if cont not in cont_order[old_cat]:
-    #             error("CAT", old_cat, "lost", cont)   # (*2)
-    #             return
-    #         cont_order[old_cat].remove(cont)
-    #
-    #     def index_cont(cat, cont):
-    #         cat = self.idn(cat)
-    #         cont = self.idn(cont)
-    #         cat_room(cat)
-    #         if cont == self.lex.IDN.FENCE_POST_RIGHT:
-    #             return len(cont_order[cat])
-    #         try:
-    #             return cont_order[cat].index(cont)
-    #         except ValueError:
-    #             error("Reorder point", cont, "missing from", cat)
-    #             return 0   # desperate fallback to leftmost position, when reorder location makes no sense
-    #
-    #     for word in words:
-    #
-    #         if word.vrb.idn in (self.lex.IDN.CONTRIBUTE, self.lex.IDN.UNSLUMP_OBSOLETE):
-    #             if word.sbj == self.qiki_user:
-    #                 add_cont(self.lex.IDN.CAT_MY, word, 0)
-    #             elif word.sbj.is_anonymous:
-    #                 add_cont(self.lex.IDN.CAT_ANON, word, 0)
-    #             else:
-    #                 add_cont(self.lex.IDN.CAT_THEIR, word, 0)
-    #         elif word.vrb.idn in cat_order:
-    #             if word.sbj == self.qiki_user:
-    #                 remove_cont(word.obj)
-    #                 add_cont(word.vrb, word.obj, index_cont(word.vrb, word.num))
-    #
-    #     # cont_order_qstring_keys = {cat.qstring(): order for cat, order in cont_order.items()}
-    #     cont_order_int_keys = {int(cat): order for cat, order in cont_order.items()}
-    #     order_dict = dict(
-    #         cat=cat_order,
-    #         cont=cont_order_int_keys
-    #     )
-    #     if len(error_messages) > 0:
-    #         order_dict['error_messages'] = error_messages
-    #     return order_dict
 
     def vet(self, words):
         """Filter out anonymous contributions from other anonymous users."""
@@ -1920,28 +1578,6 @@ def contribution_home(home_page_title):
                 foot.js_stamped(static_code_url('util.js'))
                 foot.js_stamped(static_code_url('contribution.js'))
 
-                # serving_domain_port = secure.credentials.Options.server_domain_port
-                # if auth.current_host == serving_domain_port:
-                #     auth.lex.install_all_matchers()
-                # else:
-                #     print(
-                #         "Serving from {request_domain}, not {serving_domain_port} "
-                #         "-- so not installing matchers".format(
-                #             request_domain=auth.current_host,
-                #             serving_domain_port=serving_domain_port,
-                #         )
-                #     )
-                #     # NOTE:  Avoids the minor problem when browsing from an alternate domain.
-                #     #        We don't want to install new matcher URLs with this alternate domain.
-                #     #        Helps when browsing from the alternate domain for testing.
-                #     #        Maybe a better solution is to only serve /meta/oembed/ hits from the
-                #     #        alternate domain.  Create an additional flask application instance??
-                #     #        Then we could set SERVER_NAME in both of them.
-                #     # TODO:  Sheesh, I shouldn't even be keeping this alternate domain browsing,
-                #     #        all unofficial domains should be redirected, e.g. www.un to un.
-                #     # SEE:  2-domain Flask, e.g. @application.route('/', host=SECOND_DOMAIN)
-                #     #       https://blog.easyaspy.org/post/7/2019-04-28-two-domains-one-flask
-
                 verbs = []
                 verbs += auth.get_category_idns_in_order()
                 verbs += [
@@ -1968,7 +1604,6 @@ def contribution_home(home_page_title):
                         OEMBED_CLIENT_PREFIX=secure.credentials.Options.oembed_client_prefix,
                         THUMB_MAX_WIDTH=THUMB_MAX_WIDTH,
                         THUMB_MAX_HEIGHT=THUMB_MAX_HEIGHT,
-                        YOUTUBE_PATTERNS=YOUTUBE_PATTERNS,
                         MEDIA_HANDLERS=[
                             static_code_url('media_youtube.js', _external=True),
                             static_code_url('media_instagram.js', _external=True),
@@ -2976,13 +2611,9 @@ if secure.credentials.Options.oembed_server_prefix is not None:
         #                  %2FICRC%2Fstatus%2F799571646331912192"
         url = flask.request.args.get('url')
         idn = flask.request.args.get('idn', default="(idn unknown)")
-        if matcher(url, NOEMBED_PATTERNS):
-            return noembed_render(url, idn)
-        # elif matcher(url, YOUTUBE_PATTERNS):
-        #     etc['matcher_groups'] = matcher_groups(url, YOUTUBE_PATTERNS)
-        #     return youtube_render(url, etc)
-        elif matcher(url, INSTAGRAM_PATTERNS):
-            return instagram_render(url, idn)
+        matched_groups = matcher_groups(url, NOEMBED_PATTERNS)
+        if matched_groups is not None:
+            return noembed_render(url, idn, matched_groups)
         else:
             oembed_dict = noembed_get(url)
             if 'html' in oembed_dict:
@@ -3002,7 +2633,7 @@ if secure.credentials.Options.oembed_server_prefix is not None:
             )
 
 
-def noembed_render(url, idn):
+def noembed_render(url, idn, matched_groups):
     """
     Render and wrangle noembed-supplied html.  For use by an iframe of embedded media.
 
@@ -3011,10 +2642,11 @@ def noembed_render(url, idn):
     Because it waits for iFrameResizer of the parent page to load first.
     At least I think that's why.
     """
+    url = fix_noembed_bug_with_instagram(url)
     oembed_dict = noembed_get(url)
     with FlikiHTML('html') as html:
         monty = dict(
-            matcher_groups=matcher_groups(url, NOEMBED_PATTERNS),
+            matched_groups=matched_groups,
             # TODO:  Do we really have to go through all patterns again?
             oembed=oembed_dict,
             target_origin=secure.credentials.Options.oembed_target_origin,
@@ -3037,45 +2669,23 @@ def noembed_render(url, idn):
         return html.doctype_plus_html()
 
 
+def fix_noembed_bug_with_instagram(url):
+    """noembed.com chokes on the www before instagram.com"""
+    return re.sub(
+        '^https?://(?:www\\.)?(?:instagram\\.com|instagr\\.am)',
+        'https://instagram.com',
+        url
+    )
+
+
 def noembed_get(media_url):
-    """Get the noembed scoop on an embedded url."""
+    """Get the noembed scoop on a media url."""
     noembed_request = 'https://noembed.com/embed?url=' + media_url
     oembed_dict = json_get(noembed_request)
-    if oembed_dict is None:
-        oembed_dict = dict(
-            error="Unable to load " + media_url
-        )
+    oembed_dict = oembed_dict or dict(
+        error="Unable to load " + media_url
+    )
     return oembed_dict
-
-
-def instagram_render(url, idn):
-    """Render instagram-supplied html.  For use by an iframe of embedded media."""
-    # TODO:  Pop-up is busted.  And there may be cruft here, like data-domain.
-    matched = re.search(r'/p/(.*)', url)
-    if matched:
-        code = matched.group(1)
-        code = code.rstrip('/')
-        is_pop_up = flask.request.args.get('is_pop_up', 'false') == 'true'
-        if is_pop_up:
-            media_url = 'https://instagram.com/p/{code}'.format(code=code)
-            return noembed_render(media_url, idn)
-        else:
-            thumbnail_url = 'https://instagram.com/p/{code}/media/?size=t'.format(code=code)
-            with FlikiHTML('html') as html:
-                domain = domain_from_url(url)
-                with html.head(newlines=True) as head:
-                    head.js('https://cdn.jsdelivr.net/npm/iframe-resizer@4.1.1/js/iframeResizer.contentWindow.js')
-                    head.style().raw_text('''
-                        body { margin: 0; }
-                        img { display: block; }   /* Prevents unsightly space below image. */
-                    \n''')
-                with html.body(newlines=True, **{'data-domain': domain}) as body:
-                    thumbnail_escaped = FlikiHTML.escape(thumbnail_url)
-                    with body.a(style='border:0', href=url, target='_blank') as a:
-                        a.img(src=thumbnail_escaped, **{'data-iframe-width': 'x'})
-                return html.doctype_plus_html()
-    else:
-        return "Unable to decode " + json.dumps(url)
 
 
 def error_render(message, title=""):
@@ -3585,11 +3195,25 @@ def json_get(url):
 
 
 def matcher_groups(url, pattern_list):
-    for i, pattern in enumerate(pattern_list):
+    """
+    Find a pattern that matches a url.
+
+    :param url:
+    :param pattern_list: - array of regular expressions
+    :return: None if no patterns matched
+             list of sub-groups if there were any match -- WHICH MIGHT BE AN EMPTY LIST
+
+    CAUTION:  may return [] on a match, if there were no sub-groups in the pattern,
+              and [] is falsy, just like None is.
+              So check if return value is identical to None, e.g.
+              if matcher_groups(u, p) is None: ...
+              if matcher_groups(u, p) is not None: ...
+    """
+    for pattern in pattern_list:
         match_object = re.search(pattern, url)
         if match_object:
             return list(match_object.groups())
-    return []
+    return None
 
 
 def matcher(url, pattern_list):

@@ -53,9 +53,6 @@
  * @param MONTY.IDN.CONTRIBUTE
  * @param MONTY.IDN.EDIT
  * @param MONTY.IDN.FIELD_FLUB
- * @param MONTY.IDN.HANDLE
- * @param MONTY.IDN.MATCH
- * @param MONTY.IDN.MEDIA
  * @param MONTY.IDN.QUOTE
  * @param MONTY.IDN.REORDER
  * @param MONTY.IDN.UNSLUMP_OBSOLETE
@@ -78,7 +75,6 @@
  * @param MONTY.w.obj
  * @param MONTY.w.txt
  * @param MONTY.w.num
- * @param MONTY.YOUTUBE_PATTERNS
  * @param talkify
  *
  * @property word
@@ -129,9 +125,6 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
 
     var MS_IFRAME_RECOVERY_CHECK = 5000;
     // TODO:  3 seconds seemed to brief, lots of churn.
-
-    var ALLOW_THUMBNAIL_RESOLUTION_SELECTION = false;
-    var DEFAULT_THUMBNAIL_RESOLUTION = 'mqdefault';
 
     var MEDIA_HANDLER_LOAD_SECONDS = 10.0;
 
@@ -290,27 +283,8 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     });
 
     // A media handler is a JavaScript file that calls window.qiki.media_register()
-    // A media pattern is a regular expression associated with a media handler.
     var media_handlers = [];   // array of handlers:  {url: '...', media: {...}, ...}
-    // var media_patterns = {};   // map idn to pattern (regexp, handler, etc.)
-    // var INSTAGRAM_HANDLER_IDN = 99899;   // HACK
     var isFullScreen;
-
-
-    function do_live_media_thumbs() {
-        if (ALLOW_THUMBNAIL_RESOLUTION_SELECTION) {
-            return $('#thumb-res').val() === 'live';
-        } else {
-            return false;
-        }
-    }
-    function media_thumb_resolution() {
-        if (ALLOW_THUMBNAIL_RESOLUTION_SELECTION) {
-            return $('#thumb-res').val();
-        } else {
-            return DEFAULT_THUMBNAIL_RESOLUTION;
-        }
-    }
 
 
     /////////////////////////////////////////////////////////////////////////////////////////
@@ -405,8 +379,6 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         $('#resume-button').on('click', function () { bot.resume(); });
         $(  '#stop-button').on('click', function () { bot.stop(); });
         $(  '#skip-button').on('click', function () { bot.skip(); });
-
-        $('#thumb-res').on('change', function () { rebuild_all_render_bars(); });
 
         $('#enter_some_text, #enter_a_caption')
             .on('paste change input keyup', post_it_button_looks)
@@ -1249,9 +1221,6 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         is_youtube: { get: function () {
             return has(['youtube', 'youtu_be'], this.media_domain);
         }},
-        is_media: { get: function () {
-            return this.$sup.hasClass('render-media');
-        }},
         $iframe: { get: function () {
             return this.$render_bar.find('iframe');
         }},
@@ -1269,16 +1238,18 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         }},
         is_my_category: { get: function () {
             return this.category_id === MONTY.IDN.CAT_MY.toString();
+        }},
+        is_media: { get: function () {
+            return could_be_url(this.content);
+        }},
+        content: { get: function () {
+            return this.$cont.text();
         }}
     });
 
     Contribution.prototype.exists = function Contribution_exists() {
         // noinspection JSConstructorReturnsPrimitive
         return this.$sup.length === 1;
-    };
-
-    Contribution.prototype.text = function Contribution_text() {
-        return this.$cont.text();
     };
 
     /**
@@ -1453,18 +1424,18 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             console.log("ZERO-IFRAME, RECOVERY", $iframe.attr('id'));
         }
     };
-
-    function youtube_id_from_url(url) {
-        var youtube_id = null;
-        looper(MONTY.YOUTUBE_PATTERNS, function (_, pattern) {
-            var match_object = url.match(RegExp(pattern));
-            if (match_object && match_object.length >= 1) {
-                youtube_id = match_object[1];
-                return false;
-            }
-        });
-        return youtube_id;
-    }
+    //
+    // function youtube_id_from_url(url) {
+    //     var youtube_id = null;
+    //     looper(MONTY.YOUTUBE_PATTERNS, function (_, pattern) {
+    //         var match_object = url.match(RegExp(pattern));
+    //         if (match_object && match_object.length >= 1) {
+    //             youtube_id = match_object[1];
+    //             return false;
+    //         }
+    //     });
+    //     return youtube_id;
+    // }
 
     /**
      * (Re)build the render bar element contents, using the media URL in the contribution text.
@@ -1477,9 +1448,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         // NOTE:  that.$iframe may not exist yet, e.g. on page reload, or entering a new cont.
         //        If it did exist it gets displaced here, e.g. after an edit.
         var that = this;
-        var media_url = that.text();
-        that.$sup.addClass('render-media');
-        that.$sup.attr('data-domain', sanitized_domain_from_url(media_url));
+        that.$sup.attr('data-domain', sanitized_domain_from_url(that.content));
 
         // var media_pattern = that.$sup.data('media-pattern');
         // if (
@@ -1497,121 +1466,80 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                 scan.handler.media.description_short,
                 scan.match_object.slice(1).join(" ")
             );
-            scan.handler.media.render_thumb(that, media_url, scan.match_object);
-        } else if (do_live_media_thumbs()) {
-            that.live_media_iframe(media_url);
+            scan.handler.media.render_thumb(that, scan.match_object);
+        // } else if (do_live_media_thumbs()) {
+        //     that.live_media_iframe(media_url);
         } else {
-            var do_we_need_to_bother_with_oembed = true;
-            if (that.is_youtube) {
-                var youtube_id = youtube_id_from_url(media_url);
-                if (youtube_id !== null) {
-                    var thumb_url = youtube_mq_url(youtube_id);
-                    that.thumb_media_img(
-                        media_url,
-                        thumb_url,
-                        "YouTube page for " + that.caption_text,
-                        function youtube_img_error() {
-                            console.warn(
-                                "YouTube broken thumb",
-                                thumb_url,
-                                "-- revert to iframe"
-                            );
-                            that.live_media_iframe(media_url);
-                        }
-                    );
-                    do_we_need_to_bother_with_oembed = false;
-                }
-            }
-            if (do_we_need_to_bother_with_oembed) {
-                get_oembed("thumb", media_url, function got_thumb_oembed(oembed) {
-                    if (typeof oembed.error === 'undefined') {
-                        if (typeof oembed.thumbnail_url === 'string') {
-                            that.thumb_media_img(
-                                media_url,
-                                oembed.thumbnail_url,
-                                oembed.caption_for_media,
-                                function thumb_url_error() {
-                                    console.warn(
-                                        that.media_domain,
-                                        "busted thumb",
-                                        oembed.thumbnail_url,
-                                        "-- revert to iframe"
-                                    );
-                                    that.live_media_iframe(media_url);
-                                }
-                            );
-                        } else {   // oembed data is missing a thumbnail URL
-                            that.live_media_iframe(media_url);
-                        }
-                    } else {   // oembed error message
-                        var error_message = oembed.error;
-                        // noinspection JSIncompatibleTypesComparison
-                        if (that.media_domain !== 'no_domain') {
-                            error_message += " for '" + that.media_domain + "'";
-                        }
-                        that.$render_bar.empty().text(error_message).addClass('oembed-error');
-                        // NOTE:  How the text gets its peachy background color.
-
-                        that.$sup.addClass('noembed-error');
-                        // NOTE:  How non-live thumbnails skip the bot.
+            get_oembed("thumb", that.content, function got_thumb_oembed(oembed) {
+                if (typeof oembed.error === 'undefined') {
+                    if (typeof oembed.thumbnail_url === 'string') {
+                        that.thumb_image(
+                            oembed.thumbnail_url,
+                            oembed.caption_for_media,
+                            function thumb_url_error() {
+                                console.warn(
+                                    that.media_domain,
+                                    "busted thumb",
+                                    oembed.thumbnail_url,
+                                    "-- revert to iframe"
+                                );
+                                that.live_media_iframe(that.content);
+                            }
+                        );
+                    } else {   // oembed data is missing a thumbnail URL
+                        that.live_media_iframe(that.content);
                     }
-                });
-                // that.$render_bar.empty().append(media_thumb_resolution());
-                // that.$render_bar.empty().append($.toJSON(oembed));
-            }
+                } else {   // oembed error message
+                    var error_message = oembed.error;
+                    // noinspection JSIncompatibleTypesComparison
+                    if (that.media_domain !== 'no_domain') {
+                        error_message += " for '" + that.media_domain + "'";
+                    }
+                    that.$render_bar.empty().text(error_message).addClass('oembed-error');
+                    // NOTE:  How the text gets its peachy background color.
+
+                    that.$sup.addClass('noembed-error');
+                    // NOTE:  How non-live thumbnails skip the bot.
+                }
+            });
         }
     };
 
-    /**
-     * Generate medium-quality thumbnail URL from 11-character YouTube id.
-     *
-     * THANKS:  https://stackoverflow.com/a/2068371/673991
-     *
-     * @param youtube_id - e.g. '3SwNXQMoNps'
-     * @return {string} - e.g. 'https://img.youtube.com/vi/3SwNXQMoNps/mqdefault.jpg'
-     */
-    function youtube_mq_url(youtube_id) {
-        return 'https://img.youtube.com/vi/' + youtube_id + '/mqdefault.jpg';
-    }
-
-    Contribution.prototype.thumb_media_img = function Contribution_thumb_media_img(
-        media_url,
-        url_thumbnail_image,
-        caption,
-        img_error_callback
+    Contribution.prototype.thumb_image = function Contribution_thumb_image(
+        thumb_url,
+        thumb_title,
+        error_callback
     ) {
         var that = this;
         var $a = $('<a>', {
             id: 'thumb_' + that.id_attribute,
             class: 'thumb-link',
-            href: media_url,
+            href: thumb_url,
             target: '_blank',
-            title: caption
+            title: thumb_title
         });
         // noinspection HtmlRequiredAltAttribute,RequiredAttributes
         var $img = $('<img>', {
             class: 'thumb thumb-loading',
-            alt: caption
+            alt: thumb_title
         });
         that.$render_bar.empty().append($a);
         $a.append($img);
         that.fix_caption_width('thumb loading');
-        $img.one('load.thumb', function render_img_load() {
-            $img.off('.thumb');
+        $img.one('load.thumb1', function render_img_load() {
+            $img.off('.thumb1');
             $img.removeClass('thumb-loading');
             $img.addClass('thumb-loaded');
             that.fix_caption_width('thumb loaded');
         });
-        $img.one('error.thumb', function render_img_error() {
-            $img.off('.thumb');
-            img_error_callback();
+        $img.one('error.thumb1', function render_img_error() {
+            $img.off('.thumb1');
+            console.log("YouTube broken thumb", thumb_url);
+            error_callback();
         });
-        var src = url_thumbnail_image;
-        if (that.is_youtube) {
-            src = src.replace(/hqdefault/, media_thumb_resolution());
-        }
-        // NOTE:  .src is set below so either load or error above is sure to happen.
-        $img.attr('src', src);
+        // NOTE:  .src is set after the load and error event handlers,
+        //        so one of those handlers is sure to get called.
+        $img.attr('src', thumb_url);
     };
 
     Contribution.prototype.live_media_iframe = function Contribution_live_media_iframe(
@@ -2050,7 +1978,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     }
 
     function thumb_click(evt) {
-        if (! check_contribution_edit_dirty(false, true)) {
+        if ( ! check_contribution_edit_dirty(false, true)) {
             var cont = Contribution_from_element(this);
             console.log("thumb click", cont.id_attribute);
             pop_up(cont, true);
@@ -2179,7 +2107,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             //        Tends to prevent scrollbars from spontaneously appearing.
             //        Someday a less crude way would be good.
 
-            pop_cont.live_media_iframe(pop_cont.text(), more_relay_parameters);
+            pop_cont.live_media_iframe(pop_cont.content, more_relay_parameters);
             // NOTE:  This is what overrides the thumbnail and makes it a video.
 
             $popup.css({'background-color': 'rgba(0,0,0,0)'});
@@ -2224,7 +2152,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                     var $pop_cont = $popup.find('.contribution');
                     console.assert($pop_cont.length === 1, $popup);
                     size_adjust($pop_cont, POPUP_WIDTH_MAX_EM, POPUP_HEIGHT_MAX_EM);
-                    var pop_text = $pop_cont.text();
+                    var pop_text = $pop_cont.content;
 
                     utter = new window.SpeechSynthesisUtterance(pop_text);
                     js_for_contribution.utter = utter;
@@ -2840,7 +2768,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             var duplicate_id = null;
             Contribution_loop(function (cont) {
                 // TODO:  Instead, pass a category filter to Contribution_loop() for my-category.
-                if (cont.text() === contribution_text && cont.is_my_category) {
+                if (cont.content === contribution_text && cont.is_my_category) {
                     duplicate_id = cont.id_attribute;
                     return false;
                 }
@@ -2879,7 +2807,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
      * Pasted or dropped contribution.
      *
      * @param what - 'paste' or 'drop' or 'thumb'
-     * @param {string} media_url - that was pasted or dropped - POSSIBLY a URL.
+     * @param media_url - that was pasted or dropped - POSSIBLY a URL.
      * @param {function} oembed_handler - passed the oembed associative array, augmented with:
      *                                    .caption_for_media = caption or author or error message
      * @return {boolean} - true means we should eventually get a callback
@@ -3374,7 +3302,9 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         $(window.document.body).empty();
         $(window.document.body).addClass('dirty-nowhere');
 
+        var $up_top_spacer = $('<div>', {id: 'up-top-spacer'});
         var $up_top = $('<div>', {id: 'up-top'});
+        $(window.document.body).append($up_top_spacer);
         $(window.document.body).append($up_top);
 
         var $status_prompt = $('<div>', {id: 'status-prompt'});
@@ -3401,23 +3331,6 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             .append($('<option>', {value: PLAY_BOT_FROM_MY}).text("from my playlist"))
             .append($('<option>', {value: PLAY_BOT_FROM_OTHERS}).text("from others playlist"))
         );
-        if (ALLOW_THUMBNAIL_RESOLUTION_SELECTION) {
-            var $thumb_res = $('<select>', {id: 'thumb-res'});
-            // noinspection SpellCheckingInspection
-            looper([
-                'live',
-                '0', '1', '2', '3',
-                    'hqdefault',
-                    'mqdefault',
-                      'default',
-                    'sddefault',
-                'maxresdefault'
-            ], function (_, name) {
-                $thumb_res.append($('<option>', {value: name}).text(name));
-            });
-            $bot.append($thumb_res);
-            $bot.append("thumbnails");
-        }
         $up_top.append($bot);
 
         var $login_prompt = $('<div>', {id: 'login-prompt', title: "your idn is " + MONTY.me_idn});
@@ -3586,61 +3499,6 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                         //        but by then x will have been displaced by A's edit word.
                     }
                     break;
-                // case MONTY.IDN.HANDLE:
-                //     handler_idn = word.idn;
-                //     handler_url = word.txt;
-                //     console.log("Media handler defined:", handler_idn,handler_url);
-                //     media_handlers[handler_idn] = {
-                //         idn: handler_idn,
-                //         url: handler_url,
-                //         need_load: false,
-                //         did_load: false,
-                //         did_fail: false,
-                //         did_register: false,
-                //         num_handled: 0
-                //     };
-                //     break;
-                // case MONTY.IDN.MATCH:
-                //     handler_idn = word.obj;
-                //     var pattern_idn = word.idn;
-                //     var pattern_string = word.txt;
-                //     var media_handler = media_handlers[handler_idn];
-                //     if (is_defined(media_handler)) {
-                //         var pattern_regexp;
-                //         try {
-                //             pattern_regexp = new RegExp(pattern_string);
-                //         } catch (e) {
-                //             console.warn(
-                //                 "Media pattern", pattern_idn,
-                //                 "is a bad regular expression", pattern_string,
-                //                 e.message
-                //             );
-                //             pattern_regexp = null;
-                //         }
-                //         if (pattern_regexp !== null) {
-                //             // console.log(
-                //             //     "Media pattern defined:", pattern_idn,
-                //             //     pattern_string,
-                //             //     "handled by", media_handler.idn
-                //             // );
-                //             // EXAMPLE:  Media pattern defined: 3288
-                //             //           https?://(?:[^\.]+\.)?(?:youtu\.be|youtube\.com/embed)/([a-zA-Z0-9_-]+)
-                //             //           handled by 2222
-                //             media_patterns[pattern_idn] = {
-                //                 idn: pattern_idn,
-                //                 string: pattern_string,
-                //                 regexp: pattern_regexp,
-                //                 handler: media_handler,
-                //                 num_match: 0
-                //             };
-                //         }
-                //     } else {
-                //         console.warn(
-                //             "Unrecognized media handler", handler_idn,
-                //             "for pattern", pattern_idn
-                //         );
-                //     }
-                //     break;
                 default:
                     if (has(MONTY.cat.order, word.vrb)) {
                         if (has($sup_contributions, word.obj)) {
@@ -3744,104 +3602,61 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             $categories[MONTY.IDN.CAT_MY].append($drag_to_my_blurb);
         }
 
-        // TODO:  Make parts of the following re-entrant, so it can be called after
-        //        contributions are posted or edited.
 
-        assign_media_patterns_and_flag_handlers_to_load();
-
-
-
-        // media_handlers[INSTAGRAM_HANDLER_IDN] = {
-        //     idn: INSTAGRAM_HANDLER_IDN,
-        //     url: MONTY.MEDIA_HANDLERS[1],   // HACK
-        //     need_load: true,
-        //     did_load: false,
-        //     did_fail: false,
-        //     did_register: false,
-        //     num_handled: 0
-        // };
 
         looper(MONTY.MEDIA_HANDLERS, function (_, media_handler_url) {
-            /*var new_handler_count = */media_handlers.push({
+            media_handlers.push({
                 url: media_handler_url,
                 did_load: false,
                 did_fail: false,
                 did_register: false,
-                media: null
+                media: null,
+                $script: null
             });
-            // var new_handler_index = new_handler_count - 1;
-            // media_handlers[new_handler_index].idn = new_handler_index;
         });
-
-
-
-
-        // Load the handlers we actually need.
-        // var promises = [];
-        var first_load_crisis = true;
+        var first_script_error = true;
         looper(media_handlers, function (handler_index, handler) {
-            // if (handler.need_load) {
-
-                // _media_object = null;
-                // var getter_promise = $.getScript(handler_url).done(function handler_script_done(
-                //     script_itself,
-                //     result_name,
-                //     jqxhr
-                // ) {
-                //     handler_info.media = _media_object;
-                //     console.log(
-                //         "Handler initialized!",
-                //         result_name,   // 'success'
-                //         handler_url,
-                //         script_itself.length,
-                //         jqxhr,
-                //         _media_object
-                //     );
-                //     _media_object = null;
-                // });
-                // promises.push(getter_promise);
-                // THANKS?  Is .done() better?  https://stackoverflow.com/a/39526723/673991
-
-                handler.$script = $('<script>');
-                // TODO:  RequireJS instead?
-                handler.$script.data('handler-index', handler_index);
-                $(window.document.body).append(handler.$script);
-                handler.$script.one('load.script2', function () {
-                    handler.$script.off('.script2');
-                    handler.did_load = true;
-                    // handler.media = _media_object;
-                    console.log(
-                        "Media handler loaded:", handler.$script.attr('src'),
-                        "idn", handler_index, "==", handler.$script.data('handler-index')
-                    );
-                    if ( ! handler.did_register) {
-                        console.error("HANDLER", handler.idn, "DID NOT REGISTER", handler.url);
-                        // TODO:  Does loaded REALLY always include executed?  We assume so here.
-                        //        https://stackoverflow.com/q/14565365/673991
-                    }
-                    are_we_done_loading_handlers();
-                });
-                handler.$script.one('error.script2', function (evt) {
-                    handler.$script.off('.script2');
-                    handler.did_fail = true;
+            handler.$script = $('<script>');
+            handler.$script.data('handler-index', handler_index);
+            handler.$script.one('load.script2', function () {
+                handler.$script.off('.script2');
+                handler.did_load = true;
+                console.log(
+                    "Media handler loaded:", handler.$script.attr('src'),
+                    "idn", handler_index, "==", handler.$script.data('handler-index')
+                );
+                if ( ! handler.did_register) {
                     console.error(
-                        "Media handler", handler.idn,
-                        "error, script", handler.url,
-                        evt
+                        "HANDLER", handler_index,
+                        "LOADED BUT DID NOT REGISTER",
+                        handler.url
                     );
-                    if (first_load_crisis) {
-                        first_load_crisis = false;
-                        alert("Unable to register all media handlers. You may want to reload.");
-                        // FIXME:  Whole page is busted if we can't load all media handlers.
-                        //         Is there a less troglodytic way to handle this?
-                        //         How about a red status message up-top?
-                        //         And/or a red line around media we can't handle,
-                        //         if that's any better.
-                    }
-                });
-                handler.$script.attr('src', handler.url);
-                // SEE:  src after on-error, https://api.jquery.com/error/#entry-longdesc
-            // }
+                    // TODO:  Does the loaded event always happen after the script has executed?
+                    //        We assume so here.
+                    //        https://stackoverflow.com/q/14565365/673991
+                }
+                are_we_done_loading_handlers();
+            });
+            handler.$script.one('error.script2', function (evt) {
+                handler.$script.off('.script2');
+                handler.did_fail = true;
+                console.error(
+                    "Media handler", handler_index,
+                    "error, script", handler.url,
+                    evt
+                );
+                if (first_script_error) {
+                    first_script_error = false;
+                    alert("Unable to register all media handlers. You may want to reload.");
+                    // FIXME:  Whole page is busted if we can't load all media handlers.
+                    //         Is there a better way to handle this?
+                    //         How about a red status message up-top?
+                    //         And/or a red line around media we can't handle.
+                }
+            });
+            $(window.document.body).append(handler.$script);
+            handler.$script.attr('src', handler.url);
+            // SEE:  Set src after on-error, https://api.jquery.com/error/#entry-longdesc
         });
         setTimeout(function () {
             var all_ok = true;
@@ -3872,44 +3687,16 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                 num_registered, "registered"
             );
         }, MEDIA_HANDLER_LOAD_SECONDS * 1000);
-        // $.when.apply($, promises).then(function () {
-        //     looper(pattern_table, function (_, h_and_p) {
-        //         h_and_p.media = handlers_we_need[h_and_p.handler_url].media;
-        //     });
-        //     console.log("Handlers", handlers_we_need);
-        //     console.log("Patterns", pattern_table);
-        //     rebuild_all_render_bars();
-        // });
     }
-
-    // var _media_object;
-    // TODO:  Wiser concurrency, or asynchronicity, or something.
-    //        https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Statements/async_function
 
     window.qiki = window.qiki || {};
     window.qiki.media_register = function js_for_contribution_media_register(media) {
-        // console.assert(_media_object === null, _media_object);   // clue to out-of-order media call.
-        // _media_object = media;
-        // $(media.current_script).attr('data_media', 'moo');
         var $script = $(window.document.currentScript);
         console.assert($script.length === 1, "currentScript broke", window.document.currentScript);
         var handler_index = $script.data('handler-index');
         console.assert(is_defined(handler_index), "handler-index broke", $script);
         var handler = media_handlers[handler_index];
         console.assert(is_defined(handler), "handler object broke", handler_index, media_handlers);
-        // if (handler_index === INSTAGRAM_HANDLER_IDN) {
-        //     looper(media.url_patterns, function (index, url_pattern) {
-        //         console.log("Instagram pattern", url_pattern);
-        //         var pattern_idn = INSTAGRAM_HANDLER_IDN + 100 + index;
-        //         media_patterns[pattern_idn] = {
-        //             idn: pattern_idn,
-        //             string: url_pattern,
-        //             regexp: new RegExp(url_pattern),
-        //             handler: handler,
-        //             num_match: 0
-        //         };
-        //     });
-        // }
         if (is_defined(handler)) {
             console.log("Media handler registered:", media.description_long);
             handler.media = media;
@@ -3917,116 +3704,55 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         }
     };
 
-    function assign_media_patterns_and_flag_handlers_to_load() {
-        // TODO:  This should also happen when any contribution is created or edited.
-        // Which handlers are matched by some contribution?
-        // looper(media_handlers, function (_, handler) {
-        //     handler.need_load = false;
-        //     handler.num_handled = 0;
-        // });
-        // looper(media_patterns, function (_, pattern) {
-        //     pattern.num_match = 0;
-        // });
-        // Contribution_loop(function each_handling_possibility(cont) {
-        //     var patterns_that_matched = [];
-        //     var match_objects_that_matched = [];
-        //     var might_be_a_media_url = cont.text();
-        //     looper(media_patterns, function (_, pattern) {
-        //         var match_object = might_be_a_media_url.match(pattern.regexp);   // the big match
-        //         if (match_object !== null) {
-        //             patterns_that_matched.push(pattern);
-        //             match_objects_that_matched.push(match_object);
-        //         }
-        //     });
-        //
-        //     function use_match(n) {
-        //         var media_pattern = patterns_that_matched[n];
-        //         media_pattern.handler.need_load = true;
-        //         cont.$sup.data('media-pattern', media_pattern);
-        //         cont.$sup.data('media-match', match_objects_that_matched[n]);
-        //         // CAUTION:  data names are inexplicably fudged to camel case by the HTML DOM
-        //         // SEE:  https://developer.mozilla.org/en-US/docs/Web/API/HTMLOrForeignElement/dataset
-        //         // SEE:  https://html.spec.whatwg.org/multipage/dom.html#dom-dataset
-        //         // SEE:  comments, https://stackoverflow.com/a/20985285/673991
-        //         media_pattern.num_match++;
-        //         media_pattern.handler.num_handled++;
-        //     }
-        //
-        //     var num_matches = patterns_that_matched.length;
-        //     switch (num_matches) {
-        //     case 0:
-        //         // Guess it's not a media url.  Or not one we can handle.
-        //         cont.$sup.removeData('media-pattern');
-        //         break;
-        //     case 1:
-        //         use_match(0);
-        //         break;
-        //     default:
-        //         // console.warn(
-        //         //     patterns_that_matched.length.toString(),
-        //         //     "media pattern matches!",
-        //         //     patterns_that_matched.map(function (pattern) { return pattern.idn; }).join(" "),
-        //         //     might_be_a_media_url
-        //         // );
-        //         // EXAMPLE:  contribution.js?mtime=1582501822.196:3932 13 media pattern matches!
-        //         //           2174 2186 2217 2223 2252 2999 3001 3003 3005 3010 3271 3287 3343
-        //         //           https://www.youtube.com/watch?v=3SwNXQMoNps&rel=0
-        //
-        //         // TODO:  Referee among multiple handlers.
-        //         //        (And btw it should be quite benign if multiple patterns lead to the SAME
-        //         //        handler URL.)
-        //         use_match(num_matches - 1);
-        //         break;
-        //     }
-        // });
-    }
-
     /**
      * Is this media URL handled by a registered handler?
      *
      * @return {{
+     *     is_handled: boolean,
      *     handler: object | null,
-     *     match_object: object | null,
-     *     is_handled: boolean
+     *     handler_index: number | null,
+     *     match_object: object | null
      * }}
      */
     Contribution.prototype.handler_scan = function contribution_handler_scan() {
         var that = this;
-        var might_be_a_media_url = that.text();
-        var return_object = {
+        var scan_results = {
             is_handled: false,
             handler: null,
             handler_index: null,
             match_object: null
         };
-        looper(media_handlers, function (handler_index, media_handler) {
-            if (media_handler.did_register) {
-                console.assert(is_specified(media_handler.media), media_handler);
-                looper(media_handler.media.url_patterns, function (_, url_pattern) {
-                    var match_object = might_be_a_media_url.match(url_pattern);
-                    if (match_object !== null) {
-                        return_object = {
-                            is_handled: true,
-                            handler: media_handler,
-                            handler_index: handler_index,
-                            match_object: match_object
-                        };
-                        return false;
-                        // NOTE:  Exit url pattern loop, first pattern wins.
-                    }
-                });
-                // NOTE:  Stay inside handler loop, last handler wins.
-            }
-        });
-        // TODO:  Profile this double loop.
-        //        Especially when it's a triple loop inside rebuild_all_render_bars()
-        return return_object;
+        if (that.is_media) {
+            looper(media_handlers, function handler_loop(handler_index, media_handler) {
+                if (media_handler.did_register) {
+                    console.assert(is_specified(media_handler.media), media_handler);
+                    console.assert(is_specified(media_handler.media.url_patterns), media_handler.media);
+                    looper(media_handler.media.url_patterns, function pattern_loop(_, url_pattern) {
+                        var match_object = that.content.match(url_pattern);
+                        if (match_object !== null) {
+                            scan_results = {
+                                is_handled: true,
+                                handler: media_handler,
+                                handler_index: handler_index,
+                                match_object: match_object
+                            };
+                            return false;
+                            // NOTE:  Exit url pattern loop, first pattern wins.
+                        }
+                    });
+                    // NOTE:  Stay inside handler loop, last handler wins.
+                }
+            });
+            // TODO:  Profile this double loop.
+            //        Especially when it's a triple loop inside rebuild_all_render_bars()
+        }
+        return scan_results;
     };
 
     function are_we_done_loading_handlers() {
         var all_loaded = true;
         looper(media_handlers, function (_, handler) {
-            if (/*handler.need_load &&*/ ! handler.did_load) {
+            if ( ! handler.did_load) {
                 all_loaded = false;
                 return false;
             }
@@ -4041,7 +3767,6 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         if (all_loaded) {
             rebuild_all_render_bars();
             console.log("Media handlers", media_handlers);
-            // console.log("Media patterns", media_patterns);
         }
     }
 
@@ -4058,7 +3783,6 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     }
 
     function rebuild_all_render_bars() {
-        assign_media_patterns_and_flag_handlers_to_load();
         $('.sup-contribution').each(function () {
             rebuild_a_render_bar(this);
         });
@@ -4309,19 +4033,17 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
 
     function rebuild_a_render_bar(any_element_in_a_contribution) {
         // TODO:  This function and all his playmates should become Contribution methods.
-        var $sup_cont = $(any_element_in_a_contribution).closest('.sup-contribution');
-        console.assert($sup_cont.length === 1, $sup_cont, any_element_in_a_contribution);
-        var $cont = $sup_cont.find('.contribution');
-        if (can_i_embed_it($cont.text())) {
-            var cont = Contribution_from_element($sup_cont);   // Before it gets its $iframe!
+        var cont = Contribution_from_element(any_element_in_a_contribution);
+        if (cont.is_media) {
+            cont.$sup.addClass('render-media');
             cont.render_media();
         } else {
-            render_text($sup_cont);
+            cont.$sup.removeClass('render-media');
+            render_text(cont.$sup);
         }
     }
 
     function render_text($sup_cont) {
-        $sup_cont.removeClass('render-media');
         $sup_cont.removeAttr('data-domain');
         var $render_bar = $sup_cont.find('.render-bar');
         $render_bar.empty();
@@ -4332,10 +4054,6 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
 
     function could_be_url(text) {
         return starts_with(text, 'http://') || starts_with(text, 'https://');
-    }
-
-    function can_i_embed_it(text) {
-        return could_be_url(text);
     }
 
     /**

@@ -25,7 +25,7 @@
  * @param {function} $.param
  *
  * @param {object}      MONTY
- * @param {array}       MONTY.matcher_groups
+ * @param {array}       MONTY.matched_groups
  * @param {object|null} MONTY.oembed
  * @param {object}      MONTY.oembed.error
  * @param {object}      MONTY.oembed.height
@@ -52,6 +52,7 @@ function embed_content_js(window, $, MONTY) {
     //        from the provider may not have enough time to transmogrify
     //        itself into whatever elements it's going to become.
     //        So the "fix_embedded_content" may be incomplete.
+
     // TODO:  Why does twitter + IE11 + fit_height() go on changing height in EVERY repetition?
 
     var SHOW_YOUTUBE_THUMBS = false;  // true=thumbnails, false=live tiny videos
@@ -132,7 +133,7 @@ function embed_content_js(window, $, MONTY) {
                             height: MONTY.oembed.height,
                             type: 'text/html',
                             src: youtube_embed_url({
-                                enablejsapi: '1'
+                                enablejsapi: '1'   // NOTE:  this works
 
                                 // , origin: 'http://example.com'
                                 // , origin: 'locavore.unslumping.org'
@@ -157,13 +158,14 @@ function embed_content_js(window, $, MONTY) {
                                mozallowFullScreen : 'true',
                             webkitallowFullScreen : 'true',
                             allow: 'autoplay; fullscreen'
-                            // enablejsapi: '1'
+                            // enablejsapi: '1'   // NOTE:  this doesn't work
                         });
-                        // SEE:  enablejsapi,
+                        // SEE:  enablejsapi attribute on iframe element,
                         //       https://developers.google.com/youtube/iframe_api_reference#Examples
                         // THANKS:  Doesn't work as iframe element attribute,
                         //          https://stackoverflow.com/q/51109436/673991
-                        //          Required instead in src query string for onReady to get called.
+                        //          Required instead in src query string,
+                        //          otherwise onReady is never called.
                         // THANKS:  inner full screen, https://stackoverflow.com/a/25308193/673991
                         //          Firefox requires both inner and outer iframes to have
                         //          allowFullScreen attribute(s) set.  (This iframe is inner.)
@@ -174,16 +176,6 @@ function embed_content_js(window, $, MONTY) {
                         //              and redefined as allow="fullscreen".
 
                         tag_width($you_frame);
-                        // fit_width(MONTY.THUMB_MAX_WIDTH, $you_frame);
-                        // fit_height(MONTY.THUMB_MAX_HEIGHT, $you_frame);
-                        // fit_element(
-                        //     $you_frame,
-                        //     MONTY.THUMB_MAX_WIDTH,
-                        //     MONTY.THUMB_MAX_HEIGHT,
-                        //     function (report) {
-                        //         count_a_change(report)
-                        //     }
-                        // );
                         $you_frame.width(MONTY.THUMB_MAX_WIDTH);
                         $you_frame.height(MONTY.THUMB_MAX_HEIGHT);
                         $body.prepend($you_frame);
@@ -208,7 +200,9 @@ function embed_content_js(window, $, MONTY) {
                                                 parent_message('auto-play-begun', {
                                                     contribution_idn: contribution_idn
                                                 });
-                                                // NOTE:  Okay to yt_player.pauseVideo().
+                                                // NOTE:  Let contribution.js know that it's now
+                                                //        okay to send a 'pause' message,
+                                                //        which will cause yt_player.pauseVideo()
 
                                             }
                                             if (
@@ -339,7 +333,7 @@ function embed_content_js(window, $, MONTY) {
                             //         num_changes, "changes,",
                             //         "last", description_of_last_change,
                             //         "cycle", cycle_of_last_change, "of", POLL_REPETITIONS,
-                            //         // "codes", JSON.stringify(MONTY.matcher_groups),
+                            //         // "codes", JSON.stringify(MONTY.matched_groups),
                             //         "lag", lag_report()
                             //     );
                             // }
@@ -468,13 +462,16 @@ function embed_content_js(window, $, MONTY) {
     }
 
     function query_string_from_url(url) {
-        return $('<a>').prop('href', url).prop('search');
+        var $throw_away_hyperlink = $('<a>').prop('href', url);
+        var query_string = $throw_away_hyperlink.prop('search');
         // THANKS:  url parts, https://stackoverflow.com/a/28772794/673991
+        return query_string;
     }
     console.assert('?foo=bar' === query_string_from_url('https://example.com/?foo=bar'));
 
     function fix_embedded_content() {
         var $child = $body.children().first();
+        // noinspection JSUnresolvedFunction
         var $grandchild = $child.children().first();
         // NOTE:  flickr.com needs the $grandchild fit,
         //        which is an img-tag inside an a-tag.
@@ -487,21 +484,12 @@ function embed_content_js(window, $, MONTY) {
         //        which cause visual churn and slowness.
 
         tag_width($child);
-        // tag_width($child2);
         tag_width($grandchild);
 
         if (is_pop_up) {
             $body.css({width: oppressed_width, height: oppressed_height});
             $child.css({width: oppressed_width, height: oppressed_height});
         } else {
-            // fit_width(MONTY.THUMB_MAX_WIDTH, $grandchild);
-            // fit_width(MONTY.THUMB_MAX_WIDTH, $child);
-            // // fit_width(MONTY.THUMB_MAX_WIDTH, $body);
-            //
-            // fit_height(MONTY.THUMB_MAX_HEIGHT, $grandchild);
-            // fit_height(MONTY.THUMB_MAX_HEIGHT, $child);
-            // // fit_height(MONTY.THUMB_MAX_HEIGHT, $body);
-
             fit_element(
                 $grandchild,
                 MONTY.THUMB_MAX_WIDTH,
@@ -567,64 +555,23 @@ function embed_content_js(window, $, MONTY) {
         }
     }
 
+    /**
+     * Tell iFrameResizer this element should determine the width of the iframe.
+     *
+     * Requires the option widthCalculationMethod: 'taggedElement'
+     */
     function tag_width($element) {
         if ($element.length === 1 && ! is_defined($element.attr('data-iframe-width'))) {
             $element.attr('data-iframe-width', "x");
-            // NOTE:  Tag elements for width determination.  This is part of the
-            //        iFrameResizer option widthCalculationMethod: 'taggedElement'
-            //        The value of this attribute doesn't appear to matter.
+            // NOTE:  The value of this attribute doesn't appear to matter.
             count_a_change("tag_width");
         }
     }
 
-
-    // function fit_width(max_width, $element) {
-    //     if ($element.length === 1 && max_width + FIT_FORGIVENESS < $element.width()) {
-    //         var old_width = $element.width();
-    //         var old_height = $element.height();
-    //         var new_width = max_width;
-    //         var proportion = max_width / old_width;
-    //         var new_height = old_height * proportion;
-    //         $element.height(new_height);
-    //         $element.width(new_width);
-    //         // NOTE:  Once thought I saw a clue that order matters.
-    //         //        Or maybe I was just desperately trying stuff.
-    //         count_a_change(
-    //             $element[0].tagName + ".fit_width" + " " +
-    //             old_width.toFixed() + "x" +
-    //             old_height.toFixed() + " " +
-    //             new_width.toFixed() + "x" +
-    //             new_height.toFixed() + " " +
-    //             (proportion*100.0).toFixed(0) + "%"
-    //         );
-    //     }
-    // }
-    //
-    // function fit_height(max_height, $element) {
-    //     if ($element.length === 1 && max_height + FIT_FORGIVENESS < $element.height()) {
-    //         var old_height = $element.height();
-    //         var old_width = $element.width();
-    //         var new_height = max_height;
-    //         var proportion = max_height / old_height;
-    //         var new_width = old_width * proportion;
-    //         $element.width(new_width);
-    //         $element.height(new_height);
-    //         count_a_change(
-    //             $element[0].tagName + ".fit_height" + " " +
-    //             old_width.toFixed() + "x" +
-    //             old_height.toFixed() + " " +
-    //             new_width.toFixed() + "x" +
-    //             new_height.toFixed() + " " +
-    //             (proportion*100.0).toFixed(0) + "%"
-    //
-    //         );
-    //     }
-    // }
-
     function youtube_embed_url(additional_parameters) {
         additional_parameters = additional_parameters || {};
-        console.assert(MONTY.matcher_groups.length === 1);
-        var url_inner_iframe = YOUTUBE_EMBED_PREFIX + MONTY.matcher_groups[0];
+        console.assert(MONTY.matched_groups.length === 1);
+        var url_inner_iframe = YOUTUBE_EMBED_PREFIX + MONTY.matched_groups[0];
 
         // NOTE:  Now copy the t=NNN parameter from the outer URL
         //        to the start=NNN parameter of the inner URL
