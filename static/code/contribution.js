@@ -1381,12 +1381,14 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
 
         var scan = that.handler_scan();
         if (scan.is_handled) {
-            console.log(
-                "Sophisticated Media", that.id_attribute,
-                "handler", scan.handler_index,
-                scan.handler.media.description_short,
-                scan.match_object.slice(1).join(" ")
-            );
+            // console.log(
+            //     "Sophisticated Media", that.id_attribute,
+            //     "handler", scan.handler_index,
+            //     scan.handler.media.description_short,
+            //     scan.match_object.slice(1).join(" ")
+            // );
+            // EXAMPLE:  Sophisticated Media 3459 handler 0 youtube _SKdN1xQBjk
+            // EXAMPLE:  Sophisticated Media 994 handler 1 instagram BNCeThsAhVT
             scan.handler.media.render_thumb(that, scan.match_object);
         } else {
             get_oembed("thumb", that.content, function got_thumb_oembed(oembed) {
@@ -3540,10 +3542,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             handler.$script.one('load.script2', function () {
                 handler.$script.off('.script2');
                 handler.did_load = true;
-                console.log(
-                    "Media handler loaded:", handler.$script.attr('src'),
-                    "idn", handler_index, "==", handler.$script.data('handler-index')
-                );
+                console.log("Media handler loaded:", handler.$script.attr('src'));
                 if ( ! handler.did_register) {
                     console.error(
                         "HANDLER", handler_index,
