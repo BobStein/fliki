@@ -11,6 +11,7 @@
             // THANKS:  Media URL patterns, https://noembed.com/providers
         ],
         render_thumb: function youtube_render_thumb(cont, pattern_match_object) {
+            console.assert(pattern_match_object.length === 1, cont.content, pattern_match_object);
             var media_id = pattern_match_object[1];
             console.assert(typeof media_id === 'string' && media_id.length === 11);
             var thumbnail_url = 'https://img.youtube.com/vi/' + media_id + '/mqdefault.jpg';
