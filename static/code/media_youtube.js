@@ -7,7 +7,8 @@
         description_short: "youtube",   // should be unique within a domain
         description_long: "YouTube handler for qiki media applications",
         url_patterns: [
-            RegExp("^https?://(?:[^.]+\\.)?youtube\\.com/watch/?\\?(?:.+&)?v=([a-zA-Z0-9_-]+)")
+            RegExp("^https?://(?:[^.]+\\.)?youtube\\.com/watch/?\\?(?:.+&)?v=([a-zA-Z0-9_-]+)"),
+            RegExp("^https?://(?:[^.]+\\.)?(?:youtu\\.be|youtube\\.com/embed)/([a-zA-Z0-9_-]+)")
             // THANKS:  Media URL patterns, https://noembed.com/providers
         ],
         render_thumb: function youtube_render_thumb(cont, pattern_match_object) {
@@ -33,16 +34,16 @@
             );
         }
     };
-    function assert_match( url) {
-        var match_object = url.match(media.url_patterns[0]);
+    function assert_match(index, url) {
+        var match_object = url.match(media.url_patterns[index]);
         console.assert(match_object !== null, url);
         if (match_object !== null) {
             console.assert(match_object[1] === 'ID_11_CHARS', url);
         }
     }
-    assert_match('https://www.youtube.com/watch?v=ID_11_CHARS');
-    assert_match('https://www.youtube.com/watch?v=ID_11_CHARS&feature=em-uploademail');
-    assert_match('https://www.youtube.com/embed/ID_11_CHARS?start=1034&end=1247');
-    assert_match('https://youtu.be/ID_11_CHARS?t=42');
+    assert_match(0, 'https://www.youtube.com/watch?v=ID_11_CHARS');
+    assert_match(0, 'https://www.youtube.com/watch?v=ID_11_CHARS&feature=em-uploademail');
+    assert_match(1, 'https://www.youtube.com/embed/ID_11_CHARS?start=1034&end=1247');
+    assert_match(1, 'https://youtu.be/ID_11_CHARS?t=42');
     window.qiki.media_register(media);
 }(window, jQuery));
