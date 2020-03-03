@@ -529,9 +529,9 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                 // An even cheaper cheap-ass workaround:
                 // setTimeout(function () {
                 //     resizer_nudge_all();
-                // }, 10 * 1000);
+                // }, 10000);
 
-            }, 3 * 1000);
+            }, 3000);
             // NOTE:  If this delay is not enough, I don't think anything too bad happens.
             //        You might see briefly a wafer-thin iframe before it gives its children
             //        the data-iframe-width attribute that taggedElement needs.
@@ -1188,63 +1188,28 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     }
 
     Object.defineProperties(Contribution.prototype, {
-        $render_bar: { get: function () {
-            return this.$sup.find('.render-bar');
-        }},
-        $save_bar: { get: function () {
-            return this.$sup.find('.save-bar');
-        }},
-        $caption_bar: { get: function () {
-            return this.$sup.find('.caption-bar');
-        }},
-        $caption_span: { get: function () {
-            return this.$sup.find('.caption-span');
-        }},
-        caption_text: { get: function () {
-            return this.$caption_span.text();
-        }},
-        is_noembed_error: { get: function () {
-            return this.$sup.hasClass('noembed-error');
-        }},
-        media_domain: {
-            /**
-             * Compact domain for a media link (e.g. "youtube")
-             *
-             * @return {string|null} or null if not a link, or "no_domain" if bad link.
-             */
-            // TODO:  This JSDoc header STILL doesn't obviate the need for a
-            //        noinspection JSIncompatibleTypesComparison
-            get: function () {
-                return this.$sup.attr('data-domain') || null;
-            }
-        },
-        is_youtube: { get: function () {
-            return has(['youtube', 'youtu_be'], this.media_domain);
-        }},
-        $iframe: { get: function () {
-            return this.$render_bar.find('iframe');
-        }},
-        $img_thumb: { get: function () {
-            return this.$render_bar.find('img.thumb');
-        }},
-        iframe: { get: function () {
-            return this.$iframe.get(0) || null;
-        }},
-        $cat: { get: function () {
-            return this.$sup.closest('.category');
-        }},
-        category_id: { get: function () {
-            return this.$cat.attr('id');
-        }},
-        is_my_category: { get: function () {
-            return this.category_id === MONTY.IDN.CAT_MY.toString();
-        }},
-        is_media: { get: function () {
-            return could_be_url(this.content);
-        }},
-        content: { get: function () {
-            return this.$cont.text();
-        }}
+        $render_bar:      { get: function () {return this.$sup.find('.render-bar');}},
+        $save_bar:        { get: function () {return this.$sup.find('.save-bar');}},
+        $caption_bar:     { get: function () {return this.$sup.find('.caption-bar');}},
+        $caption_span:    { get: function () {return this.$sup.find('.caption-span');}},
+        caption_text:     { get: function () {return this.$caption_span.text();}},
+        is_noembed_error: { get: function () {return this.$sup.hasClass('noembed-error');}},
+        /**
+         * Compact domain for a media link (e.g. "youtube")
+         *
+         * @return {string|null} or null if not a link, or "no_domain" if bad link.
+         */
+        // TODO:  This JSDoc header STILL doesn't obviate the need for a
+        //        noinspection JSIncompatibleTypesComparison
+        media_domain:   { get: function () {return this.$sup.attr('data-domain') || null;}},
+        $iframe:        { get: function () {return this.$render_bar.find('iframe');}},
+        $img_thumb:     { get: function () {return this.$render_bar.find('img.thumb');}},
+        iframe:         { get: function () {return this.$iframe.get(0) || null;}},
+        $cat:           { get: function () {return this.$sup.closest('.category');}},
+        category_id:    { get: function () {return this.$cat.attr('id');}},
+        is_my_category: { get: function () {return this.category_id === MONTY.IDN.CAT_MY.toString();}},
+        is_media:       { get: function () {return could_be_url(this.content);}},
+        content:        { get: function () {return this.$cont.text();}}
     });
 
     Contribution.prototype.exists = function Contribution_exists() {
@@ -1354,37 +1319,13 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         if (overall_width > MIN_CAPTION_WIDTH) {
             if (equal_ish(overall_width, that.$caption_bar.outerWidth(), 1.0)) {
                 // width is already within 1 pixel, don't upset the UI.
-                // console.log(
-                //     that.id_attribute,
-                //     "iframe caption NOT tweaked",
-                //     that.$caption_bar.outerWidth().toFixed(1),
-                //     "~~",
-                //     overall_width.toFixed(1),
-                //     etc
-                // );
             } else {
-                // var w_old = that.$caption_bar.outerWidth();
-                // var proportion =  w_old ? overall_width / w_old : 0.0;
-                // console.log(
-                //     that.id_attribute + ".",
-                //     "caption tweak",
-                //     that.$caption_bar.outerWidth().toFixed(0), "->",
-                //     overall_width.toFixed(0),
-                //     (proportion*100.0).toFixed(0) + "%",
-                //     etc
-                // );
                 // EXAMPLE:  caption tweak 296 -> 162 55% thumb loading
                 // EXAMPLE:  caption tweak 221 -> 210 95% quote size adjust
                 that.$caption_bar.outerWidth(overall_width);
             }
         } else {
             // NOTE:  overall_width === 2 is common, but temporary
-            // console.log(
-            //     that.id_attribute,
-            //     "tiny iframe",
-            //     overall_width,
-            //     etc
-            // );
         }
     };
 
@@ -1424,18 +1365,6 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             console.log("ZERO-IFRAME, RECOVERY", $iframe.attr('id'));
         }
     };
-    //
-    // function youtube_id_from_url(url) {
-    //     var youtube_id = null;
-    //     looper(MONTY.YOUTUBE_PATTERNS, function (_, pattern) {
-    //         var match_object = url.match(RegExp(pattern));
-    //         if (match_object && match_object.length >= 1) {
-    //             youtube_id = match_object[1];
-    //             return false;
-    //         }
-    //     });
-    //     return youtube_id;
-    // }
 
     /**
      * (Re)build the render bar element contents, using the media URL in the contribution text.
@@ -1450,14 +1379,6 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         var that = this;
         that.$sup.attr('data-domain', sanitized_domain_from_url(that.content));
 
-        // var media_pattern = that.$sup.data('media-pattern');
-        // if (
-        //     is_specified(media_pattern) &&
-        //     is_specified(media_pattern.handler) &&
-        //     is_specified(media_pattern.handler.media)
-        // ) {
-        //     var media_match = that.$sup.data('media-match');
-
         var scan = that.handler_scan();
         if (scan.is_handled) {
             console.log(
@@ -1467,8 +1388,6 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                 scan.match_object.slice(1).join(" ")
             );
             scan.handler.media.render_thumb(that, scan.match_object);
-        // } else if (do_live_media_thumbs()) {
-        //     that.live_media_iframe(media_url);
         } else {
             get_oembed("thumb", that.content, function got_thumb_oembed(oembed) {
                 if (typeof oembed.error === 'undefined') {
