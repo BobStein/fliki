@@ -666,6 +666,13 @@ class Auth(object):
         if not self.has_session_qstring:
             print("NEWBIE")   # NOTE:  Should be very common
             self.session_new()
+            # TODO:  Instead of a new session, just record in session vars a few stats
+            #        Only record if they ever come back.
+            #        This in preparation to eliminate the torrent of boring anonymous session
+            #        words in the unslumping.org lex.  Presumably they're from digital ocean
+            #        monitoring.  But they could be hackers.
+            #        Or find some other way to ignore the monitoring traffic.
+            #        E.g. see what's in access_log.
         else:
             try:
                 session_qstring = self.session_qstring
