@@ -663,47 +663,51 @@ class Auth(object):
         self.is_anonymous = is_anonymous
         self.ip_address_txt = ip_address_txt
 
-        try:
-            session_qstring = self.session_qstring
-        except (KeyError, IndexError, AttributeError):
-            print("BAD QSTRING")
+        if not self.has_session_qstring:
+            print("NEWBIE")   # NOTE:  Should be very common
             self.session_new()
         else:
             try:
-                session_uuid = self.session_uuid
-            except (KeyError, IndexError, AttributeError):
-                print("BAD UUID SESSION VARIABLE")
+                session_qstring = self.session_qstring
+            except (KeyError, IndexError, AttributeError) as e:
+                print("INACCESSIBLE QSTRING", type_name(e), str(e))
                 self.session_new()
             else:
                 try:
-                    session_idn = qiki.Number.from_qstring(session_qstring)
-                    self.session_verb = self.lex[session_idn]
-                except ValueError:
-                    print("BAD SESSION IDENTIFIER", session_qstring)
+                    session_uuid = self.session_uuid
+                except (KeyError, IndexError, AttributeError) as e:
+                    print("BAD UUID SESSION VARIABLE", type_name(e), str(e))
                     self.session_new()
                 else:
-                    if not self.session_verb.exists():
-                        print("NO SUCH SESSION IDENTIFIER", session_qstring)
-                        self.session_new()
-                    elif (
-                        self.session_verb.sbj.idn != self.lex.IDN.LEX or
-                        self.session_verb.vrb.idn != self.lex.IDN.DEFINE or
-                        self.session_verb.obj.idn != self.lex.IDN.BROWSE
-                    ):
-                        print("NOT A SESSION IDENTIFIER", session_qstring)
-                        self.session_new()
-                    elif self.session_verb.txt != session_uuid:
-                        print(
-                            "NOT A RECOGNIZED SESSION",
-                            session_qstring,
-                            "is the idn, but",
-                            self.session_verb.txt,
-                            "!=",
-                            session_uuid
-                        )
+                    try:
+                        session_idn = qiki.Number.from_qstring(session_qstring)
+                        self.session_verb = self.lex[session_idn]
+                    except ValueError:
+                        print("BAD SESSION IDENTIFIER", session_qstring)
                         self.session_new()
                     else:
-                        '''old session word is good, keep it'''
+                        if not self.session_verb.exists():
+                            print("NO SUCH SESSION IDENTIFIER", session_qstring)
+                            self.session_new()
+                        elif (
+                            self.session_verb.sbj.idn != self.lex.IDN.LEX or
+                            self.session_verb.vrb.idn != self.lex.IDN.DEFINE or
+                            self.session_verb.obj.idn != self.lex.IDN.BROWSE
+                        ):
+                            print("NOT A SESSION IDENTIFIER", session_qstring)
+                            self.session_new()
+                        elif self.session_verb.txt != session_uuid:
+                            print(
+                                "NOT A RECOGNIZED SESSION",
+                                session_qstring,
+                                "is the idn, but",
+                                self.session_verb.txt,
+                                "!=",
+                                session_uuid
+                            )
+                            self.session_new()
+                        else:
+                            '''old session word is good, keep it'''
 
         if self.is_authenticated:
             self.qiki_user = self.lex.word_google_class(self.authenticated_id())
@@ -787,6 +791,11 @@ class Auth(object):
     def qoolbar(self):
         qoolbar = qiki.QoolbarSimple(self.lex)
         return qoolbar
+
+    @property
+    @abc.abstractmethod
+    def has_session_qstring(self):
+        raise NotImplementedError
 
     @property
     @abc.abstractmethod
@@ -1089,6 +1098,10 @@ class AuthFliki(Auth):
         #        See https://stackoverflow.com/a/43505668/673991
 
     @property
+    def has_session_qstring(self):
+        return self.SESSION_QSTRING in flask.session
+
+    @property
     def session_qstring(self):
         return flask.session[self.SESSION_QSTRING]
         # CAUTION:  May raise KeyError
@@ -1104,15 +1117,6 @@ class AuthFliki(Auth):
     @session_uuid.setter
     def session_uuid(self, the_uuid):
         flask.session[self.SESSION_UUID] = the_uuid
-
-    # def session_get(self):
-    #     try:
-    #         return flask.session[self.SESSION_QSTRING]
-    #     except KeyError:
-    #         return None
-    #
-    # def session_set(self, session_string):
-    #     flask.session[self.SESSION_QSTRING] = session_string
 
     def authenticated_id(self):
         return self.flask_user.get_id()
