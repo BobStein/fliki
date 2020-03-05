@@ -673,6 +673,7 @@ class Auth(object):
             #        monitoring.  But they could be hackers.
             #        Or find some other way to ignore the monitoring traffic.
             #        E.g. see what's in access_log.
+            #        Maybe count newbie events, but don't log the details.
         else:
             try:
                 session_qstring = self.session_qstring
