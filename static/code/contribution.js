@@ -2073,7 +2073,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                     var $pop_cont = $popup.find('.contribution');
                     console.assert($pop_cont.length === 1, $popup);
                     size_adjust($pop_cont, POPUP_WIDTH_MAX_EM, POPUP_HEIGHT_MAX_EM);
-                    var pop_text = $pop_cont.content;
+                    var pop_text = pop_cont.content;
 
                     utter = new window.SpeechSynthesisUtterance(pop_text);
                     js_for_contribution.utter = utter;
@@ -2183,13 +2183,15 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                         pop_cont.$sup.trigger(pop_cont.Event.SPEECH_START);
                     });
                     $(utter).on('boundary', function speech_boundary(evt) {
-                        // TODO:  Hold off if pause is happening.  This would avoid highlighting the
-                        //        word that will be spoken after resume, until after resuming.
+                        // TODO:  Hold off HERE if pause is happening.
+                        //        This would avoid highlighting the NEXT word.
+                        //        Besides the wrong word, the animation appears unresponsive to
+                        //        the pause command, stubbornly pushing on ahead.
                         var start_word = evt.originalEvent.charIndex;
-                        // NOTE:  Doesn't seem as if there's a need to adjust leftward
-                        //        to word-boundary.  That's what's done in
+                        // NOTE:  We don't seem to need to adjust start_word to the left
+                        //        to get to a word-boundary.  That's what's done in
                         //        https://stackoverflow.com/a/50285928/673991
-                        //        If we did it might look like this:
+                        //        If we did, it might look like this:
                         //        left = str.slice(0, pos + 1).search(/\S+$/)
                         var word_to_end = pop_text.slice(start_word);
                         var len_word = word_to_end.search(/\s|$/);

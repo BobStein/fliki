@@ -664,7 +664,7 @@ class Auth(object):
         self.ip_address_txt = ip_address_txt
 
         if not self.has_session_qstring:
-            print("NEWBIE")   # NOTE:  Should be very common
+            print("NEWBIE", user_agent_txt)   # NOTE:  Should be very common
             self.session_new()
             # TODO:  Instead of a new session, just record in session vars a few stats
             #        Only record if they ever come back.
