@@ -133,7 +133,13 @@ function embed_content_js(window, $, MONTY) {
                             height: MONTY.oembed.height,
                             type: 'text/html',
                             src: youtube_embed_url({
-                                enablejsapi: '1'   // NOTE:  this works
+                                enablejsapi: '1',
+                                // NOTE:  enablejsapi query parameter works.
+                                //        It enables JavaScript to animate the video.
+
+                                rel: '0'
+                                // THANKS:  Prevent related videos appearing at the end.
+                                //          https://www.youtube.com/watch?v=ZUTzJG212Vo
 
                                 // , origin: 'http://example.com'
                                 // , origin: 'locavore.unslumping.org'
@@ -158,8 +164,9 @@ function embed_content_js(window, $, MONTY) {
                                mozallowFullScreen : 'true',
                             webkitallowFullScreen : 'true',
                             allow: 'autoplay; fullscreen'
-                            // enablejsapi: '1'   // NOTE:  this doesn't work
+                            // enablejsapi: '1'
                         });
+                        // NOTE:  enablejsapi attribute on iframe element does not work.
                         // SEE:  enablejsapi attribute on iframe element,
                         //       https://developers.google.com/youtube/iframe_api_reference#Examples
                         // THANKS:  Doesn't work as iframe element attribute,

@@ -9,7 +9,12 @@
         url_patterns: [
             RegExp('^https?://(?:www\\.)?(?:instagram\\.com|instagr\\.am)/p/([^/]+)/?$')
         ],
-        render_thumb: function instagram_render_thumb(cont, pattern_match_object) {
+        render_thumb: function instagram_render_thumb(cont) {
+            var that = this;
+            console.assert(that.description_short === "instagram");
+            console.assert(that === cont.handler.media);   // Hint object organization could improve
+            var pattern_match_object = cont.handler.match_object;
+            console.assert(pattern_match_object.length === 2, cont.content, pattern_match_object);
             var media_id = pattern_match_object[1];
             console.assert(is_valid_media_id(media_id));
             var caption = cont.caption_text + " (instagram)";
@@ -32,7 +37,8 @@
                     );
                 }
             );
-        }
+        },
+        can_play: function (cont) { return false; }
     };
     console.assert(media.url_patterns[0].test('https://www.instagram.com/p/BNCeThsAhVT/'));
     console.assert(media.url_patterns[0].test('https://instagram.com/p/BNCeThsAhVT/'));

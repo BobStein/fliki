@@ -402,20 +402,15 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             .on('click', '.save-bar .cancel',  contribution_cancel)
             .on('click', '.save-bar .discard', contribution_cancel)
             .on('click', '.save-bar .save',    contribution_save)
-            .on('click', '.save-bar .full',    function () {
-                // bot.timer.abort();
-                bot.stop();
-                var cont = Contribution_from_element(this);
-                console.assert(cont.exists(), this);
-                pop_up(cont, false);
-            })
-            .on('click', '.save-bar .unfull',  function () {
-                // TODO:  What if play-bot is in progress and user hits un-full button?
-                //        Stop play-bot?  Or just skip to next one?  Currently just stops.
-                // bot.timer.abort();
-                // pop_down_all();
-                bot.stop();
-            })
+            .on('click', '.save-bar .play',    function () { bigger(this, true); })
+            .on('click', '.save-bar .expand',    function () { bigger(this, false); })
+            // .on('click', '.save-bar .unfull',  function () {
+            //     // TODO:  What if play-bot is in progress and user hits un-full button?
+            //     //        Stop play-bot?  Or just skip to next one?  Currently just stops.
+            //     // bot.timer.abort();
+            //     // pop_down_all();
+            //     bot.stop();
+            // })
 
             .on('keyup', function (evt) {
                 if (evt.key === 'Escape') {
@@ -431,6 +426,13 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                 work_around_jumpy_contenteditable_chrome_bug(this);
             })
         ;
+
+        function bigger(button, do_play) {
+            bot.stop();
+            var cont = Contribution_from_element(button);
+            console.assert(cont.exists(), button);
+            pop_up(cont, do_play);
+        }
 
         persist_select_element('#play_bot_sequence', SETTING_PLAY_BOT_SEQUENCE);
 
@@ -1128,6 +1130,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         this.id_attribute = id_attribute;
         this.$cont = $_from_id(this.id_attribute);
         this.$sup = this.$cont.closest('.sup-contribution');
+        this.handler = null;
     }
 
     /**
@@ -1306,9 +1309,8 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         }
     };
 
-    Contribution.prototype.fix_caption_width = function Contribution_fix_caption_width(etc) {
+    Contribution.prototype.fix_caption_width = function Contribution_fix_caption_width() {
         // noinspection JSUnusedAssignment
-        etc = etc || "";
         var that = this;
         var media_width = that.$iframe.outerWidth();
         var thumb_width = that.$img_thumb.outerWidth();
@@ -1379,51 +1381,66 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         var that = this;
         that.$sup.attr('data-domain', sanitized_domain_from_url(that.content));
 
-        var scan = that.handler_scan();
-        if (scan.is_handled) {
-            // console.log(
-            //     "Sophisticated Media", that.id_attribute,
-            //     "handler", scan.handler_index,
-            //     scan.handler.media.description_short,
-            //     scan.match_object.slice(1).join(" ")
-            // );
+        if (that.handler_scan()) {
+            console.log(
+                "Sophisticated Media", that.id_attribute,
+                "handler", that.handler.handler_index,
+                that.handler.media.description_short,
+                that.handler.match_object.slice(1).join(" "),
+                that.caption_text.slice(0, 10) + "..."
+            );
             // EXAMPLE:  Sophisticated Media 3459 handler 0 youtube _SKdN1xQBjk
             // EXAMPLE:  Sophisticated Media 994 handler 1 instagram BNCeThsAhVT
-            scan.handler.media.render_thumb(that, scan.match_object);
+            that.handler.media.render_thumb(that);
+            var can_play = that.handler.media.can_play();
+            this.$sup.toggleClass('can-play', can_play);
+            this.$sup.toggleClass('cant-play', ! can_play);
         } else {
-            get_oembed("thumb", that.content, function got_thumb_oembed(oembed) {
-                if (typeof oembed.error === 'undefined') {
-                    if (typeof oembed.thumbnail_url === 'string') {
-                        that.thumb_image(
-                            oembed.thumbnail_url,
-                            oembed.caption_for_media,
-                            function thumb_url_error() {
-                                console.warn(
-                                    that.media_domain,
-                                    "busted thumb",
-                                    oembed.thumbnail_url,
-                                    "-- revert to iframe"
-                                );
-                                that.live_media_iframe(that.content);
-                            }
-                        );
-                    } else {   // oembed data is missing a thumbnail URL
-                        that.live_media_iframe(that.content);
-                    }
-                } else {   // oembed error message
-                    var error_message = oembed.error;
-                    // noinspection JSIncompatibleTypesComparison
-                    if (that.media_domain !== 'no_domain') {
-                        error_message += " for '" + that.media_domain + "'";
-                    }
-                    that.$render_bar.empty().text(error_message).addClass('oembed-error');
-                    // NOTE:  How the text gets its peachy background color.
-
-                    that.$sup.addClass('noembed-error');
-                    // NOTE:  How non-live thumbnails skip the bot.
-                }
-            });
+            console.error(
+                "No fallback media handler for",
+                that.id_attribute,
+                that.content.slice(0,40)
+            );
+            // get_oembed("thumb", that.content, function got_thumb_oembed(oembed) {
+            //     if (typeof oembed.error === 'undefined') {
+            //         if (typeof oembed.thumbnail_url === 'string') {
+            //             that.thumb_image(
+            //                 oembed.thumbnail_url,
+            //                 oembed.caption_for_media,
+            //                 function thumb_url_error() {
+            //                     console.warn(
+            //                         that.media_domain,
+            //                         "busted thumb",
+            //                         oembed.thumbnail_url,
+            //                         "-- revert to iframe"
+            //                     );
+            //                     that.live_media_iframe(that.content);
+            //                 }
+            //             );
+            //         } else {   // oembed data is missing a thumbnail URL
+            //             that.live_media_iframe(that.content);
+            //         }
+            //     } else {   // oembed error message
+            //         var error_message = oembed.error;
+            //         // noinspection JSIncompatibleTypesComparison
+            //         if (that.media_domain !== 'no_domain') {
+            //             error_message += " for '" + that.media_domain + "'";
+            //         }
+            //         that.render_error(error_message);
+            //     }
+            // });
         }
+    };
+
+    Contribution.prototype.render_error = function Contribution_render_error(error_message) {
+        var that = this;
+        that.$render_bar.empty().text(error_message);   // .addClass('oembed-error');
+        that.$sup.addClass('noembed-error');
+        // NOTE:  How non-live thumbnails skip the bot.
+        //        Also how the text gets its peachy background color.
+        that.$render_bar.outerWidth(that.$cont.outerWidth());
+        // TODO:  Less clumsy way to constrain error message width.
+        //        Why the heck does that.$cont have an element style width at this point?!
     };
 
     Contribution.prototype.thumb_image = function Contribution_thumb_image(
@@ -1937,7 +1954,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         var render_width = cont.$render_bar.width();
         var render_height = cont.$render_bar.height();
         var caption_height = cont.$sup.find('.caption-bar').height();
-        var save_height = cont.$save_bar.height() || cont.$save_bar.find('.full').height();
+        var save_height = cont.$save_bar.height() || cont.$save_bar.find('.edit').height();
         var vertical_padding_in_css = px_from_em(0.3 + 0.3);
 
         console.assert(
@@ -1946,8 +1963,8 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             save_height,
             cont.$save_bar.height(),
             cont.$save_bar.width(),
-            cont.$save_bar.find('.full').height(),
-            cont.$save_bar.find('.unfull').height(),
+            cont.$save_bar.find('.edit').height(),
+            cont.$save_bar.find('.expand').height(),
             cont.$save_bar.css('overflow')
         );
         // EXAMPLE:  Assertion failed: 1929 0 ... 16 16 hidden
@@ -2073,362 +2090,365 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                     var $pop_cont = $popup.find('.contribution');
                     console.assert($pop_cont.length === 1, $popup);
                     size_adjust($pop_cont, POPUP_WIDTH_MAX_EM, POPUP_HEIGHT_MAX_EM);
-                    var pop_text = pop_cont.content;
+                    if (auto_play) {
+                        var pop_text = pop_cont.content;
 
-                    utter = new window.SpeechSynthesisUtterance(pop_text);
-                    js_for_contribution.utter = utter;
-                    // THANKS:  SpeechSynthesis bug workaround from 2016,
-                    //          https://stackoverflow.com/a/35935851/673991
-                    // NOTE:  Not sure if this is the same bug, but sometimes speech was
-                    //        not starting.
+                        utter = new window.SpeechSynthesisUtterance(pop_text);
+                        js_for_contribution.utter = utter;
+                        // THANKS:  SpeechSynthesis bug workaround from 2016,
+                        //          https://stackoverflow.com/a/35935851/673991
+                        // NOTE:  Not sure if this is the same bug, but sometimes speech was
+                        //        not starting.
 
-                    utter.rate = 0.75;
+                        utter.rate = 0.75;
 
-                    utter.volume = 1.0;   // otherwise it's -1, wtf that means
-                    // Another attempt to fix text-not-speaking bug.
-                    utter.pitch = 1.0;    // otherwise it's -1, wtf that means
-                    // Another attempt to fix text-not-speaking bug.
+                        utter.volume = 1.0;   // otherwise it's -1, wtf that means
+                        // Another attempt to fix text-not-speaking bug.
+                        utter.pitch = 1.0;    // otherwise it's -1, wtf that means
+                        // Another attempt to fix text-not-speaking bug.
 
-                    // utter.voice = chooseWeighted(voices, voice_weights);
-                    // console.log("Voice", utter.voice.name, utter.voice.lang);
-                    // NOTE:  (2019) Google voices don't report their word-boundary events.
-                    //               Microsoft voices do, and they sound better too.
-                    //        (2018) https://stackoverflow.com/a/48160824/673991
-                    //        (2016) https://bugs.chromium.org/p/chromium/issues/detail?id=521666
-                    //        Upshot is not to set voice at all.
-                    //        Microsoft Anna is default in Chrome, Firefox, Opera, Edge.
-                    //        Edge has many voices (9 English, 25 total).
-                    //        Could instead multiplicatively weight Google voices 0, Microsoft 1.
-                    //        Anyway, word boundaries are important because visual highlighting
-                    //        of words seems more potent.  Combination visual and auditory.
+                        // utter.voice = chooseWeighted(voices, voice_weights);
+                        // console.log("Voice", utter.voice.name, utter.voice.lang);
+                        // NOTE:  (2019) Google voices don't report their word-boundary events.
+                        //               Microsoft voices do, and they sound better too.
+                        //        (2018) https://stackoverflow.com/a/48160824/673991
+                        //        (2016) https://bugs.chromium.org/p/chromium/issues/detail?id=521666
+                        //        Upshot is not to set voice at all.
+                        //        Microsoft Anna is default in Chrome, Firefox, Opera, Edge.
+                        //        Edge has many voices (9 English, 25 total).
+                        //        Could instead multiplicatively weight Google voices 0, Microsoft 1.
+                        //        Anyway, word boundaries are important because visual highlighting
+                        //        of words seems more potent.  Combination visual and auditory.
 
-                    var states_before = speech_states();
+                        var states_before = speech_states();
 
-                    window.speechSynthesis.cancel();   // Another attempt to fix text-not-speaking bug.
-                    // NOTE:  This cancel appears to be the trick that fixed it.
+                        window.speechSynthesis.cancel();   // Another attempt to fix text-not-speaking bug.
+                        // NOTE:  This cancel appears to be the trick that fixed it.
 
-                    var states_between = speech_states();
-                    window.speechSynthesis.speak(utter);
-                    // NOTE:  Play audio even if not auto_play -- because there's no way
-                    //        to start the speech otherwise.  (SpeechSynthesis has no
-                    //        native control UX.)
-                    // EXAMPLE:  Silent for UC Browser, Opera Mobile, IE11
+                        var states_between = speech_states();
+                        window.speechSynthesis.speak(utter);
+                        // NOTE:  Play audio even if not auto_play -- because there's no way
+                        //        to start the speech otherwise.  (SpeechSynthesis has no
+                        //        native control UX.)
+                        // EXAMPLE:  Silent for UC Browser, Opera Mobile, IE11
 
-                    var states_after = speech_states();
+                        var states_after = speech_states();
 
-                    console.log(
-                        "Language",
-                        voice_default.name,
-                        voice_default.lang,
-                        utter.voice,   // null in Chrome
-                        typeof utter.lang, utter.lang,   // string '' in Chrome
-                        states_before,
-                        "->",
-                        states_between,
-                        "->",
-                        states_after
-                    );
-                    // NOTE:  Probe droid for occasional lack of speaking popup.
-                    // EXAMPLE:  Microsoft Anna - English (United States) en-US
-                    // EXAMPLE:  (unknown) (UC Browser -- onvoiceschanged never called)
-                    //           window.speechSynthesis.getVoices() returns []
-                    //           https://caniuse.com/#feat=speech-synthesis
-
-                    $(utter).on('start end boundary error mark pause resume', function (evt) {
                         console.log(
-                            "Utter",
-                            evt.originalEvent.elapsedTime.toFixed(1),
-                            evt.type,
-                            evt.originalEvent.charIndex
+                            "Language",
+                            voice_default.name,
+                            voice_default.lang,
+                            utter.voice,   // null in Chrome
+                            typeof utter.lang, utter.lang,   // string '' in Chrome
+                            states_before,
+                            "->",
+                            states_between,
+                            "->",
+                            states_after
                         );
-                        // EXAMPLE:
-                        //     Utter start 0 39.220001220703125
-                        //     Utter boundary 0 158.97999572753906
-                        //     Utter boundary 0 161.0850067138672
-                        //     Utter boundary 5 359.07000732421875
-                        //     Utter boundary 8 449.2300109863281
-                        //     Utter boundary 13 759.3049926757812
-                        //     Utter boundary 15 799.1599731445312
-                        //     Utter end 0 1779.2449951171875
-                        // EXAMPLE:
-                        //                   Utter 21.7 start 0
-                        //     14:53:02.834  Utter 116.9 boundary 0
-                        //     14:53:02.837  Utter 119.9 boundary 0
-                        //     14:53:02.935  Utter 217.1 boundary 3
-                        //     14:53:03.185  Utter 467.1 boundary 7
-                        //     14:53:03.293 Bot SPEECH_PLAYING 0 The text is being spoken
-                        //     14:53:03.385  Utter 667.1 boundary 12
-                        //     14:53:03.387  Utter 669.7 boundary 14
-                        //     14:53:03.784  Utter 1067.0 boundary 25
-                        //     14:53:03.984  Utter 1267.0 boundary 28
-                        //     14:53:04.135  Utter 1417.0 boundary 32
-                        //     14:53:04.293 Bot SPEECH_PLAYING 1 The text is being spoken
-                        //     14:53:04.634  Utter 1917.0 boundary 41
-                        //     14:53:04.935  Utter 2217.1 boundary 49
-                        //     14:53:04.976 Pause player bot
-                        //     14:53:04.980  Utter 2262.8 pause 0         <-- .004 second feedback
-                        //     14:53:05.084  Utter 2366.9 boundary 52
-                        //     14:53:05.287  Utter 2569.7 boundary 55
-                        //     14:53:05.485  Utter 2767.1 boundary 61
-                        //     14:53:05.685  Utter 2967.1 boundary 64
-                        //     14:53:06.085  Utter 3367.3 boundary 70
-                        //     14:53:12.081 Resume player bot
-                        //     14:53:12.086  Utter 9368.3 resume 0
-                        //     14:53:12.294 Bot SPEECH_PLAYING 2 The text is being spoken
-                        //     14:53:13.162  Utter 10444.1 end 0
-                        //     14:53:13.162
-                    });
-                    var $svg = null;
-                    $(utter).on('start', function speech_boundary() {
-                        pop_cont.$sup.trigger(pop_cont.Event.SPEECH_START);
-                    });
-                    $(utter).on('boundary', function speech_boundary(evt) {
-                        // TODO:  Hold off HERE if pause is happening.
-                        //        This would avoid highlighting the NEXT word.
-                        //        Besides the wrong word, the animation appears unresponsive to
-                        //        the pause command, stubbornly pushing on ahead.
-                        var start_word = evt.originalEvent.charIndex;
-                        // NOTE:  We don't seem to need to adjust start_word to the left
-                        //        to get to a word-boundary.  That's what's done in
-                        //        https://stackoverflow.com/a/50285928/673991
-                        //        If we did, it might look like this:
-                        //        left = str.slice(0, pos + 1).search(/\S+$/)
-                        var word_to_end = pop_text.slice(start_word);
-                        var len_word = word_to_end.search(/\s|$/);
-                        var end_word = start_word + len_word;
-                        var the_word = pop_text.slice(start_word, end_word+1);
-                        var range_word = window.document.createRange();
-                        $pop_cont.text(pop_text);
-                        console.assert($pop_cont[0].childNodes.length > 0, $pop_cont[0]);
-                        var text_node = $pop_cont[0].childNodes[0];
-                        console.assert(text_node.nodeName === '#text', text_node);
-                        range_word.setStart(text_node, start_word);
-                        range_word.setEnd(text_node, end_word);
-                        // THANKS:  Range of text, https://stackoverflow.com/a/29903556/673991
-                        var speaking_node = $('<span>', {class:'speaking'})[0];
-                        range_word.surroundContents(speaking_node);
-                        // THANKS:  Range wrap, https://stackoverflow.com/a/6328906/673991
-                        scroll_into_view(speaking_node, {
-                            behavior: 'smooth',
-                            block: 'center',
-                            inline: 'center'
-                        });
-                        // SEE:  Highlight speech, https://stackoverflow.com/a/38122794/673991
-                        // SEE:  Select speech, https://stackoverflow.com/a/50285928/673991
+                        // NOTE:  Probe droid for occasional lack of speaking popup.
+                        // EXAMPLE:  Microsoft Anna - English (United States) en-US
+                        // EXAMPLE:  (unknown) (UC Browser -- onvoiceschanged never called)
+                        //           window.speechSynthesis.getVoices() returns []
+                        //           https://caniuse.com/#feat=speech-synthesis
 
-
-                        if (EXPERIMENTAL_RED_WORD_READING) {
-                            // NOTE:  The following experimental code would render the word being
-                            //        spoken, in red, on top of the same word in the paragraph.
-                            var r = range_word.getBoundingClientRect();
-                            console.log("Bound", the_word, r.x, r.y);
-                            if ($svg !== null) {
-                                $svg.remove();
-                            }
-                            var svg_top = r.top - $popup.position().top;
-                            var svg_left = r.left - $popup.position().left;
-                            $svg = $('<svg>', {
-                                height: r.height,
-                                width: r.width,
-                                style: (
-                                    'position:absolute;color:red;font: 16px Literata,serif;' +
-                                    'top:'+svg_top.toString()+'px;' +
-                                    'left:'+svg_left.toString()+'px;'
-                                )
-                            }).append($('<text>', {fill:'red !important'}).append(the_word));
-                            $popup.append($svg);
-                            // TODO:  Needs to scroll word into view,
-                            //        and then also position the svg right onto the scrolled word.
-                        }
-                    });
-                    $(utter).on('end', function (evt) {
-                        $pop_cont.text(pop_text);
-                        if (utter === null) {
-                            console.error(
-                                "Utterance interruptus (vestigial end after aborted speech)",
-                                (evt.originalEvent.elapsedTime/1000).toFixed(3), "sec"
-                            );
-                            // TODO:  Make a better scheme for detecting a stale utter event.
-                            //        Because a NEW bot play cycle might otherwise be
-                            //        transitioned prematurely.
-                            //        Did the $(utter).off() in pop_down_all() solve this issue?
-                        } else {
+                        $(utter).on('start end boundary error mark pause resume', function (evt) {
                             console.log(
-                                "Utterance",
-                                (evt.originalEvent.elapsedTime/1000).toFixed(3), "sec",
-                                "(speech breather)"
+                                "Utter",
+                                evt.originalEvent.elapsedTime.toFixed(1),
+                                evt.type,
+                                evt.originalEvent.charIndex
                             );
-                            pop_cont.$sup.trigger(pop_cont.Event.SPEECH_END);
-                            // NOTE:  A bit lame, this happens whether manually popped up or
-                            //        automatically played by the bot.  But it should have
-                            //        no consequence manually anyway.
-                        }
-                    });
-                    pop_cont.$sup.trigger(pop_cont.Event.SPEECH_PLAY);
-                    return;
+                            // EXAMPLE:
+                            //     Utter start 0 39.220001220703125
+                            //     Utter boundary 0 158.97999572753906
+                            //     Utter boundary 0 161.0850067138672
+                            //     Utter boundary 5 359.07000732421875
+                            //     Utter boundary 8 449.2300109863281
+                            //     Utter boundary 13 759.3049926757812
+                            //     Utter boundary 15 799.1599731445312
+                            //     Utter end 0 1779.2449951171875
+                            // EXAMPLE:
+                            //                   Utter 21.7 start 0
+                            //     14:53:02.834  Utter 116.9 boundary 0
+                            //     14:53:02.837  Utter 119.9 boundary 0
+                            //     14:53:02.935  Utter 217.1 boundary 3
+                            //     14:53:03.185  Utter 467.1 boundary 7
+                            //     14:53:03.293 Bot SPEECH_PLAYING 0 The text is being spoken
+                            //     14:53:03.385  Utter 667.1 boundary 12
+                            //     14:53:03.387  Utter 669.7 boundary 14
+                            //     14:53:03.784  Utter 1067.0 boundary 25
+                            //     14:53:03.984  Utter 1267.0 boundary 28
+                            //     14:53:04.135  Utter 1417.0 boundary 32
+                            //     14:53:04.293 Bot SPEECH_PLAYING 1 The text is being spoken
+                            //     14:53:04.634  Utter 1917.0 boundary 41
+                            //     14:53:04.935  Utter 2217.1 boundary 49
+                            //     14:53:04.976 Pause player bot
+                            //     14:53:04.980  Utter 2262.8 pause 0         <-- .004 second feedback
+                            //     14:53:05.084  Utter 2366.9 boundary 52
+                            //     14:53:05.287  Utter 2569.7 boundary 55
+                            //     14:53:05.485  Utter 2767.1 boundary 61
+                            //     14:53:05.685  Utter 2967.1 boundary 64
+                            //     14:53:06.085  Utter 3367.3 boundary 70
+                            //     14:53:12.081 Resume player bot
+                            //     14:53:12.086  Utter 9368.3 resume 0
+                            //     14:53:12.294 Bot SPEECH_PLAYING 2 The text is being spoken
+                            //     14:53:13.162  Utter 10444.1 end 0
+                            //     14:53:13.162
+                        });
+                        var $svg = null;
+                        $(utter).on('start', function speech_boundary() {
+                            pop_cont.$sup.trigger(pop_cont.Event.SPEECH_START);
+                        });
+                        $(utter).on('boundary', function speech_boundary(evt) {
+                            // TODO:  Hold off HERE if pause is happening.
+                            //        This would avoid highlighting the NEXT word.
+                            //        Besides the wrong word, the animation appears unresponsive to
+                            //        the pause command, stubbornly pushing on ahead.
+                            //        (It already butts ahead 2 words anyway.)
+                            var start_word = evt.originalEvent.charIndex;
+                            // NOTE:  We don't seem to need to adjust start_word to the left
+                            //        to get to a word-boundary.  That's what's done in
+                            //        https://stackoverflow.com/a/50285928/673991
+                            //        If we did, it might look like this:
+                            //        left = str.slice(0, pos + 1).search(/\S+$/)
+                            var word_to_end = pop_text.slice(start_word);
+                            var len_word = word_to_end.search(/\s|$/);
+                            var end_word = start_word + len_word;
+                            var the_word = pop_text.slice(start_word, end_word+1);
+                            var range_word = window.document.createRange();
+                            $pop_cont.text(pop_text);
+                            console.assert($pop_cont[0].childNodes.length > 0, $pop_cont[0]);
+                            var text_node = $pop_cont[0].childNodes[0];
+                            console.assert(text_node.nodeName === '#text', text_node);
+                            range_word.setStart(text_node, start_word);
+                            range_word.setEnd(text_node, end_word);
+                            // THANKS:  Range of text, https://stackoverflow.com/a/29903556/673991
+                            var speaking_node = $('<span>', {class:'speaking'})[0];
+                            range_word.surroundContents(speaking_node);
+                            // THANKS:  Range wrap, https://stackoverflow.com/a/6328906/673991
+                            scroll_into_view(speaking_node, {
+                                behavior: 'smooth',
+                                block: 'center',
+                                inline: 'center'
+                            });
+                            // SEE:  Highlight speech, https://stackoverflow.com/a/38122794/673991
+                            // SEE:  Select speech, https://stackoverflow.com/a/50285928/673991
 
 
-
-                    // NOTE:  The following code worked with the Talkify service.
-                    //        Which I recall was more legible than the Chrome browser speech,
-                    //        (though less so than the Edge browser speech), and is reasonably
-                    //        priced, but any metering of an uber free service is vexing.
-
-                    // noinspection UnreachableCodeJS
-                    if (is_specified(talkify)) {
-                        talkify.config.remoteService.host = 'https://talkify.net';
-                        talkify.config.remoteService.apiKey = '084ff0b0-89a3-4284-96a1-205b5a2072c0';
-                        talkify.config.ui.audioControls = {
-                            enabled: false, //<-- Disable to get the browser built in audio controls
-                            container: document.getElementById("player-bot")
-                        };
-                        talkify_player = new talkify.TtsPlayer();
-                        talkify_player.enableTextHighlighting();
-
-                        talkify_player.setRate(-1.0);   // a little slower than the default
-                        // SEE:  Rate codes, https://github.com/Hagsten/Talkify#user-content-talkify-hosted-only
-
-                        talkify_voice_name = random_element(TALKIFY_VOICES_ENGLISH);
-                        talkify_player.forceVoice({name: talkify_voice_name});
-                        // SEE:  Voice names,
-                        //       https://github.com/Hagsten/Talkify/issues/20#issuecomment-347837787-permalink
-                        //       https://jsfiddle.net/mknm62nx/1/
-                        //       https://talkify.net/api/speech/v1/voices?key= + talkify api key
-
-                        var popup_cont_node_list = document.querySelectorAll(popup_cont_selector);
-                        // NOTE:  Although $(popup_cont_selector) appears to work, the doc calls for
-                        //        "DOM elements" and the example passes a NodeList object.
-                        //        https://github.com/Hagsten/Talkify#play-all-top-to-bottom
-
-                        talkify_playlist = new talkify.playlist()
-                            .begin()
-                            .usingPlayer(talkify_player)
-                            // .withTextInteraction()
-                            .withElements(popup_cont_node_list)
-                            .build();
-
-                        talkify_playlist.play();
-                        // NOTE:  Play now, if not auto_play pause later.
-
-                        // console.log("Talkie", talkify_player, talkify_playlist);
-                        // EXAMPLE talkify_player (type talkify.TtsPlayer) members:
-                        //     audioSource: {play: ƒ, pause: ƒ, isPlaying: ƒ, paused: ƒ, currentTime: ƒ, …}
-                        //     correlationId: "8e90fbe4-607f-4a82-97af-6802a18e430b"
-                        //     createItems: ƒ (text)
-                        //     currentContext: {item: {…}, positions: Array(86)}
-                        //     disableTextHighlighting: ƒ ()
-                        //     dispose: ƒ ()
-                        //     enableTextHighlighting: ƒ ()
-                        //     forceLanguage: ƒ (culture)
-                        //     forceVoice: ƒ (voice)
-                        //     forcedVoice: null
-                        //     isPlaying: ƒ ()
-                        //     isPlaying: ƒ ()
-                        //     pause: ƒ ()
-                        //     paused: ƒ ()
-                        //     play: ƒ ()
-                        //     playAudio: ƒ (item)
-                        //     playItem: ƒ (item)
-                        //     playText: ƒ (text)
-                        //     playbar: {instance: null}
-                        //     setRate: ƒ (r)
-                        //     settings: {useTextHighlight: true, referenceLanguage: {…}, lockedLanguage: null, rate: 1, useControls: false}
-                        //     subscribeTo: ƒ (subscriptions)
-                        //     withReferenceLanguage: ƒ (refLang)
-                        //     wordHighlighter: {start: ƒ, highlight: ƒ, dispose: ƒ}
-                        // EXAMPLE talkify_playlist (type Object, e.g. {}) members:
-                        //     disableTextInteraction: ƒ ()
-                        //     dispose: ƒ ()
-                        //     enableTextInteraction: ƒ ()
-                        //     getQueue: ƒ ()
-                        //     insert: ƒ insertElement(element)
-                        //     isPlaying: ƒ isPlaying()
-                        //     pause: ƒ pause()
-                        //     play: ƒ play(item)
-                        //     replayCurrent: ƒ replayCurrent()
-                        //     setPlayer: ƒ (p)
-                        //     startListeningToVoiceCommands: ƒ ()
-                        //     stopListeningToVoiceCommands: ƒ ()
-
-                        var duration_report = "unknown duration";
-
-                        var pause_once = ! auto_play;
-
-                        var this_player = talkify_player;
-                        // NOTE:  Local "copy" of player needed in case pop_down_all() happens
-                        //        before the callback below has fully popped up.
-
-                        talkify.messageHub.subscribe(BOT_CONTEXT, '*', function (message, topic) {
-                            // var members = message ? Object.keys(message).join() : "(no message)";
-                            console.debug("talkify", topic/*, members*/);
-                            // EXAMPLE topics (context.type.action only, GUID context removed)
-                            //         and message members:
-                            //     player.*.prepareplay     \  text,preview,element,originalElement,
-                            //     player.tts.loading        > isPlaying,isLoading
-                            //     player.tts.loaded        /
-                            //     player.tts.play          item,positions,currentTime
-                            //     player.tts.timeupdated   currentTime,duration
-                            //     player.tts.pause         (no message)
-                            //     player.tts.ended         ((same members as loaded))
-                            if (/\.play$/.test(topic)) {
-                                if (pause_once) {
-                                    pause_once = false;
-                                    this_player.pause();
-                                    // NOTE:  Crude, mfing way to support manual-only playing.
-                                    //        Without this, player is inoperative.
+                            if (EXPERIMENTAL_RED_WORD_READING) {
+                                // NOTE:  The following experimental code would render the word being
+                                //        spoken, in red, on top of the same word in the paragraph.
+                                var r = range_word.getBoundingClientRect();
+                                console.log("Bound", the_word, r.x, r.y);
+                                if ($svg !== null) {
+                                    $svg.remove();
                                 }
+                                var svg_top = r.top - $popup.position().top;
+                                var svg_left = r.left - $popup.position().left;
+                                $svg = $('<svg>', {
+                                    height: r.height,
+                                    width: r.width,
+                                    style: (
+                                        'position:absolute;color:red;font: 16px Literata,serif;' +
+                                        'top:'+svg_top.toString()+'px;' +
+                                        'left:'+svg_left.toString()+'px;'
+                                    )
+                                }).append($('<text>', {fill:'red !important'}).append(the_word));
+                                $popup.append($svg);
+                                // TODO:  Needs to scroll word into view,
+                                //        and then also position the svg right onto the scrolled word.
                             }
                         });
-                        talkify.messageHub.subscribe(
-                            BOT_CONTEXT,
-                            '*.player.tts.timeupdated',
-                            function (message) {
-                                // NOTE:  This event happens roughly 20Hz, 50ms.
-                                var $highlight = $('.talkify-word-highlight');
-                                // $highlight.each(function () {
-                                //     scroll_into_view(this, {
-                                //         behavior: 'smooth',
-                                //         block: 'center',
-                                //         inline: 'center'
-                                //     });
-                                // });
-                                scroll_into_view($highlight, {   // TODO:  This work without .each()?
-                                    behavior: 'smooth',
-                                    block: 'center',
-                                    inline: 'center'
-                                });
-                                // TODO:  Reduce frequency of this call by tagging element
-                                //        with .already-scrolled-into-view?
-                                //        Because this event happens 20Hz!
-                                duration_report = message.duration.toFixed(1) + " seconds";
-                            }
-                        );
-                        talkify.messageHub.subscribe(
-                            BOT_CONTEXT,
-                            '*.player.tts.ended',
-                            function (/*message, topic*/) {
+                        $(utter).on('end', function (evt) {
+                            $pop_cont.text(pop_text);
+                            if (utter === null) {
+                                console.error(
+                                    "Utterance interruptus (vestigial end after aborted speech)",
+                                    (evt.originalEvent.elapsedTime/1000).toFixed(3), "sec"
+                                );
+                                // TODO:  Make a better scheme for detecting a stale utter event.
+                                //        Because a NEW bot play cycle might otherwise be
+                                //        transitioned prematurely.
+                                //        Did the $(utter).off() in pop_down_all() solve this issue?
+                            } else {
+                                console.log(
+                                    "Utterance",
+                                    (evt.originalEvent.elapsedTime/1000).toFixed(3), "sec",
+                                    "(speech breather)"
+                                );
                                 pop_cont.$sup.trigger(pop_cont.Event.SPEECH_END);
-                                // console.log("talkify ended", popup_cont_idn, message, topic);
-                                // EXAMPLE:  topic
-                                //     23b92641-e7dc-46af-9f9b-cbed4de70fe4.player.tts.ended
-                                // EXAMPLE:  message object members:
-                                //     element: div#popup_1024.contribution.talkify-highlight
-                                //     isLoading: false
-                                //     isPlaying: false
-                                //     originalElement: div#popup_1024.contribution
-                                //     preview: "this is just a test"
-                                //     text: "this is just a te
-                                //     st"
+                                // NOTE:  A bit lame, this happens whether manually popped up or
+                                //        automatically played by the bot.  But it should have
+                                //        no consequence manually anyway.
                             }
-                        );
-                        talkify_done = function () {
-                            console.log(
-                                "talkify", popup_cont_idn,
-                                "voice", talkify_voice_name,
-                                duration_report
-                            );
-                        };
+                        });
                         pop_cont.$sup.trigger(pop_cont.Event.SPEECH_PLAY);
+                        return;
+
+
+
+                        // NOTE:  The following code worked with the Talkify service.
+                        //        Which I recall was more legible than the Chrome browser speech,
+                        //        (though less so than the Edge browser speech), and is reasonably
+                        //        priced, but any metering of an uber free service is vexing.
+
+                        // noinspection UnreachableCodeJS
+                        if (is_specified(talkify)) {
+                            talkify.config.remoteService.host = 'https://talkify.net';
+                            talkify.config.remoteService.apiKey = '084ff0b0-89a3-4284-96a1-205b5a2072c0';
+                            talkify.config.ui.audioControls = {
+                                enabled: false, //<-- Disable to get the browser built in audio controls
+                                container: document.getElementById("player-bot")
+                            };
+                            talkify_player = new talkify.TtsPlayer();
+                            talkify_player.enableTextHighlighting();
+
+                            talkify_player.setRate(-1.0);   // a little slower than the default
+                            // SEE:  Rate codes, https://github.com/Hagsten/Talkify#user-content-talkify-hosted-only
+
+                            talkify_voice_name = random_element(TALKIFY_VOICES_ENGLISH);
+                            talkify_player.forceVoice({name: talkify_voice_name});
+                            // SEE:  Voice names,
+                            //       https://github.com/Hagsten/Talkify/issues/20#issuecomment-347837787-permalink
+                            //       https://jsfiddle.net/mknm62nx/1/
+                            //       https://talkify.net/api/speech/v1/voices?key= + talkify api key
+
+                            var popup_cont_node_list = document.querySelectorAll(popup_cont_selector);
+                            // NOTE:  Although $(popup_cont_selector) appears to work, the doc calls for
+                            //        "DOM elements" and the example passes a NodeList object.
+                            //        https://github.com/Hagsten/Talkify#play-all-top-to-bottom
+
+                            talkify_playlist = new talkify.playlist()
+                                .begin()
+                                .usingPlayer(talkify_player)
+                                // .withTextInteraction()
+                                .withElements(popup_cont_node_list)
+                                .build();
+
+                            talkify_playlist.play();
+                            // NOTE:  Play now, if not auto_play pause later.
+
+                            // console.log("Talkie", talkify_player, talkify_playlist);
+                            // EXAMPLE talkify_player (type talkify.TtsPlayer) members:
+                            //     audioSource: {play: ƒ, pause: ƒ, isPlaying: ƒ, paused: ƒ, currentTime: ƒ, …}
+                            //     correlationId: "8e90fbe4-607f-4a82-97af-6802a18e430b"
+                            //     createItems: ƒ (text)
+                            //     currentContext: {item: {…}, positions: Array(86)}
+                            //     disableTextHighlighting: ƒ ()
+                            //     dispose: ƒ ()
+                            //     enableTextHighlighting: ƒ ()
+                            //     forceLanguage: ƒ (culture)
+                            //     forceVoice: ƒ (voice)
+                            //     forcedVoice: null
+                            //     isPlaying: ƒ ()
+                            //     isPlaying: ƒ ()
+                            //     pause: ƒ ()
+                            //     paused: ƒ ()
+                            //     play: ƒ ()
+                            //     playAudio: ƒ (item)
+                            //     playItem: ƒ (item)
+                            //     playText: ƒ (text)
+                            //     playbar: {instance: null}
+                            //     setRate: ƒ (r)
+                            //     settings: {useTextHighlight: true, referenceLanguage: {…}, lockedLanguage: null, rate: 1, useControls: false}
+                            //     subscribeTo: ƒ (subscriptions)
+                            //     withReferenceLanguage: ƒ (refLang)
+                            //     wordHighlighter: {start: ƒ, highlight: ƒ, dispose: ƒ}
+                            // EXAMPLE talkify_playlist (type Object, e.g. {}) members:
+                            //     disableTextInteraction: ƒ ()
+                            //     dispose: ƒ ()
+                            //     enableTextInteraction: ƒ ()
+                            //     getQueue: ƒ ()
+                            //     insert: ƒ insertElement(element)
+                            //     isPlaying: ƒ isPlaying()
+                            //     pause: ƒ pause()
+                            //     play: ƒ play(item)
+                            //     replayCurrent: ƒ replayCurrent()
+                            //     setPlayer: ƒ (p)
+                            //     startListeningToVoiceCommands: ƒ ()
+                            //     stopListeningToVoiceCommands: ƒ ()
+
+                            var duration_report = "unknown duration";
+
+                            var pause_once = ! auto_play;
+
+                            var this_player = talkify_player;
+                            // NOTE:  Local "copy" of player needed in case pop_down_all() happens
+                            //        before the callback below has fully popped up.
+
+                            talkify.messageHub.subscribe(BOT_CONTEXT, '*', function (message, topic) {
+                                // var members = message ? Object.keys(message).join() : "(no message)";
+                                console.debug("talkify", topic/*, members*/);
+                                // EXAMPLE topics (context.type.action only, GUID context removed)
+                                //         and message members:
+                                //     player.*.prepareplay     \  text,preview,element,originalElement,
+                                //     player.tts.loading        > isPlaying,isLoading
+                                //     player.tts.loaded        /
+                                //     player.tts.play          item,positions,currentTime
+                                //     player.tts.timeupdated   currentTime,duration
+                                //     player.tts.pause         (no message)
+                                //     player.tts.ended         ((same members as loaded))
+                                if (/\.play$/.test(topic)) {
+                                    if (pause_once) {
+                                        pause_once = false;
+                                        this_player.pause();
+                                        // NOTE:  Crude, mfing way to support manual-only playing.
+                                        //        Without this, player is inoperative.
+                                    }
+                                }
+                            });
+                            talkify.messageHub.subscribe(
+                                BOT_CONTEXT,
+                                '*.player.tts.timeupdated',
+                                function (message) {
+                                    // NOTE:  This event happens roughly 20Hz, 50ms.
+                                    var $highlight = $('.talkify-word-highlight');
+                                    // $highlight.each(function () {
+                                    //     scroll_into_view(this, {
+                                    //         behavior: 'smooth',
+                                    //         block: 'center',
+                                    //         inline: 'center'
+                                    //     });
+                                    // });
+                                    scroll_into_view($highlight, {   // TODO:  This work without .each()?
+                                        behavior: 'smooth',
+                                        block: 'center',
+                                        inline: 'center'
+                                    });
+                                    // TODO:  Reduce frequency of this call by tagging element
+                                    //        with .already-scrolled-into-view?
+                                    //        Because this event happens 20Hz!
+                                    duration_report = message.duration.toFixed(1) + " seconds";
+                                }
+                            );
+                            talkify.messageHub.subscribe(
+                                BOT_CONTEXT,
+                                '*.player.tts.ended',
+                                function (/*message, topic*/) {
+                                    pop_cont.$sup.trigger(pop_cont.Event.SPEECH_END);
+                                    // console.log("talkify ended", popup_cont_idn, message, topic);
+                                    // EXAMPLE:  topic
+                                    //     23b92641-e7dc-46af-9f9b-cbed4de70fe4.player.tts.ended
+                                    // EXAMPLE:  message object members:
+                                    //     element: div#popup_1024.contribution.talkify-highlight
+                                    //     isLoading: false
+                                    //     isPlaying: false
+                                    //     originalElement: div#popup_1024.contribution
+                                    //     preview: "this is just a test"
+                                    //     text: "this is just a te
+                                    //     st"
+                                }
+                            );
+                            talkify_done = function () {
+                                console.log(
+                                    "talkify", popup_cont_idn,
+                                    "voice", talkify_voice_name,
+                                    duration_report
+                                );
+                            };
+                            pop_cont.$sup.trigger(pop_cont.Event.SPEECH_PLAY);
+                        }
                     }
                 }
             });
@@ -3153,6 +3173,8 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                             } else {
                                 $cat.append($sup_cont);
                             }
+                            // NOTE:  This is when the first time a new contribution is in the DOM
+                            //        and when the Contribution constructor could be called.
                             $text.val("");
                             $caption_input.val("");
                             post_it_button_looks();
@@ -3517,6 +3539,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
 
         // NOTE:  Now all contribution elements are in the DOM.
         //        Everything below requires this.
+        //        After this the Contribution constructor could be called.
 
 
 
@@ -3534,11 +3557,17 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                 did_fail: false,
                 did_register: false,
                 media: null,
-                $script: null
+                $script: null,
+                handler_index: null,   // in media_handlers[]
+                pattern_index: null,   // in media.url_pattern[]   \  outputs of
+                match_object: null     //                          /  handler_scan()
+                // TODO:  Do all this in a MediaHandler object constructor.
             });
+            // NOTE:  media_handlers[] order determined by MONTY.MEDIA_HANDLERS order.
         });
         var first_script_error = true;
         looper(media_handlers, function (handler_index, handler) {
+            handler.handler_index = handler_index;
             handler.$script = $('<script>');
             handler.$script.data('handler-index', handler_index);
             handler.$script.one('load.script2', function () {
@@ -3614,6 +3643,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         var $script = $(window.document.currentScript);
         console.assert($script.length === 1, "currentScript broke", window.document.currentScript);
         var handler_index = $script.data('handler-index');
+        // TODO:  Point instead directly at handler object?
         console.assert(is_defined(handler_index), "handler-index broke", $script);
         var handler = media_handlers[handler_index];
         console.assert(is_defined(handler), "handler object broke", handler_index, media_handlers);
@@ -3627,46 +3657,47 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     /**
      * Is this media URL handled by a registered handler?
      *
-     * @return {{
-     *     is_handled: boolean,
-     *     handler: object | null,
-     *     handler_index: number | null,
-     *     match_object: object | null
-     * }}
+     * If so:
+     *     return true
+     *     set that.handler to point to the winning handler object in media_handlers.
+     *     set that.handler.match_object to the results of the match, possibly containing
+     *                                   regular expression parenthetical sub-match strings
+     *     set that.handler.pattern_index to the index into url_patterns[] for that handler.
+     *
+     * The first pattern of the first handler wins.  So catch-all patterns should come last in
+     * the media_handlers[] array.
+     *
+     * @return {boolean}
      */
     Contribution.prototype.handler_scan = function contribution_handler_scan() {
         var that = this;
-        var scan_results = {
-            is_handled: false,
-            handler: null,
-            handler_index: null,
-            match_object: null
-        };
+        var did_find = false;
         if (that.is_media) {
-            looper(media_handlers, function handler_loop(handler_index, media_handler) {
+            looper(media_handlers, function handler_loop(_, media_handler) {
                 if (media_handler.did_register) {
                     console.assert(is_specified(media_handler.media), media_handler);
                     console.assert(is_specified(media_handler.media.url_patterns), media_handler.media);
-                    looper(media_handler.media.url_patterns, function pattern_loop(_, url_pattern) {
+                    looper(media_handler.media.url_patterns, function pattern_loop(pattern_index, url_pattern) {
                         var match_object = that.content.match(url_pattern);
                         if (match_object !== null) {
-                            scan_results = {
-                                is_handled: true,
-                                handler: media_handler,
-                                handler_index: handler_index,
-                                match_object: match_object
-                            };
+                            that.handler = media_handler;
+                            that.handler.match_object = match_object;
+                            that.handler.pattern_index = pattern_index;
+                            did_find = true;
                             return false;
-                            // NOTE:  Exit url pattern loop, first pattern wins.
+                            // NOTE:  Exit url pattern loop, FIRST pattern wins.
                         }
                     });
-                    // NOTE:  Stay inside handler loop, last handler wins.
+                    if (did_find) {
+                        return false;
+                        // NOTE:  Exit handler loop, FIRST handler wins.
+                    }
                 }
             });
             // TODO:  Profile this double loop.
             //        Especially when it's a triple loop inside rebuild_all_render_bars()
         }
-        return scan_results;
+        return did_find;
     };
 
     function are_we_done_loading_handlers() {
@@ -3926,12 +3957,12 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         var $render_bar = $('<div>', {class: 'render-bar'});
         var $caption_bar = $('<div>', {class: 'caption-bar'});
         var $save_bar = $('<div>', {class: 'save-bar'});
-        $save_bar.append($('<button>', {class: 'edit'}).text('edit'));
-        $save_bar.append($('<button>', {class: 'cancel'}).text('cancel'));
-        $save_bar.append($('<button>', {class: 'save'}).text('save'));
-        $save_bar.append($('<button>', {class: 'discard'}).text('discard'));
-        $save_bar.append($('<button>', {class: 'full'}).text('full'));
-        $save_bar.append($('<button>', {class: 'unfull'}).text('unfull'));
+        $save_bar.append($('<button>', {class: 'edit'}).text("edit"));
+        $save_bar.append($('<button>', {class: 'cancel'}).text("cancel"));
+        $save_bar.append($('<button>', {class: 'save'}).text("save"));
+        $save_bar.append($('<button>', {class: 'discard'}).text("discard"));
+        $save_bar.append($('<button>', {class: 'expand'}).append($icon('fullscreen')).append($('<span>').text(" bigger")));
+        $save_bar.append($('<button>', {class: 'play'}).append($icon('play_arrow')).append(" play"));
         $sup_contribution.append($render_bar);
         $sup_contribution.append($caption_bar);
         $sup_contribution.append($save_bar);
@@ -3959,6 +3990,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             cont.render_media();
         } else {
             cont.$sup.removeClass('render-media');
+            cont.$sup.addClass('can-play');
             render_text(cont.$sup);
         }
     }

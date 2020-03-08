@@ -29,7 +29,8 @@
     cursor: pointer;
 }
 
-#player-bot .material-icons {
+#player-bot .material-icons,
+.save-bar .material-icons {
     font-size: 1em;
     vertical-align: middle;
 }
@@ -210,7 +211,7 @@ select#thumb-res option { direction: rtl; }
                    .contribution { padding: 0.5em 0.5em 0.7em 0.5em; }
 .contribution-edit .contribution { padding: 0.3em 0.3em 0.5em 0.3em; border: 0.2em inset; }
 
-.oembed-error {
+.noembed-error .render-bar {
     background-color: #FFF8F0;
     padding: 8px;
 }
@@ -262,8 +263,8 @@ select#thumb-res option { direction: rtl; }
     font: small-caption;
     cursor: pointer;
 }
-.save-bar .full,
-.save-bar .unfull {
+.save-bar .play,
+.save-bar .expand {
     float: left;
 }
 .save-bar .edit,
@@ -289,13 +290,23 @@ body.player-bot-playing                   .save-bar .edit    { display: none; }
 .sup-contribution:not(.edit-dirty)        .save-bar .save    { display: none; }
 .sup-contribution:not(.edit-dirty)        .save-bar .discard { display: none; }
 
-.sup-contribution                         .save-bar   .full { display: inline-block; }
-.sup-contribution.contribution-edit       .save-bar   .full { display: none; }
-body.player-bot-playing                   .save-bar   .full { display: none; }
-.sup-contribution.pop-up                  .save-bar   .full { display: none; }
+.sup-contribution                         .save-bar   .play { display: inline-block; }
+.sup-contribution.contribution-edit       .save-bar   .play { display: none; }
+body.player-bot-playing                   .save-bar   .play { display: none; }
+.sup-contribution.pop-up                  .save-bar   .play { display: none; }
+.sup-contribution.cant-play               .save-bar   .play { display: none; }
 
-.sup-contribution                         .save-bar .unfull { display: none; }
-.sup-contribution.pop-up                  .save-bar .unfull { display: inline-block; }
+.sup-contribution                         .save-bar   .expand { display: inline-block; }
+.sup-contribution.contribution-edit       .save-bar   .expand { display: none; }
+body.player-bot-playing                   .save-bar   .expand { display: none; }
+.sup-contribution.pop-up                  .save-bar   .expand { display: none; }
+.sup-contribution.noembed-error           .save-bar   .expand { display: none; }
+
+.sup-contribution.can-play                .save-bar   .expand span { display: none; }
+/* NOTE:  Hide the "bigger" to make room for the play button. */
+
+/*.sup-contribution                         .save-bar .unfull { display: none; }*/
+/*.sup-contribution.pop-up                  .save-bar .unfull { display: inline-block; }*/
 
 .grip {
     cursor: move;
@@ -384,7 +395,8 @@ iframe { display:block; }
             https://stackoverflow.com/a/21025344/673991 */
 
 .render-bar iframe,
-.render-bar img.thumb {
+.render-bar img.thumb,
+.noembed-error .render-bar {
     border: 1px solid black;
     -webkit-border-top-left-radius: 0.7em;
             border-top-left-radius: 0.7em;
@@ -392,6 +404,9 @@ iframe { display:block; }
    -webkit-border-top-right-radius: 0.7em;
            border-top-right-radius: 0.7em;
        -moz-border-radius-topright: 0.7em;
+}
+.noembed-error .render-bar {
+    border-color: #AAAAAA;
 }
 
 .talkify-sentence-highlight {

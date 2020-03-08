@@ -11,7 +11,11 @@
             RegExp("^https?://(?:[^.]+\\.)?(?:youtu\\.be|youtube\\.com/embed)/([a-zA-Z0-9_-]+)")
             // THANKS:  Media URL patterns, https://noembed.com/providers
         ],
-        render_thumb: function youtube_render_thumb(cont, pattern_match_object) {
+        render_thumb: function youtube_render_thumb(cont) {
+            var that = this;
+            console.assert(that.description_short === "youtube");
+            console.assert(that === cont.handler.media);   // Hint object organization could improve
+            var pattern_match_object = cont.handler.match_object;
             console.assert(pattern_match_object.length === 2, cont.content, pattern_match_object);
             var media_id = pattern_match_object[1];
             console.assert(typeof media_id === 'string' && media_id.length === 11);
@@ -32,12 +36,14 @@
                     );
                 }
             );
-        }
+        },
+        can_play: function (cont) { return true; }
     };
     function assert_match(index, url) {
         var match_object = url.match(media.url_patterns[index]);
         console.assert(match_object !== null, url);
         if (match_object !== null) {
+            console.assert(match_object.length === 2);
             console.assert(match_object[1] === 'ID_11_CHARS', url);
         }
     }

@@ -1042,7 +1042,7 @@ class Auth(object):
 
 class AuthFliki(Auth):
     """Fliki / Authomatic specific implementation of logging in"""
-    def __init__(self, hide_print=False):
+    def __init__(self, ok_to_print=True):
         setup_application_context()
         self.is_online = flask.g.is_online
         if self.is_online:
@@ -1061,7 +1061,7 @@ class AuthFliki(Auth):
                 "logged in" if self.is_authenticated else "" +
                 "anonymous" if self.is_anonymous else ""
             )
-            if not hide_print:
+            if ok_to_print:
                 print(
                     "AUTH",
                     self.qiki_user.idn.qstring(),
@@ -1597,8 +1597,6 @@ def contribution_home(home_page_title):
                     auth.lex.IDN.UNSLUMP_OBSOLETE,
                     auth.lex.IDN.CAPTION,
                     auth.lex.IDN.EDIT,
-                    # auth.lex.IDN.MATCH,
-                    # auth.lex.IDN.HANDLE,
                 ]
                 words_for_js = auth.vetted_find_by_verbs(verbs)
                 with foot.script() as script:
@@ -1619,15 +1617,11 @@ def contribution_home(home_page_title):
                         MEDIA_HANDLERS=[
                             static_code_url('media_youtube.js', _external=True),
                             static_code_url('media_instagram.js', _external=True),
+                            static_code_url('media_noembed.js', _external=True),
+                            static_code_url('media_any_url.js', _external=True),
                         ],
-
-                        # order=auth.cat_cont_order(),
-                        # order.cat - list of categories in order
-                        # order.cont - dict by category of lists of contributions in order
-
-                        # words=auth.cat_cont_words(),
-                        # words.cat - dict by category of category words
-                        # words.cont - list of contribution words
+                        # NOTE:  FIRST matching media handler wins, high priority first, catch-all
+                        #        last.
                     )
                     monty.update(words_for_js)
                     script.raw_text('var MONTY = {json};\n'.format(json=json_pretty(monty)))
@@ -2908,13 +2902,13 @@ def ajax():
     auth = None
     action = None
     qc_start = None
+    ok_to_print = (
+        SHOW_LOG_AJAX_NOEMBED_META or
+        flask.request.form.get('action', '_') != 'noembed_meta'
+    )
 
     try:
-        hide_print = (
-            flask.request.form.get('action', '_') == 'noembed_meta' and
-            not SHOW_LOG_AJAX_NOEMBED_META
-        )
-        auth = AuthFliki(hide_print=hide_print)
+        auth = AuthFliki(ok_to_print=ok_to_print)
 
         if not auth.is_online:
             return invalid_response("ajax offline")
@@ -3072,11 +3066,6 @@ def ajax():
             print("AJAX CRASH, {t:.3f} sec".format(t=t_end - t_start))
         else:
             qc_end = auth.lex.query_count
-
-            ok_to_print = True
-            if action == 'noembed_meta' and not SHOW_LOG_AJAX_NOEMBED_META:
-                ok_to_print = False
-
             if ok_to_print:
                 print(
                     "Ajax {action}, {qc} queries, {t:.3f} sec".format(
@@ -3228,9 +3217,9 @@ def matcher_groups(url, pattern_list):
     return None
 
 
-def matcher(url, pattern_list):
-    any_pattern_matched = any(re.search(p, url) for p in pattern_list)
-    return any_pattern_matched
+# def matcher(url, pattern_list):
+#     any_pattern_matched = any(re.search(p, url) for p in pattern_list)
+#     return any_pattern_matched
 
 
 def valid_response(name=None, value=None):
