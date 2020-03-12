@@ -374,6 +374,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
 
         build_dom();
 
+        $( '#close-button').on('click', function () { pop_down_all(); });
         $(  '#play-button').on('click', function () { bot.play(); });
         $( '#pause-button').on('click', function () { bot.pause(); });
         $('#resume-button').on('click', function () { bot.resume(); });
@@ -381,16 +382,14 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         $(  '#skip-button').on('click', function () { bot.skip(); });
 
         $('#enter_some_text, #enter_a_caption')
-            .on('paste change input keyup', post_it_button_looks)
+            .on('paste change input keyup', post_it_button_appearance)
             .on(      'change input',       maybe_cancel_feedback)
             .on('paste',                    text_or_caption_paste)
             .on('drop',                     text_or_caption_drop)
         ;
         $('#post_it_button').on('click', post_it_click);
 
-        $('.category, .frou-category')
-            .sortable(sortable_options())
-        ;
+        $('.category, .frou-category').sortable(sortable_options());
 
         $(window.document)
             // .on('click', '.contribution', contribution_click)
@@ -426,13 +425,6 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                 work_around_jumpy_contenteditable_chrome_bug(this);
             })
         ;
-
-        function bigger(button, do_play) {
-            bot.stop();
-            var cont = Contribution_from_element(button);
-            console.assert(cont.exists(), button);
-            pop_up(cont, do_play);
-        }
 
         persist_select_element('#play_bot_sequence', SETTING_PLAY_BOT_SEQUENCE);
 
@@ -475,7 +467,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         //        Possibly for a different user on the same computer, that could be bad bad bad.
 
         entry_caption_same_width_as_textarea();
-        post_it_button_looks();
+        post_it_button_appearance();
         initialize_contribution_sizes();
         settle_down();
 
@@ -770,6 +762,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                 console.log("Noembed is no help with", that.cont.id_attribute);
                 that.end_one_begin_another(SECONDS_BREATHER_AT_NOEMBED_ERROR);
             } else {
+                $(window.document.body).addClass('pop-up-auto');
                 that.pop_begin(pop_up(that.cont, true));
                 that.state = that.State.PLAYING_CONTRIBUTION;
                 that.pop_cont.$sup.on(that.pop_cont.Event.MEDIA_INIT, function () {
@@ -992,7 +985,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
      * At the beginning of each contribution.
      */
     Bot.prototype.media_beginning = function Bot_media_beginning() {
-        $(window.document.body).addClass('player-bot-playing');
+        $(window.document.body).addClass('playing-somewhere');
         $('#play_bot_sequence').prop('disabled', true);
         $('#play_bot_from'    ).prop('disabled', true);
     };
@@ -1001,8 +994,8 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
      * At the end of each contribution.
      */
     Bot.prototype.media_ending = function Bot_media_ending() {
-        $(window.document.body).removeClass('player-bot-playing');
-        $(window.document.body).removeClass('player-bot-pausing');
+        $(window.document.body).removeClass('playing-somewhere');
+        $(window.document.body).removeClass('pausing-somewhere');
         $('#play_bot_sequence').prop('disabled', false);
         $('#play_bot_from'    ).prop('disabled', false);
     };
@@ -1051,7 +1044,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     Bot.prototype._pause_begins = function Bot_pause_begins() {
         var that = this;
         that.is_paused = true;
-        $(window.document.body).addClass('player-bot-pausing');
+        $(window.document.body).addClass('pausing-somewhere');
     };
 
     /**
@@ -1068,7 +1061,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     Bot.prototype._pause_ends = function Bot_pause_ends(/*unusual_reason*/) {
         var that = this;
         that.is_paused = false;
-        $(window.document.body).removeClass('player-bot-pausing');
+        $(window.document.body).removeClass('pausing-somewhere');
         if (that.state === that.State.MEDIA_PAUSE_IN_FORCE) {
             that.state = that.State.MEDIA_STARTED;
         }
@@ -1396,6 +1389,8 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             this.$sup.toggleClass('can-play', can_play);
             this.$sup.toggleClass('cant-play', ! can_play);
         } else {
+            this.$sup.removeClass('can-play');
+            this.$sup.removeClass('cant-play');
             console.error(
                 "No fallback media handler for",
                 that.id_attribute,
@@ -1811,6 +1806,12 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         }
     }
 
+    /**
+     * Send a message to the embedded iframe JavaScript.
+     *
+     * @param selector_or_element_in_contribution
+     * @param message {object} - with an action property, and other action-specific properties
+     */
     function message_embed(selector_or_element_in_contribution, message) {
         iframe_resizer(
             selector_or_element_in_contribution,
@@ -1831,13 +1832,23 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         var $pop_ups = $('.pop-up');
         console.assert($pop_ups.length <= 1, $pop_ups);
         $pop_ups.each(function () {
+            // NOTE:  There's almost certainly only one .pop-up at a time.
+            //        But this makes sure to get them all.
             var $popup = $(this);
+
             $popup.removeClass('pop-up');
-            // NOTE:  This immediate removal of the pop-up class -- though premature --
+            // NOTE:  This immediate removal of the pop-up class, though premature
+            //        (because the animation of the popping down is not complete),
             //        allows redundant back-to-back calls to pop_down_all().
+            //        Because it means a second call won't find any .pop-up elements.
+
+            $(window.document.body).removeClass('pop-up-manual');
+            $(window.document.body).removeClass('pop-up-auto');
+
             var pop_stuff = $popup.data('pop-stuff');
             // TODO:  Instead, just remember the pop-down DOM object ($sup_cont in pop_up()),
-            //        and recalculate NOW its current "fixed" coordinates from that object.
+            //        and recalculate HERE AND NOW its current "fixed" coordinates from that object.
+
             message_embed($popup, {
                 action: 'un-pop-up',
                 width: pop_stuff.render_width,
@@ -1916,14 +1927,30 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     }
 
     function thumb_click(evt) {
+        var div = this;
         if ( ! check_contribution_edit_dirty(false, true)) {
             var cont = Contribution_from_element(this);
             console.log("thumb click", cont.id_attribute);
-            pop_up(cont, true);
+            bigger(div, true);
+            // pop_up(cont, true);
             evt.stopPropagation();
             evt.preventDefault();
             return false;
         }
+    }
+
+    function bigger(element, do_play) {
+        bot.stop();
+        var cont = Contribution_from_element(element);
+        console.assert(cont.exists(), element);
+        $(window.document.body).addClass('pop-up-manual');
+        // NOTE:  body.pop-up-manual results from clicking any of:
+        //        1. the contribution's save-bar bigger button with the fullscreen icon
+        //        2. the contribution's save-bar play button with the triangle icon
+        //        3. the contribution render-bar thumbnail
+        //        This does not happen when clicking the global bot play button,
+        //        nor its subsequent automated pop-ups.
+        var pop_cont = pop_up(cont, do_play);
     }
 
     function pop_up(cont, auto_play) {
@@ -2058,6 +2085,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                     //        and let iFrameResizer handle the outer size.
                     // SEE:  Tricky iframe height 100%, https://stackoverflow.com/a/5871861/673991
 
+                    $animation_in_progress = $popup;
                     $popup.animate({
                         left: 0,
                         top: top_air,
@@ -2066,6 +2094,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                     }, {
                         easing: 'swing',
                         complete: function () {
+                            $animation_in_progress = null;
                             pop_cont.resizer_nudge();
                             pop_cont.zero_iframe_recover();
                             // NOTE:  A little extra help for pop-ups
@@ -3095,7 +3124,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     /**
      * Should the post-it button be disabled (can't submit)?  Or red (submit hint)?
      */
-    function post_it_button_looks() {
+    function post_it_button_appearance() {
         var is_empty_text = $('#enter_some_text').val().length === 0;
         var is_empty_caption = $('#enter_a_caption').val().length === 0;
         if (is_empty_text) {
@@ -3122,7 +3151,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         } else {
 
             function failed_post(message) {
-                post_it_button_looks();
+                post_it_button_appearance();
                 $('#post_it_button')
                     .addClass('failed-post')
                     .attr('title', "Post failed: " + message)
@@ -3177,7 +3206,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                             //        and when the Contribution constructor could be called.
                             $text.val("");
                             $caption_input.val("");
-                            post_it_button_looks();
+                            post_it_button_appearance();
                             rebuild_a_render_bar($sup_cont);
                             settle_down();
                             setTimeout(function () {  // Give rendering some airtime.
@@ -3245,6 +3274,11 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     //        learn-the-slow-and-fast-way-to-append-elements-to-the-dom
     function build_dom() {
         $(window.document.body).empty();
+        // FIXME:  This obliterates all <script> elements.
+        //         They seem to continue to run fine on Win/Chrome.
+        //         Including jQuery and MONTY and THIS contribution.js script and a bunch of others!
+        //         But is that a problem for some other browser??
+        //         Should we instead empty and append a div within body?
         $(window.document.body).addClass('dirty-nowhere');
 
         var $up_top_spacer = $('<div>', {id: 'up-top-spacer'});
@@ -3263,6 +3297,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
 
         var $bot = $('<div>', {id: 'player-bot'});
 
+        $bot.append($('<button>', {id: 'close-button'}).append($icon('close')).append(" close"));
         $bot.append($('<button>', {id: 'play-button'}).append($icon('play_arrow')).append(" play"));
         $bot.append($('<button>', {id: 'pause-button'}).append($icon('pause')).append(" pause"));
         $bot.append($('<button>', {id: 'resume-button'}).append($icon('play_arrow')).append(" resume"));

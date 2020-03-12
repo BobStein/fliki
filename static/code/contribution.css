@@ -35,22 +35,34 @@
     vertical-align: middle;
 }
 
-body                    #play-button { display: inline-block; }
-body.player-bot-playing #play-button { display: none; }
+body                      #close-button { display: none; }
+body.pop-up-manual        #close-button { display: inline-block; }
 
-body                    #pause-button { display: none; }
-body.player-bot-playing #pause-button { display: inline-block; }
-body.player-bot-pausing #pause-button { display: none; }
+body                      #play-button { display: inline-block; }
+body.pop-up-manual        #play-button { display: none; }
+body.playing-somewhere    #play-button { display: none; }
 
-body                    #resume-button { display: none; }
-body.player-bot-playing #resume-button { display: none; }
-body.player-bot-pausing #resume-button { display: inline-block; }
+body                      #pause-button { display: none; }
+body.playing-somewhere    #pause-button { display: inline-block; }
+body.pausing-somewhere    #pause-button { display: none; }
 
-body                    #stop-button { display: none; }
-body.player-bot-playing #stop-button { display: inline-block; }
+body                      #resume-button { display: none; }
+body.playing-somewhere    #resume-button { display: none; }
+body.pausing-somewhere    #resume-button { display: inline-block; }
 
-body                    #skip-button { display: none; }
-body.player-bot-playing #skip-button { display: inline-block; }
+body                      #stop-button { display: none; }
+body.playing-somewhere    #stop-button { display: inline-block; }
+
+body                      #skip-button { display: none; }
+body.playing-somewhere    #skip-button { display: inline-block; }
+
+body                      #play_bot_sequence { display: inline-block }
+body.pop-up-manual        #play_bot_sequence { display: none }
+body.pop-up-auto          #play_bot_sequence { display: none }
+
+body                      #play_bot_from { display: inline-block }
+body.pop-up-manual        #play_bot_from { display: none }
+body.pop-up-auto          #play_bot_from { display: none }
 
 select#thumb-res        { text-align-last: right; margin-right: 0.1em; }
 select#thumb-res option { direction: rtl; }
@@ -284,7 +296,7 @@ select#thumb-res option { direction: rtl; }
 
 .sup-contribution.pop-up                  .save-bar .edit    { display: none; }
 .sup-contribution.contribution-edit       .save-bar .edit    { display: none; }
-body.player-bot-playing                   .save-bar .edit    { display: none; }
+body.playing-somewhere                    .save-bar .edit    { display: none; }
 .sup-contribution:not(.contribution-edit) .save-bar .cancel  { display: none; }
 .sup-contribution.edit-dirty              .save-bar .cancel  { display: none; }
 .sup-contribution:not(.edit-dirty)        .save-bar .save    { display: none; }
@@ -292,13 +304,13 @@ body.player-bot-playing                   .save-bar .edit    { display: none; }
 
 .sup-contribution                         .save-bar   .play { display: inline-block; }
 .sup-contribution.contribution-edit       .save-bar   .play { display: none; }
-body.player-bot-playing                   .save-bar   .play { display: none; }
+body.playing-somewhere                    .save-bar   .play { display: none; }
 .sup-contribution.pop-up                  .save-bar   .play { display: none; }
 .sup-contribution.cant-play               .save-bar   .play { display: none; }
 
 .sup-contribution                         .save-bar   .expand { display: inline-block; }
 .sup-contribution.contribution-edit       .save-bar   .expand { display: none; }
-body.player-bot-playing                   .save-bar   .expand { display: none; }
+body.playing-somewhere                    .save-bar   .expand { display: none; }
 .sup-contribution.pop-up                  .save-bar   .expand { display: none; }
 .sup-contribution.noembed-error           .save-bar   .expand { display: none; }
 

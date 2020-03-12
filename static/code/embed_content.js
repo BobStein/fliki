@@ -138,8 +138,10 @@ function embed_content_js(window, $, MONTY) {
                                 //        It enables JavaScript to animate the video.
 
                                 rel: '0'
-                                // THANKS:  Prevent related videos appearing at the end.
+                                // THANKS:  rel=0 prevents (some) related videos at the end.
                                 //          https://www.youtube.com/watch?v=ZUTzJG212Vo
+                                // TODO:  Further eliminate pesky related video billboards
+                                //        https://stackoverflow.com/q/48386252/673991
 
                                 // , origin: 'http://example.com'
                                 // , origin: 'locavore.unslumping.org'

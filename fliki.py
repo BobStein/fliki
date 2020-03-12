@@ -475,12 +475,18 @@ class LexFliki(qiki.LexMySQL):
         # NOTE:  Shouldn't need self.IDN, and can't have it, until this Lex is initialized.
         #        One way this may break is if read_word() for a suffixed word
         #        were somehow called by the Lex initialization.
+
         super(LexFliki, self).__init__(word_class=WordFlikiSentence, **self._credentials)
 
         if LexFliki._IDNS_READ_ONCE_AT_STARTUP is None:
+
             LexFliki._IDNS_READ_ONCE_AT_STARTUP = WorkingIdns(self)
+            # THANKS:  Class property gotchas, https://stackoverflow.com/a/69067/673991
+            #          Must use the class name (not `self`) to write to a static class property.
+
             idns = LexFliki._IDNS_READ_ONCE_AT_STARTUP.idns()
             LexFliki._txt_from_idn = {idn: self[idn].txt for idn in idns}
+
         self.IDN = LexFliki._IDNS_READ_ONCE_AT_STARTUP
         self.txt_from_idn = LexFliki._txt_from_idn
         self.youtube_matches = None
@@ -648,6 +654,7 @@ login_manager.init_app(flask_app)
 
 class Auth(object):
     """Qiki generic logging in."""
+    # TODO:  Move to qiki/auth.py?
     # TODO:  Morph this into a Session lex?
 
     def __init__(
