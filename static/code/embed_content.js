@@ -32,6 +32,7 @@
  * @param {object}      MONTY.oembed.html
  * @param {object}      MONTY.oembed.thumbnail_url
  * @param {object}      MONTY.oembed.width
+ * @param {string}      MONTY.POPUP_ID_PREFIX
  * @param {string}      MONTY.target_origin
  * @param {number}      MONTY.THUMB_MAX_HEIGHT
  * @param {number}      MONTY.THUMB_MAX_WIDTH
@@ -235,7 +236,7 @@ function embed_content_js(window, $, MONTY) {
                                                 t.moment("yt-state");
 
                                                 console.log(
-                                                    "popup_" + contribution_idn,
+                                                    MONTY.POPUP_ID_PREFIX + contribution_idn,
                                                     domain_simple + ",",
                                                     "lag", t.report()
                                                 );
@@ -252,7 +253,10 @@ function embed_content_js(window, $, MONTY) {
                                                 if (is_auto_play) {
                                                     parent_message(
                                                         'auto-play-ended',
-                                                        { contribution_idn: contribution_idn }
+                                                        {
+                                                            contribution_idn: contribution_idn,
+                                                            current_time: yt_player.getCurrentTime()
+                                                        }
                                                     );
                                                 }
                                                 break;
@@ -260,15 +264,22 @@ function embed_content_js(window, $, MONTY) {
                                                 if (is_auto_play) {
                                                     parent_message(
                                                         'auto-play-paused',
-                                                        { contribution_idn: contribution_idn }
+                                                        {
+                                                            contribution_idn: contribution_idn,
+                                                            current_time: yt_player.getCurrentTime()
+                                                        }
                                                     );
                                                 }
                                                 break;
                                             case window.YT.PlayerState.PLAYING:
                                                 if (is_auto_play) {
+                                                    console.log("EMBED PLAYING", yt_player.getCurrentTime());
                                                     parent_message(
                                                         'auto-play-playing',
-                                                        { contribution_idn: contribution_idn }
+                                                        {
+                                                            contribution_idn: contribution_idn,
+                                                            current_time: yt_player.getCurrentTime()
+                                                        }
                                                     );
                                                 }
                                                 break;

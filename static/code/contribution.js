@@ -56,12 +56,19 @@
  * @param MONTY.IDN.QUOTE
  * @param MONTY.IDN.REORDER
  * @param MONTY.IDN.UNSLUMP_OBSOLETE
+ * @param MONTY.INTERACTION.BOT
+ * @param MONTY.INTERACTION.END
+ * @param MONTY.INTERACTION.PAUSE
+ * @param MONTY.INTERACTION.RESUME
+ * @param MONTY.INTERACTION.QUIT
+ * @param MONTY.INTERACTION.START
  * @param MONTY.is_anonymous
  * @param MONTY.login_html
  * @param MONTY.me_idn
  * @param MONTY.me_txt
  * @param MONTY.MEDIA_HANDLERS
  * @param MONTY.OEMBED_CLIENT_PREFIX
+ * @param MONTY.POPUP_ID_PREFIX
  * @param MONTY.THUMB_MAX_HEIGHT
  * @param MONTY.THUMB_MAX_WIDTH
  * @param MONTY.WHAT_IS_THIS_THING
@@ -246,7 +253,6 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
 
     var talkify_player = null;
     var talkify_playlist = null;
-    var POPUP_PREFIX = 'popup_';
     var talkify_done = null;
     var talkify_voice_name;
     var $animation_in_progress = null;
@@ -782,7 +788,8 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                     );
                     that.pop_end();
                 });
-                that.pop_cont.$sup.on(that.pop_cont.Event.MEDIA_PLAYING, function () {
+                that.pop_cont.$sup.on(that.pop_cont.Event.MEDIA_PLAYING, function (evt, o) {
+                    console.log("DOES THIS EVER HAPPEN?", o.current_time);
                     if (that.is_paused) {
                         console.debug("Resume initiated by embedded iframe");
                         // NOTE:  Surprise - the embedded resume button was hit.
@@ -1205,7 +1212,8 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         category_id:    { get: function () {return this.$cat.attr('id');}},
         is_my_category: { get: function () {return this.category_id === MONTY.IDN.CAT_MY.toString();}},
         is_media:       { get: function () {return could_be_url(this.content);}},
-        content:        { get: function () {return this.$cont.text();}}
+        content:        { get: function () {return this.$cont.text();}},
+        is_paused:      { get: function () {return false;}}
     });
 
     Contribution.prototype.exists = function Contribution_exists() {
@@ -1235,6 +1243,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                     widthCalculationMethod: 'taggedElement',
                     onMessage: function iframe_incoming_message(twofer) {
                         var message = twofer.message;
+                        var cont_idn = strip_prefix(message.contribution_idn, MONTY.POPUP_ID_PREFIX);
                         // noinspection JSRedundantSwitchStatement
                         switch (message.action) {
                         case 'auto-play-presaged':
@@ -1253,14 +1262,38 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                         case 'auto-play-ended':
                             console.log("Media ended", that.id_attribute, message.contribution_idn);
                             that.$sup.trigger(that.Event.MEDIA_ENDED);
+                            qoolbar.post('interact', {
+                                name: MONTY.INTERACTION.END,
+                                obj: cont_idn,
+                                num: message.current_time
+                            });
                             break;
                         case 'auto-play-paused':
                             console.log("Media paused", that.id_attribute, message.contribution_idn);
                             that.$sup.trigger(that.Event.MEDIA_PAUSED);
+                            qoolbar.post('interact', {
+                                name: MONTY.INTERACTION.PAUSE,
+                                obj: cont_idn,
+                                num: message.current_time
+                            });
                             break;
                         case 'auto-play-playing':
-                            console.log("Media playing", that.id_attribute, message.contribution_idn);
-                            that.$sup.trigger(that.Event.MEDIA_PLAYING);
+                            console.log("Media playing", that.id_attribute, message.contribution_idn, message.current_time.toFixed(3));
+                            that.$sup.trigger(that.Event.MEDIA_PLAYING, [{
+                                current_time: message.current_time
+                            }]);
+                            var interaction_name;
+                            if (that.is_paused) {
+                                interaction_name = MONTY.INTERACTION.RESUME;
+                            } else {
+                                interaction_name = MONTY.INTERACTION.START;
+                            }
+                            qoolbar.post('interact', {
+                                name: interaction_name,
+                                obj: cont_idn,
+                                num: message.current_time
+                            });
+
                             break;
                         case 'noembed-error-notify':
                             // NOTE:  This happens when youtube oembed says "401 Unauthorized"
@@ -1301,6 +1334,14 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             console.error("Missing iframe or resizer", that);
         }
     };
+
+    // function interact(interaction, obj, num) {
+    //     qoolbar.post('interact', {
+    //         name: interaction,
+    //         obj: obj,
+    //         num: num
+    //     });
+    // }
 
     Contribution.prototype.fix_caption_width = function Contribution_fix_caption_width() {
         // noinspection JSUnusedAssignment
@@ -1950,17 +1991,18 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         //        3. the contribution render-bar thumbnail
         //        This does not happen when clicking the global bot play button,
         //        nor its subsequent automated pop-ups.
-        var pop_cont = pop_up(cont, do_play);
+        pop_up(cont, do_play);
     }
 
     function pop_up(cont, auto_play) {
-        var popup_cont_idn = POPUP_PREFIX + cont.id_attribute;
+        var cont_idn = cont.id_attribute;
+        var popup_cont_idn = MONTY.POPUP_ID_PREFIX + cont_idn;
         var popup_cont_selector = selector_from_id(popup_cont_idn);
         var was_already_popped_up = $(popup_cont_selector).length > 0;
 
         pop_down_all();
         if (was_already_popped_up) {
-            console.error("Oops, somehow", cont.id_attribute, "was already popped up.");
+            console.error("Oops, somehow", cont_idn, "was already popped up.");
             // NOTE:  Avoid double-pop-up.  Just pop down, don't pop-up again.
             return null;
         }
@@ -1986,7 +2028,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
 
         console.assert(
             save_height > 0.0,
-            cont.id_attribute,
+            cont_idn,
             save_height,
             cont.$save_bar.height(),
             cont.$save_bar.width(),
@@ -2021,7 +2063,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         var $popup = cont.$sup.clone(false, true);
 
         $popup.find('[id]').attr('id', function () {
-            return POPUP_PREFIX + $(this).attr('id');
+            return MONTY.POPUP_ID_PREFIX + $(this).attr('id');
         });
         // NOTE:  Prefix all ids in the clone, to avoid duplicate ids.
 
@@ -2226,8 +2268,13 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                             //     14:53:13.162
                         });
                         var $svg = null;
-                        $(utter).on('start', function speech_boundary() {
+                        $(utter).on('start', function speech_boundary(evt) {
                             pop_cont.$sup.trigger(pop_cont.Event.SPEECH_START);
+                            qoolbar.post('interact', {
+                                name: MONTY.INTERACTION.START,
+                                obj: cont_idn,
+                                num: evt.originalEvent.charIndex
+                            });
                         });
                         $(utter).on('boundary', function speech_boundary(evt) {
                             // TODO:  Hold off HERE if pause is happening.
@@ -2300,6 +2347,11 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                                 //        Because a NEW bot play cycle might otherwise be
                                 //        transitioned prematurely.
                                 //        Did the $(utter).off() in pop_down_all() solve this issue?
+                                qoolbar.post('interact', {
+                                    name: MONTY.INTERACTION.QUIT,
+                                    obj: cont_idn,
+                                    num: evt.originalEvent.charIndex
+                                });
                             } else {
                                 console.log(
                                     "Utterance",
@@ -2310,6 +2362,12 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                                 // NOTE:  A bit lame, this happens whether manually popped up or
                                 //        automatically played by the bot.  But it should have
                                 //        no consequence manually anyway.
+                                qoolbar.post('interact', {
+                                    name: MONTY.INTERACTION.END,
+                                    obj: cont_idn,
+                                    num: evt.originalEvent.charIndex
+                                });
+
                             }
                         });
                         pop_cont.$sup.trigger(pop_cont.Event.SPEECH_PLAY);
@@ -2482,7 +2540,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                 }
             });
         }
-        console.log("Popup", cont.id_attribute, cont.media_domain);
+        console.log("Popup", cont_idn, cont.media_domain);
         return pop_cont;
     }
 

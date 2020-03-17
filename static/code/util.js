@@ -235,6 +235,29 @@ function equal_ish(value1, value2, tolerance) {
 console.assert(  equal_ish(42.0, 42.1, 0.11));
 console.assert(! equal_ish(42.0, 42.1, 0.09));
 
+if (!String.prototype.startsWith) {
+    String.prototype.startsWith = function (searchString, position) {
+      position = position || 0;
+      return this.substr(position, searchString.length) === searchString;
+  };
+}
+console.assert('string'.startsWith('str'));
+// THANKS:  .startsWith() polyfill,
+//          https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/String/startsWith
+
+/**
+ * Remove a prefix.  Or if it wasn't there, return the same string.
+ */
+function strip_prefix(str, prefix) {
+    if (str.startsWith(prefix)) {
+        return str.slice(prefix.length);
+    } else {
+        return str;
+    }
+}
+console.assert('berry' === strip_prefix('raspberry', 'rasp'));
+console.assert('inflammable' === strip_prefix('inflammable', 'un'));
+
 /**
  * Report the time between a series of events.
  *

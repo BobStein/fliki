@@ -67,6 +67,7 @@ THUMB_MAX_HEIGHT = 128
 NON_ROUTABLE_IP_ADDRESS = '10.255.255.1'   # THANKS:  https://stackoverflow.com/a/904609/673991
 NON_ROUTABLE_URL = 'https://' + NON_ROUTABLE_IP_ADDRESS + '/'   # for testing
 SHOW_LOG_AJAX_NOEMBED_META = True
+POPUP_ID_PREFIX = 'popup_'
 
 
 YOUTUBE_PATTERNS = [
@@ -233,6 +234,9 @@ class WorkingIdns(object):
                 #        use_already looks at the latest s,v,o match.
 
                 self.FIELD_FLUB        = lex.verb(u'field flub').idn   # report of some wrongness from the field
+
+                self.INTERACT          = lex.verb(u'interact').idn   # UX action
+
 
     def dictionary_of_qstrings(self):
         of_idns = self.idn_from_symbol()
@@ -1629,6 +1633,15 @@ def contribution_home(home_page_title):
                         ],
                         # NOTE:  FIRST matching media handler wins, high priority first, catch-all
                         #        last.
+                        INTERACTION=dict(
+                            BOT='bot',       # start the global play button
+                            START='start',   # start playing individual media
+                            QUIT='quit',     # ARTIFICIAL, manual stopping the playback
+                            END='end',       # NATURAL, automatic end of the media
+                            PAUSE='pause',
+                            RESUME='resume',
+                        ),
+                        POPUP_ID_PREFIX=POPUP_ID_PREFIX,
                     )
                     monty.update(words_for_js)
                     script.raw_text('var MONTY = {json};\n'.format(json=json_pretty(monty)))
@@ -2665,6 +2678,7 @@ def noembed_render(url, idn, matched_groups):
             target_origin=secure.credentials.Options.oembed_target_origin,
             THUMB_MAX_WIDTH=THUMB_MAX_WIDTH,
             THUMB_MAX_HEIGHT=THUMB_MAX_HEIGHT,
+            POPUP_ID_PREFIX=POPUP_ID_PREFIX,
         )
         with html.head(newlines=True) as head:
             head.title("{idn}".format(idn=idn))
@@ -3031,6 +3045,20 @@ def ajax():
         elif action == 'notable_occurrence':
             print("Notable Occurrence", auth.form('message'))
             # TODO:  Database
+            return valid_response()
+
+        elif action == 'interact':
+            interaction_name = auth.form('name')   # e.g. MONTY.INTERACTION.PAUSE == 'pause'
+            interaction_num = auth.form('num')     # e.g. 15 (seconds)
+            interaction_obj = auth.form('obj')     # e.g. idn of a contribution
+            interaction_verb = lex.define(lex.IDN.INTERACT, qiki.Text(interaction_name))
+            lex.create_word(
+                sbj=auth.qiki_user,
+                vrb=interaction_verb,
+                obj=qiki.Number(interaction_obj),
+                num=qiki.Number(interaction_num),
+                use_already=False,
+            )
             return valid_response()
 
         else:
