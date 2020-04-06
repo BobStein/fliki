@@ -267,6 +267,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
 
     // noinspection JSUndefinedPropertyAssignment
     var utter = null;
+    var speech_progress = null;   // Character index (null means ended)
 
     var voices = null;
     var voice_weights;
@@ -356,7 +357,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
 
 
     $(function document_ready() {
-        if (typeof window.speechSynthesis === 'object') {
+        if (window.speechSynthesis !== null) {
             window.speechSynthesis.onvoiceschanged = function () {
                 // THANKS:  voices ready, https://stackoverflow.com/a/22978802/673991
                 voices = window.speechSynthesis.getVoices();
@@ -386,6 +387,13 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         $('#resume-button').on('click', function () { bot.resume(); });
         $(  '#stop-button').on('click', function () { bot.stop(); });
         $(  '#skip-button').on('click', function () { bot.skip(); });
+        // NOTE:  You might expect INTERACTION words to all be generated near here, where most
+        //        user interaction originates.  But then how to record the controls inside a youtube
+        //        video?  Those actions can be detected by events in the youtube API, but those
+        //        events also include these actions.
+        //        So the words are generated in diverse places with fiddly conditions.
+        //        This is a tiny part of the most complex project:  machines understanding people.
+
 
         $('#enter_some_text, #enter_a_caption')
             .on('paste change input keyup', post_it_button_appearance)
@@ -574,9 +582,14 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         return playlist;
     }
 
+    function cat_idn_for_playlist() {
+        var play_bot_from_symbol = $('#play_bot_from').val();   // e.g. 'CAT_MY'
+        var play_bot_from_idn = MONTY.IDN[play_bot_from_symbol];   // e.g. 1435
+        return play_bot_from_idn;
+    }
+
     function playlist_in_order() {
-        var play_bot_from_symbol = $('#play_bot_from').val();
-        var play_bot_from_idn = MONTY.IDN[play_bot_from_symbol];
+        var play_bot_from_idn = cat_idn_for_playlist();
         var $cat = $categories[play_bot_from_idn];
         return $cat.find('.contribution[id]').map(function () {
             return this.id;
@@ -621,9 +634,12 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         PREP_CONTRIBUTION: "Prepare for next contribution",
         UNFULL_CONTRIBUTION: "Exiting full screen before the next contribution",
         NEXT_CONTRIBUTION: "Next contribution in playlist",
-        MEDIA_READY: "The iframe is showing stuff",                            // static media
+        MEDIA_READY: "The iframe is showing stuff",                            // dynamic or static
         MEDIA_STARTED: "The iframe is doing stuff, we'll know when it ends",   // dynamic media
-        MEDIA_PAUSE_IN_FORCE: "Both main page and iframe agree we're paused",
+        MEDIA_TIMING: "The iframe is static",                                  // static media
+        // MEDIA_PAUSE_IN_FORCE: "Both main page and iframe agree we're paused",
+        // Why did I ever need this state?
+        // Was it anachronistic before I started
         SPEECH_SHOULD_PLAY: "The text was told to speak",
         SPEECH_STARTED: "The speaking has started",
         DONE_CONTRIBUTION: "Natural ending of a contribution in playlist",
@@ -649,6 +665,9 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
      *                                 This situation should be explained in the call.
      * @param new_state
      */
+    // TODO:  Which looks better?
+    //        that.transit([that.State.OLD_STATE], that.State.NEW_STATE);
+    //        that.transit(['OLD_STATE'], 'NEW_STATE');
     Bot.prototype.transit = function Bot_transit(old_states, new_state) {
         var that = this;
         if (has(old_states, that.state)) {
@@ -669,7 +688,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     Bot.prototype.ticker = function Bot_ticker() {
         var that = this;
         if (that.is_paused) {
-            that.maintain_pause();
+            that.finite_state_machine_paused();
             return;
         }
         var did_state_change_since_last_ticker_call = that.state !== that.last_tick_state;
@@ -702,6 +721,15 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         }
     };
 
+    /**
+     * Bot plays on.  Perform the extended consequences of the global play button.
+     *
+     * Called
+     *     - once per tick (every second)
+     *     - after each state change, in case it is ready to change again
+     *
+     * But this is NOT called during pause.  See
+     */
     Bot.prototype.finite_state_machine = function Bot_finite_state_machine() {
         var that = this;
 
@@ -714,6 +742,14 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             index_play_bot = 0;
             that.media_beginning();
             that.state = that.State.PREP_CONTRIBUTION;
+            qoolbar.post('interact', {
+                name: MONTY.INTERACTION.BOT,
+                obj: cat_idn_for_playlist(),
+                txt: list_play_bot.join(",")
+            });
+            // NOTE:  When there is a feature for the Bot to play from a more diverse set than
+            //        merely categories MY and THEIR, then the obj should be a word representing
+            //        that set.
             break;
         case that.State.PREP_CONTRIBUTION:
             if (isFullScreen) {
@@ -777,25 +813,32 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                 that.pop_cont.$sup.on(that.pop_cont.Event.MEDIA_BEGUN, function () {
                     that.transit([that.State.MEDIA_READY], that.State.MEDIA_STARTED);
                 });
+                that.pop_cont.$sup.on(that.pop_cont.Event.MEDIA_STATIC, function () {
+                    that.transit([that.State.MEDIA_READY], that.State.MEDIA_TIMING);
+                });
                 that.pop_cont.$sup.on(that.pop_cont.Event.MEDIA_ENDED, function () {
-                    that.transit([that.State.MEDIA_STARTED], that.State.DONE_CONTRIBUTION);
                     that.transit(
                         [
-                            that.State.MEDIA_STARTED,
-                            that.State.MEDIA_PAUSE_IN_FORCE   // paused, then immediately ended
+                            that.State.MEDIA_STARTED
+                            // ,
+                            // that.State.MEDIA_PAUSE_IN_FORCE   // paused, then immediately ended
                         ],
                         that.State.DONE_CONTRIBUTION
                     );
                     that.pop_end();
                 });
-                that.pop_cont.$sup.on(that.pop_cont.Event.MEDIA_PLAYING, function (evt, o) {
-                    console.log("DOES THIS EVER HAPPEN?", o.current_time);
+                that.pop_cont.$sup.on(that.pop_cont.Event.MEDIA_PLAYING, function () {
+                    console.log("Media playing, nothing to do.");
+                });
+                that.pop_cont.$sup.on(that.pop_cont.Event.MEDIA_RESUME, function () {
+                    // NOTE:  This happens when resuming a paused video or static media.
                     if (that.is_paused) {
                         console.debug("Resume initiated by embedded iframe");
                         // NOTE:  Surprise - the embedded resume button was hit.
                         //        main page <-- iframe
                         that._pause_ends();
                     } else {
+                        console.debug("Resume fed back by iframe.");
                         // NOTE:  Expected - main-page resume fed back by iframe, or
                         //        Expected - play started from the beginning
                         //        main page --> iframe
@@ -811,15 +854,14 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                         //        main page <-- iframe
                         that._pause_begins();
                     }
-                    that.transit(
-                        [
-                            that.State.MEDIA_STARTED,
-                            that.State.MEDIA_PAUSE_IN_FORCE   // redundant pause events
-                        ],
-                        that.State.MEDIA_PAUSE_IN_FORCE
-                    );
-                    // TODO:  Does this look better?
-                    //        that.transit(['MEDIA_STARTED'], 'MEDIA_PAUSE_IN_FORCE');
+                    // that.transit(
+                    //     [
+                    //         that.State.MEDIA_STARTED,   // dynamic, e.g. youtube
+                    //         that.State.MEDIA_TIMING,    // static, e.g. instagram photo
+                    //         that.State.MEDIA_PAUSE_IN_FORCE   // redundant pause events
+                    //     ],
+                    //     that.State.MEDIA_PAUSE_IN_FORCE
+                    // );
                 });
                 that.pop_cont.$sup.on(that.pop_cont.Event.SPEECH_PLAY, function () {
                     that.transit([that.State.PLAYING_CONTRIBUTION], that.State.SPEECH_SHOULD_PLAY);
@@ -839,18 +881,27 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         case that.State.PLAYING_CONTRIBUTION:
             break;
         case that.State.MEDIA_READY:
-            // TODO:  Time-out this state, because MEDIA_BEGUN event will take us out of here
-            //        if there's any chance it will animate -- and thus end -- itself.
-            if (that.ticks_this_state < MEDIA_STATIC_SECONDS) {
-                // static media, e.g. jpg on flickr
-            } else {
+            // NOTE:  Awaiting MEDIA_BEGUN event (for dynamic media) leads to MEDIA_STARTED state
+            //             or MEDIA_STATIC event (for static media) leads to MEDIA_TIMING state
+
+            // // NOPE:  Time-out this state, because MEDIA_BEGUN event will take us out of here
+            // //        if there's any chance it will animate -- and thus end -- itself.
+            // if (that.ticks_this_state < MEDIA_STATIC_SECONDS) {
+            //     // static media, e.g. jpg on flickr
+            // } else {
+            //     that.state = that.State.BEGIN_ANOTHER;
+            // }
+            break;
+        case that.State.MEDIA_TIMING:
+            // Static media, e.g. jpg on flickr, show it for a while.
+            if (that.ticks_this_state >= MEDIA_STATIC_SECONDS) {
                 that.state = that.State.BEGIN_ANOTHER;
             }
             break;
         case that.State.MEDIA_STARTED:
             break;
-        case that.State.MEDIA_PAUSE_IN_FORCE:
-            break;
+        // case that.State.MEDIA_PAUSE_IN_FORCE:
+        //     break;
         case that.State.SPEECH_SHOULD_PLAY:
             // NOTE:  Wait at least 1 second to retry.
             //        Actual delays from speak-method to start-event in ms:
@@ -892,7 +943,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             break;
         case that.State.BEGIN_ANOTHER:
             that.pop_end();
-            pop_down_all();
+            pop_down_all(true);   // true, meaning this is the automated end of a contribution
             index_play_bot++;
             that.state = that.State.PREP_CONTRIBUTION;
             break;
@@ -912,9 +963,9 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     };
 
     /**
-     * Like finite_state_machine() except this gets called while paused.
+     * Instead of finite_state_machine(), this gets called while paused, once per tick (second).
      */
-    Bot.prototype.maintain_pause = function Bot_maintain_pause() {
+    Bot.prototype.finite_state_machine_paused = function Bot_finite_state_machine_paused() {
         var that = this;
 
         // NOTE:  This crude peppering of the media or speech with pause directives
@@ -1021,6 +1072,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         that.media_ending();
         that.state = that.State.CRASHED;
         // TODO:  Prompt to reload the page.
+        that.is_paused = false;
     };
 
     Bot.prototype.assert = function Bot_assert(/* condition, arguments */) {
@@ -1039,10 +1091,11 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
 
     Bot.prototype.pause_speech = function Bot_pause_speech() {
         window.speechSynthesis.pause();
+        // TODO:  Why is this delayed 4 words later?
     };
 
     Bot.prototype.pause_media = function Bot_pause_media() {
-        message_embed('.pop-up', {action: 'pause'});
+        embed_message('.pop-up', {action: 'pause'});
     };
 
     /**
@@ -1069,9 +1122,10 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         var that = this;
         that.is_paused = false;
         $(window.document.body).removeClass('pausing-somewhere');
-        if (that.state === that.State.MEDIA_PAUSE_IN_FORCE) {
-            that.state = that.State.MEDIA_STARTED;
-        }
+        // if (that.state === that.State.MEDIA_PAUSE_IN_FORCE) {
+        //     that.state = that.State.MEDIA_STARTED;
+        //     // FIXME:  Or maybe MEDIA_STATIC
+        // }
     };
 
     Bot.prototype.resume = function Bot_resume() {
@@ -1081,7 +1135,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         if (utter !== null) {
             window.speechSynthesis.resume();
         }
-        message_embed('.pop-up', {action: 'resume'});
+        embed_message('.pop-up', {action: 'resume'});
     };
 
     Bot.prototype.stop = function Bot_stop() {
@@ -1128,6 +1182,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         // THANKS:  Automatic 'new', https://stackoverflow.com/a/383503/673991
 
         this.id_attribute = id_attribute;
+        this.idn_decimal = strip_prefix(this.id_attribute, MONTY.POPUP_ID_PREFIX);
         this.$cont = $_from_id(this.id_attribute);
         this.$sup = this.$cont.closest('.sup-contribution');
         this.handler = null;
@@ -1177,7 +1232,9 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         MEDIA_WOKE: 'MEDIA_WOKE',       // e.g. youtube auto-play first state-change TODO:  Use this?
         MEDIA_PAUSED: 'MEDIA_PAUSED',   // e.g. youtube auto-play paused
         MEDIA_PLAYING: 'MEDIA_PLAYING', // e.g. youtube auto-play playing
-        MEDIA_ENDED: 'MEDIA_ENDED'      // e.g. youtube auto-play played to the end
+        MEDIA_RESUME: 'MEDIA_RESUME',   // e.g. youtube auto-play resume
+        MEDIA_ENDED: 'MEDIA_ENDED',     // e.g. youtube auto-play played to the end
+        MEDIA_STATIC: 'MEDIA_STATIC'    // e.g. flickr, not going to play, timed display
     };
 
     function Contribution_loop(callback) {
@@ -1212,8 +1269,9 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         category_id:    { get: function () {return this.$cat.attr('id');}},
         is_my_category: { get: function () {return this.category_id === MONTY.IDN.CAT_MY.toString();}},
         is_media:       { get: function () {return could_be_url(this.content);}},
-        content:        { get: function () {return this.$cont.text();}},
-        is_paused:      { get: function () {return false;}}
+        content:        { get: function () {return this.$cont.text();}}
+        // is_paused:      { get: function () {return false;}}
+        // FIXME:  When the eff did that get in there?  It breaks stuff.
     });
 
     Contribution.prototype.exists = function Contribution_exists() {
@@ -1244,11 +1302,22 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                     onMessage: function iframe_incoming_message(twofer) {
                         var message = twofer.message;
                         var cont_idn = strip_prefix(message.contribution_idn, MONTY.POPUP_ID_PREFIX);
+                        console.assert(cont_idn === that.idn_decimal, cont_idn, that.idn_decimal);
+                        var interaction_name;
                         // noinspection JSRedundantSwitchStatement
                         switch (message.action) {
                         case 'auto-play-presaged':
                             console.log("Media presaged", that.id_attribute, message.contribution_idn);
                             that.$sup.trigger(that.Event.MEDIA_BEGUN);
+                            break;
+                        case 'auto-play-static':
+                            console.log("Media static", that.id_attribute, message.contribution_idn);
+                            that.$sup.trigger(that.Event.MEDIA_STATIC);
+                            qoolbar.post('interact', {
+                                name: MONTY.INTERACTION.START,
+                                obj: cont_idn,
+                                num: message.current_time
+                            });
                             break;
                         case 'auto-play-begun':
                             console.log("Media begun", that.id_attribute, message.contribution_idn);
@@ -1259,9 +1328,20 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                             that.$sup.trigger(that.Event.MEDIA_WOKE);
                             // NOTE:  State changes, first sign of life from youtube player.
                             break;
-                        case 'auto-play-ended':
-                            console.log("Media ended", that.id_attribute, message.contribution_idn);
+                        case 'auto-play-end-dynamic':
+                            console.log("Dynamic media ended", that.id_attribute, message.contribution_idn);
                             that.$sup.trigger(that.Event.MEDIA_ENDED);
+                            // NOTE:  MEDIA_ENDED event means e.g. a video ended,
+                            //        so next it's time for a breather.
+                            qoolbar.post('interact', {
+                                name: MONTY.INTERACTION.END,
+                                obj: cont_idn,
+                                num: message.current_time
+                            });
+                            break;
+                        case 'auto-play-end-static':
+                            console.log("Static media ended", that.id_attribute, message.contribution_idn);
+                            // NOTE:  Static media timed-out, no breather necessary.
                             qoolbar.post('interact', {
                                 name: MONTY.INTERACTION.END,
                                 obj: cont_idn,
@@ -1276,14 +1356,41 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                                 obj: cont_idn,
                                 num: message.current_time
                             });
+                            // NOTE:  This could happen a while after the pause button is clicked,
+                            //        after a cascade of consequences.  But it should accurately
+                            //        record the actual position of the pause in the video.
+                            break;
+                        case 'auto-play-quit':
+                            // NOTE:  This up-going message resulted from the Down-going message
+                            //            'un-pop-up'
+                            //        For a dynamic contribution, e.g. youtube,
+                            //        we get here only if the iframe says the video was in a
+                            //        quitable state.
+                            //        You can't quit if a video wasn't playing or paused.
+                            //        For a static contribution, e.g. instagram,
+                            //        we get here if the un-pop-up was manual, not bot-automated.
+                            console.log(
+                                "Media quit",
+                                that.id_attribute,
+                                message.contribution_idn
+                            );
+                            qoolbar.post('interact', {
+                                name: MONTY.INTERACTION.QUIT,
+                                obj: cont_idn,
+                                num: message.current_time
+                            });
                             break;
                         case 'auto-play-playing':
-                            console.log("Media playing", that.id_attribute, message.contribution_idn, message.current_time.toFixed(3));
-                            that.$sup.trigger(that.Event.MEDIA_PLAYING, [{
-                                current_time: message.current_time
-                            }]);
-                            var interaction_name;
-                            if (that.is_paused) {
+                            console.log(
+                                "Media playing",
+                                that.id_attribute,
+                                message.contribution_idn,
+                                message.current_time.toFixed(3),
+                                bot.is_paused
+                            );
+                            if (bot.is_paused) {
+                                // NOTE:  This may be the sole place a Contribution knows of a Bot.
+                                //        Necessary?  Wise?
                                 interaction_name = MONTY.INTERACTION.RESUME;
                             } else {
                                 interaction_name = MONTY.INTERACTION.START;
@@ -1293,6 +1400,26 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                                 obj: cont_idn,
                                 num: message.current_time
                             });
+                            that.$sup.trigger(that.Event.MEDIA_PLAYING, [{
+                                current_time: message.current_time
+                            }]);
+
+                            break;
+                        case 'auto-play-resume':
+                            console.log(
+                                "Media resume",
+                                that.id_attribute,
+                                message.contribution_idn,
+                                message.current_time.toFixed(3)
+                            );
+                            qoolbar.post('interact', {
+                                name: MONTY.INTERACTION.RESUME,
+                                obj: cont_idn,
+                                num: message.current_time
+                            });
+                            that.$sup.trigger(that.Event.MEDIA_RESUME, [{
+                                current_time: message.current_time
+                            }]);
 
                             break;
                         case 'noembed-error-notify':
@@ -1416,15 +1543,17 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         that.$sup.attr('data-domain', sanitized_domain_from_url(that.content));
 
         if (that.handler_scan()) {
-            console.log(
-                "Sophisticated Media", that.id_attribute,
-                "handler", that.handler.handler_index,
-                that.handler.media.description_short,
-                that.handler.match_object.slice(1).join(" "),
-                that.caption_text.slice(0, 10) + "..."
-            );
+            // console.log(
+            //     "Sophisticated Media", that.id_attribute,
+            //     "handler", that.handler.handler_index,
+            //     that.handler.media.description_short,
+            //     that.handler.match_object.slice(1).join(" "),
+            //     that.caption_text.slice(0, 10) + "..."
+            // );
             // EXAMPLE:  Sophisticated Media 3459 handler 0 youtube _SKdN1xQBjk
             // EXAMPLE:  Sophisticated Media 994 handler 1 instagram BNCeThsAhVT
+            // EXAMPLE:  Sophisticated Media 1857 handler 2 noembed  Switched a...
+            // EXAMPLE:  Sophisticated Media 1792 handler 3 any url  Mr Bean's ...
             that.handler.media.render_thumb(that);
             var can_play = that.handler.media.can_play();
             this.$sup.toggleClass('can-play', can_play);
@@ -1584,13 +1713,12 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     };
 
 
-
     /**
      * Enumeration with names, values, and optional descriptions.
      *
      * @param enumeration - e.g. {NAME1: {description: "one"}, NAME2: "two"}
      * @return {object} - returns the enumeration object of objects,
-     *                    each one of which has name and value members.
+     *                    each one of which has name, description, and value members.
      *                    e.g. {
      *                        NAME1: {name: 'NAME1', description: "one", value: 0},
      *                        NAME2: {name: 'NAME2', description: "two", value: 1},
@@ -1612,7 +1740,6 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         enumeration.number_of_values = value_zero_based;
         return enumeration;
     }
-
 
 
     /**
@@ -1853,7 +1980,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
      * @param selector_or_element_in_contribution
      * @param message {object} - with an action property, and other action-specific properties
      */
-    function message_embed(selector_or_element_in_contribution, message) {
+    function embed_message(selector_or_element_in_contribution, message) {
         iframe_resizer(
             selector_or_element_in_contribution,
             function (resizer) {
@@ -1869,15 +1996,30 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         );
     }
 
-    function pop_down_all() {
+    /**
+     * End pop-up.
+     *
+     * @param is_bot_initiated - true = Bot automatic timeout of the contribution,
+     *                           false or unspecified = manually terminated
+     */
+    function pop_down_all(is_bot_initiated) {
+        is_bot_initiated = is_bot_initiated || false;
         var $pop_ups = $('.pop-up');
-        console.assert($pop_ups.length <= 1, $pop_ups);
+        var pop_cont = null;
+        var pop_conts = [];   // In case there are more than one.
         $pop_ups.each(function () {
             // NOTE:  There's almost certainly only one .pop-up at a time.
-            //        But this makes sure to get them all.
-            var $popup = $(this);
+            //        Maybe lingering animations could cause multiple?
+            //        But this makes sure to un-pop them all.  And exactly once.
 
-            $popup.removeClass('pop-up');
+            pop_cont = Contribution_from_element(this);
+            pop_conts.push(pop_cont);
+            // var $popup = $(this);
+            // cont_idn = $popup.attr('original_id');
+            // cont_idn = strip_prefix($popup, MONTY.POPUP_ID_PREFIX);
+            // console.assert(cont_idn === null, "NEGLECTED INTERACTION TARGET", cont_idn);
+
+            pop_cont.$sup.removeClass('pop-up');
             // NOTE:  This immediate removal of the pop-up class, though premature
             //        (because the animation of the popping down is not complete),
             //        allows redundant back-to-back calls to pop_down_all().
@@ -1886,33 +2028,38 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             $(window.document.body).removeClass('pop-up-manual');
             $(window.document.body).removeClass('pop-up-auto');
 
-            var pop_stuff = $popup.data('pop-stuff');
+            var pop_stuff = pop_cont.$sup.data('pop-stuff');
             // TODO:  Instead, just remember the pop-down DOM object ($sup_cont in pop_up()),
             //        and recalculate HERE AND NOW its current "fixed" coordinates from that object.
 
-            message_embed($popup, {
+            embed_message(pop_cont.$sup, {
                 action: 'un-pop-up',
                 width: pop_stuff.render_width,
-                height: pop_stuff.render_height
+                height: pop_stuff.render_height,
+                is_bot_initiated: is_bot_initiated
             });
-            $popup.animate({
+            // noinspection JSCheckFunctionSignatures
+            pop_cont.$sup.animate({
                 top: pop_stuff.fixed_top,
                 left: pop_stuff.fixed_left
             }, {
                 complete: function () {
-                    iframe_resizer($popup, function (resizer) { resizer.close(); });
-                    // NOTE:  Without close() the un-full window generates warnings on resizing.
-                    //        Example:
-                    //            iframeResizer.js:134
-                    //            [iFrameSizer][Host page: popup_iframe_1834]
-                    //            [Window resize] IFrame(popup_iframe_1834) not found
-                    //        And probably leaks memory.
-                    $popup.data('popped-down').removeClass('pop-down');
-                    $popup.removeData('popped-down');
-                    $popup.remove();
+                    iframe_resizer(pop_cont.$sup, function (resizer) {
+                        resizer.close();
+                        // NOTE:  Without close() the un-full window generates warnings on resizing.
+                        //        Example:
+                        //            iframeResizer.js:134
+                        //            [iFrameSizer][Host page: popup_iframe_1834]
+                        //            [Window resize] IFrame(popup_iframe_1834) not found
+                        //        And probably leaks memory.
+                    });
+                    pop_cont.$sup.data('popped-down').removeClass('pop-down');
+                    pop_cont.$sup.removeData('popped-down');
+                    pop_cont.$sup.remove();
                 }
             });
         });
+        console.assert(pop_conts.length <= 1, "MULTIPLE POP-UPS", pop_conts);
 
         if ($animation_in_progress !== null) {
             console.log("DEANIMATING", $animation_in_progress.map(function () {
@@ -1959,6 +2106,15 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             // CAUTION:  .cancel() then immediately .play() may not have worked at some point.
             //           https://stackoverflow.com/a/44042494/673991
             //           Though it seems to have been fixed in Chrome.
+            if (speech_progress !== null && pop_cont !== null) {
+                // NOTE:  No QUIT after END.
+                qoolbar.post('interact', {
+                    name: MONTY.INTERACTION.QUIT,   // Quit speech by closing or escaping.
+                    obj: pop_cont.idn_decimal,
+                    num: speech_progress
+                    // NOTE:  On end events, evt.originalEvent.charIndex is 0.
+                });
+            }
         }
         if (breather_timer !== null) {
             console.log("(breather cut short)");
@@ -2275,6 +2431,25 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                                 obj: cont_idn,
                                 num: evt.originalEvent.charIndex
                             });
+                            speech_progress = 0;
+                        });
+                        $(utter).on('pause', function speech_pause() {
+                            qoolbar.post('interact', {
+                                name: MONTY.INTERACTION.PAUSE,
+                                obj: cont_idn,
+                                num: speech_progress
+                                // NOTE:  On pause events, evt.originalEvent.charIndex is 0.
+                            });
+                        });
+                        $(utter).on('resume', function speech_resume() {
+                            qoolbar.post('interact', {
+                                name: MONTY.INTERACTION.RESUME,
+                                obj: cont_idn,
+                                num: speech_progress
+                                // NOTE:  On resume events, evt.originalEvent.charIndex is 0.
+                            });
+                            // NOTE:  Resume can be 2-4 words later than pause!
+                            //        This is the "speechSynthesis pause delay" issue.
                         });
                         $(utter).on('boundary', function speech_boundary(evt) {
                             // TODO:  Hold off HERE if pause is happening.
@@ -2303,6 +2478,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                             var speaking_node = $('<span>', {class:'speaking'})[0];
                             range_word.surroundContents(speaking_node);
                             // THANKS:  Range wrap, https://stackoverflow.com/a/6328906/673991
+                            speech_progress = end_word;
                             scroll_into_view(speaking_node, {
                                 behavior: 'smooth',
                                 block: 'center',
@@ -2348,27 +2524,31 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                                 //        transitioned prematurely.
                                 //        Did the $(utter).off() in pop_down_all() solve this issue?
                                 qoolbar.post('interact', {
-                                    name: MONTY.INTERACTION.QUIT,
+                                    name: MONTY.INTERACTION.QUIT,   // uncommon occurrence
                                     obj: cont_idn,
-                                    num: evt.originalEvent.charIndex
+                                    num: speech_progress
+                                    // NOTE:  On end events, evt.originalEvent.charIndex is 0.
                                 });
                             } else {
                                 console.log(
                                     "Utterance",
-                                    (evt.originalEvent.elapsedTime/1000).toFixed(3), "sec",
-                                    "(speech breather)"
+                                    (evt.originalEvent.elapsedTime/1000).toFixed(3), "sec,",
+                                    speech_progress, "of", pop_text.length, "chars"
                                 );
                                 pop_cont.$sup.trigger(pop_cont.Event.SPEECH_END);
                                 // NOTE:  A bit lame, this happens whether manually popped up or
                                 //        automatically played by the bot.  But it should have
                                 //        no consequence manually anyway.
                                 qoolbar.post('interact', {
-                                    name: MONTY.INTERACTION.END,
+                                    name: MONTY.INTERACTION.END,   // natural end of speech
                                     obj: cont_idn,
-                                    num: evt.originalEvent.charIndex
+                                    num: pop_text.length
                                 });
 
                             }
+                            speech_progress = null;
+                            // NOTE:  Setting speech_progress to null here
+                            //        prevents MONTY.INTERACTION.QUIT interaction after END
                         });
                         pop_cont.$sup.trigger(pop_cont.Event.SPEECH_PLAY);
                         return;
@@ -3400,31 +3580,59 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             // Anonymous users see a faded anonymous category with explanation.
         }
 
-        var $sup_contributions = {};   // table of super-contribution DOM objects
-        var cat_of_cont = {};   // maps contribution id_attribute to category id_attribute
-        var conts_in_cat = {};   // for each category id, an array of contribution idns in order
+        var $sup_contributions = {};   // table of super-contribution DOM objects, by idn qstring
+        var cat_of_cont = {};   // maps contribution idn to category idn
+        var conts_in_cat = {};   // for each category idn, an ordered array of contribution idns
         looper(MONTY.cat.order, function (_, cat) {
-            conts_in_cat[cat] = [];
+            conts_in_cat[cat] = [];   // each array defines contribution order within category
         });
 
+        /**
+         * Assert consistency of cat_of_cont{} and conts_in_cat{}[].
+         *
+         * They are roughly inverses of each other.
+         * A bit like "a place for everything, and everything in its place."
+         */
         function consistent_cat_cont() {
             looper(cat_of_cont, function (cont, cat) {
                 cont = parseInt(cont);
-                console.assert(conts_in_cat[cat].indexOf(cont) !== -1, cont, cat);
                 if (conts_in_cat[cat].indexOf(cont) === -1) {
-                    console.error("inconsistency:", JSON.stringify(cat_of_cont), JSON.stringify(conts_in_cat));
+                    console.error(
+                        "inconsistency: contribution",
+                        cont,
+                        "should be in category",
+                        cat,
+                        JSON.stringify(cat_of_cont),
+                        JSON.stringify(conts_in_cat)
+                    );
                     return false;
                 }
             });
             looper(conts_in_cat, function (cat, conts) {
                 cat = parseInt(cat);
                 looper(conts, function (_, cont) {
-                    console.assert(cat_of_cont[cont] === cat, cat, cont);
+                    console.assert(
+                        cat_of_cont[cont] === cat,
+                        "inconsistency: contribution",
+                        cont,
+                        "could be in category",
+                        cat,
+                        "or",
+                        cat_of_cont[cont]
+                    );
                 });
             });
         }
-        consistent_cat_cont();
+        consistent_cat_cont();   // empty is consistent with empty
 
+        /**
+         * Give a contribution a new idn, in cat_of_cont{} and conts_in_cat{}[].
+         *
+         * So an edit word takes the place of a contribution word (or an older edit word).
+         *
+         * @param old_idn - idn of the original contribution word (or an older edit word).
+         * @param new_idn - idn of a new edit word.
+         */
         function renumber_cont(old_idn, new_idn) {
             var cat = cat_of_cont[old_idn];
             console.assert(is_defined(cat), old_idn);
@@ -3433,7 +3641,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             conts_in_cat[cat][i] = new_idn;
             cat_of_cont[new_idn] = cat;
             delete cat_of_cont[old_idn];
-            // NOTE:  Only deleting old so consistent_cat_cont() passes.
+            // NOTE:  Delete old categorization, so consistent_cat_cont() passes.
         }
 
         function insert_cont(cat, cont_idn, i_position) {
@@ -3514,8 +3722,6 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                             //        That would prevent vacuous "unknown word" situations.
                             $sup_contributions[new_idn] = $sup;
                             renumber_cont(old_idn, new_idn);
-                            // DONE (long time ago):  add new cat_of_cont[] index,
-                            //        and change number in conts_in_cat[][]
                             consistent_cat_cont();
                         }
                         // NOTE:  This does reorder the edited contribution
@@ -3538,8 +3744,8 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                     }
                     break;
                 default:
-                    if (has(MONTY.cat.order, word.vrb)) {
-                        if (has($sup_contributions, word.obj)) {
+                    if (has(MONTY.cat.order, word.vrb)) {   // Is this a categorization verb?
+                        if (has($sup_contributions, word.obj)) {   // Are we rendering what it categorizes?
                             var new_cat = word.vrb;
                             var cont_idn = word.obj;
                             var i_position = word.num;
@@ -3583,15 +3789,22 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                         } else {
                             console.log("(Can't drag " + word.obj + ")");
                             // NOTE:  Because we're not rendering word.obj anywhere.
-                            //        Possible reasons:
-                            //        - cont=NNN restricts the contributions displayed
-                            //        - it's an action built on another action we rejected
-                            //          already, because it was for another user.
-                            //          E.g. Baker edited Able's quote, then dragged it.
+                            //        Possible harmless reasons:
+                            //        - URL suffix cont=NNN restricts the contributions displayed
+                            //        - This action refers to another action we rejected already,
+                            //          because it was for another user.
+                            //          E.g. Baker edited Able's quote, then dragged it,
+                            //               resulting in two words,
+                            //               an edit word and a categorization word.
+                            //               The edit word refers to the Able's original
+                            //               contribution, and the categorization word
+                            //               refers to the edit word.
                             //               So when Able is the browsing user,
-                            //               the edit gets rejected.
-                            //               Then the drag gets here
-                            //               because it uses the id_attribute of the edit word.
+                            //               first the edit word gets rejected by is_authorized()
+                            //               (because Baker is not the boss of Able).
+                            //               Then the categorization word winds up here.
+                            //               That's because it uses the idn of Baker's edit word,
+                            //               when Able's rendering kept no record of that edit.
                         }
                     } else {
                         console.warn(
@@ -3605,16 +3818,158 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                 }
             }
         });
-        // MONTY.w loop is done, stow the auth_log somewhere.
+        // NOTE:  MONTY.w loop is done.
+
+        consistent_cat_cont();   // One final check for good measure.
+
+        // console.log("cat_of_cont", JSON.stringify(cat_of_cont, null, 2));
+        // EXAMPLE:  cat_of_cont {
+        //   "882": 1438,   (Order of contributions does not matter in this associative array.)
+        //   "953": 1438,
+        //   "1024": 1438,
+        //   "1430": 1438,
+        //   "1432": 1435,
+        //   "1450": 1435,
+        //   "1458": 1438,
+        //   "1462": 1438,
+        //   "1473": 1438,
+        //   "1475": 1438,
+        //   "1551": 1435,
+        //   "1654": 1436,
+        //   "1678": 1435,
+        //   "1679": 1438,
+        //   "1689": 1438,
+        //   "1691": 1688,
+        //   "1695": 1688,
+        //   "1729": 1688,
+        //   "1733": 1435,
+        //   "1739": 1435,
+        //   "1741": 1435,
+        //   "1746": 1435,
+        //   "1748": 1435,
+        //   "1754": 1435,
+        //   "1759": 1435,
+        //   "1792": 1437,
+        //   "1795": 1435,
+        //   "1796": 1435,
+        //   "1809": 1435,
+        //   "1813": 1435,
+        //   "1822": 1435,
+        //   "1823": 1435,
+        //   "1825": 1435,
+        //   "1831": 1435,
+        //   "1834": 1435,
+        //   "1849": 1436,
+        //   "1851": 1436,
+        //   "1857": 1438,
+        //   "1871": 1435,
+        //   "1874": 1435,
+        //   "1896": 1435,
+        //   "1909": 1435,
+        //   "1911": 1435,
+        //   "1917": 1438,
+        //   "1924": 1435,
+        //   "1931": 1435,
+        //   "1936": 1436,
+        //   "1938": 1436,
+        //   "1970": 1435,
+        //   "1990": 1435,
+        //   "1996": 1435,
+        //   "2001": 1435,
+        //   "2025": 1435,
+        //   "2036": 1436,
+        //   "2048": 1435,
+        //   "2055": 1435,
+        //   "2061": 1435,
+        //   "2995": 1435,
+        //   "3373": 1435,
+        //   "3470": 1435,
+        //   "3486": 1435
+        // }
+        // console.log("conts_in_cat", JSON.stringify(conts_in_cat, null, 2));
+        // EXAMPLE:  conts_in_cat {
+        //   "1435": [   (Order of categories does not matter in the outer associative array.)
+        //     3486,     (Order of contributions DOES matter, and is defined by, each inner array.)
+        //     3470,     (By the way, category order is defined by the MONTY.cat.order[] array.)
+        //     1809,
+        //     1990,
+        //     2001,
+        //     1924,
+        //     1823,
+        //     1931,
+        //     2061,
+        //     2025,
+        //     1911,
+        //     1874,
+        //     2048,
+        //     2055,
+        //     1970,
+        //     1759,
+        //     3373,
+        //     1871,
+        //     1834,
+        //     1831,
+        //     2995,
+        //     1822,
+        //     1813,
+        //     1825,
+        //     1748,
+        //     1754,
+        //     1896,
+        //     1795,
+        //     1796,
+        //     1746,
+        //     1741,
+        //     1739,
+        //     1733,
+        //     1678,
+        //     1450,
+        //     1909,
+        //     1996,
+        //     1432,
+        //     1551
+        //   ],
+        //   "1436": [
+        //     1938,
+        //     1936,
+        //     1851,
+        //     1849,
+        //     1654,
+        //     2036
+        //   ],
+        //   "1437": [
+        //     1792
+        //   ],
+        //   "1438": [
+        //     1857,
+        //     1689,
+        //     1430,
+        //     1458,
+        //     1462,
+        //     882,
+        //     1475,
+        //     1917,
+        //     1679,
+        //     1473,
+        //     953,
+        //     1024
+        //   ],
+        //   "1688": [
+        //     1695,
+        //     1691,
+        //     1729
+        //   ]
+        // }
+
         $(window.document.body).append(
             $('<div>', {title: 'Authorization History Comment'}).append(
                 $('<!-- \n' + auth_log.join("\n") + '\n-->')
             )
         );
-        // NOTE:  Slightly less intrusive than console.log(auth_log).
+        // NOTE:  Slightly less intrusive stowing of the auth_log than console.log(auth_log).
 
         /**
-         * Put the contributions in the category DOMs.
+         * Put the newly minted contribution elements in their category DOMs.
          */
         looper(conts_in_cat, function (cat_idn, cont_idns) {
             looper(cont_idns, function (_, cont_idn) {
@@ -3632,7 +3987,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
 
         // NOTE:  Now all contribution elements are in the DOM.
         //        Everything below requires this.
-        //        After this the Contribution constructor could be called.
+        //        After this the Contribution constructor may be called.
 
 
 
@@ -3656,7 +4011,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                 match_object: null     //                          /  handler_scan()
                 // TODO:  Do all this in a MediaHandler object constructor.
             });
-            // NOTE:  media_handlers[] order determined by MONTY.MEDIA_HANDLERS order.
+            // NOTE:  media_handlers[] order determined by MONTY.MEDIA_HANDLERS[]
         });
         var first_script_error = true;
         looper(media_handlers, function (handler_index, handler) {
@@ -4039,7 +4394,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     function build_contribution_dom(contribution_word) {
         var $sup_contribution = $('<div>', {
             class: 'sup-contribution word',
-            original_id: contribution_word.idn
+            original_id: contribution_word.idn   // idn of the original contribution, before edits.
         });
         var $contribution = $('<div>', {
             id: contribution_word.idn,
@@ -4212,6 +4567,9 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         refresh_how_many();
     }
 
+    /**
+     * Update all the (count) indicators that show when a category is collapsed.
+     */
     function refresh_how_many() {
         looper(MONTY.cat.order, function recompute_category_anti_valves(_, cat) {
             var num_cont_string;

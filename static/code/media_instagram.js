@@ -17,7 +17,7 @@
             console.assert(pattern_match_object.length === 2, cont.content, pattern_match_object);
             var media_id = pattern_match_object[1];
             console.assert(is_valid_media_id(media_id));
-            var caption = cont.caption_text + " (instagram)";
+            var caption = cont.caption_text + " (" + that.description_short + ")";
             cont.thumb_image(
                 image_url(media_id, THUMB_SIZE),
                 caption,

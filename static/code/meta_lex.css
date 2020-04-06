@@ -19,6 +19,12 @@ ol.lex-list > li.srend:before {
     /*left: -1.4em;*/
 }
 
+h1, h2, h3, h4 {
+    font-family: Verdana, sans-serif;
+    color: #808080;
+    margin-bottom: 0.5em;
+}
+
 #login-prompt {
     text-align: right;
 }
@@ -28,13 +34,21 @@ ol.lex-list > li.srend:before {
     height: 1em;
 }
 
+.srend:target {
+    /* THANKS:  #-anchor highlight, https://stackoverflow.com/a/11142257/673991 */
+    background-color: rgb(240,240,240);
+    border: 1px solid silver;
+    padding: 1px 1px 4px 4px;
+}
+
 .wrend .named.anonymous {
     background-color: #FFDDDD;   /* pink = anonymous */
 }
 
 .wrend .named.lex,
 .wrend .named.sbj-lex,
-.wrend.vrb .named.sbj-lex {
+.wrend.vrb .named.sbj-lex,
+#verb-report .named.sbj-lex {
     background-color: #DDFFDD;   /* green = lex defined this word */
 }
 
@@ -57,13 +71,18 @@ ol.lex-list > li.srend:before {
     background-color: #DDDDFF;   /* blue = link to a path */
 }
 
-.wrend .named {
+.wrend .named,
+#verb-report .named {
     border: 1px solid silver;
     padding: 0 2px 2px 2px;
     font: status-bar;
     line-height: 12px;
     display: inline-block;
     background-color: white;
+}
+
+#verb-report .obj-verb {
+    border-color: gray;
 }
 
 .wrend.vrb:before {
@@ -74,7 +93,8 @@ ol.lex-list > li.srend:before {
     content: "-";
 }
 
-.wrend.vrb .named {
+.wrend.vrb .named,
+#verb-report .named {
   -webkit-border-radius: 0.5em;
      -moz-border-radius: 0.5em;   /*noinspection CssUnknownProperty*/
        -o-border-radius: 0.5em;
@@ -227,4 +247,15 @@ img.iconify {
 
 .txt.refer-other {
     color: #AA5500;
+}
+
+#verb-report ul {
+    list-style: none;
+    padding-left: 0;
+    margin-top: 0;
+}
+
+.idn-list {
+    font: status-bar;
+    line-height: 12px;
 }

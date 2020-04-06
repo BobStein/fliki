@@ -21,7 +21,7 @@
             console.assert(typeof media_id === 'string' && media_id.length === 11);
             var thumbnail_url = 'https://img.youtube.com/vi/' + media_id + '/mqdefault.jpg';
             // THANKS:  Thumbnail options, https://stackoverflow.com/a/20542029/673991
-            var caption = cont.caption_text + " (youtube)";
+            var caption = cont.caption_text + " (" + that.description_short + ")";
             cont.thumb_image(
                 thumbnail_url,
                 caption,

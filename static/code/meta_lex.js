@@ -72,26 +72,120 @@ function js_for_meta_lex(window, $, MONTY) {
     $(function document_ready() {
         console.time('total');
         console.time('render_word');
-        array_async($sentence_renderings, render_word, 6, 100, function after_rendering_words() {
-            console.timeEnd('render_word');
-            // console.log("Sessions", session_list);
-            // console.log("numberings", $.map(session_list, value_from_idn));
-            // console.log("listing_words", listing_words);
-            // EXAMPLE:
-            //     Sessions (11) ["0q83_044D", "0q83_0460", "0q83_0464", "0q83_046C", "0q83_0470",
-            //                    "0q83_047B", "0q83_047E", "0q83_0491", "0q83_04C8", "0q83_04CE", "0q83_04D9"]
-            //     numberings (11) ["1101", "1120", "1124", "1132", "1136", "1147", "1150", "1169",
-            //                      "1224", "1230", "1241"]
-            //     listing_words {0q82_A7__8A059E058E6A6308C8B0_1D0B00: {...},
-            //                    0q82_A7__8A05F9A0A1873A14BD1C_1D0B00: {...}, 0q82_A8__82AB_1D0300: {...},
-            //                    0q82_A8__830425_1D0400: {...}, 0q82_A8__83044D_1D0400: {...}, ...}
-            setTimeout(function () {
-                console.time('whn_delta');
-                whn_delta_render();
-                console.timeEnd('whn_delta');
-                console.timeEnd('total');
-            }, 6);
-        });
+        var verb_tally = {};
+        array_async(
+            $sentence_renderings,
+            function each_word(word) {
+                var word_parts = render_word(word);
+                if ( ! has(verb_tally, word_parts.vrb)) {
+                    verb_tally[word_parts.vrb] = [];
+                }
+                verb_tally[word_parts.vrb].push(word_parts.idn);
+            },
+            6,     // ms between iterations
+            500,   // words to render per iteration
+            // NOTE:  Chrome timing:
+            //         100 - render_word took 18.5 seconds
+            //         200 - render_word took 17.7 seconds
+            //         500 - render_word took  4.1 seconds
+            //        1000 - render_word took  3.4 seconds
+            //        1000 - render_word took  2.9 seconds
+            // NOTE:  Firefox timing:
+            //         100 - render_word took  2.8 seconds
+            //         500 - render_word took  2.2 seconds
+            //        1000 - render_word took  2.5 seconds
+            // NOTE:  Edge timing:
+            //         100 - render_word took  4.6 seconds
+            //        1000 - render_word took  2.2 seconds
+            // NOTE:  Opera timing:
+            //         100 - render_word took  4.6 seconds
+            //        1000 - render_word took  2.6 seconds
+            function after_rendering_words() {
+                console.timeEnd('render_word');
+                // console.log("Sessions", session_list);
+                // console.log("numberings", $.map(session_list, value_from_idn));
+                // console.log("listing_words", listing_words);
+                // EXAMPLE:
+                //     Sessions (11) ["0q83_044D", "0q83_0460", "0q83_0464", "0q83_046C", "0q83_0470",
+                //                    "0q83_047B", "0q83_047E", "0q83_0491", "0q83_04C8", "0q83_04CE", "0q83_04D9"]
+                //     numberings (11) ["1101", "1120", "1124", "1132", "1136", "1147", "1150", "1169",
+                //                      "1224", "1230", "1241"]
+                //     listing_words {0q82_A7__8A059E058E6A6308C8B0_1D0B00: {...},
+                //                    0q82_A7__8A05F9A0A1873A14BD1C_1D0B00: {...}, 0q82_A8__82AB_1D0300: {...},
+                //                    0q82_A8__830425_1D0400: {...}, 0q82_A8__83044D_1D0400: {...}, ...}
+                setTimeout(function tiny_delay_after_words_rendered() {
+                    console.time('whn_delta');
+                    whn_delta_render();
+                    console.timeEnd('whn_delta');
+                    console.timeEnd('total');
+                    console.time('verb-report');
+                    var $verb_report = $('<div>', {id: 'verb-report'});
+                    $(window.document.body).append($verb_report);
+                    $verb_report.append($('<h3>').text('Verbs'));
+                    var $ul = $('<ul>');
+                    $verb_report.append($ul);
+                    looper(verb_tally, function (vrb_idn, idns_with_that_vrb) {
+                        var $li = $('<li>');
+                        $ul.append($li);
+                        var $lex_li = $_from_id(vrb_idn);
+                        var vrb_txt = $lex_li.data('txt');
+                        var n_words = idns_with_that_vrb.length;
+                        var $verb_name = $('<span>', {class: 'named'});
+                        var $vrb = $_from_id(vrb_idn);
+                        $li.append($verb_name);
+                        $verb_name.text(vrb_txt);
+                        var vrb_idn_int = $_from_id(vrb_idn).data('idn-native');
+                        var title = "idn " + vrb_idn + " (" + vrb_idn_int + ")";
+                        if ($vrb.find('.sbj').data('idn') === MONTY.IDN.LEX) {
+                            $verb_name.addClass('sbj-lex');
+                        }
+                        var vrb_obj_idn = $vrb.find('.obj').data('idn');
+                        if (vrb_obj_idn === MONTY.IDN.VERB) {
+                            $verb_name.addClass('obj-verb');
+                        } else {
+                            title += " - " + $_from_id(vrb_obj_idn).data('txt');
+                        }
+                        $verb_name.attr('title', title);
+                        $li.append(" ");
+                        function $words(idns) {
+                            function $word(idn) {
+                                function int_from_idn(idn) {
+                                    return $_from_id(idn).data('idn-native');
+                                }
+                                var $a = $('<a>', {
+                                    href: named_anchor_from_id(idn)
+                                });
+                                $a.text(int_from_idn(idn));
+                                return $a;
+                            }
+                            var $anchors = [];
+                            looper(idns, function (_, idn) {
+                                $anchors.push($word(idn));
+                                $anchors.push(" ");
+                            });
+                            return $anchors;
+                        }
+                        var $span = $('<span>', {class: 'idn-list'});
+                        $li.append($span);
+                        if (n_words <= 6 + 4) {
+                            // NOTE:  4 three-digit numbers take slightly more space than ellipses:
+                            //        ...(4 more)...
+                            //        123 123 123 123
+                            $span.append($words(idns_with_that_vrb));
+                        } else {
+                            var idns_early = idns_with_that_vrb.slice(0,3);
+                            var idns_later = idns_with_that_vrb.slice(-3);
+                            $span.append(
+                                $words(idns_early),
+                                " ...(" + (n_words - 6).toString() + " more)... ",
+                                $words(idns_later)
+                            );
+                        }
+                    });
+                    console.timeEnd('verb-report');
+                }, 6);
+            }
+        );
         var $toggle_idn = $('#toggle_idn');
         $toggle_idn.on('click', function () { toggle_idn($toggle_idn); });
         toggle_idn($toggle_idn, true);
@@ -115,29 +209,6 @@ function js_for_meta_lex(window, $, MONTY) {
             //        But for darn sure we're going to specify it now.
         }
     }
-
-    // noinspection JSValidateTypes
-    // noinspection JSUnresolvedVariable
-    // noinspection JSUnusedLocalSymbols
-    // function experimental_crazy_ideas_for_a_markup_syntax() {
-    //     with (markup = j_dom()) {   // Build the DOM directly.  Don't need no stinking HTML.
-    //         body(function () {
-    //             div(p("Hello"), p("world"));
-    //             div(function () {
-    //                 span("text");
-    //                 span(" some more text");
-    //                 span(character.nbsp);
-    //                 span(" " + UNICODE.NON_BREAKING_SPACE + " ");
-    //             });
-    //             div({id: 'third', class: 'major', 'data-custom': 42}, function () {
-    //                 this({another_attribute_for_this_div: 42, checked: ! toggle_me});
-    //             });
-    //
-    //             var third = div({class: 'major'});
-    //         });
-    //     }
-    //     $('#my_content').append(markup.dom());
-    // }
 
     /**
      * Render the delta-time triangles on the left.
@@ -210,12 +281,18 @@ function js_for_meta_lex(window, $, MONTY) {
         // NOTE:  Use jQuery to migrate the whn-scrunch class up to the li.srend element.
     }
 
+    /**
+     * Render a 3-sub-part sentence-word from the lex.
+     *
+     * @param word - DOM or jQuery object of the .srend class,
+     *               e.g. <li class="srend" value="3469" id="0q83_0D8D" data-idn-native="3469" ...>
+     */
     function render_word(word) {
         var $word = $(word);
         var idn = $word.attr('id');
-        sub($word, 'sbj', UNICODE.DOWN_ARROW_RIGHT);
+        var sbj_idn = sub($word, 'sbj');
         var vrb_idn = sub($word, 'vrb');
-        var obj_idn = sub($word, 'obj', UNICODE.RIGHT_ARROW_UP);
+        var obj_idn = sub($word, 'obj');
         sub_num($word);
         var txt = sub_txt($word);
         sub_whn($word);
@@ -273,6 +350,12 @@ function js_for_meta_lex(window, $, MONTY) {
                 $word.attr('data-question_url', question_url);
             }
         }
+        return {
+            idn: idn,
+            sbj: sbj_idn,
+            vrb: vrb_idn,
+            obj: obj_idn
+        };
     }
     function url_from_question(question) {
         var url = path_join(MONTY.URL_PREFIX_QUESTION, encodeURI(question));
@@ -290,10 +373,21 @@ function js_for_meta_lex(window, $, MONTY) {
     function selector_from_id(id) {
         return '#' + $.escapeSelector(id);
     }
+    function named_anchor_from_id(id) {
+        return '#' + encodeURI(id);
+    }
     function selector_from_class(id) {
         return '.' + $.escapeSelector(id);
     }
 
+    /**
+     * Render one of the three sub-parts (sub-words) of a word.
+     *
+     * @param $word - jQuery object of the .srend class,
+     *                e.g. <li class="srend" value="3469" id="0q83_0D8D" data-idn-native="3469" ...>
+     * @param {string} sub - 'sbj' or 'vrb' or 'obj'
+     * @return - qstring of the sub-part's idn, e.g. '0q83_044C'
+     */
     function sub($word, sub) {
         var $span = $word.find(selector_from_class(sub));
         var idn = $span.data('idn');
@@ -544,13 +638,13 @@ function js_for_meta_lex(window, $, MONTY) {
      * THANKS:  Code derived from 4th option at https://stackoverflow.com/a/45484448/673991
      *
      * @param array - e.g. $('div')
-     * @param process - callback function
-     * @param delay_ms - milliseconds between calls, 0 to run "immediately" though os intervenes
+     * @param process - callback function (parameter is each array element)
+     * @param delay_ms - milliseconds between calls, 0 to run "immediately" though OS intervenes
      *                   (higher value means SLOWER)
      * @param n_chunk - (optional) e.g 10 to handle 10 elements per iteration
      *                  (higher value means FASTER)
      * @param then - (optional) called after array is finished, to do what's next
-     * @return {object} setInterval object, pass to clearInterval() to abort early.
+     * @return {object} setInterval object, caller could pass to clearInterval() to abort.
      */
     function array_async(array, process, delay_ms, n_chunk, then) {
         console.assert(typeof array.length === 'number', "Cannot async " + typeof array);
@@ -558,7 +652,7 @@ function js_for_meta_lex(window, $, MONTY) {
             n_chunk = 1;
         }
         var i = 0;
-        var interval = setInterval(function () {
+        var interval = setInterval(function array_async_single_chunk() {
             var i_chunk;
             for (i_chunk = 0 ; i_chunk < n_chunk ; i_chunk++) {
                 process(array[i]);

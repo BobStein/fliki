@@ -38,17 +38,20 @@
                 //        it's probably noembed.com that copies the url to the title.
                 var is_error_usable = is_laden(oembed.error);
                 var is_title_usable = is_laden(oembed.title) && ! is_title_a_copy_of_url;
+                var is_caption_usable = is_laden(cont.caption_text);
                 var is_author_usable = is_laden(oembed.author_name);
                 var caption_for_media;
                 if (is_error_usable) {
                     console.warn("Not an oembed URL", cont.content, oembed.error);
                     caption_for_media = "(" + oembed.error + ")";
                 } else if (is_title_usable) {
-                    caption_for_media = oembed.title;
+                    caption_for_media = oembed.title + " (" + cont.media_domain + ")";
+                } else if (is_caption_usable) {
+                    caption_for_media = cont.caption_text + " (" + cont.media_domain + ")";
                 } else if (is_author_usable) {
-                    caption_for_media = oembed.author_name;
+                    caption_for_media = oembed.author_name + " (" + cont.media_domain + ")";
                 } else {
-                    caption_for_media = "(neither title nor author)";
+                    caption_for_media = "(neither title nor author, on " + cont.media_domain + ")";
                 }
                 caption_for_media = caption_for_media.substr(0, MAX_CAPTION_LENGTH);
                 if (typeof oembed.error === 'undefined') {

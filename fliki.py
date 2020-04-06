@@ -68,6 +68,18 @@ NON_ROUTABLE_IP_ADDRESS = '10.255.255.1'   # THANKS:  https://stackoverflow.com/
 NON_ROUTABLE_URL = 'https://' + NON_ROUTABLE_IP_ADDRESS + '/'   # for testing
 SHOW_LOG_AJAX_NOEMBED_META = True
 POPUP_ID_PREFIX = 'popup_'
+INTERACTION_VERBS = dict(
+    BOT='bot',         # |>  global play button
+                       #     NATURAL, automatic end of the bot??  That could take a long time!
+    START='start',     # |>  individual media play
+    QUIT='quit',       # []  ARTIFICIAL, manual stopping the playback, or closing the window
+    END='end',         # ..  NATURAL, automatic end of the media
+    PAUSE='pause',     # ||  either the global pause or the pause within the iframe
+    RESUME='resume',   # |>
+)
+# TODO:  Move to WorkingIdns.__init__() yet still bunch together somehow?
+#        Problem is, I'd like to define new ones without necessarily generating words for them,
+#        until of course they are used.
 
 
 YOUTUBE_PATTERNS = [
@@ -1577,7 +1589,7 @@ def contribution_home(home_page_title):
     t_start = time.time()
     auth = AuthFliki()
     if not auth.is_online:
-        return "lex offline"
+        return "lex database offline"
     q_start = auth.lex.query_count
     # auth.hit(auth.current_path)   Commented out to suppress early churn
     if auth.is_enough_anonymous_patience(MINIMUM_SECONDS_BETWEEN_ANONYMOUS_QUESTIONS):
@@ -1633,14 +1645,7 @@ def contribution_home(home_page_title):
                         ],
                         # NOTE:  FIRST matching media handler wins, high priority first, catch-all
                         #        last.
-                        INTERACTION=dict(
-                            BOT='bot',       # start the global play button
-                            START='start',   # start playing individual media
-                            QUIT='quit',     # ARTIFICIAL, manual stopping the playback
-                            END='end',       # NATURAL, automatic end of the media
-                            PAUSE='pause',
-                            RESUME='resume',
-                        ),
+                        INTERACTION=INTERACTION_VERBS,
                         POPUP_ID_PREFIX=POPUP_ID_PREFIX,
                     )
                     monty.update(words_for_js)
@@ -2927,6 +2932,7 @@ def ajax():
         SHOW_LOG_AJAX_NOEMBED_META or
         flask.request.form.get('action', '_') != 'noembed_meta'
     )
+    etc = None
 
     try:
         auth = AuthFliki(ok_to_print=ok_to_print)
@@ -3014,6 +3020,7 @@ def ajax():
                 num=NUM_QOOL_VERB_NEW,
                 use_already=True,
             )
+            etc = new_verb.idn.qstring()
             return valid_response('idn', new_verb.idn.qstring())
 
         elif action == 'delete_verb':
@@ -3049,16 +3056,19 @@ def ajax():
 
         elif action == 'interact':
             interaction_name = auth.form('name')   # e.g. MONTY.INTERACTION.PAUSE == 'pause'
-            interaction_num = auth.form('num')     # e.g. 15 (seconds)
             interaction_obj = auth.form('obj')     # e.g. idn of a contribution
+            interaction_num = auth.form('num', default=1)     # e.g. 15 sec (video), 92 chars (text)
+            interaction_txt = auth.form('txt', default="")
             interaction_verb = lex.define(lex.IDN.INTERACT, qiki.Text(interaction_name))
-            lex.create_word(
+            interaction_word = lex.create_word(
                 sbj=auth.qiki_user,
                 vrb=interaction_verb,
                 obj=qiki.Number(interaction_obj),
                 num=qiki.Number(interaction_num),
+                txt=qiki.Text(interaction_txt),
                 use_already=False,
             )
+            etc = interaction_word.idn.qstring()
             return valid_response()
 
         else:
@@ -3103,12 +3113,14 @@ def ajax():
             qc_end = auth.lex.query_count
             if ok_to_print:
                 print(
-                    "Ajax {action}, {qc} queries, {t:.3f} sec".format(
+                    "Ajax {action}{etc}, {qc} queries, {t:.3f} sec".format(
                         action=repr(action),
+                        etc=" " + etc   if etc is not None else   "",
                         qc=qc_end - qc_start,
                         t=t_end - t_start
                     )
                 )
+                # TODO:  Add idn or other details from the action.
 
 
 def retry(exception_to_check, tries=4, delay=3, delay_multiplier=2):
