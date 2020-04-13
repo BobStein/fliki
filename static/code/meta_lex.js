@@ -114,100 +114,92 @@ function js_for_meta_lex(window, $, MONTY) {
                 //                    0q82_A7__8A05F9A0A1873A14BD1C_1D0B00: {...}, 0q82_A8__82AB_1D0300: {...},
                 //                    0q82_A8__830425_1D0400: {...}, 0q82_A8__83044D_1D0400: {...}, ...}
                 setTimeout(function tiny_delay_after_words_rendered() {
+
                     console.time('whn_delta');
                     whn_delta_render();
                     console.timeEnd('whn_delta');
-                    console.timeEnd('total');
+
                     console.time('verb-report');
-                    var $verb_report = $('<div>', {id: 'verb-report'});
-                    $(window.document.body).append($verb_report);
-                    $verb_report.append($('<h3>').text('Verbs'));
-                    var $ul = $('<ul>');
-                    $verb_report.append($ul);
-                    looper(verb_tally, function (vrb_idn, idns_with_that_vrb) {
-                        var $li = $('<li>');
-                        $ul.append($li);
-                        var $lex_li = $_from_id(vrb_idn);
-                        var vrb_txt = $lex_li.data('txt');
-                        var n_words = idns_with_that_vrb.length;
-                        var $verb_name = $('<span>', {class: 'named'});
-                        var $vrb = $_from_id(vrb_idn);
-                        $li.append($verb_name);
-                        $verb_name.text(vrb_txt);
-                        var vrb_idn_int = $_from_id(vrb_idn).data('idn-native');
-                        var title = "idn " + vrb_idn + " (" + vrb_idn_int + ")";
-                        if ($vrb.find('.sbj').data('idn') === MONTY.IDN.LEX) {
-                            $verb_name.addClass('sbj-lex');
-                        }
-                        var vrb_obj_idn = $vrb.find('.obj').data('idn');
-                        if (vrb_obj_idn === MONTY.IDN.VERB) {
-                            $verb_name.addClass('obj-verb');
-                        } else {
-                            title += " - " + $_from_id(vrb_obj_idn).data('txt');
-                        }
-                        $verb_name.attr('title', title);
-                        $li.append(" ");
-                        function $words(idns) {
-                            function $word(idn) {
-                                function int_from_idn(idn) {
-                                    return $_from_id(idn).data('idn-native');
-                                }
-                                var $a = $('<a>', {
-                                    href: named_anchor_from_id(idn)
-                                });
-                                $a.text(int_from_idn(idn));
-                                return $a;
-                            }
-                            var $anchors = [];
-                            looper(idns, function (_, idn) {
-                                $anchors.push($word(idn));
-                                $anchors.push(" ");
-                            });
-                            return $anchors;
-                        }
-                        var $span = $('<span>', {class: 'idn-list'});
-                        $li.append($span);
-                        if (n_words <= 6 + 4) {
-                            // NOTE:  4 three-digit numbers take slightly more space than ellipses:
-                            //        ...(4 more)...
-                            //        123 123 123 123
-                            $span.append($words(idns_with_that_vrb));
-                        } else {
-                            var idns_early = idns_with_that_vrb.slice(0,3);
-                            var idns_later = idns_with_that_vrb.slice(-3);
-                            $span.append(
-                                $words(idns_early),
-                                " ...(" + (n_words - 6).toString() + " more)... ",
-                                $words(idns_later)
-                            );
-                        }
-                    });
+                    verb_report();
                     console.timeEnd('verb-report');
+
+                    console.timeEnd('total');
                 }, 6);
             }
         );
-        var $toggle_idn = $('#toggle_idn');
-        $toggle_idn.on('click', function () { toggle_idn($toggle_idn); });
-        toggle_idn($toggle_idn, true);
     });
 
-    function toggle_idn($button, is_decimal) {
-        if (is_specified(is_decimal)) {
-            $button.data('is-decimal', is_decimal);
-            $sentence_renderings.each(function () {
-                var $srend = $(this);
-                var new_value = is_decimal ? $srend.data('idn-native') : $srend.attr('id');
-                $srend.attr('value', new_value);
-                var new_button_caption = is_decimal ? "idn qstring" : "idn decimal";
-                $button.text(new_button_caption);
-            });
-        } else {
-            var was_decimal = $button.data('is-decimal');
-            console.assert(is_defined(was_decimal));
-            toggle_idn($button, ! was_decimal)
-            // NOTE:  Expect first toggle_idn() to explicitly specify is_decimal true or false.
-            //        But for darn sure we're going to specify it now.
-        }
+    /**
+     * Count the uses of every verb.  Link to earliest and latest.
+     */
+    function verb_report() {
+        var $verb_report = $('<div>', {id: 'verb-report'});
+        $(window.document.body).append($verb_report);
+        $verb_report.append($('<h3>').text('Verbs'));
+        var $ul = $('<ul>');
+        $verb_report.append($ul);
+        looper(verb_tally, function (vrb_idn, idns_with_that_vrb) {
+            var $li = $('<li>');
+            $ul.append($li);
+            var $lex_li = $_from_id(vrb_idn);
+            var vrb_txt = $lex_li.data('txt');
+            var n_words = idns_with_that_vrb.length;
+            var $verb_name = $('<span>', {class: 'named'});
+            var $vrb = $_from_id(vrb_idn);
+            $li.append($verb_name);
+            $verb_name.text(vrb_txt);
+            var vrb_idn_int = $_from_id(vrb_idn).data('idn-native');
+            var title = "idn " + vrb_idn + " (" + vrb_idn_int + ")";
+            if ($vrb.find('.sbj').data('idn') === MONTY.IDN.LEX) {
+                $verb_name.addClass('sbj-lex');
+            }
+            var vrb_obj_idn = $vrb.find('.obj').data('idn');
+            if (vrb_obj_idn === MONTY.IDN.VERB) {
+                $verb_name.addClass('obj-verb');
+            } else {
+                title += " - " + $_from_id(vrb_obj_idn).data('txt');
+            }
+            $verb_name.attr('title', title);
+            $li.append(" ");
+
+            function $words(idns) {
+                function $word(idn) {
+                    function int_from_idn(idn) {
+                        return $_from_id(idn).data('idn-native');
+                    }
+
+                    var $a = $('<a>', {
+                        href: named_anchor_from_id(idn)
+                    });
+                    $a.text(int_from_idn(idn).toString());
+                    return $a;
+                }
+
+                var $anchors = [];
+                looper(idns, function (_, idn) {
+                    $anchors.push($word(idn));
+                    $anchors.push(" ");
+                });
+                return $anchors;
+            }
+
+            var $span = $('<span>', {class: 'idn-list'});
+            $li.append($span);
+            if (n_words <= 6 + 4) {
+                // NOTE:  4 three-digit numbers take slightly more space than ellipses:
+                //        ...(4 more)...
+                //        123 123 123 123
+                $span.append($words(idns_with_that_vrb));
+            } else {
+                var idns_early = idns_with_that_vrb.slice(0,3);
+                var idns_later = idns_with_that_vrb.slice(-3);
+                $span.append(
+                    $words(idns_early),
+                    " ...(" + (n_words - 6).toString() + " more)... ",
+                    $words(idns_later)
+                );
+            }
+        });
     }
 
     /**
