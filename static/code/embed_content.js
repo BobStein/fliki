@@ -521,11 +521,11 @@ function embed_content_js(window, $, MONTY) {
                         //        the time-line.  It shows the NEW video time, not the one
                         //        left behind time.  Is that good??
                         //        By the way, the sequence when that happens is:
-                        //        pause (2), buffering (3), playing (1)
+                        //            pause (2), buffering (3), playing (1)
                         //        So the lex records interactions:
-                        //        pause, start
+                        //            pause, start
                         //        Ala idns 3751, 3752.
-                        //        One way to do this would be setInterval(sample getCurrentTime)
+                        //        One way to fix this would be setInterval(sample getCurrentTime)
                         //        But how soon does that change before the pause event??
                         break;
                     case window.YT.PlayerState.PLAYING:

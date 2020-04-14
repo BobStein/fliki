@@ -740,11 +740,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             index_play_bot = 0;
             that.media_beginning();
             that.state = that.State.PREP_CONTRIBUTION;
-            qoolbar.post('interact', {
-                name: MONTY.INTERACTION.BOT,
-                obj: cat_idn_for_playlist(),
-                txt: list_play_bot.join(",")
-            });
+            interact.BOT(cat_idn_for_playlist(), 1, list_play_bot.join(","));
             // NOTE:  When there is a feature for the Bot to play from a more diverse set than
             //        merely categories MY and THEIR, then the obj should be a word representing
             //        that set.
@@ -845,6 +841,9 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                     }
                 });
                 that.pop_cont.$sup.on(that.pop_cont.Event.MEDIA_PAUSED, function () {
+                    // TODO:  This is where we disentangle a pause initiated by the outer website,
+                    //        from one initiated by the embedded youtube iframe.
+                    //        Move this disentanglement to media_youtube.js or something.
                     if (that.is_paused) {
                         // NOTE:  Expected - main-page pause fed back by iframe
                         //        main page --> iframe
@@ -957,10 +956,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         case that.State.END_AUTO:
             that.media_ending();
             console.log("End player bot");
-            qoolbar.post('interact', {
-                name: MONTY.INTERACTION.UNBOT,
-                obj: that.cont_idn
-            });
+            interact.UNBOT(that.cont_idn, 1);
             that.state = that.State.MANUAL;
             break;
         default:
@@ -993,8 +989,8 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         switch (that.state) {
         case that.State.MEDIA_STARTED:
             that.pause_media();
-            console.warn("Extra prodding media to pausing.");
             // TODO:  This might come too early.  Do only after Event.MEDIA_WOKE?
+            console.debug("Extra prodding media to pause.");
             break;
         case that.State.SPEECH_SHOULD_PLAY:
             that.pause_speech();
@@ -1341,7 +1337,6 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         var message = twofer.message;
         var cont_idn = strip_prefix(message.contribution_idn, MONTY.POPUP_ID_PREFIX);
         console.assert(cont_idn === that.idn_decimal, cont_idn, that.idn_decimal);
-        var interaction_name;
         // noinspection JSRedundantSwitchStatement
         switch (message.action) {
         case 'auto-play-presaged':
@@ -1351,13 +1346,9 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         case 'auto-play-static':
             console.log("Media static", that.id_attribute, message.contribution_idn);
             that.$sup.trigger(that.Event.MEDIA_STATIC);
-            qoolbar.post('interact', {
-                name: MONTY.INTERACTION.START,
-                obj: cont_idn,
-                num: one_qigit(message.current_time)
-            });
-            // NOTE:  current_time doesn't need to store more than one qigit below decimal.
-            //        So it gets rounded to the nearest 1/256.
+            interact.START(cont_idn, message.current_time);
+            // TODO:  Avoid double START interaction.
+            //        Can happen if Contribution.zero_iframe_recover()
             break;
         case 'auto-play-begun':
             console.log("Media begun", that.id_attribute, message.contribution_idn);
@@ -1373,28 +1364,16 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             that.$sup.trigger(that.Event.MEDIA_ENDED);
             // NOTE:  MEDIA_ENDED event means e.g. a video ended,
             //        so next it's time for a breather.
-            qoolbar.post('interact', {
-                name: MONTY.INTERACTION.END,
-                obj: cont_idn,
-                num: one_qigit(message.current_time)
-            });
+            interact.END(cont_idn, message.current_time);
             break;
         case 'auto-play-end-static':
             console.log("Static media ended", that.id_attribute, message.contribution_idn);
             // NOTE:  Static media timed-out, no breather necessary.
-            qoolbar.post('interact', {
-                name: MONTY.INTERACTION.END,
-                obj: cont_idn,
-                num: one_qigit(message.current_time)
-            });
+            interact.END(cont_idn, message.current_time);
             break;
         case 'auto-play-error':
             console.log("Embedded player error", that.id_attribute, message.error_message);
-            qoolbar.post('interact', {
-                name: MONTY.INTERACTION.ERROR,
-                obj: cont_idn,
-                txt: message.error_message
-            });
+            interact.ERROR(cont_idn, 1, message.error_message);
             break;
         case 'auto-play-paused':
             console.log(
@@ -1404,11 +1383,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                 message.current_time
             );
             that.$sup.trigger(that.Event.MEDIA_PAUSED);
-            qoolbar.post('interact', {
-                name: MONTY.INTERACTION.PAUSE,
-                obj: cont_idn,
-                num: one_qigit(message.current_time)
-            });
+            interact.PAUSE(cont_idn, message.current_time);
             // NOTE:  This could happen a while after the pause button is clicked,
             //        after a cascade of consequences.  But it should accurately
             //        record the actual position of the pause in the video.
@@ -1427,11 +1402,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                 that.id_attribute,
                 message.contribution_idn
             );
-            qoolbar.post('interact', {
-                name: MONTY.INTERACTION.QUIT,
-                obj: cont_idn,
-                num: one_qigit(message.current_time)
-            });
+            interact.QUIT(cont_idn, message.current_time);
             break;
         case 'auto-play-playing':
             console.log(
@@ -1444,15 +1415,11 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             if (bot.is_paused) {
                 // NOTE:  This may be the sole place a Contribution knows of a Bot.
                 //        Necessary?  Wise?
-                interaction_name = MONTY.INTERACTION.RESUME;
+                interact.RESUME(cont_idn, message.current_time);
             } else {
-                interaction_name = MONTY.INTERACTION.START;
+                interact.START(cont_idn, message.current_time);
             }
-            qoolbar.post('interact', {
-                name: interaction_name,
-                obj: cont_idn,
-                num: one_qigit(message.current_time)
-            });
+
             that.$sup.trigger(that.Event.MEDIA_PLAYING, [{
                 current_time: message.current_time
             }]);
@@ -1465,11 +1432,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                 message.contribution_idn,
                 message.current_time.toFixed(3)
             );
-            qoolbar.post('interact', {
-                name: MONTY.INTERACTION.RESUME,
-                obj: cont_idn,
-                num: one_qigit(message.current_time)
-            });
+            interact.RESUME(cont_idn, message.current_time);
             that.$sup.trigger(that.Event.MEDIA_RESUME, [{
                 current_time: message.current_time
             }]);
@@ -1482,11 +1445,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             // TODO:  We don't need message.contribution_idn,
             //        because we know it from scope!  Right??
             that.$sup.addClass('noembed-error');
-            qoolbar.post('interact', {
-                name: MONTY.INTERACTION.ERROR,
-                obj: cont_idn,
-                txt: message.error_message
-            });
+            interact.ERROR(cont_idn, 1, message.error_message);
             break;
         default:
             console.error(
@@ -1497,13 +1456,25 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             break;
         }
     }
-    // function interact(interaction, obj, num) {
-    //     qoolbar.post('interact', {
-    //         name: interaction,
-    //         obj: obj,
-    //         num: num
-    //     });
-    // }
+    function interact(interaction_name, obj, num, txt) {
+        if ( ! is_specified(txt))   txt = "";
+        console.assert(typeof num === 'number', num);
+        console.assert(typeof txt === 'string', txt);
+        var num_with_one_qigit_resolution = one_qigit(num);
+        // NOTE:  current_time doesn't need to store more than one qigit below decimal.
+        //        So it gets rounded to the nearest 1/256.
+       qoolbar.post('interact', {
+            name: interaction_name,
+            obj: obj,
+            num: num_with_one_qigit_resolution,
+            txt: txt
+        });
+    }
+    looper(MONTY.INTERACTION, function for_each_interaction(INTERACTION_CODE, interaction_name) {
+        interact[INTERACTION_CODE] = function curried_interact(obj, num, txt) {
+            interact(interaction_name, obj, num, txt);
+        };
+    });
 
     function one_qigit(n) {
         return Math.round(n * 256.0) / 256.0;
@@ -2120,12 +2091,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             //           Though it seems to have been fixed in Chrome.
             if (speech_progress !== null && pop_cont !== null) {
                 // NOTE:  No QUIT after END.
-                qoolbar.post('interact', {
-                    name: MONTY.INTERACTION.QUIT,   // Quit speech by closing or escaping.
-                    obj: pop_cont.idn_decimal,
-                    num: speech_progress
-                    // NOTE:  On end events, evt.originalEvent.charIndex is 0.
-                });
+                interact.QUIT(pop_cont.idn_decimal, speech_progress);
             }
         }
         if (breather_timer !== null) {
@@ -2444,28 +2410,14 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                         var $svg = null;
                         $(utter).on('start', function speech_boundary(evt) {
                             pop_cont.$sup.trigger(pop_cont.Event.SPEECH_START);
-                            qoolbar.post('interact', {
-                                name: MONTY.INTERACTION.START,
-                                obj: cont_idn,
-                                num: evt.originalEvent.charIndex
-                            });
+                            interact.START(cont_idn, evt.originalEvent.charIndex);
                             speech_progress = 0;
                         });
                         $(utter).on('pause', function speech_pause() {
-                            qoolbar.post('interact', {
-                                name: MONTY.INTERACTION.PAUSE,
-                                obj: cont_idn,
-                                num: speech_progress
-                                // NOTE:  On pause events, evt.originalEvent.charIndex is 0.
-                            });
+                            interact.PAUSE(cont_idn, speech_progress);
                         });
                         $(utter).on('resume', function speech_resume() {
-                            qoolbar.post('interact', {
-                                name: MONTY.INTERACTION.RESUME,
-                                obj: cont_idn,
-                                num: speech_progress
-                                // NOTE:  On resume events, evt.originalEvent.charIndex is 0.
-                            });
+                            interact.RESUME(cont_idn, speech_progress);
                             // NOTE:  Resume can be 2-4 words later than pause!
                             //        This is the "speechSynthesis pause delay" issue.
                         });
@@ -2541,12 +2493,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                                 //        Because a NEW bot play cycle might otherwise be
                                 //        transitioned prematurely.
                                 //        Did the $(utter).off() in pop_down_all() solve this issue?
-                                qoolbar.post('interact', {
-                                    name: MONTY.INTERACTION.QUIT,   // uncommon occurrence
-                                    obj: cont_idn,
-                                    num: speech_progress
-                                    // NOTE:  On end events, evt.originalEvent.charIndex is 0.
-                                });
+                                interact.QUIT(cont_idn, speech_progress);
                             } else {
                                 console.log(
                                     "Utterance",
@@ -2557,12 +2504,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                                 // NOTE:  A bit lame, this happens whether manually popped up or
                                 //        automatically played by the bot.  But it should have
                                 //        no consequence manually anyway.
-                                qoolbar.post('interact', {
-                                    name: MONTY.INTERACTION.END,   // natural end of speech
-                                    obj: cont_idn,
-                                    num: pop_text.length
-                                });
-
+                                interact.END(cont_idn, pop_text.length);
                             }
                             speech_progress = null;
                             // NOTE:  Setting speech_progress to null here
