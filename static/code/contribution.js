@@ -1509,7 +1509,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         return Math.round(n * 256.0) / 256.0;
     }
     console.assert(26.0 / 256 === one_qigit(0.1));
-    console.assert(0.01015625 === one_qigit(0.1));
+    console.assert(0.1015625 === one_qigit(0.1));
 
     Contribution.prototype.fix_caption_width = function Contribution_fix_caption_width() {
         // noinspection JSUnusedAssignment
