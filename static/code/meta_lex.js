@@ -55,8 +55,8 @@ function js_for_meta_lex(window, $, MONTY) {
         CIRCLED_TIMES: '\u2297'
     };
 
-    var $sentence_renderings = $('.srend');   // all sentence renderings
-    var SREND_FONT_SIZE = parseFloat($sentence_renderings.css('font-size'));
+    var $sentence_elements = $('.srend');   // all sentence renderings
+    var SREND_FONT_SIZE = parseFloat($sentence_elements.css('font-size'));
     var session_list = [];   // helps identify session words when used as the vrb or obj
     var whn_delta = [];   // Built by sub_whn(), consumed by whn_delta_render().
 
@@ -72,15 +72,13 @@ function js_for_meta_lex(window, $, MONTY) {
     $(function document_ready() {
         console.time('total');
         console.time('render_word');
-        var verb_tally = {};
+
+        verb_report_init();
         array_async(
-            $sentence_renderings,
-            function each_word(word) {
-                var word_parts = render_word(word);
-                if ( ! has(verb_tally, word_parts.vrb)) {
-                    verb_tally[word_parts.vrb] = [];
-                }
-                verb_tally[word_parts.vrb].push(word_parts.idn);
+            $sentence_elements,
+            function each_word(sentence_element) {
+                var word_parts = render_word(sentence_element);
+                verb_report_each(word_parts);
             },
             6,     // ms between iterations
             500,   // words to render per iteration
@@ -128,79 +126,6 @@ function js_for_meta_lex(window, $, MONTY) {
             }
         );
     });
-
-    /**
-     * Count the uses of every verb.  Link to earliest and latest.
-     */
-    function verb_report() {
-        var $verb_report = $('<div>', {id: 'verb-report'});
-        $(window.document.body).append($verb_report);
-        $verb_report.append($('<h3>').text('Verbs'));
-        var $ul = $('<ul>');
-        $verb_report.append($ul);
-        looper(verb_tally, function (vrb_idn, idns_with_that_vrb) {
-            var $li = $('<li>');
-            $ul.append($li);
-            var $lex_li = $_from_id(vrb_idn);
-            var vrb_txt = $lex_li.data('txt');
-            var n_words = idns_with_that_vrb.length;
-            var $verb_name = $('<span>', {class: 'named'});
-            var $vrb = $_from_id(vrb_idn);
-            $li.append($verb_name);
-            $verb_name.text(vrb_txt);
-            var vrb_idn_int = $_from_id(vrb_idn).data('idn-native');
-            var title = "idn " + vrb_idn + " (" + vrb_idn_int + ")";
-            if ($vrb.find('.sbj').data('idn') === MONTY.IDN.LEX) {
-                $verb_name.addClass('sbj-lex');
-            }
-            var vrb_obj_idn = $vrb.find('.obj').data('idn');
-            if (vrb_obj_idn === MONTY.IDN.VERB) {
-                $verb_name.addClass('obj-verb');
-            } else {
-                title += " - " + $_from_id(vrb_obj_idn).data('txt');
-            }
-            $verb_name.attr('title', title);
-            $li.append(" ");
-
-            function $words(idns) {
-                function $word(idn) {
-                    function int_from_idn(idn) {
-                        return $_from_id(idn).data('idn-native');
-                    }
-
-                    var $a = $('<a>', {
-                        href: named_anchor_from_id(idn)
-                    });
-                    $a.text(int_from_idn(idn).toString());
-                    return $a;
-                }
-
-                var $anchors = [];
-                looper(idns, function (_, idn) {
-                    $anchors.push($word(idn));
-                    $anchors.push(" ");
-                });
-                return $anchors;
-            }
-
-            var $span = $('<span>', {class: 'idn-list'});
-            $li.append($span);
-            if (n_words <= 6 + 4) {
-                // NOTE:  4 three-digit numbers take slightly more space than ellipses:
-                //        ...(4 more)...
-                //        123 123 123 123
-                $span.append($words(idns_with_that_vrb));
-            } else {
-                var idns_early = idns_with_that_vrb.slice(0,3);
-                var idns_later = idns_with_that_vrb.slice(-3);
-                $span.append(
-                    $words(idns_early),
-                    " ...(" + (n_words - 6).toString() + " more)... ",
-                    $words(idns_later)
-                );
-            }
-        });
-    }
 
     /**
      * Render the delta-time triangles on the left.
@@ -278,6 +203,7 @@ function js_for_meta_lex(window, $, MONTY) {
      *
      * @param word - DOM or jQuery object of the .srend class,
      *               e.g. <li class="srend" value="3469" id="0q83_0D8D" data-idn-native="3469" ...>
+     * @returns {object} word_parts - {idn, sbj, vrb, obj, txt, whn: {ago_short, ...}}
      */
     function render_word(word) {
         var $word = $(word);
@@ -287,7 +213,7 @@ function js_for_meta_lex(window, $, MONTY) {
         var obj_idn = sub($word, 'obj');
         sub_num($word);
         var txt = sub_txt($word);
-        sub_whn($word);
+        var whn_parts = sub_whn($word);
 
         var $obj;
         var $named;
@@ -346,7 +272,9 @@ function js_for_meta_lex(window, $, MONTY) {
             idn: idn,
             sbj: sbj_idn,
             vrb: vrb_idn,
-            obj: obj_idn
+            obj: obj_idn,
+            txt: txt,
+            whn: whn_parts
         };
     }
     function url_from_question(question) {
@@ -463,13 +391,18 @@ function js_for_meta_lex(window, $, MONTY) {
 
     function sub_num($word) {
         var num = $word.data('num');
+        var $num = $word.find('.num');
         if (typeof num === 'undefined') {
         } else if (typeof num === 'number') {
             if (num !== 1.0) {
-                $word.find('.num').text(UNICODE.TIMES + human_number(num));
+                $num.text(UNICODE.TIMES + human_number(num));
             }
         } else {
-            $word.find('.num').text(UNICODE.CIRCLED_TIMES + " " + num.toString());
+            $num.text(UNICODE.CIRCLED_TIMES + " " + num.toString());
+        }
+        var num_qstring = $word.data('num-qstring');
+        if (is_specified(num_qstring)) {
+            $num.attr('title', "num = " + num_qstring);
         }
         return num;
     }
@@ -491,16 +424,12 @@ function js_for_meta_lex(window, $, MONTY) {
         $span.addClass(delta.units_long);
         $span.text(delta.description_short);
         var fractional = whn_seconds % 1.0;
-        $span.attr(
-            'title',
-            (
-                delta.description_long +
-                " ago: " +
-                amend_timestamp_with_fractional_seconds(word_date.toUTCString(), fractional) +
-                " -or- " +
-                amend_timestamp_with_fractional_seconds(word_date.toLocaleString(), fractional) +
-                " local"
-            )
+        var then_utc = amend_fractional_seconds(word_date.toUTCString(), fractional);
+        var then_local = amend_fractional_seconds(word_date.toLocaleString(), fractional);
+        $span.attr('title', "{ago_long} ago: {then_utc} -or- {then_local} local"
+            .replace('{ago_long}', delta.description_long)
+            .replace('{then_utc}', then_utc)
+            .replace('{then_local}', then_local)
         );
         var $word_previous = $word.prev('.srend');
         if ($word_previous.length === 1) {
@@ -513,9 +442,15 @@ function js_for_meta_lex(window, $, MONTY) {
             }
             whn_delta.push(between);
         }
+        return {
+            ago_short: delta.description_short,
+            ago_long: delta.description_long,
+            then_utc: then_utc,
+            then_local: then_local
+        }
     }
 
-    function amend_timestamp_with_fractional_seconds(timestamp, fractional_seconds) {
+    function amend_fractional_seconds(timestamp, fractional_seconds) {
         var fractional_seconds_string = strip_leading_zeros(fractional_seconds.toFixed(3));
         var amended_timestamp = timestamp.replace(
             /\d\d:\d\d:\d\d/,
@@ -524,7 +459,7 @@ function js_for_meta_lex(window, $, MONTY) {
         return amended_timestamp;
     }
     console.assert(
-        'Sat, 23 Nov 2019 16:30:44.388 GMT' === amend_timestamp_with_fractional_seconds(
+        'Sat, 23 Nov 2019 16:30:44.388 GMT' === amend_fractional_seconds(
         'Sat, 23 Nov 2019 16:30:44 GMT', 0.388)
     );
 
@@ -534,6 +469,159 @@ function js_for_meta_lex(window, $, MONTY) {
     }
     console.assert('.425' === strip_leading_zeros('0.425'));
     console.assert('' === strip_leading_zeros('0'));
+
+    var verb_report_tally = {};
+
+    function verb_report_init() {
+        verb_report_tally = {};
+    }
+
+    function verb_report_each(word) {
+        function its_a_verb(vrb) {
+            if ( ! has(verb_report_tally, vrb)) {
+                verb_report_tally[vrb] = [];
+            }
+        }
+        function vrb_is_used(vrb, word) {
+            console.assert(has(verb_report_tally, vrb), vrb);
+            var word_whn = "{ago_long} ago, {then_local}"
+                .replace('{ago_long}', word.whn.ago_long)
+                .replace('{then_local}', word.whn.then_local)
+            ;
+            var word_stripped_down_a_Little = {idn: word.idn, whn: word_whn};
+            verb_report_tally[vrb].push(word_stripped_down_a_Little);
+        }
+
+        its_a_verb(word.vrb);
+        vrb_is_used(word.vrb, word);
+        if (word.obj === MONTY.IDN.VERB) {
+            // console.debug("defined", word.idn, word.obj, word.txt);
+            its_a_verb(word.idn)
+            // NOTE:  This captures a 1st-level derived verb even if it's never used as the verb in any word.
+        } else if (word.vrb === MONTY.IDN.DEFINE && has(verb_report_tally, word.obj)) {
+            // NOTE:  This would include L O T S of unused derived session words.
+            // console.debug("DERIVED", word.idn, word.obj, word.txt);
+            // its_a_verb(word.idn)
+        }
+    }
+
+    /**
+     * Show the number of uses of each verb.  Link to earliest and latest.
+     */
+    function verb_report() {
+        var verb_idns = Object.keys(verb_report_tally);
+
+        var $verb_report = $('<div>', {id: 'verb-report'});
+        $(window.document.body).append($verb_report);
+        var num_verbs = verb_idns.length.toString();
+        $verb_report.append($('<h3>').text("{n} Verbs".replace('{n}', num_verbs)));
+        var $ol = $('<ol>');
+        $verb_report.append($ol);
+
+        verb_idns.sort(function compare_verb_names(v1, v2) {
+            var $v1 = $_from_id(v1);
+            var $v2 = $_from_id(v2);
+            var txt1 = $v1.data('txt') || "";
+            var txt2 = $v2.data('txt') || "";
+            return txt1.localeCompare(txt2, undefined, { sensitivity: 'accent' });
+        });
+        // THANKS:  Custom sort, https://stackoverflow.com/a/35092754/673991
+        // THANKS:  Accented letters near, not exact, https://stackoverflow.com/a/2140723/673991
+
+        // looper(verb_report_tally, function (vrb_idn, words) {
+        looper(verb_idns, function (_, vrb_idn) {
+            var words = verb_report_tally[vrb_idn];
+            var $li = $('<li>');
+            $ol.append($li);
+
+            var $vrb = $_from_id(vrb_idn);
+            var vrb_idn_int = $vrb.data('idn-native');
+            $li.attr('value', vrb_idn_int);
+
+            var vrb_txt = $vrb.data('txt');
+            var n_words = words.length;
+            var $verb_name = $('<span>', {class: 'named'});
+            $li.append($verb_name);
+            if (vrb_txt === "" || vrb_txt === null || ! is_laden(vrb_txt)) {
+                $verb_name.text("(UNNAMED)");
+                $verb_name.addClass('unnamed');
+                console.log("UNNAMED", vrb_idn);
+            } else {
+                $verb_name.text(vrb_txt);
+            }
+            // var title = "idn " + word.idn + " (" + vrb_idn_int + ")";
+            var title = "idn {idn} ({idn_int})"
+                .replace('{idn}', vrb_idn)
+                .replace('{idn_int}', vrb_idn_int)
+            ;
+            // TODO:  title = f("idn {idn} ({idn_int})", {idn: vrb_idn, idn_int: vrb_idn_int})
+
+            if ($vrb.find('.sbj').data('idn') === MONTY.IDN.LEX) {
+                $verb_name.addClass('sbj-lex');
+            }
+
+            var vrb_obj_idn = $vrb.find('.obj').data('idn');
+            if (vrb_obj_idn === MONTY.IDN.VERB) {
+                $verb_name.addClass('obj-verb');
+            } else {
+                title += " - {txt}".replace('{txt}', $_from_id(vrb_obj_idn).data('txt'));
+                // TODO:  Include the full hierarchy of verb derivations.
+                //        Follow the definitions all the way to MONTY.IDN.VERB.
+                //        Recursively or loopily.
+                //        This only goes one level.
+            }
+
+            $verb_name.attr('title', title);
+            $li.append(" ");
+
+            function $words(words) {
+                function $word(word) {
+                    function int_from_idn(idn) {
+                        return $_from_id(idn).data('idn-native');
+                    }
+
+                    var $a = $('<a>', {
+                        href: named_anchor_from_id(word.idn),
+                        title: word.whn
+                    });
+                    $a.text(int_from_idn(word.idn).toString());
+                    return $a;
+                }
+
+                var $anchors = [];
+                looper(words, function (_, word) {
+                    $anchors.push($word(word));
+                    $anchors.push(" ");
+                });
+                return $anchors;
+            }
+
+            var $span = $('<span>', {class: 'idn-list'});
+            $li.append($span);
+            var N_EARLY = 3;
+            var N_LATER = 12;
+            var TOO_MANY_BETWEEN = 4;
+            // NOTE:  4 numbers can take about as much space as ellipses:
+            //        ...(4 more)...
+            //        123 123 123 123
+            if (n_words === 0) {
+                $verb_name.addClass('meta-verb');
+            } else if (n_words <= N_EARLY + TOO_MANY_BETWEEN + N_LATER) {
+                $span.append($words(words));
+            } else {
+                var words_early = words.slice(0, N_EARLY);
+                var words_late = words.slice(-N_LATER);
+                var missing_words = (n_words - N_EARLY - N_LATER).toString();
+                $span.append(
+                    $words(words_early),
+                    " ...({n} more)... ".replace('{n}', missing_words),
+                    $words(words_late)
+                );
+                // THANKS:  .replace(substr) ... literal string, not a regular expression,
+                //          https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/String/replace#Parameters
+            }
+        });
+    }
 
     /**
      * The bottom triangle shows the time between the last word,
@@ -623,7 +711,7 @@ function js_for_meta_lex(window, $, MONTY) {
     }
 
     /**
-     * Process the members of an array asynchronously.
+     * Process the members of an array asynchronously.  looper() for compute-bound tasks.
      *
      * Avoid Chrome warnings e.g. 'setTimeout' handler took 1361ms
      *
@@ -634,7 +722,7 @@ function js_for_meta_lex(window, $, MONTY) {
      * @param delay_ms - milliseconds between calls, 0 to run "immediately" though OS intervenes
      *                   (higher value means SLOWER)
      * @param n_chunk - (optional) e.g 10 to handle 10 elements per iteration
-     *                  (higher value means FASTER)
+     *                  (higher value means FASTER, but may hamstring UX)
      * @param then - (optional) called after array is finished, to do what's next
      * @return {object} setInterval object, caller could pass to clearInterval() to abort.
      */

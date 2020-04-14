@@ -36,8 +36,13 @@ h1, h2, h3, h4 {
 
 .srend:target {
     /* THANKS:  #-anchor highlight, https://stackoverflow.com/a/11142257/673991 */
-    background-color: rgb(240,240,240);
-    border: 1px solid silver;
+    background-color: rgba(255, 255, 255, .5);
+    border: 1px solid rgba(128, 128, 128, .5);
+    -webkit-background-clip: padding-box; /* for Safari */
+            background-clip: padding-box; /* for IE9+, Firefox 4+, Opera, Chrome */
+    /* THANKS:  border, background opacity, https://stackoverflow.com/a/4062032/673991 */
+    /* NOTE:  Made semi-transparent to see a preceding .srend.whn-scrunch
+              In lieu of disabling the scrunch with :not(:has(+ :target)) or something */
     padding: 1px 1px 4px 4px;
 }
 
@@ -83,6 +88,18 @@ h1, h2, h3, h4 {
 
 #verb-report .obj-verb {
     border-color: gray;
+}
+
+#verb-report .meta-verb {
+    border-style: dashed;
+}
+
+#verb-report .unnamed {
+    /*font-family: 'Georgia', 'Garamond', serif;*/
+    /*font-style: italic;*/
+    font: italic 0.625em "Arial Narrow";
+    /*font: italic 1em Georgia, Garamond, serif;*/
+    color: #666666;
 }
 
 .wrend.vrb:before {

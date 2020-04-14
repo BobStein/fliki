@@ -70,12 +70,13 @@ SHOW_LOG_AJAX_NOEMBED_META = True
 POPUP_ID_PREFIX = 'popup_'
 INTERACTION_VERBS = dict(
     BOT='bot',         # |>  global play button
-                       #     NATURAL, automatic end of the bot??  That could take a long time!
     START='start',     # |>  individual media play
-    QUIT='quit',       # []  ARTIFICIAL, manual stopping the playback, or closing the window
+    QUIT='quit',       # []  ARTIFICIAL, manual stop, skip, or pop-up close
     END='end',         # ..  NATURAL, automatic end of the media
     PAUSE='pause',     # ||  either the global pause or the pause within the iframe
     RESUME='resume',   # |>
+    ERROR='error',     #     something went wrong, human-readable txt
+    UNBOT='unbot',     #     bot ended, naturally or artificially (but not crash)
 )
 # TODO:  Move to WorkingIdns.__init__() yet still bunch together somehow?
 #        Problem is, I'd like to define new ones without necessarily generating words for them,
@@ -2014,7 +2015,6 @@ def meta_lex():
         html.header("Lex")
 
         with html.body(class_='target-environment', newlines=True) as body:
-            # body.div(id='login-prompt').raw_text(auth.login_html())
             user_idn_qstring = auth.qiki_user.idn.qstring()
             with body.div(id='login-prompt', title='your idn is ' + user_idn_qstring) as div_login:
                 div_login.raw_text(auth.login_html())
@@ -2066,6 +2066,7 @@ def meta_lex():
                             li(**{'data-txt': str(word.txt)})
                         if word.num != 1:
                             li(**{'data-num': render_num(word.num)})
+                            li(**{'data-num-qstring': word.num.qstring()})
 
                     # if isinstance(word.sbj.lex, qiki.Listing):
                     if isinstance(word.sbj, word.sbj.lex.word_user_class):
@@ -2880,7 +2881,7 @@ def json_from_words(words):
     #        Obviously that function has to support lists, etc. first.
     dicts = []
     for word in words:
-        dicts.append(dict(
+        word_dict = dict(
             idn=word.idn.qstring(),
             sbj=word.sbj.idn.qstring(),
             vrb=word.vrb.idn.qstring(),
@@ -2889,7 +2890,8 @@ def json_from_words(words):
             #        ...because word.obj is itself.  That is, a.jbo[i].obj == a
             num=native_num(word.num),
             txt=word.txt
-        ))
+        )
+        dicts.append(word_dict)
     return json.dumps(
         dicts,
         allow_nan=False,

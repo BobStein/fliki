@@ -58,10 +58,12 @@
  * @param MONTY.IDN.UNSLUMP_OBSOLETE
  * @param MONTY.INTERACTION.BOT
  * @param MONTY.INTERACTION.END
+ * @param MONTY.INTERACTION.ERROR
  * @param MONTY.INTERACTION.PAUSE
  * @param MONTY.INTERACTION.RESUME
  * @param MONTY.INTERACTION.QUIT
  * @param MONTY.INTERACTION.START
+ * @param MONTY.INTERACTION.UNBOT
  * @param MONTY.is_anonymous
  * @param MONTY.login_html
  * @param MONTY.me_idn
@@ -236,6 +238,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     // var progress_play_bot = null;   // setTimeout timer for the current contribution in play
     var list_play_bot;   // array of contribution id's
     var index_play_bot;
+    // TODO:  These should be properties of Bot instance, right??
 
     var SETTING_PLAY_BOT_SEQUENCE = 'setting.play_bot.sequence';
     var PLAY_BOT_SEQUENCE_ORDER = 'in_order';
@@ -381,7 +384,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
 
         build_dom();
 
-        $( '#close-button').on('click', function () { pop_down_all(); });
+        $( '#close-button').on('click', function () { pop_down_all(false); });
         $(  '#play-button').on('click', function () { bot.play(); });
         $( '#pause-button').on('click', function () { bot.pause(); });
         $('#resume-button').on('click', function () { bot.resume(); });
@@ -417,13 +420,6 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             .on('click', '.save-bar .save',    contribution_save)
             .on('click', '.save-bar .play',    function () { bigger(this, true); })
             .on('click', '.save-bar .expand',    function () { bigger(this, false); })
-            // .on('click', '.save-bar .unfull',  function () {
-            //     // TODO:  What if play-bot is in progress and user hits un-full button?
-            //     //        Stop play-bot?  Or just skip to next one?  Currently just stops.
-            //     // bot.timer.abort();
-            //     // pop_down_all();
-            //     bot.stop();
-            // })
 
             .on('keyup', function (evt) {
                 if (evt.key === 'Escape') {
@@ -626,6 +622,8 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         that.cont = null;       // e.g. id_attribute '1821' a thumbnail
         that.pop_cont = null;   // e.g. id_attribute 'popup_1821'
         that.is_paused = false;
+        that.cont_idn = null;
+        that.did_bot_transition = null;  // Did the bot initiate transition to the next contribution?
     }
 
     Bot.prototype.State = Enumerate({
@@ -781,13 +779,15 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             break;
         case that.State.NEXT_CONTRIBUTION:
             if (index_play_bot >= list_play_bot.length) {
-                that.state = that.State.END_AUTO;   // Natural end of all contributions.
+                that.state = that.State.END_AUTO;
+                // NOTE:  Natural automatic Bot ending - at the end of all contributions.
+                //        May never happen!
                 break;
             }
-            var cont_idn = list_play_bot[index_play_bot];
-            that.cont = Contribution(cont_idn);
+            that.cont_idn = list_play_bot[index_play_bot];
+            that.cont = Contribution(that.cont_idn);
             if ( ! that.cont.exists()) {
-                that.crash("Missing contribution", cont_idn, index_play_bot);
+                that.crash("Missing contribution", that.cont_idn, index_play_bot);
                 break;
             }
             // TODO:  Fix the following dumb noinspection.  Or wait and pray Jetbrains fixes it.
@@ -799,10 +799,10 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             if (that.cont.media_domain === 'no_domain') {
                 // NOTE:  A badly formatted URL should not be popped up at all.
                 console.log("Zero time for", that.cont.id_attribute);
-                that.end_one_begin_another(SECONDS_BREATHER_AFTER_ZERO_TIME);
+                that.end_one_begin_another(SECONDS_BREATHER_AFTER_ZERO_TIME, true);
             } else if (that.cont.is_noembed_error) {
                 console.log("Noembed is no help with", that.cont.id_attribute);
-                that.end_one_begin_another(SECONDS_BREATHER_AT_NOEMBED_ERROR);
+                that.end_one_begin_another(SECONDS_BREATHER_AT_NOEMBED_ERROR, true);
             } else {
                 $(window.document.body).addClass('pop-up-auto');
                 that.pop_begin(pop_up(that.cont, true));
@@ -895,6 +895,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         case that.State.MEDIA_TIMING:
             // Static media, e.g. jpg on flickr, show it for a while.
             if (that.ticks_this_state >= MEDIA_STATIC_SECONDS) {
+                that.did_bot_transition = true;
                 that.state = that.State.BEGIN_ANOTHER;
             }
             break;
@@ -928,10 +929,11 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         case that.State.SPEECH_STARTED:
             break;
         case that.State.DONE_CONTRIBUTION:
+            that.did_bot_transition = true;
             if (that.cont.is_media) {
-                that.end_one_begin_another(SECONDS_BREATHER_AT_MEDIA_END);
+                that.end_one_begin_another(SECONDS_BREATHER_AT_MEDIA_END, true);
             } else {
-                that.end_one_begin_another(SECONDS_BREATHER_AT_SPEECH_SYNTHESIS_END);
+                that.end_one_begin_another(SECONDS_BREATHER_AT_SPEECH_SYNTHESIS_END, true);
             }
             break;
         case that.State.BREATHER:
@@ -943,17 +945,22 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             break;
         case that.State.BEGIN_ANOTHER:
             that.pop_end();
-            pop_down_all(true);   // true, meaning this is the automated end of a contribution
+            pop_down_all(that.did_bot_transition);
             index_play_bot++;
             that.state = that.State.PREP_CONTRIBUTION;
             break;
         case that.State.CRASHED:
-            // NOTE:  Leaving things messy, for study.
+            // NOTE:  Leaving things messy, for study.  May regret this.
             that.state = that.State.MANUAL;
+            // NOTE: Abrupt catastrophic Bot ending.  Something went wrong.
             break;
         case that.State.END_AUTO:
             that.media_ending();
             console.log("End player bot");
+            qoolbar.post('interact', {
+                name: MONTY.INTERACTION.UNBOT,
+                obj: that.cont_idn
+            });
             that.state = that.State.MANUAL;
             break;
         default:
@@ -1031,9 +1038,14 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
      * So either it has naturally expired, or it's been aborted already.
      *
      * @param seconds_delay between contributions
+     * @param did_bot_transition - true=bot initiated next contribution, false=user did
      */
-    Bot.prototype.end_one_begin_another = function Bot_end_one_begin_another(seconds_delay) {
+    Bot.prototype.end_one_begin_another = function Bot_end_one_begin_another(
+        seconds_delay,
+        did_bot_transition
+    ) {
         var that = this;
+        that.did_bot_transition = did_bot_transition;
         console.log("(bot breather {})".replace('{}', seconds_delay.toFixed(1)));
         that.breather_seconds = seconds_delay;
         that.state = that.State.BREATHER;
@@ -1146,9 +1158,10 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             // NOTE:  Harmlessly getting a precautionary bot.stop() when not animating or anything.
         } else {
             that.state = that.State.END_AUTO;
+            // NOTE:  Artificial manual Bot ending.
         }
         that.pop_end();
-        pop_down_all();
+        pop_down_all(false);
     };
 
     Bot.prototype.skip = function Bot_skip() {
@@ -1163,7 +1176,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             // NOTE:  Mysteriously but harmlessly getting a skip when not animating or anything.
         } else {
             that.pop_end();
-            that.end_one_begin_another(SECONDS_BREATHER_AT_SKIP);
+            that.end_one_begin_another(SECONDS_BREATHER_AT_SKIP, false);
         }
     };
 
@@ -1299,145 +1312,8 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                     sizeWidth: true,
                     sizeHeight: true,
                     widthCalculationMethod: 'taggedElement',
-                    onMessage: function iframe_incoming_message(twofer) {
-                        var message = twofer.message;
-                        var cont_idn = strip_prefix(message.contribution_idn, MONTY.POPUP_ID_PREFIX);
-                        console.assert(cont_idn === that.idn_decimal, cont_idn, that.idn_decimal);
-                        var interaction_name;
-                        // noinspection JSRedundantSwitchStatement
-                        switch (message.action) {
-                        case 'auto-play-presaged':
-                            console.log("Media presaged", that.id_attribute, message.contribution_idn);
-                            that.$sup.trigger(that.Event.MEDIA_BEGUN);
-                            break;
-                        case 'auto-play-static':
-                            console.log("Media static", that.id_attribute, message.contribution_idn);
-                            that.$sup.trigger(that.Event.MEDIA_STATIC);
-                            qoolbar.post('interact', {
-                                name: MONTY.INTERACTION.START,
-                                obj: cont_idn,
-                                num: message.current_time
-                            });
-                            break;
-                        case 'auto-play-begun':
-                            console.log("Media begun", that.id_attribute, message.contribution_idn);
-                            // NOTE:  Okay to pause.
-                            break;
-                        case 'auto-play-woke':
-                            console.log("Media woke", that.id_attribute, message.contribution_idn);
-                            that.$sup.trigger(that.Event.MEDIA_WOKE);
-                            // NOTE:  State changes, first sign of life from youtube player.
-                            break;
-                        case 'auto-play-end-dynamic':
-                            console.log("Dynamic media ended", that.id_attribute, message.contribution_idn);
-                            that.$sup.trigger(that.Event.MEDIA_ENDED);
-                            // NOTE:  MEDIA_ENDED event means e.g. a video ended,
-                            //        so next it's time for a breather.
-                            qoolbar.post('interact', {
-                                name: MONTY.INTERACTION.END,
-                                obj: cont_idn,
-                                num: message.current_time
-                            });
-                            break;
-                        case 'auto-play-end-static':
-                            console.log("Static media ended", that.id_attribute, message.contribution_idn);
-                            // NOTE:  Static media timed-out, no breather necessary.
-                            qoolbar.post('interact', {
-                                name: MONTY.INTERACTION.END,
-                                obj: cont_idn,
-                                num: message.current_time
-                            });
-                            break;
-                        case 'auto-play-paused':
-                            console.log("Media paused", that.id_attribute, message.contribution_idn);
-                            that.$sup.trigger(that.Event.MEDIA_PAUSED);
-                            qoolbar.post('interact', {
-                                name: MONTY.INTERACTION.PAUSE,
-                                obj: cont_idn,
-                                num: message.current_time
-                            });
-                            // NOTE:  This could happen a while after the pause button is clicked,
-                            //        after a cascade of consequences.  But it should accurately
-                            //        record the actual position of the pause in the video.
-                            break;
-                        case 'auto-play-quit':
-                            // NOTE:  This up-going message resulted from the Down-going message
-                            //            'un-pop-up'
-                            //        For a dynamic contribution, e.g. youtube,
-                            //        we get here only if the iframe says the video was in a
-                            //        quitable state.
-                            //        You can't quit if a video wasn't playing or paused.
-                            //        For a static contribution, e.g. instagram,
-                            //        we get here if the un-pop-up was manual, not bot-automated.
-                            console.log(
-                                "Media quit",
-                                that.id_attribute,
-                                message.contribution_idn
-                            );
-                            qoolbar.post('interact', {
-                                name: MONTY.INTERACTION.QUIT,
-                                obj: cont_idn,
-                                num: message.current_time
-                            });
-                            break;
-                        case 'auto-play-playing':
-                            console.log(
-                                "Media playing",
-                                that.id_attribute,
-                                message.contribution_idn,
-                                message.current_time.toFixed(3),
-                                bot.is_paused
-                            );
-                            if (bot.is_paused) {
-                                // NOTE:  This may be the sole place a Contribution knows of a Bot.
-                                //        Necessary?  Wise?
-                                interaction_name = MONTY.INTERACTION.RESUME;
-                            } else {
-                                interaction_name = MONTY.INTERACTION.START;
-                            }
-                            qoolbar.post('interact', {
-                                name: interaction_name,
-                                obj: cont_idn,
-                                num: message.current_time
-                            });
-                            that.$sup.trigger(that.Event.MEDIA_PLAYING, [{
-                                current_time: message.current_time
-                            }]);
-
-                            break;
-                        case 'auto-play-resume':
-                            console.log(
-                                "Media resume",
-                                that.id_attribute,
-                                message.contribution_idn,
-                                message.current_time.toFixed(3)
-                            );
-                            qoolbar.post('interact', {
-                                name: MONTY.INTERACTION.RESUME,
-                                obj: cont_idn,
-                                num: message.current_time
-                            });
-                            that.$sup.trigger(that.Event.MEDIA_RESUME, [{
-                                current_time: message.current_time
-                            }]);
-
-                            break;
-                        case 'noembed-error-notify':
-                            // NOTE:  This happens when youtube oembed says "401 Unauthorized"
-                            //        E.g. https://www.youtube.com/watch?v=bAD2_MVMUlE
-                            // var media_cont = Contribution(message.contribution_idn);
-                            // TODO:  We don't need message.contribution_idn,
-                            //        because we know it from scope!  Right??
-                            that.$sup.addClass('noembed-error');
-                            break;
-                        default:
-                            console.error(
-                                "Unknown action, parent <== child",
-                                '"' + message.action + '"',
-                                message
-                            );
-                            break;
-                        }
+                    onMessage: function (twofer) {
+                        iframe_incoming_message(that, twofer);
                     },
                     onResized: function iframe_resized_itself(stuff) {
                         var msg_cont = Contribution_from_element(stuff.iframe);
@@ -1461,7 +1337,166 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             console.error("Missing iframe or resizer", that);
         }
     };
+    function iframe_incoming_message(that, twofer) {
+        var message = twofer.message;
+        var cont_idn = strip_prefix(message.contribution_idn, MONTY.POPUP_ID_PREFIX);
+        console.assert(cont_idn === that.idn_decimal, cont_idn, that.idn_decimal);
+        var interaction_name;
+        // noinspection JSRedundantSwitchStatement
+        switch (message.action) {
+        case 'auto-play-presaged':
+            console.log("Media presaged", that.id_attribute, message.contribution_idn);
+            that.$sup.trigger(that.Event.MEDIA_BEGUN);
+            break;
+        case 'auto-play-static':
+            console.log("Media static", that.id_attribute, message.contribution_idn);
+            that.$sup.trigger(that.Event.MEDIA_STATIC);
+            qoolbar.post('interact', {
+                name: MONTY.INTERACTION.START,
+                obj: cont_idn,
+                num: one_qigit(message.current_time)
+            });
+            // NOTE:  current_time doesn't need to store more than one qigit below decimal.
+            //        So it gets rounded to the nearest 1/256.
+            break;
+        case 'auto-play-begun':
+            console.log("Media begun", that.id_attribute, message.contribution_idn);
+            // NOTE:  Okay to pause.
+            break;
+        case 'auto-play-woke':
+            console.log("Media woke", that.id_attribute, message.contribution_idn);
+            that.$sup.trigger(that.Event.MEDIA_WOKE);
+            // NOTE:  State changes, first sign of life from youtube player.
+            break;
+        case 'auto-play-end-dynamic':
+            console.log("Dynamic media ended", that.id_attribute, message.contribution_idn);
+            that.$sup.trigger(that.Event.MEDIA_ENDED);
+            // NOTE:  MEDIA_ENDED event means e.g. a video ended,
+            //        so next it's time for a breather.
+            qoolbar.post('interact', {
+                name: MONTY.INTERACTION.END,
+                obj: cont_idn,
+                num: one_qigit(message.current_time)
+            });
+            break;
+        case 'auto-play-end-static':
+            console.log("Static media ended", that.id_attribute, message.contribution_idn);
+            // NOTE:  Static media timed-out, no breather necessary.
+            qoolbar.post('interact', {
+                name: MONTY.INTERACTION.END,
+                obj: cont_idn,
+                num: one_qigit(message.current_time)
+            });
+            break;
+        case 'auto-play-error':
+            console.log("Embedded player error", that.id_attribute, message.error_message);
+            qoolbar.post('interact', {
+                name: MONTY.INTERACTION.ERROR,
+                obj: cont_idn,
+                txt: message.error_message
+            });
+            break;
+        case 'auto-play-paused':
+            console.log(
+                "Media paused",
+                that.id_attribute,
+                message.contribution_idn,
+                message.current_time
+            );
+            that.$sup.trigger(that.Event.MEDIA_PAUSED);
+            qoolbar.post('interact', {
+                name: MONTY.INTERACTION.PAUSE,
+                obj: cont_idn,
+                num: one_qigit(message.current_time)
+            });
+            // NOTE:  This could happen a while after the pause button is clicked,
+            //        after a cascade of consequences.  But it should accurately
+            //        record the actual position of the pause in the video.
+            break;
+        case 'auto-play-quit':
+            // NOTE:  This up-going message resulted from the Down-going message
+            //            'un-pop-up'
+            //        For a dynamic contribution, e.g. youtube,
+            //        we get here only if the iframe says the video was in a
+            //        quitable state.
+            //        You can't quit if a video wasn't playing or paused.
+            //        For a static contribution, e.g. instagram,
+            //        we get here if the un-pop-up was manual, not bot-automated.
+            console.log(
+                "Media quit",
+                that.id_attribute,
+                message.contribution_idn
+            );
+            qoolbar.post('interact', {
+                name: MONTY.INTERACTION.QUIT,
+                obj: cont_idn,
+                num: one_qigit(message.current_time)
+            });
+            break;
+        case 'auto-play-playing':
+            console.log(
+                "Media playing",
+                that.id_attribute,
+                message.contribution_idn,
+                message.current_time.toFixed(3),
+                bot.is_paused
+            );
+            if (bot.is_paused) {
+                // NOTE:  This may be the sole place a Contribution knows of a Bot.
+                //        Necessary?  Wise?
+                interaction_name = MONTY.INTERACTION.RESUME;
+            } else {
+                interaction_name = MONTY.INTERACTION.START;
+            }
+            qoolbar.post('interact', {
+                name: interaction_name,
+                obj: cont_idn,
+                num: one_qigit(message.current_time)
+            });
+            that.$sup.trigger(that.Event.MEDIA_PLAYING, [{
+                current_time: message.current_time
+            }]);
 
+            break;
+        case 'auto-play-resume':
+            console.log(
+                "Media resume",
+                that.id_attribute,
+                message.contribution_idn,
+                message.current_time.toFixed(3)
+            );
+            qoolbar.post('interact', {
+                name: MONTY.INTERACTION.RESUME,
+                obj: cont_idn,
+                num: one_qigit(message.current_time)
+            });
+            that.$sup.trigger(that.Event.MEDIA_RESUME, [{
+                current_time: message.current_time
+            }]);
+
+            break;
+        case 'noembed-error-notify':
+            // NOTE:  This happens when youtube oembed says "401 Unauthorized"
+            //        E.g. https://www.youtube.com/watch?v=bAD2_MVMUlE
+            // var media_cont = Contribution(message.contribution_idn);
+            // TODO:  We don't need message.contribution_idn,
+            //        because we know it from scope!  Right??
+            that.$sup.addClass('noembed-error');
+            qoolbar.post('interact', {
+                name: MONTY.INTERACTION.ERROR,
+                obj: cont_idn,
+                txt: message.error_message
+            });
+            break;
+        default:
+            console.error(
+                "Unknown action, parent <== child",
+                '"' + message.action + '"',
+                message
+            );
+            break;
+        }
+    }
     // function interact(interaction, obj, num) {
     //     qoolbar.post('interact', {
     //         name: interaction,
@@ -1469,6 +1504,12 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     //         num: num
     //     });
     // }
+
+    function one_qigit(n) {
+        return Math.round(n * 256.0) / 256.0;
+    }
+    console.assert(26.0 / 256 === one_qigit(0.1));
+    console.assert(0.01015625 === one_qigit(0.1));
 
     Contribution.prototype.fix_caption_width = function Contribution_fix_caption_width() {
         // noinspection JSUnusedAssignment
@@ -1566,34 +1607,6 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                 that.id_attribute,
                 that.content.slice(0,40)
             );
-            // get_oembed("thumb", that.content, function got_thumb_oembed(oembed) {
-            //     if (typeof oembed.error === 'undefined') {
-            //         if (typeof oembed.thumbnail_url === 'string') {
-            //             that.thumb_image(
-            //                 oembed.thumbnail_url,
-            //                 oembed.caption_for_media,
-            //                 function thumb_url_error() {
-            //                     console.warn(
-            //                         that.media_domain,
-            //                         "busted thumb",
-            //                         oembed.thumbnail_url,
-            //                         "-- revert to iframe"
-            //                     );
-            //                     that.live_media_iframe(that.content);
-            //                 }
-            //             );
-            //         } else {   // oembed data is missing a thumbnail URL
-            //             that.live_media_iframe(that.content);
-            //         }
-            //     } else {   // oembed error message
-            //         var error_message = oembed.error;
-            //         // noinspection JSIncompatibleTypesComparison
-            //         if (that.media_domain !== 'no_domain') {
-            //             error_message += " for '" + that.media_domain + "'";
-            //         }
-            //         that.render_error(error_message);
-            //     }
-            // });
         }
     };
 
@@ -1999,11 +2012,10 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     /**
      * End pop-up.
      *
-     * @param is_bot_initiated - true = Bot automatic timeout of the contribution,
+     * @param did_bot_transition - true = Bot automatic timeout of the contribution,
      *                           false or unspecified = manually terminated
      */
-    function pop_down_all(is_bot_initiated) {
-        is_bot_initiated = is_bot_initiated || false;
+    function pop_down_all(did_bot_transition) {
         var $pop_ups = $('.pop-up');
         var pop_cont = null;
         var pop_conts = [];   // In case there are more than one.
@@ -2036,7 +2048,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                 action: 'un-pop-up',
                 width: pop_stuff.render_width,
                 height: pop_stuff.render_height,
-                is_bot_initiated: is_bot_initiated
+                did_bot_transition: did_bot_transition
             });
             // noinspection JSCheckFunctionSignatures
             pop_cont.$sup.animate({
@@ -2129,13 +2141,18 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             var cont = Contribution_from_element(this);
             console.log("thumb click", cont.id_attribute);
             bigger(div, true);
-            // pop_up(cont, true);
             evt.stopPropagation();
             evt.preventDefault();
             return false;
         }
     }
 
+    /**
+     * Respond to the buttons under individual contribution thumbnails.
+     *
+     * @param element - anywhere in a contribution
+     * @param do_play - false for the bigger button, true for the play button
+     */
     function bigger(element, do_play) {
         bot.stop();
         var cont = Contribution_from_element(element);
@@ -2156,7 +2173,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         var popup_cont_selector = selector_from_id(popup_cont_idn);
         var was_already_popped_up = $(popup_cont_selector).length > 0;
 
-        pop_down_all();
+        pop_down_all(false);
         if (was_already_popped_up) {
             console.error("Oops, somehow", cont_idn, "was already popped up.");
             // NOTE:  Avoid double-pop-up.  Just pop down, don't pop-up again.
@@ -2271,7 +2288,8 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             //        Someday a less crude way would be good.
 
             pop_cont.live_media_iframe(pop_cont.content, more_relay_parameters);
-            // NOTE:  This is what overrides the thumbnail and makes it a video.
+            // NOTE:  This is what overrides the thumbnail image from the original,
+            //        and makes it live media (e.g. a video) in the pop-up.
 
             $popup.css({'background-color': 'rgba(0,0,0,0)'});
             pop_cont.resizer_init(
@@ -4409,8 +4427,21 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         $save_bar.append($('<button>', {class: 'cancel'}).text("cancel"));
         $save_bar.append($('<button>', {class: 'save'}).text("save"));
         $save_bar.append($('<button>', {class: 'discard'}).text("discard"));
-        $save_bar.append($('<button>', {class: 'expand'}).append($icon('fullscreen')).append($('<span>').text(" bigger")));
-        $save_bar.append($('<button>', {class: 'play'}).append($icon('play_arrow')).append(" play"));
+        $save_bar.append(
+            $('<button>', {
+                class: 'expand',
+                title: "expand"
+            })
+                .append($icon('fullscreen'))
+                .append(
+                    $('<span>').text(" bigger")
+                )
+        );
+        $save_bar.append(
+            $('<button>', {class: 'play'})
+                .append($icon('play_arrow'))
+                .append(" play")
+        );
         $sup_contribution.append($render_bar);
         $sup_contribution.append($caption_bar);
         $sup_contribution.append($save_bar);

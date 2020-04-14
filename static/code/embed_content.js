@@ -17,7 +17,7 @@
  * @param window.YT.PlayerState.PLAYING   -  1
  * @param window.YT.PlayerState.PAUSED    -  2
  * @param window.YT.PlayerState.BUFFERING -  3
- * @param window.YT.PlayerState.CUED      -  5
+ * @param window.YT.PlayerState.CUED      -  5 (e.g. at the beginning before playing)
  *
  * @param {function} $
  * @param {function} $.extend
@@ -70,9 +70,21 @@ function embed_content_js(window, $, MONTY) {
 
     var url_outer_iframe = query_get('url');
     var contribution_idn = query_get('idn');
+
     var is_auto_play = query_get('auto_play', 'false') === 'true';
     // NOTE:  is_auto_play is not whether the Bot is running a sequence of contributions,
-    //        it's whether the object should play or not.
+    //        nor is it whether the media is dynamic (video) versus static (photo)
+    //        nor is it whether the media is popped up versus a thumbnail
+    //        It's whether the object should start playing, or just sit there.
+    //        It's true when:   (These are recorded as an interaction work in the lex.)
+    //            the "play" button is clicked on individual contributions
+    //            the Bot pops up media, a youtube video or instagram photo
+    //        It's false when:   (These do not merit recording a lex interaction word.)
+    //            the "bigger" button is clicked on an individual contribution, video or photo
+    //            this is a thumbnail for a noembed contribution, but there's no thumbnail image,
+    //                or the image is broken
+    //                so the thumbnail is live media, e.g. twitter or dropbox
+
     var is_pop_up = query_get('is_pop_up', 'false') === 'true';
     var oppressed_width = query_get('width', 'auto');
     var oppressed_height = query_get('height', 'auto');
@@ -81,7 +93,6 @@ function embed_content_js(window, $, MONTY) {
     window.document.title = domain_simple + " - " + window.document.title;
     var is_youtube = (domain_simple === 'youtube' || domain_simple === 'youtu.be');
     var is_pop_youtube = is_pop_up && is_youtube;
-    var is_pop_auto_youtube = is_pop_youtube && is_auto_play;
     var is_dynamic = is_youtube;
 
     var YOUTUBE_EMBED_PREFIX = 'https://www.youtube.com/embed/';
@@ -100,15 +111,22 @@ function embed_content_js(window, $, MONTY) {
         targetOrigin: MONTY.target_origin,
         onReady: function iframe_resizer_content_ready() {
             t.moment("resizer");
-            if (is_pop_auto_youtube) {
-                parent_message('auto-play-presaged', { contribution_idn: contribution_idn });
-                // NOTE:  Not yet begun playing, but it's gonna.
-            } else if (is_auto_play) {
-                parent_message('auto-play-static', {
-                    contribution_idn: contribution_idn,
-                    current_time: seconds_since_load()
-                });
-                // NOTE:  Not going to play.  Static media.
+            if (is_auto_play) {
+                if (is_pop_youtube) {
+                    // NOTE:  This right here is the dynamic versus static decision.
+                    //        Not yet begun playing, but it's gonna.
+                    //        Let the parent know this is dynamic, playable media
+                    //        versus a static photo.
+                    parent_message('auto-play-presaged', {
+                        contribution_idn: contribution_idn
+                    });
+                } else {
+                    // NOTE:  Not going to play.  Let the parent know this is static media.
+                    parent_message('auto-play-static', {
+                        contribution_idn: contribution_idn,
+                        current_time: seconds_since_load()
+                    });
+                }
             }
             $(function document_ready() {
                 t.moment("$");
@@ -141,7 +159,10 @@ function embed_content_js(window, $, MONTY) {
                     //            parent_iframe().autoResize(false);
                     //            parent_iframe().autoResize(true);
                     console.debug("Noembed error on", contribution_idn, url_outer_iframe);
-                    parent_message('noembed-error-notify', { contribution_idn: contribution_idn });
+                    parent_message('noembed-error-notify', {
+                        contribution_idn: contribution_idn,
+                        error_message: "noembed error " + MONTY.oembed.error
+                    });
                 } else if (is_pop_youtube) {
                     youtube_iframe_api(function () {
                         t.moment("yt-code");
@@ -212,139 +233,9 @@ function embed_content_js(window, $, MONTY) {
                             height: oppressed_height,
                             easing: 'linear'
                         }, {
-                            complete: function () {
-                                t.moment("pop");
-                                console.assert($('#youtube_iframe').length === 1);
-                                var first_state_change = true;
-                                var previous_state = null;
-
-                                // noinspection JSUnusedGlobalSymbols
-                                yt_player = new window.YT.Player('youtube_iframe', {
-                                    events: {
-                                        onReady: function (/*yt_event*/) {
-                                            if (is_auto_play) {
-                                                t.moment("yt-play");
-                                                // yt_event.target.playVideo();
-                                                yt_player.playVideo();
-                                                parent_message('auto-play-begun', {
-                                                    contribution_idn: contribution_idn
-                                                });
-                                                // NOTE:  Let contribution.js know that it's now
-                                                //        okay to send a 'pause' message,
-                                                //        which will cause yt_player.pauseVideo()
-
-                                            }
-                                            if (
-                                                yt_player.getPlayerState() ===
-                                                window.YT.PlayerState.UNSTARTED
-                                            ) {
-                                                console.warn(
-                                                    "Unstarted",
-                                                    contribution_idn,
-                                                    "-- Chrome blocked?"
-                                                );
-                                            }
-                                        },
-                                        onStateChange: function (yt_event) {
-                                            if (first_state_change) {
-                                                first_state_change = false;
-                                                parent_message(
-                                                    'auto-play-woke',
-                                                    { contribution_idn: contribution_idn }
-                                                );
-                                                t.moment("yt-state");
-
-                                                console.log(
-                                                    MONTY.POPUP_ID_PREFIX + contribution_idn,
-                                                    domain_simple + ",",
-                                                    "lag", t.report()
-                                                );
-                                                // EXAMPLE (busy):  popup_1990 youtube, lag 11.025:
-                                                //     resizer 1.137, jquery 0.233, yt-code 0.834,
-                                                //     pop 0.414, yt-play 7.017, yt-state 1.390
-                                                // EXAMPLE (easy):  popup_1990 youtube, lag 1.125:
-                                                //     resizer 0.063, jquery 0.019, yt-code 0.092,
-                                                //     pop 0.466, yt-play 0.404, yt-state 0.081
-                                            }
-                                            // noinspection JSRedundantSwitchStatement
-                                            switch (yt_event.data) {
-                                            case window.YT.PlayerState.ENDED:
-                                                if (is_auto_play) {
-                                                    parent_message(
-                                                        'auto-play-end-dynamic',
-                                                        {
-                                                            contribution_idn: contribution_idn,
-                                                            current_time: yt_player.getCurrentTime()
-                                                        }
-                                                    );
-                                                }
-                                                break;
-                                            case window.YT.PlayerState.PAUSED:
-                                                if (is_auto_play) {
-                                                    parent_message(
-                                                        'auto-play-paused',
-                                                        {
-                                                            contribution_idn: contribution_idn,
-                                                            current_time: yt_player.getCurrentTime()
-                                                        }
-                                                    );
-                                                }
-                                                break;
-                                            case window.YT.PlayerState.PLAYING:
-                                                if (is_auto_play) {
-                                                    if (previous_state === window.YT.PlayerState.PAUSED) {
-                                                        // TODO:  Is this reliable?  Could some state
-                                                        //        come after pause before play?
-                                                        console.log("EMBED RESUME", yt_player.getCurrentTime());
-                                                        parent_message(
-                                                            'auto-play-resume',
-                                                            {
-                                                                contribution_idn: contribution_idn,
-                                                                current_time: yt_player.getCurrentTime()
-                                                            }
-                                                        );
-                                                    } else {
-                                                        console.log("EMBED PLAYING", yt_player.getCurrentTime());
-                                                        parent_message(
-                                                            'auto-play-playing',
-                                                            {
-                                                                contribution_idn: contribution_idn,
-                                                                current_time: yt_player.getCurrentTime()
-                                                            }
-                                                        );
-                                                    }
-                                                }
-                                                break;
-                                            default:
-                                                break;
-                                            }
-                                            console.log("YT API", contribution_idn, yt_event.data);
-                                            previous_state = yt_event.data;
-                                        },
-                                        onError: function (yt_event) {
-                                            console.warn(
-                                                "Player error",
-                                                yt_event.data
-                                            );
-                                        }
-                                    }
-                                });
-                                console.log("You are here-ish", yt_player);
-                            }
+                            complete: dynamic_player
                         });
                     });
-                    // NOTE:  PlayerState sequences:
-                    //        cued=>unstarted=>buffering=>playing=>ended
-                    //        5=>-1=>3=>    1=>0  --  usually
-                    //        5=>-1=>3=>-1=>1=>0  --  once
-                    //        2=>3=>1  --  clicking the timeline
-                    // State codes:
-                    // -1 – unstarted
-                    //  0 – ended
-                    //  1 – playing
-                    //  2 – paused
-                    //  3 – buffering
-                    //  5 – video cued
                 } else if (is_youtube && SHOW_YOUTUBE_THUMBS) {
                     var src = MONTY.oembed.thumbnail_url;
 
@@ -448,34 +339,34 @@ function embed_content_js(window, $, MONTY) {
                 if (is_dynamic) {
                     if (yt_player !== null && typeof yt_player.getPlayerState === 'function') {
                         var youtube_state = yt_player.getPlayerState();
+                        console.debug("UN POP UP", youtube_state);
                         if (quitable_state(youtube_state)) {
-                            parent_message(
-                                'auto-play-quit',
-                                {
-                                    contribution_idn: contribution_idn,
-                                    current_time: yt_player.getCurrentTime()
-                                }
-                            );
+                            parent_message('auto-play-quit', {
+                                contribution_idn: contribution_idn,
+                                current_time: yt_player.getCurrentTime()
+                            });
                         }
+                        // NOTE:  The natural, automated end of a YouTube video is noted in the
+                        //        handler for the YT.PlayerState.ENDED event.
+                        //        The Bot will take credit for it there.
                     } else {
                         console.error("Unhandled dynamic pop-down.", window.location.search);
                     }
-                } else {
-                    // console.error("UNQUITABLE PLAYER", yt_player);
-                    var action;
-                    if (message.is_bot_initiated) {
-                        action = 'auto-play-end-static';
-                        // NOTE:  The Bot
-                    } else {
-                        action = 'auto-play-quit';
-                    }
-                    parent_message(
-                        action,
-                        {
+                } else {   // NOTE:  Static media pop down, e.g. instagram photo
+                    if (is_auto_play) {   // NOTE:  Static media was kinda "playing".
+                        var action;
+                        if (message.did_bot_transition) {
+                            action = 'auto-play-end-static';
+                            // NOTE:  The Bot ended the static contribution.  Or there was an error.
+                        } else {
+                            action = 'auto-play-quit';
+                            // NOTE:  The user prematurely quit this static contribution.
+                        }
+                        parent_message(action, {
                             contribution_idn: contribution_idn,
                             current_time: seconds_since_load()
-                        }
-                    );
+                        });
+                    }
                 }
                 // noinspection JSJQueryEfficiency
                 $('#youtube_iframe').animate({
@@ -496,13 +387,12 @@ function embed_content_js(window, $, MONTY) {
                         );
                     }
                 } else if (is_auto_play) {
-                    parent_message(
-                        'auto-play-paused',
-                        {
-                            contribution_idn: contribution_idn,
-                            current_time: seconds_since_load()
-                        }
-                    );
+                    // TODO:  Why if is_auto_play?  Is that to prevent double-reporting of a pause?
+                    //        IOW to distinguish my pause button from the YouTube pause button?
+                    parent_message('auto-play-paused', {
+                        contribution_idn: contribution_idn,
+                        current_time: seconds_since_load()
+                    });
                 } else {
                     console.warn("Not ready to pause", contribution_idn, url_outer_iframe);
                 }
@@ -511,13 +401,11 @@ function embed_content_js(window, $, MONTY) {
                 if (yt_player !== null) {
                     yt_player.playVideo();
                 } else if (is_auto_play) {
-                    parent_message(
-                        'auto-play-resume',
-                        {
-                            contribution_idn: contribution_idn,
-                            current_time: seconds_since_load()
-                        }
-                    );
+                    // TODO:  Why if is_auto_play?
+                    parent_message('auto-play-resume', {
+                        contribution_idn: contribution_idn,
+                        current_time: seconds_since_load()
+                    });
                 } else {
                     console.warn("Don't know how to resume", contribution_idn, url_outer_iframe);
                 }
@@ -546,20 +434,159 @@ function embed_content_js(window, $, MONTY) {
     }
 
     /**
+     * Begin playing if auto-play, otherwise get all the events ready to respond to playing.
+     *
+     * NOTE:  PlayerState sequences:
+     *        cued=>unstarted=>buffering=>playing=>ended
+     *        5=>-1=>3=>    1=>0  --  usually
+     *        5=>-1=>3=>-1=>1=>0  --  once
+     *        2=>3=>1  --  clicking the timeline
+     *
+     *        State codes:
+     *        -1 – unstarted
+     *         0 – ended
+     *         1 – playing
+     *         2 – paused
+     *         3 – buffering
+     *         5 – video cued
+     */
+    function dynamic_player() {
+        t.moment("pop");
+        console.assert($('#youtube_iframe').length === 1);
+        var first_state_change = true;
+        var previous_state = null;
+
+        // noinspection JSUnusedGlobalSymbols
+        yt_player = new window.YT.Player('youtube_iframe', {
+            events: {
+                onReady: function (/*yt_event*/) {
+                    if (is_auto_play) {
+                        t.moment("yt-play");
+                        // yt_event.target.playVideo();
+                        yt_player.playVideo();
+                        parent_message('auto-play-begun', {
+                            contribution_idn: contribution_idn
+                        });
+                        // NOTE:  Let contribution.js know that it's now
+                        //        okay to send a 'pause' message,
+                        //        which will cause yt_player.pauseVideo()
+
+                    }
+                    if (
+                        yt_player.getPlayerState() ===
+                        window.YT.PlayerState.UNSTARTED
+                    ) {
+                        console.warn(
+                            "Unstarted",
+                            contribution_idn,
+                            "-- Chrome blocked?"
+                        );
+                    }
+                },
+                onStateChange: function (yt_event) {
+                    if (first_state_change) {
+                        first_state_change = false;
+                        parent_message('auto-play-woke', {
+                            contribution_idn: contribution_idn
+                        });
+                        t.moment("yt-state");
+
+                        console.log(
+                            MONTY.POPUP_ID_PREFIX + contribution_idn,
+                            domain_simple + ",",
+                            "lag", t.report()
+                        );
+                        // EXAMPLE (busy):  popup_1990 youtube, lag 11.025:
+                        //     resizer 1.137, jquery 0.233, yt-code 0.834,
+                        //     pop 0.414, yt-play 7.017, yt-state 1.390
+                        // EXAMPLE (easy):  popup_1990 youtube, lag 1.125:
+                        //     resizer 0.063, jquery 0.019, yt-code 0.092,
+                        //     pop 0.466, yt-play 0.404, yt-state 0.081
+                    }
+                    // SEE:  yt_event.data, not yt_player.getPlayerState(), for new state,
+                    //       https://developers.google.com/youtube/iframe_api_reference#onStateChange
+                    switch (yt_event.data) {
+                    case window.YT.PlayerState.ENDED:
+                        parent_message('auto-play-end-dynamic', {
+                            contribution_idn: contribution_idn,
+                            current_time: yt_player.getCurrentTime()
+                        });
+                        break;
+                    case window.YT.PlayerState.PAUSED:
+                        parent_message('auto-play-paused', {
+                            contribution_idn: contribution_idn,
+                            current_time: yt_player.getCurrentTime()
+                        });
+                        // TODO:  getCurrentTime() is wrong when changing the play point on
+                        //        the time-line.  It shows the NEW video time, not the one
+                        //        left behind time.  Is that good??
+                        //        By the way, the sequence when that happens is:
+                        //        pause (2), buffering (3), playing (1)
+                        //        So the lex records interactions:
+                        //        pause, start
+                        //        Ala idns 3751, 3752.
+                        //        One way to do this would be setInterval(sample getCurrentTime)
+                        //        But how soon does that change before the pause event??
+                        break;
+                    case window.YT.PlayerState.PLAYING:
+                        if (previous_state === window.YT.PlayerState.PAUSED) {
+                            // TODO:  Is this reliable?  Could some state
+                            //        come after pause before play?
+                            console.log("EMBED RESUME", yt_player.getCurrentTime());
+                            parent_message('auto-play-resume', {
+                                contribution_idn: contribution_idn,
+                                current_time: yt_player.getCurrentTime()
+                            });
+                        } else {
+                            console.log("EMBED PLAYING", yt_player.getCurrentTime());
+                            parent_message('auto-play-playing', {
+                                contribution_idn: contribution_idn,
+                                current_time: yt_player.getCurrentTime()
+                            });
+                        }
+                        break;
+                    default:
+                        break;
+                    }
+                    console.log("YT API", contribution_idn, yt_event.data);
+                    previous_state = yt_event.data;
+                },
+                onError: function (yt_event) {
+                    console.warn(
+                        "Player error",
+                        yt_event.data
+                    );
+                    parent_message('auto-play-error', {
+                        contribution_idn: contribution_idn,
+                        error_message: "YouTube Player error " + yt_event.data.toString()
+                    });
+                }
+            }
+        });
+        console.log("You are here-ish", yt_player);
+    }
+
+    /**
      * Is the YouTube player in a state where quitting is a notable interaction.
      *
      * Includes states:
      *     1 - PLAYING
      *     2 - PAUSED
      *     3 - BUFFERING
+     * But not:
+     *    -1 - UNSTARTED
+     *     0 - ENDED
      *     5 - CUED
      *
      * @param state
      * @return {boolean}
      */
     function quitable_state(state) {
-        return state > window.YT.PlayerState.ENDED;
-
+        return has([
+            window.YT.PlayerState.PLAYING,
+            window.YT.PlayerState.PAUSED,
+            window.YT.PlayerState.BUFFERING
+        ], state);
     }
 
     function parent_message(action, etc) {
