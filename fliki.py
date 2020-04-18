@@ -1455,8 +1455,6 @@ def os_path_static(relative_url):
 
     EXAMPLE:  '/var/www/static/foo.bar' == os_path_static('foo.bar')
     """
-    # print("os_path_static", SCRIPT_DIRECTORY, flask_app.static_folder, relative_url)
-    # EXAMPLE:  os_path_static D:\PyCharmProjects\fliki D:\PyCharmProjects\fliki\static code/meta_lex.css
     return flask.safe_join(flask_app.static_folder, relative_url)
 
 
@@ -1508,7 +1506,6 @@ class FlikiHTML(web_html.WebHTML):
                 rel='shortcut icon',
                 href=web_path_qiki_javascript('favicon.ico')
             )
-            head.css_stamped(static_code_url('meta_lex.css'))
             head.css_stamped(web_path_qiki_javascript('qoolbar.css'))
             return head
 
@@ -1648,6 +1645,7 @@ def contribution_home(home_page_title):
                         #        last.
                         INTERACTION=INTERACTION_VERBS,
                         POPUP_ID_PREFIX=POPUP_ID_PREFIX,
+                        STATIC_IMAGE=static_url('image'),
                     )
                     monty.update(words_for_js)
                     script.raw_text('var MONTY = {json};\n'.format(json=json_pretty(monty)))
@@ -2012,7 +2010,9 @@ def meta_lex():
     t_start = time.time()
     qc_start = auth.lex.query_count
     with FlikiHTML('html') as html:
-        html.header("Lex")
+        with html.header("Lex") as head:
+            head.css_stamped(static_code_url('meta_lex.css'))
+
 
         with html.body(class_='target-environment', newlines=True) as body:
             user_idn_qstring = auth.qiki_user.idn.qstring()

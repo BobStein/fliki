@@ -71,6 +71,7 @@
  * @param MONTY.MEDIA_HANDLERS
  * @param MONTY.OEMBED_CLIENT_PREFIX
  * @param MONTY.POPUP_ID_PREFIX
+ * @param MONTY.STATIC_IMAGE
  * @param MONTY.THUMB_MAX_HEIGHT
  * @param MONTY.THUMB_MAX_WIDTH
  * @param MONTY.WHAT_IS_THIS_THING
@@ -168,11 +169,23 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         "Log in to see anonymous contributions other than yours."
     );
 
+    var weep_url = MONTY.STATIC_IMAGE + '/' + 'weep_80.png';
+    var laugh_url = MONTY.STATIC_IMAGE + '/' + 'laugh_80_left.png';
+
     // var DRAG_TO_MY_BLURB = "or drag stuff here by its " + GRIP_SYMBOL;
     // var DRAG_TO_MY_BLURB = "drag " + GRIP_SYMBOL + " here";
-    var DRAG_TO_MY_BLURB = "This is the place for stuff that unslumps you.";
+    // var DRAG_TO_MY_BLURB = "This is the place for stuff that unslumps you.";
+    // var DRAG_TO_MY_BLURB = "The site for therapy grade wah's and lol's.";
+    // var DRAG_TO_MY_BLURB = "The site for therapeutic wah's and lol's.";
     // NOTE:  Thinking this category confusion will go away,
     //        that dragging from "their" to "my" is not the way.
+    // noinspection HtmlRequiredAltAttribute,RequiredAttributes
+    var DRAG_TO_MY_BLURB = [
+        "The site for therapeutic ",
+        $('<img>', {src: weep_url, alt: "weeping"}),
+        " and ",
+        $('<img>', {src: laugh_url, alt: "laughing"})
+    ];
 
 
     var $drag_to_my_blurb = null;
@@ -216,14 +229,14 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     var POPUP_WIDTH_MAX_EM = {
         soft: 30,         // below the hard-max, display as is.
         hard: 60,         // between hard and extreme-max, limit to hard-max.
-                          // (good reason to have a gap here: minimize wrapping)
+                          // (a reason to have a soft-hard gap horizontally: minimize wrapping)
         extreme: 65       // above extreme-max, display at soft-max.
     };
     var POPUP_HEIGHT_MAX_EM = {
         soft: 20,         // below the hard-max, display as is.
         hard: 30,         // between hard and extreme-max, limit to hard-max.
-                          // (no good reason to have a gap here: it's just
-                          // annoying to show a tiny bit scrolled out of view)
+                          // (no big reason to have a gap between soft and hard vertically:
+                          // it's just annoying to show a tiny bit scrolled out of view)
         extreme: 40       // above extreme-max, display at soft-max.
     };
     var MIN_CAPTION_WIDTH = 100;   // Prevent zero-width iframe from clobbering caption too.
@@ -249,8 +262,13 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     PLAYLIST_TABLE[PLAY_BOT_SEQUENCE_RANDOM] = {generate: playlist_random};
 
     var SETTING_PLAY_BOT_FROM = 'setting.play_bot.from';
+    var SETTING_PLAY_BOT_SPEECH = 'setting.play_bot.speech';
     var PLAY_BOT_FROM_MY = 'CAT_MY';          // \ human-understandable values for #play_bot_from
     var PLAY_BOT_FROM_OTHERS = 'CAT_THEIR';   // / options, machine use ala MONTY.IDN['CAT_THEIR']
+
+    var PLAY_BOT_SPEECH_OUT_LOUD = 'out loud';
+    var PLAY_BOT_SPEECH_ANIMATED = 'animated';
+    var PLAY_BOT_SPEECH_OFF = 'off';
 
     var MEDIA_STATIC_SECONDS = 10;   // How long to display media we don't know how to automate.
 
@@ -397,6 +415,8 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         //        So the words are generated in diverse places with fiddly conditions.
         //        This is a tiny part of the most complex project:  machines understanding people.
 
+        $('#play_bot_speech').on('change', play_bot_speech_change);
+        play_bot_speech_change();
 
         $('#enter_some_text, #enter_a_caption')
             .on('paste change input keyup', post_it_button_appearance)
@@ -440,6 +460,11 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
 
         play_bot_default_others_if_empty_my_category();
         persist_select_element('#play_bot_from', SETTING_PLAY_BOT_FROM);
+
+        persist_select_element('#play_bot_speech', SETTING_PLAY_BOT_SPEECH);
+
+        // TODO:  Store these settings in lex
+        //        user -> option -> preference -> noun
 
         $(window.document).on('click', function () {
             var dont_scroll_dirty_entry_into_view_on_document_click = false;
@@ -2234,20 +2259,26 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         // THANKS:  Recast position from relative to fixed, with no apparent change,
         //          (my own compendium) https://stackoverflow.com/a/44438131/673991
 
+        var max_live_height = Math.round(
+            window_height
+            - top_air
+            - caption_height
+            // - save_height   // Not this; we eliminated buttons below the pop-up.
+            - vertical_padding_in_css
+            - 30
+        );
+        var max_live_width = Math.round(
+            window_width
+            -30
+        );
+
         if (cont.is_media) {
             var more_relay_parameters = {
                 idn: popup_cont_idn,
                 is_pop_up: true,
                 auto_play: auto_play.toString(),
-                width:  Math.round(window_width - 30),
-                height: Math.round(
-                    window_height
-                    - top_air
-                    - caption_height
-                    - save_height
-                    - vertical_padding_in_css
-                    - 30
-                )
+                width:  max_live_width,
+                height: max_live_height
             };
             // NOTE:  Extra 30-pixel reduction in height and width.
             //        Tends to prevent scrollbars from spontaneously appearing.
@@ -2287,10 +2318,13 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                 }
             );
         } else {
-            $popup.css({'background-color': 'rgba(0,0,0,0)'});
+            $popup.css({
+                'background-color': 'rgba(0,0,0,0)',
+                transform: 'translateX(-50%)'
+            });
             $animation_in_progress = $popup;
             $popup.animate({
-                left: 0,
+                left: '50%',
                 top: top_air,
                 'background-color': 'rgba(0,0,0,0.25)'
                 // THANKS:  Alpha, not opacity, https://stackoverflow.com/a/5770362/673991
@@ -2300,7 +2334,34 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                     $animation_in_progress = null;
                     var $pop_cont = $popup.find('.contribution');
                     console.assert($pop_cont.length === 1, $popup);
-                    size_adjust($pop_cont, POPUP_WIDTH_MAX_EM, POPUP_HEIGHT_MAX_EM);
+
+                    var max_live_height_em = em_from_px(max_live_height);
+                    var max_live_width_em = em_from_px(max_live_width);
+                    POPUP_HEIGHT_MAX_EM.soft = max_live_height_em;
+                    POPUP_HEIGHT_MAX_EM.hard = max_live_height_em;
+                    POPUP_HEIGHT_MAX_EM.extreme = max_live_height_em;
+
+                    var dim = size_adjust($pop_cont, POPUP_WIDTH_MAX_EM, POPUP_HEIGHT_MAX_EM);
+
+                    if (dim.width_em > 1 && dim.height_em > 1) {
+                        var h_amplify = max_live_width_em / dim.width_em;
+                        var height_wannabe_em = em_from_px($pop_cont.get(0).scrollHeight);
+                        var v_amplify = max_live_height_em / height_wannabe_em;
+                        var amplify = Math.min(h_amplify, v_amplify);
+                        amplify = Math.min(amplify, 2.0);
+                        amplify = Math.max(amplify, 0.75);
+                        if (amplify < 1.0) {
+                            var max_live_height_amplified_em = max_live_height_em / amplify;
+                            set_em($pop_cont, 'height', max_live_height_amplified_em);
+                            console.log("set_em", window_height, max_live_height, max_live_height_em);
+                        }
+                        var TEXT_AMPLIFICATION_RELUCTANCE = 0.95;
+                        amplify *= TEXT_AMPLIFICATION_RELUCTANCE;
+                        var font_size = (amplify * 100.0).toFixed(1) + '%';
+                        console.log("Amplify", font_size, h_amplify, v_amplify, dim, height_wannabe_em);
+                        $pop_cont.css({'font-size': font_size});
+                        set_em($pop_cont, 'width', dim.width_em / TEXT_AMPLIFICATION_RELUCTANCE);
+                    }
                     if (auto_play) {
                         var pop_text = pop_cont.content;
 
@@ -2313,10 +2374,22 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
 
                         utter.rate = 0.75;
 
-                        utter.volume = 1.0;   // otherwise it's -1, wtf that means
                         // Another attempt to fix text-not-speaking bug.
+
                         utter.pitch = 1.0;    // otherwise it's -1, wtf that means
                         // Another attempt to fix text-not-speaking bug.
+
+                        switch ($('#play_bot_speech').val()) {
+                        case PLAY_BOT_SPEECH_OUT_LOUD:
+                            utter.volume = 1.0;   // otherwise it's -1, wtf that means
+                            break;
+                        case PLAY_BOT_SPEECH_ANIMATED:
+                            utter.volume = 0.0;   // otherwise it's -1, wtf that means
+                            break;
+                        case PLAY_BOT_SPEECH_OFF:
+                            utter.volume = 0.0;   // otherwise it's -1, wtf that means
+                            break;
+                        }
 
                         // utter.voice = chooseWeighted(voices, voice_weights);
                         // console.log("Voice", utter.voice.name, utter.voice.lang);
@@ -3215,38 +3288,59 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         });
     }
     function size_adjust($element, width_max_em, height_max_em) {
-        size_adjust_each($element, 'width', width_max_em);
-        size_adjust_each($element, 'height', height_max_em);
+        var width_em = size_adjust_each($element, 'width', width_max_em);
+        // NOTE:  Width before height so paragraphs can wrap.
+        var height_em = size_adjust_each($element, 'height', height_max_em);
+        return {
+            width_em: width_em,
+            height_em: height_em
+        };
     }
     function size_adjust_each($element, dimension, max_em) {
         $element[dimension]('auto');
+        // var scroll_dimension = {
+        //     // width: 'scrollWidth',   // NOTE:  This number is HUGE for unwrapped paragraphs.
+        //     width: 'width',
+        //     height: 'scrollHeight'
+        // }[dimension];
         var natural_px = $element[dimension]();
+        // if (dimension === 'height') natural_px = $element.get(0).scrollHeight;
+        // console.log("Size", $element.attr('id'), dimension, natural_px);
         var natural_em = em_from_px(natural_px, $element);
-        var adjust_em;
+        var adjusted_em;
         if (natural_em <= max_em.hard) {
-            adjust_em = null;
+            adjusted_em = null;
             if (DEBUG_SIZE_ADJUST) console.debug (
                 "Easy", dimension, first_word($element.text()),
                 natural_em.toFixed(0)
             );
         } else if (natural_em < max_em.extreme) {
-            adjust_em = max_em.hard;
+            adjusted_em = max_em.hard;
             if (DEBUG_SIZE_ADJUST) console.debug(
                 "Hard", dimension, first_word($element.text()),
-                adjust_em.toFixed(0), "<-", natural_em.toFixed(0)
+                adjusted_em.toFixed(0), "<-", natural_em.toFixed(0)
             );
         } else {
-            adjust_em = max_em.soft;
+            adjusted_em = max_em.soft;
             if (DEBUG_SIZE_ADJUST) console.debug(
                 "Soft", dimension, first_word($element.text()),
-                adjust_em.toFixed(0), "<=", natural_em.toFixed(0)
+                adjusted_em.toFixed(0), "<=", natural_em.toFixed(0)
             );
         }
-        if (adjust_em !== null) {
-            var initial_px = px_from_em(adjust_em, $element);
-            $element[dimension](initial_px);
+        if (adjusted_em !== null) {
+            // var adjusted_px = px_from_em(adjusted_em, $element);
+            // $element[dimension](adjusted_px);
+            set_em($element, dimension, adjusted_em);
         }
+        return adjusted_em || natural_em;
     }
+
+    function set_em($element, dimension, em) {
+        var property = {};
+        property[dimension] = em.toFixed(2) + 'em';
+        $element.css(property);
+    }
+
     function px_from_em(em, $element) {
         $element = $element || $(window.document.body);
         return em * parseFloat($element.css('font-size'));
@@ -3317,6 +3411,11 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
 
     function is_in_anon(element) {
         return $cat_of(element).attr('id') === MONTY.IDN.CAT_ANON.toString();
+    }
+
+    function play_bot_speech_change() {
+        var do_animate_speech = $('#play_bot_speech').val() !== PLAY_BOT_SPEECH_OFF;
+        $(window.document.body).toggleClass('text-animate', do_animate_speech);
     }
 
     /**
@@ -3508,6 +3607,11 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         $bot.append($('<select>', {id: 'play_bot_from'})
             .append($('<option>', {value: PLAY_BOT_FROM_MY}).text("from my playlist"))
             .append($('<option>', {value: PLAY_BOT_FROM_OTHERS}).text("from others playlist"))
+        );
+        $bot.append($('<select>', {id: 'play_bot_speech'})
+            .append($('<option>', {value: PLAY_BOT_SPEECH_OUT_LOUD}).text("quotes are spoken out loud"))
+            .append($('<option>', {value: PLAY_BOT_SPEECH_ANIMATED}).text("quotes are silently animated"))
+            .append($('<option>', {value: PLAY_BOT_SPEECH_OFF}).text("quotes are silent"))
         );
         $up_top.append($bot);
 
@@ -3952,7 +4056,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
 
 
         if (num_contributions_in_category(MONTY.IDN.CAT_MY) === 0) {
-            $drag_to_my_blurb = $('<p>', { id: 'drag-to-my-blurb' }).text(DRAG_TO_MY_BLURB);
+            $drag_to_my_blurb = $('<p>', { id: 'drag-to-my-blurb' }).append(DRAG_TO_MY_BLURB);
             $categories[MONTY.IDN.CAT_MY].append($drag_to_my_blurb);
         }
 

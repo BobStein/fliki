@@ -64,6 +64,10 @@ body                      #play_bot_from { display: inline-block }
 body.pop-up-manual        #play_bot_from { display: none }
 body.pop-up-auto          #play_bot_from { display: none }
 
+body                      #play_bot_speech { display: inline-block }
+body.pop-up-manual        #play_bot_speech { display: none }
+body.pop-up-auto          #play_bot_speech { display: none }
+
 select#thumb-res        { text-align-last: right; margin-right: 0.1em; }
 select#thumb-res option { direction: rtl; }
 /* THANKS:  right-justified select options, with drop-down arrow on the right also,
@@ -329,6 +333,15 @@ body.playing-somewhere                    .save-bar   .expand { display: none; }
     padding-right: 0.3em;
 }
 
+.grip-inoperative {
+    -ms-filter: "progid:DXImageTransform.Microsoft.Alpha(Opacity=50)"; /* IE 8 */
+        filter:                                    alpha(opacity=50);  /* IE 5-7 */ /*noinspection CssUnknownProperty*/
+                                               -khtml-opacity: 0.50;   /* Safari 1.x */
+                                                 -moz-opacity: 0.50;   /* Firefox */
+                                                      opacity: 0.50;   /* Good browsers */
+    /* Fade the grip; you can't grab and drag a pop-up. */
+}
+
 .pop-down {
     visibility: hidden;
 }
@@ -339,6 +352,7 @@ body.playing-somewhere                    .save-bar   .expand { display: none; }
                                                -khtml-opacity: 0.50;   /* Safari 1.x */
                                                  -moz-opacity: 0.50;   /* Firefox */
                                                       opacity: 0.50;   /* Good browsers */
+    /* Fade the message to anonymous users, that they can't see other anonymous contributions. */
 }
 
 #anon-v-anon-blurb {
@@ -347,9 +361,14 @@ body.playing-somewhere                    .save-bar   .expand { display: none; }
     color: black;  /* which will look gray because 50% opacity */
 }
 
+#drag-to-my-blurb img {
+    vertical-align: middle;
+}
+
 #drag-to-my-blurb {
     font-family:  'Georgia', 'Garamond', serif;
     font-style: italic;
+    font-size: 150%;
     color: gray;
     display: inline-block;
     padding: 0 3em 0 3em;
@@ -428,8 +447,8 @@ iframe { display:block; }
     transition: font-size 1s;
 }
 
-.pop-up .contribution .talkify-word-highlight,
-.speaking {
+.text-animate .pop-up .contribution .talkify-word-highlight,
+.text-animate .speaking {
     transition: font-size 1s;
     font-size: 150%;
     font-weight: bold;
