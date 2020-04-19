@@ -166,29 +166,26 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
 
     var ANON_V_ANON_BLURB = (
         "You're here anonymously. " +
-        "Log in to see anonymous contributions other than yours."
+        "Log in to see the anonymous contributions from others."
     );
 
     var weep_url = MONTY.STATIC_IMAGE + '/' + 'weep_80.png';
     var laugh_url = MONTY.STATIC_IMAGE + '/' + 'laugh_80_left.png';
 
-    // var DRAG_TO_MY_BLURB = "or drag stuff here by its " + GRIP_SYMBOL;
-    // var DRAG_TO_MY_BLURB = "drag " + GRIP_SYMBOL + " here";
-    // var DRAG_TO_MY_BLURB = "This is the place for stuff that unslumps you.";
-    // var DRAG_TO_MY_BLURB = "The site for therapy grade wah's and lol's.";
-    // var DRAG_TO_MY_BLURB = "The site for therapeutic wah's and lol's.";
+    // var INTRODUCTORY_BLURB = "or drag stuff here by its " + GRIP_SYMBOL;
+    // var INTRODUCTORY_BLURB = "drag " + GRIP_SYMBOL + " here";
+    // var INTRODUCTORY_BLURB = "This is the place for stuff that unslumps you.";
+    // var INTRODUCTORY_BLURB = "The site for therapy grade wah's and lol's.";
+    // var INTRODUCTORY_BLURB = "The site for therapeutic wah's and lol's.";
     // NOTE:  Thinking this category confusion will go away,
     //        that dragging from "their" to "my" is not the way.
     // noinspection HtmlRequiredAltAttribute,RequiredAttributes
-    var DRAG_TO_MY_BLURB = [
+    var INTRODUCTORY_BLURB = [
         "The site for therapeutic ",
         $('<img>', {src: weep_url, alt: "weeping"}),
         " and ",
         $('<img>', {src: laugh_url, alt: "laughing"})
     ];
-
-
-    var $drag_to_my_blurb = null;
 
     var MAX_CAPTION_LENGTH = 100;  // Because some oembed titles are huge
 
@@ -1270,6 +1267,12 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         MEDIA_ENDED: 'MEDIA_ENDED',     // e.g. youtube auto-play played to the end
         MEDIA_STATIC: 'MEDIA_STATIC'    // e.g. flickr, not going to play, timed display
     };
+    // TODO:  Should Event be an Enumerate()?  If so we need to add .name a buncha places, e.g.
+    //            that.$sup.trigger(that.Event.MEDIA_BEGUN);
+    //            that.$sup.trigger(that.Event.MEDIA_BEGUN.name);
+    //        or
+    //            that.pop_cont.$sup.on(that.pop_cont.Event.MEDIA_INIT, function () { ... } );
+    //            that.pop_cont.$sup.on(that.pop_cont.Event.MEDIA_INIT.name, function () { ... } );
 
     function Contribution_loop(callback) {
         $('.contribution').each(function () {
@@ -1724,6 +1727,18 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
 
     /**
      * Enumeration with names, values, and optional descriptions.
+     *
+     * Example:
+     *     Color = Enumerate({
+     *         RED: "the color of cabernet sauvignon",
+     *         GOLD: "as Zeus' famous shower",
+     *         BLACK:  "starless winter night's tale"
+     *     });
+     *     var wish = Color.BLACK;
+     *     console.assert(wish.name === 'BLACK');
+     *     console.assert(wish.value === 2);
+     *     console.assert(wish.description.indexOf('night') !== -1);
+     *     console.assert(Color.number_of_values === 3);
      *
      * @param enumeration - e.g. {NAME1: {description: "one"}, NAME2: "two"}
      * @return {object} - returns the enumeration object of objects,
@@ -2355,12 +2370,37 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                             set_em($pop_cont, 'height', max_live_height_amplified_em);
                             console.log("set_em", window_height, max_live_height, max_live_height_em);
                         }
-                        var TEXT_AMPLIFICATION_RELUCTANCE = 0.95;
-                        amplify *= TEXT_AMPLIFICATION_RELUCTANCE;
+
+                        var FONT_AMPLIFICATION_RELUCTANCE = 0.95;
+                        amplify *= FONT_AMPLIFICATION_RELUCTANCE;
                         var font_size = (amplify * 100.0).toFixed(1) + '%';
-                        console.log("Amplify", font_size, h_amplify, v_amplify, dim, height_wannabe_em);
                         $pop_cont.css({'font-size': font_size});
-                        set_em($pop_cont, 'width', dim.width_em / TEXT_AMPLIFICATION_RELUCTANCE);
+
+                        var WIDTH_AMPLIFICATION_TO_AVOID_WRAP = 1.05;
+                        // TODO:  Explain why this is the right value.
+                        //        Coincidence that it's reciprocal FONT_AMPLIFICATION_RELUCTANCE?
+                        //        If so, why would DECREASING the font size go along with
+                        //        INCREASING the width to the same extent?
+                        var ADDITIONAL_WIDTH_FOR_ANIMATION_TO_AVOID_WRAP_EM = 3.0;
+                        // NOTE:  Avoids wrap for FIXED width contributions.
+                        //        Long paragraphs will wrap during animation.
+                        //        Derived empirically from LUnslumping Sesquipedalian Limerick
+                        //        http://localhost.visibone.com:5000/?cont=3947
+                        var adjusted_width = (
+                            dim.width_em * WIDTH_AMPLIFICATION_TO_AVOID_WRAP +
+                            ADDITIONAL_WIDTH_FOR_ANIMATION_TO_AVOID_WRAP_EM
+                        );
+                        set_em($pop_cont, 'width', adjusted_width);
+
+                        console.log(
+                            "Amplify",
+                            font_size,
+                            h_amplify,
+                            v_amplify,
+                            dim,
+                            height_wannabe_em,
+                            adjusted_width
+                        );
                     }
                     if (auto_play) {
                         var pop_text = pop_cont.content;
@@ -3185,10 +3225,14 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                     console.warn("Whoa there, don't drag me bro.");
                     return MOVE_CANCEL;
                 }
-                if ($drag_to_my_blurb !== null) {
-                    $drag_to_my_blurb.remove();
-                    $drag_to_my_blurb = null;
-                }
+                var $introductory_blurb = $('#introductory-blurb');
+                $('#top-right-blurb').empty().append($introductory_blurb);
+                // TODO:  Be nice to animate this relocation of the blurb.  Not trivial:
+                //        https://stackoverflow.com/a/5212193/673991
+                //        Hint, animate a clone that's in neither place.
+                // NOTE:  Moves blurb to top right if we only ATTEMPT to drag a contribution to
+                //        the empty 'my' category.  If we don't drop it, and 'my' remains empty,
+                //        the blurb stays in the top right until reloading the page.  No biggie.
             },
             onEnd: function sortable_drop(evt) {
                 // NOTE:  movee means the contribution being moved
@@ -3618,6 +3662,9 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         var $login_prompt = $('<div>', {id: 'login-prompt', title: "your idn is " + MONTY.me_idn});
         $login_prompt.html(MONTY.login_html);
         $up_top.append($login_prompt);
+
+        var $login_left = $('<div>', {id: 'top-right-blurb'});
+        $up_top.append($login_left);
 
         build_category_dom(me_title,    MONTY.IDN.CAT_MY,    true, true);
         build_category_dom("others",    MONTY.IDN.CAT_THEIR, true, true);
@@ -4055,9 +4102,11 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
 
 
 
+        var $introductory_blurb = $('<p>', { id: 'introductory-blurb' }).append(INTRODUCTORY_BLURB);
         if (num_contributions_in_category(MONTY.IDN.CAT_MY) === 0) {
-            $drag_to_my_blurb = $('<p>', { id: 'drag-to-my-blurb' }).append(DRAG_TO_MY_BLURB);
-            $categories[MONTY.IDN.CAT_MY].append($drag_to_my_blurb);
+            $categories[MONTY.IDN.CAT_MY].append($introductory_blurb);
+        } else {
+            $('#top-right-blurb').empty().append($introductory_blurb);
         }
 
 

@@ -73,10 +73,12 @@ select#thumb-res option { direction: rtl; }
 /* THANKS:  right-justified select options, with drop-down arrow on the right also,
             https://stackoverflow.com/a/43919388/673991 */
 
+#top-right-blurb,
 #login-prompt {
     float: right;
     text-align: right;
     font: menu;
+    padding-left: 1em;
 }
 
 .sup-category {
@@ -361,17 +363,34 @@ body.playing-somewhere                    .save-bar   .expand { display: none; }
     color: black;  /* which will look gray because 50% opacity */
 }
 
-#drag-to-my-blurb img {
-    vertical-align: middle;
+#top-right-blurb {
 }
 
-#drag-to-my-blurb {
+#introductory-blurb {
     font-family:  'Georgia', 'Garamond', serif;
     font-style: italic;
-    font-size: 150%;
     color: gray;
-    display: inline-block;
+}
+
+#top-right-blurb #introductory-blurb {
+    font-size: 110%;
+    margin: 0;
+}
+
+.sup-category #introductory-blurb {
+    font-size: 150%;
     padding: 0 3em 0 3em;
+    display: inline-block;
+}
+
+#top-right-blurb #introductory-blurb img {
+    vertical-align: middle;
+    width: 24px;
+    height: 24px;
+}
+
+.sup-category #introductory-blurb img {
+    vertical-align: middle;
 }
 
 /** qoolbar stuff **/
