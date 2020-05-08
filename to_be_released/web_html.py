@@ -46,7 +46,7 @@ class WebHTML(richard_jones_html.HTML):
         self.do_minify = True
 
     HTML_DOCTYPE = "<!DOCTYPE html>\n"
-    # THANKS:  https://developer.mozilla.org/en-US/docs/Web/HTML/Quirks_Mode_and_Standards_Mode
+    # THANKS:  https://developer.mozilla.org/Web/HTML/Quirks_Mode_and_Standards_Mode
     #          "... <!DOCTYPE html>, is the simplest possible, and the one recommended by HTML5."
 
     def __call__(self, *args, **kwargs_with_nones):
@@ -180,16 +180,14 @@ class WebHTML(richard_jones_html.HTML):
     @classmethod
     def url_stamp(cls, url):
         """
-        Append a query-parameter to a URL so that changes to the file
-        will bust the browser cache.
+        Append a query-parameter to a URL so that changes to the file will bust through the browser
+        cache and always get loaded.
 
-        This default implementation appends a time-stamp.
-        Or if the file can't be found it appends a random stamp.
-        So if os_path_from_url() is broken, then the browser will never
-        cache the file.
+        This default implementation appends a time-stamp from the file modification time. Or if the
+        file can't be found it appends a random stamp. So if os_path_from_url() is broken, then the
+        browser will never cache the file.
 
-        A subclass may override this method to stamp in some other way,
-        e.g. git commit hash.
+        A subclass may override this method to stamp in some other way, e.g. git commit hash.
         """
         os_path = cls.os_path_from_url(url)
         mtime_suffix = cls._mtime_suffix(os_path)
@@ -227,7 +225,7 @@ class WebHTML(richard_jones_html.HTML):
         """
         Convert a URL to a local absolute file-system path.
 
-        You must override either os_path_from_url() or url_stamp() in the subclass
+        You should override either os_path_from_url() or url_stamp() in the subclass
         if you are going to call js_stamped() or css_stamped().
         """
         raise cls.MissingMethod(cls.MissingMethod.__doc__)

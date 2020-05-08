@@ -1596,15 +1596,18 @@ def contribution_home(home_page_title):
                 head.css_stamped(static_code_url('contribution.css'))
                 head.css('https://fonts.googleapis.com/css?family=Literata&display=swap')
                 head.css('https://fonts.googleapis.com/icon?family=Material+Icons')
-            html.body("Loading...")
+            html.body("Loading . . .")
             with html.footer() as foot:
                 foot.js('https://cdn.jsdelivr.net/npm/sortablejs@1.9.0/Sortable.js')
                 # foot.comment("SEE:  /meta/static/code/Sortable-LICENSE.txt")
+
                 foot.js('https://cdn.jsdelivr.net/npm/jquery-sortablejs@1.0.0/jquery-sortable.js')
                 # foot.comment("SEE:  /meta/static/code/jquery-sortable-LICENSE.txt")
+
                 # foot.js(static_code_url('iframeResizer.js'))
-                # foot.comment("SEE:  /meta/static/code/iframe-resizer-LICENSE.txt")
                 foot.js('https://cdn.jsdelivr.net/npm/iframe-resizer@4.1.1/js/iframeResizer.min.js')
+                # foot.comment("SEE:  /meta/static/code/iframe-resizer-LICENSE.txt")
+
                 # foot.js('https://use.fontawesome.com/49adfe8390.js')   # req by talkify
                 # foot.js('https://cdn.jsdelivr.net/npm/talkify-tts@2.6.0/dist/talkify.min.js')
 
@@ -1649,9 +1652,59 @@ def contribution_home(home_page_title):
                     )
                     monty.update(words_for_js)
                     script.raw_text('var MONTY = {json};\n'.format(json=json_pretty(monty)))
-                    script.raw_text(
-                        'js_for_contribution(window, jQuery, qoolbar, MONTY, window.talkify);\n'
-                    )
+                    script.raw_text('''
+                        window.onerror = function (a,b,c,d,e,f) {
+                            // document.getElementsByTagName('body')[0].prepend(
+                            error_alert(
+                                "Error Event: " + 
+                                s(a) + ", " +
+                                s(b) + ", " +
+                                s(c) + ", " +
+                                s(d) + ", " +
+                                s(e) + ", " +
+                                s(f) + 
+                                "\\n\\n" +
+                                "Please reload."
+                            );
+                        };
+                        try {
+                            js_for_contribution(window, jQuery, qoolbar, MONTY, window.talkify);
+                        } catch (e) {
+                            error_alert(
+                                "Exception: " + e.stack.toString() + 
+                                "\\n\\n" +
+                                "Please reload."
+                            );
+                            // document.getElementsByTagName('body')[0].innerHTML = (
+                            //     "<p>" + 
+                            //         "Exception: " + e.stack.toString() + 
+                            //     "</p>\\n" +
+                            //     "<p>" + 
+                            //         "Please " + 
+                            //         "<a href='javascript:window.location.reload(); return false;'>" + 
+                            //             "reload" + 
+                            //         "</a>." + 
+                            //     "</p>\\n"
+                            // );
+                        }
+                        var error_alerted = false;
+                        // Because emeffing Chrome thinks its helpful to auto-close alert popups.
+                        function error_alert(message) { 
+                            console.error(message);
+                            if ( ! error_alerted) {
+                                error_alerted = true;
+                                alert(message);
+                                throw new Error("Something went terribly wrong.");
+                            }
+                        }
+                        function s(z) { 
+                            return z === undefined ? "((undefined))" : z.toString(); 
+                        }
+                   \n''')
+                    # EXAMPLE syntax error in contribution.js:
+                    #         ReferenceError: js_for_contribution is not defined at
+                    #         http://localhost.visibone.com:5000/:3320:29
+                    # NOTE:  The above gyrations trying to debug Opera Mobile.  To no avail.
             t_end = time.time()
             q_end = auth.lex.query_count
             print("/meta/contrib {q:d} queries, {t:.3f} sec".format(
@@ -2869,7 +2922,7 @@ def legacy_youtube_render(url_suffix):
             allowfullscreen='allowfullscreen',
         )
         # TODO:  Does this `allow` do anything?
-        # SEE:  https://developer.mozilla.org/en-US/docs/Web/HTTP/Feature_Policy#Browser_compatibility
+        # SEE:  https://developer.mozilla.org/Web/HTTP/Feature_Policy#Browser_compatibility
         return six.text_type(iframe)
     else:
         return None

@@ -220,7 +220,7 @@ function embed_content_js(window, $, MONTY) {
                         //          allowFullScreen attribute(s) set.  (This iframe is inner.)
                         //          The allow attribute is not enough.
                         //          This was true 2019.0113 in Firefox 72, despite:
-                        //          https://developer.mozilla.org/en-US/docs/Web/HTML/Element/iframe
+                        //          https://developer.mozilla.org/Web/HTML/Element/iframe
                         //              allowfullscreen ...  is considered a legacy attribute
                         //              and redefined as allow="fullscreen".
 
@@ -388,7 +388,7 @@ function embed_content_js(window, $, MONTY) {
                     }
                 } else if (is_auto_play) {
                     // TODO:  Why if is_auto_play?  Is that to prevent double-reporting of a pause?
-                    //        IOW to distinguish my pause button from the YouTube pause button?
+                    //        Not sure that's possible in this non-youtube case.
                     parent_message('auto-play-paused', {
                         contribution_idn: contribution_idn,
                         current_time: seconds_since_load()
@@ -529,21 +529,21 @@ function embed_content_js(window, $, MONTY) {
                         //        But how soon does that change before the pause event??
                         break;
                     case window.YT.PlayerState.PLAYING:
-                        if (previous_state === window.YT.PlayerState.PAUSED) {
-                            // TODO:  Is this reliable?  Could some state
-                            //        come after pause before play?
-                            console.log("EMBED RESUME", yt_player.getCurrentTime());
-                            parent_message('auto-play-resume', {
-                                contribution_idn: contribution_idn,
-                                current_time: yt_player.getCurrentTime()
-                            });
-                        } else {
+                        // if (previous_state === window.YT.PlayerState.PAUSED) {
+                        //     // TODO:  Is this reliable?  Could some state
+                        //     //        come after pause before play?
+                        //     console.log("EMBED RESUME", yt_player.getCurrentTime());
+                        //     parent_message('auto-play-resume', {
+                        //         contribution_idn: contribution_idn,
+                        //         current_time: yt_player.getCurrentTime()
+                        //     });
+                        // } else {
                             console.log("EMBED PLAYING", yt_player.getCurrentTime());
                             parent_message('auto-play-playing', {
                                 contribution_idn: contribution_idn,
                                 current_time: yt_player.getCurrentTime()
                             });
-                        }
+                        // }
                         break;
                     default:
                         break;
@@ -685,12 +685,16 @@ function embed_content_js(window, $, MONTY) {
         cycle_of_last_change = num_cycles;
         description_of_last_change = description;
         num_changes++;
-        console.log(contribution_idn + ". CHANGE", description);
+        // console.log(contribution_idn + ". CHANGE", description);
         // EXAMPLE:
         //    CHANGE IFRAME.fit_height(300x400-225x300)
         //    CHANGE TWITTER-WIDGET.fit_height(220x421.063-156.7461401262994x300)
         //    CHANGE IMG.fit_height(300x468.281-192.19229479735458x300)
         //    CHANGE BLOCKQUOTE.fit_height(220x302-218.5430463576159x300)
+        //
+        //    CHANGE tag_width
+        //    CHANGE twitter grandchild h 432 -> 128
+        //    CHANGE twitter child BUST-WIDTH 60px too wide
     }
 
     function target_blank($element) {

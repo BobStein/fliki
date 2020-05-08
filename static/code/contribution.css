@@ -1,10 +1,11 @@
 /* css for the contribution.js. */
 
-#up-top-spacer {
-    width: 100%;
-    height: 1.25em;
-}
+/*#up-top-spacer {*/
+/*    width: 100%;*/
+/*    height: 1.5rem;*/
+/*}*/
 #up-top {
+    height: 1.5rem;   /* SEE:  TOP_SPACER_EM in contribution.js */
     overflow: hidden;
     /* THANKS:  Outer div tall as inner divs, https://stackoverflow.com/a/804936/673991 */
     margin-bottom: 0.1em;
@@ -34,6 +35,10 @@
     font-size: 1em;
     vertical-align: middle;
 }
+
+
+
+/* Visibility of global controls */
 
 body                      #close-button { display: none; }
 body.pop-up-manual        #close-button { display: inline-block; }
@@ -73,6 +78,8 @@ select#thumb-res option { direction: rtl; }
 /* THANKS:  right-justified select options, with drop-down arrow on the right also,
             https://stackoverflow.com/a/43919388/673991 */
 
+
+
 #top-right-blurb,
 #login-prompt {
     float: right;
@@ -90,7 +97,7 @@ select#thumb-res option { direction: rtl; }
     background-color: rgb(216,216,216);
 }
 .sup-category-first {
-    margin-top: 0;
+    margin-top: 1.5rem;   /* TOP_SPACER_EM */
 }
 
 .sup-category h2 {
@@ -135,7 +142,7 @@ select#thumb-res option { direction: rtl; }
 .sup-contribution {   /* each container of a contribution and caption */
     display: inline-block;
     vertical-align: top;
-    padding: 0.3em 0.5em 0.3em 0.5em;
+    padding: 0.3em 0.5em 0.3em 0.5em;   /* SEE:  sup_pad_left in contribution.js */
 }
 .contribution,
 #enter_some_text {
@@ -234,6 +241,10 @@ select#thumb-res option { direction: rtl; }
     padding: 8px;
 }
 
+#popup-screen .caption-bar {
+    background-color: #777777;
+}
+
 .caption-bar {
     clear: left;
     background-color: #AAAAAA;
@@ -300,6 +311,10 @@ select#thumb-res option { direction: rtl; }
     /* NOTE:  Less severe than failed-post which reddens the whole button. */
 }
 
+
+
+/* Visibility of individual contribution controls */
+
 .sup-contribution.pop-up                  .save-bar .edit    { display: none; }
 .sup-contribution.contribution-edit       .save-bar .edit    { display: none; }
 body.playing-somewhere                    .save-bar .edit    { display: none; }
@@ -321,10 +336,12 @@ body.playing-somewhere                    .save-bar   .expand { display: none; }
 .sup-contribution.noembed-error           .save-bar   .expand { display: none; }
 
 .sup-contribution.can-play                .save-bar   .expand span { display: none; }
-/* NOTE:  Hide the "bigger" to make room for the play button. */
+/* NOTE:  Hide the "bigger" label to make room for the "play" label". */
 
 /*.sup-contribution                         .save-bar .unfull { display: none; }*/
 /*.sup-contribution.pop-up                  .save-bar .unfull { display: inline-block; }*/
+
+
 
 .grip {
     cursor: move;
@@ -345,6 +362,18 @@ body.playing-somewhere                    .save-bar   .expand { display: none; }
 }
 
 .pop-down {
+    /*border-width: 2px;*/
+    /*border-style: solid;*/
+    /*border-color: silver transparent transparent silver;*/
+    /*margin: -2px;*/
+    /* NOTE:  The border here caused a little jump in the pop-up and pop-down animations */
+    background-color: rgb(200,200,200);
+    -webkit-border-radius: 0.7em;
+       -moz-border-radius: 0.7em;
+            border-radius: 0.7em;
+}
+
+.pop-down > * {
     visibility: hidden;
 }
 
@@ -378,15 +407,15 @@ body.playing-somewhere                    .save-bar   .expand { display: none; }
 }
 
 .sup-category #introductory-blurb {
-    font-size: 150%;
+    font-size: 1.5em;
     padding: 0 3em 0 3em;
     display: inline-block;
 }
 
 #top-right-blurb #introductory-blurb img {
     vertical-align: middle;
-    width: 24px;
-    height: 24px;
+    width: 1.5rem;   /* TOP_SPACER_EM */
+    height: 1.5rem;   /* TOP_SPACER_EM */
 }
 
 .sup-category #introductory-blurb img {
@@ -449,11 +478,11 @@ iframe { display:block; }
 .noembed-error .render-bar {
     border: 1px solid black;
     -webkit-border-top-left-radius: 0.7em;
-            border-top-left-radius: 0.7em;
         -moz-border-radius-topleft: 0.7em;
+            border-top-left-radius: 0.7em;
    -webkit-border-top-right-radius: 0.7em;
-           border-top-right-radius: 0.7em;
        -moz-border-radius-topright: 0.7em;
+           border-top-right-radius: 0.7em;
 }
 .noembed-error .render-bar {
     border-color: #AAAAAA;
@@ -463,13 +492,22 @@ iframe { display:block; }
 }
 
 .pop-up .contribution {
-    transition: font-size 1s;
+    /*transition: font-size 1s;*/
+}
+#popup-screen {
+    position: fixed;
+    z-index: 1;
+    top: 1.5rem;   /* TOP_SPACER_EM */
+    right: 0;
+    bottom: 0;
+    left: 0;
+    /* background-color: rgba(0,0,0,0.25); -- shade will be animated, fading in and out */
 }
 
 .text-animate .pop-up .contribution .talkify-word-highlight,
 .text-animate .speaking {
-    transition: font-size 1s;
-    font-size: 150%;
+    /*transition: font-size 1s;*/
+    font-size: 1.5em;
     font-weight: bold;
     /* TODO:  Animate text size somehow?
        SEE:  Inline elements can't be transformed, https://stackoverflow.com/q/14883250/673991 */

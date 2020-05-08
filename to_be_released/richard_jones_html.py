@@ -362,7 +362,7 @@ class HTML(object):
     # HTML 5 calls "void" elements.  They MUST NOT have a close tag.
     # SEE:  https://www.w3.org/TR/html5/syntax.html#void-elements
     # Mozilla MDN calls them "empty" elements.
-    # SEE:  https://developer.mozilla.org/en-US/docs/Glossary/Empty_element
+    # SEE:  https://developer.mozilla.org/Glossary/Empty_element
     # HTML 3 and 4 called them "empty" elements.
     #
     # Empty elements here means elements that can never have contents, nor

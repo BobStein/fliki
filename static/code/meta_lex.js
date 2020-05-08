@@ -618,7 +618,7 @@ function js_for_meta_lex(window, $, MONTY) {
                     $words(words_late)
                 );
                 // THANKS:  .replace(substr) ... literal string, not a regular expression,
-                //          https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/String/replace#Parameters
+                //          https://developer.mozilla.org/Web/JavaScript/Reference/Global_Objects/String/replace#Parameters
             }
         });
     }
@@ -736,6 +736,7 @@ function js_for_meta_lex(window, $, MONTY) {
             var i_chunk;
             for (i_chunk = 0 ; i_chunk < n_chunk ; i_chunk++) {
                 process(array[i]);
+                // FIXME:  Overflows an empty array.
                 if (i++ >= array.length - 1) {
                     clearInterval(interval);
                     if (is_specified(then)) {
@@ -761,9 +762,8 @@ function js_for_meta_lex(window, $, MONTY) {
     var YEAR = 365*DAY;
 
     // The following are thresholds.
-    //     at and below which, we display this ---vvvv    vvvv--- above which, we display this
-    var EXACTLY_ZERO    = 0.0000000000000;    //    z -> 0ms ____  <-- at exactly zero, display z
-    //                    0.5*MILLISECOND;    //  0ms -> 1ms ___ `-- between these -- 0ms
+    //    at and below which, we display this ---vvvv    vvvv--- above which, we display this
+    var EXACTLY_ZERO    = 0.0000000000000;    //    z -> 0ms ___ <-- at exactly zero, display z
     var UP_TO_MILLI     = 95*MILLISECOND;     // 95ms -> .01s _ `--- between these -- 1ms to 95ms
     var UP_TO_FRACTION  = 0.95*SECOND;        // .95s -> 1s __ `---- between these - .01s to .95s
     var UP_TO_SECOND    = 99.4*SECOND;        //  99s -> 2m _ `----- between these --- 1s to 99s

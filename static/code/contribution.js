@@ -223,19 +223,19 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                           // annoying to show a tiny bit scrolled out of view)
         extreme: 8        // above extreme-max, display at soft-max.
     };
-    var POPUP_WIDTH_MAX_EM = {
-        soft: 30,         // below the hard-max, display as is.
-        hard: 60,         // between hard and extreme-max, limit to hard-max.
-                          // (a reason to have a soft-hard gap horizontally: minimize wrapping)
-        extreme: 65       // above extreme-max, display at soft-max.
-    };
-    var POPUP_HEIGHT_MAX_EM = {
-        soft: 20,         // below the hard-max, display as is.
-        hard: 30,         // between hard and extreme-max, limit to hard-max.
-                          // (no big reason to have a gap between soft and hard vertically:
-                          // it's just annoying to show a tiny bit scrolled out of view)
-        extreme: 40       // above extreme-max, display at soft-max.
-    };
+    // var POPUP_WIDTH_MAX_EM = {
+    //     soft: 30,         // below the hard-max, display as is.
+    //     hard: 60,         // between hard and extreme-max, limit to hard-max.
+    //                       // (a reason to have a soft-hard gap horizontally: minimize wrapping)
+    //     extreme: 65       // above extreme-max, display at soft-max.
+    // };
+    // var POPUP_HEIGHT_MAX_EM = {
+    //     soft: 20,         // below the hard-max, display as is.
+    //     hard: 30,         // between hard and extreme-max, limit to hard-max.
+    //                       // (no big reason to have a gap between soft and hard vertically:
+    //                       // it's just annoying to show a tiny bit scrolled out of view)
+    //     extreme: 40       // above extreme-max, display at soft-max.
+    // };
     var MIN_CAPTION_WIDTH = 100;   // Prevent zero-width iframe from clobbering caption too.
 
     var is_editing_some_contribution = false;
@@ -273,7 +273,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     var talkify_playlist = null;
     var talkify_done = null;
     var talkify_voice_name;
-    var $animation_in_progress = null;
+    // var $animation_in_progress = null;    // jQuery object for elements currently animating.
 
     var BOT_CONTEXT = 'bot_context';  // PubSub message context
 
@@ -310,6 +310,20 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     // A media handler is a JavaScript file that calls window.qiki.media_register()
     var media_handlers = [];   // array of handlers:  {url: '...', media: {...}, ...}
     var isFullScreen;
+
+    var TOP_SPACER_REM = 1.5;
+    var TOP_SPACER_PX = px_from_em(TOP_SPACER_REM);
+    // NOTE:  Presumed to be the practical height of #up-top which is position:fixed,
+    //        this is the amount the position:static elements are scooted down.
+    // SEE:  contribution.css where TOP_SPACER_PX is mentioned.
+    // TODO:  Refactor those occurrences in contribution.css to applying those properties
+    //        here in contribution.js, e.g.
+    //        $('#up-top').css('height', TOP_SPACER_EM.toString() + 'em');
+
+    var POP_UP_ANIMATE_MS = 500;
+    var POP_UP_ANIMATE_EASING = 'linear';   // swing or linear
+    var POP_DOWN_ANIMATE_MS = 250;
+    var POP_DOWN_ANIMATE_EASING = 'swing';   // swing or linear
 
 
     /////////////////////////////////////////////////////////////////////////////////////////
@@ -423,6 +437,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         ;
         $('#post_it_button').on('click', post_it_click);
 
+
         $('.category, .frou-category').sortable(sortable_options());
 
         $(window.document)
@@ -442,7 +457,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                 if (evt.key === 'Escape') {
                     // THANKS:  Escape event, https://stackoverflow.com/a/3369624/673991
                     // THANKS:  Escape event, https://stackoverflow.com/a/46064532/673991
-                    // SEE:  evt.key values, https://developer.mozilla.org/en-US/search?q=key+values
+                    // SEE:  evt.key values, https://developer.mozilla.org/search?q=key+values
                     bot.stop();
                     check_contribution_edit_dirty(false, true);
                     // TODO:  Return false if handled?  So Escape doesn't do other things?
@@ -450,6 +465,18 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             })
             .on('blur keyup paste input', '[contenteditable=true]', function () {
                 work_around_jumpy_contenteditable_chrome_bug(this);
+            })
+            .on('click', '#popup-screen', function popup_screen_click() {
+                if (bot.state === bot.State.MANUAL) {
+                    pop_down_all(false);
+                }
+                // NOTE:  If the bot is running, clicking on the translucent popup background does nothing.
+                //        Because that would make it too easy to inadvertently terminate the bot.
+                //        If you really want to stop or skip (which is it?) click that button.
+                //        If you manually popped up a contribution,
+                //        then clicking on the #popup-screen closes the popup.
+                //        This follows tons of convention,
+                //        e.g. tapping on the margin of a popped-up facebook image.
             })
         ;
 
@@ -657,9 +684,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         MEDIA_READY: "The iframe is showing stuff",                            // dynamic or static
         MEDIA_STARTED: "The iframe is doing stuff, we'll know when it ends",   // dynamic media
         MEDIA_TIMING: "The iframe is static",                                  // static media
-        // MEDIA_PAUSE_IN_FORCE: "Both main page and iframe agree we're paused",
-        // Why did I ever need this state?
-        // Was it anachronistic before I started
+        MEDIA_PAUSE_IN_FORCE: "Both main page and iframe agree we're paused",  // (no need to pause_media() again - dynamic media only)
         SPEECH_SHOULD_PLAY: "The text was told to speak",
         SPEECH_STARTED: "The speaking has started",
         DONE_CONTRIBUTION: "Natural ending of a contribution in playlist",
@@ -684,16 +709,21 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
      *                                 not a crash, but less expected.
      *                                 This situation should be explained in the call.
      * @param new_state
+     * @return {boolean} true=transitioned as expected, false=was already there, or something wrong.
      */
     // TODO:  Which looks better?
     //        that.transit([that.State.OLD_STATE], that.State.NEW_STATE);
     //        that.transit(['OLD_STATE'], 'NEW_STATE');
     Bot.prototype.transit = function Bot_transit(old_states, new_state) {
         var that = this;
+        console.assert(Array.isArray(old_states), old_states);
+        // console.assert(new_state is an that.State);
         if (has(old_states, that.state)) {
             that.state = new_state;
+            return true;
         } else if (new_state === that.state) {
             console.warn("Transit, but already in state", that.state.name);
+            return false;
         } else {
             that.crash(
                 "TRANSIT CRASH expecting", old_states.map(function get_state_name(s) {
@@ -702,6 +732,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                 "  not", that.state.name,
                 "  before", new_state.name
             );
+            return false;
         }
     };
 
@@ -808,7 +839,8 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                 that.crash("Missing contribution", that.cont_idn, index_play_bot);
                 break;
             }
-            // TODO:  Fix the following dumb noinspection.  Or wait and pray Jetbrains fixes it.
+            // TODO:  Fix the following dumb noinspection.
+            //        Or wait and pray JetBrains fixes it.
             //        Otherwise it generates the following warning:
             //            Condition is always false since types
             //            '{get: (function(): jQuery | null)} | {get: function(): *}'
@@ -831,35 +863,35 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                 that.pop_cont.$sup.on(that.pop_cont.Event.MEDIA_BEGUN, function () {
                     that.transit([that.State.MEDIA_READY], that.State.MEDIA_STARTED);
                 });
-                that.pop_cont.$sup.on(that.pop_cont.Event.MEDIA_STATIC, function () {
-                    that.transit([that.State.MEDIA_READY], that.State.MEDIA_TIMING);
+                that.pop_cont.$sup.on(that.pop_cont.Event.MEDIA_STATIC, function (_, data) {
+                    if (that.transit([that.State.MEDIA_READY], that.State.MEDIA_TIMING)) {
+                        // NOTE:  This if-check prevents the double START interaction of 13-Apr-20.
+                        //        Because Contribution.zero_iframe_recover() reloaded the iframe.
+                        interact.START(data.cont_idn, data.current_time);
+                    }
                 });
                 that.pop_cont.$sup.on(that.pop_cont.Event.MEDIA_ENDED, function () {
                     that.transit(
                         [
-                            that.State.MEDIA_STARTED
-                            // ,
-                            // that.State.MEDIA_PAUSE_IN_FORCE   // paused, then immediately ended
+                            that.State.MEDIA_STARTED,
+                            that.State.MEDIA_PAUSE_IN_FORCE   // paused, then immediately ended
                         ],
                         that.State.DONE_CONTRIBUTION
                     );
                     that.pop_end();
                 });
-                that.pop_cont.$sup.on(that.pop_cont.Event.MEDIA_PLAYING, function () {
-                    console.log("Media playing, nothing to do.");
-                });
-                that.pop_cont.$sup.on(that.pop_cont.Event.MEDIA_RESUME, function () {
-                    // NOTE:  This happens when resuming a paused video or static media.
+                that.pop_cont.$sup.on(that.pop_cont.Event.MEDIA_PLAYING, function (_, data) {
+                    // NOTE:  From Contribution's embedded DYNAMIC iframe to the Bot.
+                    // NOTE:  Don't think it's possible to get a double START on dynamic media
+                    //        the way it was with static media.
+                    //        We got here from an auto-play-playing message from the embed
+                    //        and that could not hardly have come from a zero-size iframe.
+                    console.log("Media playing", data.cont_idn);
                     if (that.is_paused) {
-                        console.debug("Resume initiated by embedded iframe");
-                        // NOTE:  Surprise - the embedded resume button was hit.
-                        //        main page <-- iframe
+                        interact.RESUME(data.cont_idn, data.current_time);
                         that._pause_ends();
                     } else {
-                        console.debug("Resume fed back by iframe.");
-                        // NOTE:  Expected - main-page resume fed back by iframe, or
-                        //        Expected - play started from the beginning
-                        //        main page --> iframe
+                        interact.START(data.cont_idn, data.current_time);
                     }
                 });
                 that.pop_cont.$sup.on(that.pop_cont.Event.MEDIA_PAUSED, function () {
@@ -875,14 +907,26 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                         //        main page <-- iframe
                         that._pause_begins();
                     }
-                    // that.transit(
-                    //     [
-                    //         that.State.MEDIA_STARTED,   // dynamic, e.g. youtube
-                    //         that.State.MEDIA_TIMING,    // static, e.g. instagram photo
-                    //         that.State.MEDIA_PAUSE_IN_FORCE   // redundant pause events
-                    //     ],
-                    //     that.State.MEDIA_PAUSE_IN_FORCE
-                    // );
+                    if (that.state === that.State.MEDIA_STARTED) {
+                        that.transit([that.State.MEDIA_STARTED], that.State.MEDIA_PAUSE_IN_FORCE);
+                        // NOTE:  This transition stops the barrage of pause_media().
+                        //        Static TIMING state won't come here.
+                    }
+                });
+                that.pop_cont.$sup.on(that.pop_cont.Event.MEDIA_RESUME, function () {
+                    // NOTE:  This event only happens when resuming paused STATIC media.
+                    if (that.is_paused) {
+                        console.debug("Resume static media");
+                        // NOTE:  Surprise - the embedded resume button was hit.
+                        //        main page <-- iframe
+                        // TODO:  This isn't possible any more, only static media gets here.
+                        that._pause_ends();
+                    } else {
+                        console.warn("Resume redundant?");
+                        // NOTE:  Expected - main-page resume fed back by iframe, or
+                        //        Expected - play started from the beginning
+                        //        main page --> iframe
+                    }
                 });
                 that.pop_cont.$sup.on(that.pop_cont.Event.SPEECH_PLAY, function () {
                     that.transit([that.State.PLAYING_CONTRIBUTION], that.State.SPEECH_SHOULD_PLAY);
@@ -904,14 +948,6 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         case that.State.MEDIA_READY:
             // NOTE:  Awaiting MEDIA_BEGUN event (for dynamic media) leads to MEDIA_STARTED state
             //             or MEDIA_STATIC event (for static media) leads to MEDIA_TIMING state
-
-            // // NOPE:  Time-out this state, because MEDIA_BEGUN event will take us out of here
-            // //        if there's any chance it will animate -- and thus end -- itself.
-            // if (that.ticks_this_state < MEDIA_STATIC_SECONDS) {
-            //     // static media, e.g. jpg on flickr
-            // } else {
-            //     that.state = that.State.BEGIN_ANOTHER;
-            // }
             break;
         case that.State.MEDIA_TIMING:
             // Static media, e.g. jpg on flickr, show it for a while.
@@ -922,8 +958,8 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             break;
         case that.State.MEDIA_STARTED:
             break;
-        // case that.State.MEDIA_PAUSE_IN_FORCE:
-        //     break;
+        case that.State.MEDIA_PAUSE_IN_FORCE:
+            break;
         case that.State.SPEECH_SHOULD_PLAY:
             // NOTE:  Wait at least 1 second to retry.
             //        Actual delays from speak-method to start-event in ms:
@@ -1152,20 +1188,21 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         var that = this;
         that.is_paused = false;
         $(window.document.body).removeClass('pausing-somewhere');
-        // if (that.state === that.State.MEDIA_PAUSE_IN_FORCE) {
-        //     that.state = that.State.MEDIA_STARTED;
-        //     // FIXME:  Or maybe MEDIA_STATIC
-        // }
+        if (that.state === that.State.MEDIA_PAUSE_IN_FORCE) {
+            that.state = that.State.MEDIA_STARTED;
+        }
     };
 
     Bot.prototype.resume = function Bot_resume() {
         var that = this;
-        that._pause_ends();
         console.log("Resume initiated by main page");
-        if (utter !== null) {
+        if (utter === null) {
+            embed_message('.pop-up', {action: 'resume'});
+            // NOTE:  _pause_ends() after embed messages back auto-play-playing.
+        } else {
             window.speechSynthesis.resume();
+            that._pause_ends();
         }
-        embed_message('.pop-up', {action: 'resume'});
     };
 
     Bot.prototype.stop = function Bot_stop() {
@@ -1212,12 +1249,18 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         }
         // THANKS:  Automatic 'new', https://stackoverflow.com/a/383503/673991
 
-        this.id_attribute = id_attribute;
-        this.idn_decimal = strip_prefix(this.id_attribute, MONTY.POPUP_ID_PREFIX);
-        this.$cont = $_from_id(this.id_attribute);
-        this.$sup = this.$cont.closest('.sup-contribution');
-        this.handler = null;
-    }
+        if (is_specified(id_attribute)) {
+            this.does_exist = true;
+            this.id_attribute = id_attribute;
+            this.idn_decimal = strip_prefix(this.id_attribute, MONTY.POPUP_ID_PREFIX);
+            this.$cont = $_from_id(this.id_attribute);
+            this.$sup = this.$cont.closest('.sup-contribution');
+            this.handler = null;
+            this.score_composer_context = null;
+        } else {
+            this.does_exist = false;
+        }
+}
 
     /**
      * Construct a Contribution, not from its id, but from any element inside it.
@@ -1288,6 +1331,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         $render_bar:      { get: function () {return this.$sup.find('.render-bar');}},
         $save_bar:        { get: function () {return this.$sup.find('.save-bar');}},
         $caption_bar:     { get: function () {return this.$sup.find('.caption-bar');}},
+        $screen:          { get: function () {return this.$sup.closest('#popup-screen');}},
         $caption_span:    { get: function () {return this.$sup.find('.caption-span');}},
         caption_text:     { get: function () {return this.$caption_span.text();}},
         is_noembed_error: { get: function () {return this.$sup.hasClass('noembed-error');}},
@@ -1373,9 +1417,12 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             break;
         case 'auto-play-static':
             console.log("Media static", that.id_attribute, message.contribution_idn);
-            that.$sup.trigger(that.Event.MEDIA_STATIC);
-            interact.START(cont_idn, message.current_time);
-            // TODO:  Avoid double START interaction.
+            that.$sup.trigger(that.Event.MEDIA_STATIC, [{
+                cont_idn: cont_idn,
+                current_time: message.current_time
+            }]);
+            // interact.START(cont_idn, message.current_time);
+            // DONE:  Avoid double START interaction.  Interaction is now lexed in event handler.
             //        Can happen if Contribution.zero_iframe_recover()
             break;
         case 'auto-play-begun':
@@ -1440,20 +1487,23 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                 message.current_time.toFixed(3),
                 bot.is_paused
             );
-            if (bot.is_paused) {
-                // NOTE:  This may be the sole place a Contribution knows of a Bot.
-                //        Necessary?  Wise?
-                interact.RESUME(cont_idn, message.current_time);
-            } else {
-                interact.START(cont_idn, message.current_time);
-            }
+            // if (bot.is_paused) {
+            //     // NOTE:  This may be the sole place a Contribution knows of a Bot.
+            //     //        Necessary?  Wise?
+            //     interact.RESUME(cont_idn, message.current_time);
+            // } else {
+            //     interact.START(cont_idn, message.current_time);
+            // }
 
             that.$sup.trigger(that.Event.MEDIA_PLAYING, [{
+                // is_paused: bot.is_paused,
+                cont_idn: cont_idn,
                 current_time: message.current_time
             }]);
 
             break;
         case 'auto-play-resume':
+            // NOTE:  This is a parent-initiated resume, for non-dynamic media.
             console.log(
                 "Media resume",
                 that.id_attribute,
@@ -1511,6 +1561,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     console.assert(0.1015625 === one_qigit(0.1));
 
     Contribution.prototype.fix_caption_width = function Contribution_fix_caption_width() {
+        // TODO:  Call this function more places where $caption_bar.width(is set to something)
         // noinspection JSUnusedAssignment
         var that = this;
         var media_width = that.$iframe.outerWidth();
@@ -1535,8 +1586,9 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     Contribution.prototype.resizer_nudge = function Contribution_resizer_nudge() {
         var that = this;
         var iframe = that.iframe;
+        // FALSE WARNING:  Condition is always true since types '{get: (function(): any | null)}' and 'null' have no overlap
         // noinspection JSIncompatibleTypesComparison
-        if (iframe !== null) {
+        if (iframe !== null && is_defined(iframe.iFrameResizer)) {
             iframe.iFrameResizer.resize();
         }
     };
@@ -1649,7 +1701,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         });
         $img.one('error.thumb1', function render_img_error() {
             $img.off('.thumb1');
-            console.log("YouTube broken thumb", thumb_url);
+            console.log("Broken thumb", thumb_url);
             error_callback();
         });
         // NOTE:  .src is set after the load and error event handlers,
@@ -1684,7 +1736,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             //        Yes:  Chrome, Firefox, Opera, Edge, UCBrowser7
             //        No:  IE11
             // NOTE:  Cannot delegate the iframe load event, because it doesn't bubble.
-            //        https://developer.mozilla.org/en-US/docs/Web/API/Window/load_event
+            //        https://developer.mozilla.org/Web/API/Window/load_event
             var older_loader_timer = $iframe.data('loader_timer');
             if (is_specified(older_loader_timer)) {
                 clearInterval(older_loader_timer);
@@ -1724,6 +1776,1274 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         that.resizer_init(function () {});
     };
 
+    Contribution.prototype.full_ish_screen_text = function Contribution_full_ish_screen_text(then) {
+        var that = this;
+        // that.$cont.css({
+        //     'width': 'auto',
+        //     'height': 'auto'
+        // });
+        // console.log("full_ish 1", that.$cont.width(), that.$cont.height());
+        // that.$cont.css({
+        //     'font-size': '2rem'
+        // });
+        // console.log("full_ish 2", that.$cont.width(), that.$cont.height(), that.$cont.css('font-size'));
+        // setTimeout(function () {
+        //     console.log("full_ish 3", that.$cont.width(), that.$cont.height(), that.$cont.css('font-size'));
+        // }, 2000);
+        that.optimize(then);
+    };
+
+    function Knob(opt) {
+        if ( ! (this instanceof Knob)) {
+            return new Knob(opt);
+        }
+        $.extend(this, opt);
+    }
+    Knob.named = {};
+
+    Knob.prototype.value_multiply = function Knob_value_multiply(cont, multiplier) {
+        this.value(cont, this.value(cont) * multiplier);
+    }
+    // noinspection JSUnusedGlobalSymbols
+    Knob.prototype.value_add = function Knob_value_multiply(cont, adder) {
+        this.value(cont, this.value(cont) + adder);
+    }
+
+    function add_10(x, multiplier) {
+        multiplier = multiplier || 1.0;
+        return x+10*multiplier;
+    }
+
+    // function add_10th(x, multiplier) {
+    //     multiplier = multiplier || 1.0;
+    //     return x+0.1*multiplier;
+    // }
+
+    Knob.named.left = Knob({
+        name: 'left',
+        value: function Contribution_left_knob_value(cont, new_value) {
+            if (is_specified(new_value)) {
+                cont.$sup.css('left', new_value);
+            } else {
+                return parseFloat(cont.$sup.css('left'));
+            }
+        },
+        next: add_10
+    });
+
+    Knob.named.top = Knob({
+        name: 'top',
+        value: function Contribution_top_knob_value(cont, new_value) {
+            if (is_specified(new_value)) {
+                cont.$sup.css('top', new_value);
+            } else {
+                return parseFloat(cont.$sup.css('top'));
+            }
+        },
+        next: add_10
+    });
+
+    Knob.named.width = Knob({
+        name: 'width',
+        value: function Knob_width_value(cont, new_value) {
+            if (is_specified(new_value)) {
+                // cont.$cont.css('width', new_value.toString() + 'px');
+                cont.$cont.width(new_value);
+                cont.$caption_bar.width(new_value);
+                // TODO:  Prevent going outside the window.
+            } else {
+                // return parseFloat(cont.$cont.css('width'));
+                return cont.$cont.width();
+                // NOTE:  .width() is element-only
+                //        .css('width') is the same as
+            }
+        },
+        next: add_10
+    });
+
+    Knob.named.height = Knob({
+        name: 'height',
+        value: function Knob_height_value(cont, new_value) {
+            if (is_specified(new_value)) {
+                cont.$cont.height(new_value);
+            } else {
+                return cont.$cont.height();
+            }
+        },
+        next: add_10
+    });
+
+    Knob.named.width_centered = Knob({
+        name: 'width_centered',
+        value: function Knob_width_centered_value(cont, new_width) {
+            if (is_specified(new_width)) {
+                // var old_width = Knob.named.width.value(cont);
+                // var width_increase = new_width - old_width;
+                //
+                // Knob.named.left.value_add(cont, -width_increase/2);
+                // Knob.named.width.value(cont, new_width);
+
+
+
+                var h_left = 0.0;
+                var h_right = $(window).width();
+                var min_width = px_from_em(WIDTH_MAX_EM.hard);
+                var max_width = h_right - h_left;
+                if (min_width <= new_width && new_width <= max_width) {
+                    Knob.named.width.value(cont, new_width);
+                    Knob.named.left.value(cont, (h_left + h_right - new_width) / 2);
+                    console.log("width_centered", new_width);
+                } else {
+                    console.warn("width_centered cannot", new_width, min_width, max_width);
+                    // TODO:  throw Knob.HardLimit() ?
+                }
+            } else {
+                return Knob.named.width.value(cont);
+            }
+        },
+        next: add_10
+    });
+
+    Knob.named.height_centered = Knob({
+        name: 'height_centered',
+        value: function Knob_height_centered_value(cont, new_height) {
+            if (is_specified(new_height)) {
+                // var old_height = Knob.named.height.value(cont);
+                // var height_increase = new_height - old_height;
+                //
+                // Knob.named.top.value_add(cont, -height_increase/2);
+                // Knob.named.height.value(cont, new_height);
+                // console.log("height_centered", old_height, new_height, height_increase, cont, cont.$cont.height());
+                var v_top = TOP_SPACER_PX;
+                var v_bottom = $(window).height();
+                // var min_height = px_from_em(HEIGHT_MAX_EM.hard);
+                var min_height = cont.score_composer_context.height_cont_natural;
+                var max_height = v_bottom - v_top;
+                if (min_height <= new_height && new_height <= max_height) {
+                    Knob.named.height.value(cont, new_height);
+                    Knob.named.top.value(cont, (v_top + v_bottom - new_height) / 2);
+                    // console.log("height_centered", new_height);
+                } else {
+                    console.warn("height_centered cannot", new_height, min_height, max_height);
+                    // TODO:  throw Knob.HardLimit() ?
+                }
+            } else {
+                return Knob.named.height.value(cont);
+            }
+        },
+        next: add_10
+    });
+
+    Knob.named.font = Knob({
+        name: 'font',
+        value: function Knob_font_value(cont, new_value) {
+            if (is_specified(new_value)) {
+                var old_value = font_size(cont.$cont);
+                var old_width = Knob.named.width_centered.value(cont);
+                var old_height = Knob.named.height_centered.value(cont);
+                console.log("font before", cont.$cont.height());
+                font_size(cont.$cont, new_value);
+                console.log("font after", cont.$cont.height());
+                if (new_value > old_value) {
+                    var expansion = new_value / old_value;
+                    // NOTE:  Give the expanded font room to grow.
+                    //        The dimensions must be gotten before the font is changed,
+                    //        and set afterward.  Because with the border-box model,
+                    //        the outerHeight stays fixed.
+                    var BIT_OF_WIDTH_FOR_LESS_WRAPPING = 4;   // amounts to 0.5em
+                    Knob.named.width_centered.value(cont, (old_width + BIT_OF_WIDTH_FOR_LESS_WRAPPING) * expansion);
+                    Knob.named.height_centered.value(cont, old_height * expansion);
+                }
+            } else {
+                return font_size(cont.$cont);
+            }
+
+        }
+    });
+
+    function knob_settings_string(knobs, cont) {
+        var setting_strings = [];
+        looper(knobs, function (_, knob){
+            var setting_string = knob.value(cont);
+            setting_strings.push(setting_string);
+        });
+        return setting_strings.join(',');
+    }
+
+    var iterator_interval = null;
+
+    Contribution.prototype.cancel_optimize = function Contribution_cancel_optimize() {
+        // noinspection JSUnusedLocalSymbols
+        var that = this;
+        if (iterator_interval !== null) {
+            clearInterval(iterator_interval);
+            iterator_interval = null;
+            console.log("CANCEL OPTIMIZE");
+        }
+    };
+
+    Contribution.prototype.optimize = function Contribution_optimize(then) {
+        var that = this;
+
+        // var MAX_STEPS_BEFORE_GIVING_UP = 100;
+        // var popup_score_composer = that.score_composer.bind(that);
+        // // THANKS:  Curry a method into a function, https://stackoverflow.com/a/34505360/673991
+        //
+        // iterate ({
+        //     process: function (i_step) {
+        //         var is_done;
+        //         if (i_step >= MAX_STEPS_BEFORE_GIVING_UP) {
+        //             console.warn("Taking too long");
+        //             is_done = true;
+        //         } else {
+        //             // var do_continue = improve(knobs_were_going_to_twist, popup_score_composer);
+        //             var do_continue = improve(registered_knobs, popup_score_composer);
+        //             is_done = ! do_continue;
+        //         }
+        //         return is_done;
+        //     },
+        //     then: function (n_steps) {
+        //         var poem_v_prose = any_lone_newlines(that.content) ? "POEM" : "prose";
+        //         console.log(
+        //             "Done optimizing in",
+        //             n_steps,
+        //             "steps",
+        //             poem_v_prose
+        //         );
+        //     },
+        //     delay_ms: 1,
+        //     n_chunk: 10
+        // });
+        // return;
+        //
+        // function left(noob) {
+        //     if (is_specified(noob)) {
+        //         that.$sup.css('left', noob);
+        //     } else {
+        //         return parseFloat(that.$sup.css('left'));
+        //     }
+        // }
+        // left.next = add_10;
+        // left.prev = sub_10;
+        // left.name = "left";
+        //
+        // function top(noob) {
+        //     if (is_specified(noob)) {
+        //         that.$sup.css('top', noob);
+        //     } else {
+        //         return parseFloat(that.$sup.css('top'));
+        //     }
+        // }
+        // top.next = add_10;
+        // top.prev = sub_10;
+        // top.name = "top";
+        //
+        // function width(noob) {
+        //     if (is_specified(noob)) {
+        //         that.$cont.width(noob);
+        //     } else {
+        //         return that.$cont.width();
+        //     }
+        // }
+        // width.next = add_10;
+        // width.name = "width";
+        //
+        // function height(noob) {
+        //     if (is_specified(noob)) {
+        //         that.$cont.height(noob);
+        //     } else {
+        //         return that.$cont.height();
+        //     }
+        // }
+        // height.next = add_10;
+        // height.name = "height";
+        //
+        // function cont_font_size(noob) {
+        //     if (is_specified(noob)) {
+        //         var old_size = font_size(that.$cont);
+        //         if (noob > old_size) {
+        //             var expansion = noob / old_size;
+        //             // NOTE:  A little help, expanding font is likely to want more room.
+        //             width(width() * expansion);
+        //             height(height() * expansion);
+        //         }
+        //         font_size(that.$cont, noob);
+        //     } else {
+        //         return font_size(that.$cont);
+        //     }
+        // }
+        // cont_font_size.next = add_10th;
+        // cont_font_size.name = "font";
+        //
+        // console.log("Pre optimize", left(), width(), cont_font_size(), that.score_composer());
+        // left(that.$cont.position().left);
+        // width(that.$cont.width());
+        // cont_font_size(cont_font_size());
+        // console.log("Circa optimize", left(), width(), cont_font_size(), that.score_composer());
+        //
+        // var f = left;
+
+        function better_than(sa, sb) {
+            if (sa.is_indeterminate()) return false;
+            if (sb.is_indeterminate()) return true;
+            return sa.score > sb.score;
+        }
+        function better_than_or_equal(sa, sb) {
+            if (sa.is_indeterminate()) return false;
+            if (sb.is_indeterminate()) return true;
+            return sa.score >= sb.score;
+        }
+
+        function improve_multivariate(knob_array, score_composer, multiplier) {
+            var do_continue_all = false;
+            var report_multivariate = [];
+            looper(knob_array, function (_, knob) {
+                var do_continue_1 = improve(knob, score_composer, multiplier);
+                report_multivariate.push(improve.report);
+                if (do_continue_1) {
+                    do_continue_all = true;
+                }
+            });
+            improve.report = report_multivariate.join("\n");
+            return do_continue_all;
+        }
+
+        /**
+         * Find a better score
+         *
+         * @param knob - Knob to twist - and + to see if the score is better.
+         * @param score_composer - bound function that will compute a CompositeScore
+         * @param multiplier
+         * @return {boolean}
+         */
+        function improve(knob, score_composer, multiplier) {
+            multiplier = multiplier || 1.0;
+
+            if (is_array(knob)) {
+                return improve_multivariate(knob, score_composer, multiplier);
+            }
+            var do_continue = true;
+
+            var x0 = knob.value(that);
+            var x1 = knob.next(x0, +1.0 * multiplier);
+            var x9 = knob.next(x0, -1.0 * multiplier);
+
+            var s0 = score_composer();
+
+            knob.value(that, x1);
+            var s1 = score_composer();
+
+            knob.value(that, x9);
+            var s9 = score_composer();
+
+            var x_next;
+            var s_next;
+            var dir;
+            if (better_than(s9, s0) && better_than_or_equal(s9, s1)) {
+                // NOTE:  Tie between s9 and s1 goes to s9.  It better go to ONE of them!
+                // knob.value(that, x9);
+                x_next = x9;
+                // noinspection JSUnusedAssignment
+                s_next = s9;
+                dir = '-';
+                improve.report = "{name} ({s9}-{s0}-{s1}) -{multiplier} improve +{delta_score}"
+                    .replace('{name}', knob.name)
+                    .replace('{s9}', s9.score.toFixed(3))
+                    .replace('{s0}', s0.score.toFixed(3))
+                    .replace('{s1}', s1.score.toFixed(3))
+                    .replace('{multiplier}', multiplier)
+                    .replace('{delta_score}', (s9.score - s0.score).toFixed(3))
+                ;
+            } else if (better_than(s1, s0) && better_than(s1, s9)) {
+                knob.value(that, x1);
+                x_next = x1;
+                // noinspection JSUnusedAssignment
+                s_next = s1;
+                dir = '+';
+                improve.report = "{name} ({s9}-{s0}-{s1}) +{multiplier} improve +{delta_score}"
+                    .replace('{name}', knob.name)
+                    .replace('{s9}', s9.score.toFixed(3))
+                    .replace('{s0}', s0.score.toFixed(3))
+                    .replace('{s1}', s1.score.toFixed(3))
+                    .replace('{multiplier}', multiplier)
+                    .replace('{delta_score}', (s1.score - s0.score).toFixed(3))
+                ;
+            } else {
+                if (s0.is_indeterminate()) {
+                    console.warn("Score indeterminate at", x0);
+                    // TODO:  Is the NaN scheme workable?
+                    //        The idea is, give any individual scorer the option to report NaN
+                    //        Meaning the situation is untenable.  E.g. div positioned above top.
+                    //        Then that one score clobbers all the others.
+                    //        Then the nudge that got it there will not even be tried.
+                    //        But maybe a div should position off screen so another knob
+                    //        can be invited to tweak and repair it?  This implies never return NaN.
+                    //        Would this ever help a situation?
+                    dir = 'N';
+                } else {
+                    dir = '0';
+                }
+                knob.value(that, x0);
+                x_next = x0;
+                s_next = null;
+                do_continue = false;
+                improve.report = "{name} ({s9}-{s0}-{s1}) #{multiplier} unimprove -{delta_9} -{delta_1}"
+                    .replace('{name}', knob.name)
+                    .replace('{s9}', s9.score.toFixed(3))
+                    .replace('{s0}', s0.score.toFixed(3))
+                    .replace('{s1}', s1.score.toFixed(3))
+                    .replace('{multiplier}', multiplier)
+                    .replace('{delta_9}', (s0.score - s9.score).toFixed(6))
+                    .replace('{delta_1}', (s0.score - s1.score).toFixed(6))
+                ;
+            }
+            // var which_scorers_contributed = "";
+            // if (s_next !== null) {
+                var improvers = [];
+                looper(s0.scores, function (i_scorer, each_score_0) {
+                    // var each_score_next = s_next.scores[i_scorer];
+                    // var each_improvement =  each_score_next - each_score_0;
+                    // if (each_improvement !== 0) {
+                    //     improvers.push(s0.scorers[i_scorer].name + " " + each_improvement.toFixed(6));
+                    // }
+                    var s9_improvement = s9.scores[i_scorer] - each_score_0;
+                    var s1_improvement = s1.scores[i_scorer] - each_score_0;
+                    if (s9_improvement !== 0.0 || s1_improvement !== 0.0) {
+                        var scorer_report = (
+                            s0.scorers[i_scorer].name + " " +
+                            s9_improvement.toFixed(6) + " " +
+                            s1_improvement.toFixed(6)
+                        );
+                        improvers.push(scorer_report);
+                    }
+                });
+                var which_scorers_contributed = "(" + improvers.join(",") + ")";
+            // }
+            // if (dir !== '0') {
+                console.log(
+                    dir,
+                    knob.name,
+                    x9, x0, x1,
+                    s9.score.toFixed(3),
+                    s0.score.toFixed(3),
+                    s1.score.toFixed(3),
+                    x_next.toFixed(3),
+                    (s9.score - s0.score).toFixed(6),
+                    (s1.score - s0.score).toFixed(6),
+                    which_scorers_contributed
+                );
+            // }
+            return do_continue;
+        }
+
+        // that.score_composer_prep();
+        // var context = that.score_composer_context;
+        // NOTE:  Now give the Knobs a nice starting point,
+        //        Centered horizontally, with as much width as it wants, but no more.
+
+
+
+        var cont_css_width = that.$cont.css('width');
+        var cont_css_height = that.$cont.css('height');
+
+        that.$sup.css('left', 0);
+        that.$sup.css('top', 0);   // give the text some room from the harsh right and bottom edges
+        that.$cont.width('auto');
+        that.$cont.height('auto');   // let the text's freak flag flow
+
+        var sup_natural_width = that.$sup.width()
+        var sup_natural_height = that.$sup.height();
+        var cont_natural_width = that.$cont.width();
+
+        var does_man_spread = sup_natural_width > (usable_width() * 0.95);
+        // NOTE:  Does the content take up all the width you gave it?
+
+        var is_poetry = any_lone_newlines(that.content) && ! does_man_spread;
+        // NOTE:  If it doesn't man-spread, it still might not be poetry,
+        //        it might be really short prose.
+        //        Huh, double-spaced poetry will be considered prose.
+
+
+
+        //// Horizontal - determine how WIDE the text wants to be
+
+        var sup_chrome_h = that.$sup.innerWidth() - that.$cont.width();
+        var SUP_PAD_LEFT = px_from_em(0.5);   // SEE:  contribution.css
+        var ROOM_FOR_WORD_ANIMATION_SO_IT_DOESNT_WRAP = 10;
+        var cont_width_value = Math.min(
+            cont_natural_width + ROOM_FOR_WORD_ANIMATION_SO_IT_DOESNT_WRAP,
+            usable_width() - sup_chrome_h
+        );
+        var sup_left = (usable_width() - cont_width_value - sup_chrome_h)/2 + SUP_PAD_LEFT;
+        var cont_width_setting;
+        if (is_poetry) {
+            cont_width_setting = 'auto';
+        } else {
+            cont_width_setting = cont_width_value;
+
+            // NOTE:  Now see if we can match the prose's aspect ratio to the window's.
+
+            var width_portion = cont_width_value / usable_width();
+            var height_portion = sup_natural_height / usable_height();
+            var cont_fatter_than_window = width_portion / height_portion;   // fatter > 1, thinner < 1
+            if (cont_fatter_than_window > 1.2) {
+
+                // NOTE:  Is the contribution's aspect ratio more than 20% wider than the window's?
+                //        If contribution fills window width AND height
+                //        (or more than the height, so it scrolls), we'll never get here,
+                //        because cont_fatter_than_window will have been about 1 (or less than 1).
+
+                var excess_width = Math.sqrt(cont_fatter_than_window);
+                // NOTE:  If contribution is 4 times as fat as the window, we want to make the
+                //        contribution 1/2 as wide.  Which will make it about 2 times as tall.
+                //        (Could a lot of small paragraphs introduce TOO MUCH height and
+                //        thus require scrolling here?  Hope not!)
+
+                // TODO:  Run this aspect adjustment more than once?  Might help with text that
+                //        doesn't wrap enough, so height doesn't expand as much as width shrunk.
+                //        Without doing this, here's the problem:
+                //        The EXPANDED popup (with the larger font) takes up the full width
+                //        but only a fraction of the height of the window, e.g. half.
+
+                var cont_width_value_new = cont_width_value / excess_width;
+                if (cont_width_value_new < px_from_em(WIDTH_MAX_EM.soft)) {
+                    cont_width_value_new = px_from_em(WIDTH_MAX_EM.soft);   // not too skinny
+                }
+                if (cont_width_value_new < cont_width_value) {
+
+                    // NOTE:  This if-test prevents VERY tiny contributions from being made
+                    //        WIDER than they would have been.
+                    //        Because we only want this step to SHRINK width.
+
+                    sup_left += (cont_width_value - cont_width_value_new)/2;
+                    cont_width_value = cont_width_value_new;
+                    cont_width_setting = cont_width_value;
+                }
+            }
+        }
+        that.$sup.css('left', sup_left);   // set left BEFORE width, avoiding right-edge wrap
+        that.$cont.width(cont_width_setting);
+        that.fix_caption_width();
+
+
+
+        //// Vertical - determine how TALL the text wants to be
+
+        that.$cont.height('auto');
+
+        var sup_height = that.$sup.height();
+        var sup_chrome_v = that.$sup.innerHeight() - that.$cont.height();
+        var sup_top;
+        var cont_height_setting;
+        if (sup_height <= usable_height()) {
+            sup_top = (TOP_SPACER_PX + $(window).height() - sup_height)/2;
+            cont_height_setting = 'auto';
+        } else {
+            sup_top = TOP_SPACER_PX;
+            cont_height_setting = usable_height() - sup_chrome_v;
+        }
+
+        that.$sup.css('top', sup_top);
+        that.$cont.height(cont_height_setting);
+
+
+
+        //// Font
+
+        var expandable_h = usable_width() / that.$sup.innerWidth();
+        var expandable_v = usable_height() / that.$sup.innerHeight();
+        var expandable = Math.min(expandable_h, expandable_v);
+        var expand_font = null;
+
+        var font_size_normal = px_from_em(1);
+        // NOTE:  Animating to or from 'inherit' doesn't seem to work.
+        var font_size_setting;
+
+        if (expandable > 1.1) {
+            // NOTE:  Don't fiddle with a middling expansion.
+
+            var MAX_FONT_EXPANSION = 3.0;
+            expand_font = Math.min(expandable, MAX_FONT_EXPANSION);
+
+            var sup_width_before = that.$sup.width();
+            var sup_height_before = that.$sup.height();
+
+            that.$sup.css('left', 0);   // prepare to grow font without right-edge wrap
+            that.$sup.css('top', 0);
+            // NOTE:  Temporarily scoot to upper left corner, so an enlarged contribution
+            //        with auto width doesn't cause wrapping against right edge.
+            //        Or, I guess, scrolling against the bottom, or something.
+            //        Not sure it matters if top is set to 0 actually.
+
+            font_size_setting = expand_font.toFixed(2) + 'rem';
+            that.$cont.css('font-size', font_size_setting);
+
+            if (typeof cont_width_setting === 'number') {
+                cont_width_setting *= expand_font;
+                that.$cont.width(cont_width_setting);
+            }
+            that.fix_caption_width();
+
+            // if (typeof cont_height_setting === 'number') {
+            //     cont_height_setting *= expand_font;
+            //     that.$cont.height(cont_height_setting);
+            // }
+            // NOTE:  No height setting expansion needed, because if it's numeric, i.e. not 'auto'
+            //        then the text is height-limited, and we're scrolling, and we hate that, so we
+            //        sure haven't expanded the font at all.
+
+            var sup_width_after = that.$sup.width();
+            var sup_height_after = that.$sup.height();
+
+            sup_left -= (sup_width_after - sup_width_before) / 2;
+            sup_top -= (sup_height_after - sup_height_before) / 2;
+            that.$sup.css('left', sup_left);
+            that.$sup.css('top', sup_top);
+        } else {
+            font_size_setting = font_size_normal;
+        }
+
+        console.log(
+            "Text pop up",
+            sup_left, sup_top, sup_height,
+            is_poetry ? "POEM" : "prose",
+            expand_font,
+            "\n",
+            cont_css_width, cont_css_height,
+            cont_width_setting, cont_height_setting,
+            usable_width(), usable_height(),
+            sup_chrome_h, sup_chrome_v,
+            expandable_h, expandable_v,
+            type_name(cont_width_setting), type_name(cont_height_setting),
+            "\n",
+            that.$sup.css('left'),
+            that.$sup.css('top'),
+            that.$cont.css('width'),
+            that.$cont.css('height'),
+            that.$caption_bar.css('width')
+        );
+
+
+
+        //// Animate
+
+        deanimate("pop up quote " + that.id_attribute);
+
+        var cont = Contribution(that.idn_decimal);
+
+        // NOTE:  Popup text element properties are now are at their FINAL point.
+        //        Get stats on them before reverting them all to their STARTING point, for the
+        //        animation.
+
+        var pop_cont_css_width = that.$cont.css('width');
+        var pop_cont_css_height = that.$cont.css('height');
+        var pop_caption_css_width = that.$caption_bar.css('width');
+        var pop_up_caption_background = that.$caption_bar.css('background-color');
+        var pop_down_caption_background = cont.$caption_bar.css('background-color');
+
+        that.$cont.css('width', cont_css_width);
+        that.$cont.css('height', cont_css_height);
+        // NOTE:  jQuery animation seems to need the STARTING point to be set via .css(),
+        //        not .width() and .height()
+
+        that.fix_caption_width();
+        that.$caption_bar.css('background-color', pop_down_caption_background);
+        that.$sup.css(cont.fixed_coordinates());
+        that.$cont.css('font-size', font_size_normal);
+
+        var sup_promise = that.$sup.animate({
+            top: sup_top,
+            left: sup_left
+        }, {
+            duration: POP_UP_ANIMATE_MS,
+            easing: POP_UP_ANIMATE_EASING,
+            queue: false
+        }).promise();
+
+        var cont_promise = that.$cont.animate({
+            width: pop_cont_css_width,
+            height: pop_cont_css_height,
+            'font-size': font_size_setting
+        }, {
+            duration: POP_UP_ANIMATE_MS,
+            easing: POP_UP_ANIMATE_EASING,
+            queue: false,
+            complete: function popup_text_contribution_complete() {
+                that.$cont.width(cont_width_setting);
+                that.$cont.height(cont_height_setting);
+            }
+        }).promise();
+
+        var caption_promise = that.$caption_bar.animate({
+            width: pop_caption_css_width,
+            'background-color': pop_up_caption_background
+        }, {
+            duration: POP_UP_ANIMATE_MS,
+            easing: POP_UP_ANIMATE_EASING,
+            queue: false,
+            complete: function popup_text_caption_complete() {
+                that.fix_caption_width();
+            }
+        }).promise();
+
+        that.$screen.css({
+            'background-color': 'rgba(0,0,0,0)'
+        });
+        var screen_promise = that.$screen.animate({
+            'background-color': 'rgba(0,0,0,0.25)'
+        }, {
+            duration: POP_UP_ANIMATE_MS,
+            easing: POP_UP_ANIMATE_EASING,
+            queue: false
+        }).promise();
+
+        var combined_promise = $.when(
+            sup_promise,
+            cont_promise,
+            caption_promise,
+            screen_promise
+        );
+        combined_promise.done(function popup_animation_done() {
+            then();
+        });
+
+
+
+        // that.$sup.css({
+        //     top: TOP_SPACER_PX + usable_height()/2 - context.height_sup_natural/2
+        // });
+        // that.$cont.css({
+        //     height: context.height_cont_natural
+        // });
+
+        var MAX_STEPS_BEFORE_GIVING_UP = 200;
+
+        var FIRST_MULTIPLIER = 51.2;
+        var MULTIPLIER_MULTIPLIER = 0.5;
+        var LAST_MULTIPLIER = 0.1;
+
+        var step_count_strings = [];
+
+        var knobs_were_going_to_twist = [
+            // Knob.named.left,
+            // Knob.named.top,
+            Knob.named.width_centered,
+            Knob.named.height_centered
+        ];
+        console.debug("Knobs", knobs_were_going_to_twist);
+
+        var setting_log = [];   // array of knob setting strings
+        var multipliers_done = false;
+
+        if (0) try_multiplier(FIRST_MULTIPLIER);
+
+        // NOTE:  Loops within loops.
+        //        Multiplier
+        //            iterate
+        //                chunk
+        //                    improve_multivariate - all knobs (the process passed to iterate())
+        //                        improve - one knob
+        //                            score at the current knob settings
+        //                            score at knob + setting
+        //                            score at knob - setting
+
+        function try_multiplier(multiplier) {
+
+            var popup_score_composer = that.score_composer.bind(that);
+            // THANKS:  Curry a method into a function, https://stackoverflow.com/a/34505360/673991
+
+            iterator_interval = iterate({
+                do_early: false,
+                process: function (i_step) {
+                    var is_done;
+                    if (i_step >= MAX_STEPS_BEFORE_GIVING_UP) {
+                        console.warn("Taking too long");
+                        is_done = true;
+                    } else {
+                        var do_continue = improve(
+                            knobs_were_going_to_twist,
+                            popup_score_composer,
+                            multiplier
+                        );
+                        is_done = ! do_continue;
+                        if ( ! is_done) {
+                            var setting_string = knob_settings_string(knobs_were_going_to_twist, that);
+                            if (has(setting_log, setting_string)) {
+                                console.warn(
+                                    "ABORT ITERATION - duplicate settings at",
+                                    setting_log.indexOf(setting_string) + 1,
+                                    "of",
+                                    setting_log.length,
+                                    setting_string
+                                );
+                                that.cancel_optimize();
+                                is_done = true;
+                                multipliers_done = true;
+                            } else {
+                                setting_log.push(setting_string);
+                            }
+                        }
+                    }
+                    return is_done;
+                },
+                then: function (n_steps) {
+                    iterator_interval = null;
+                    step_count_strings.push(n_steps.toString())
+                    function iteration_report() {
+                        var s_final = popup_score_composer();
+                        // noinspection JSUnresolvedVariable
+                        console.log(
+                            "Done in",
+                            step_count_strings.join(","),
+                            "steps",
+                            multiplier,
+                            context.is_poetry ? "POEM" : "prose",
+                            s_final.score.toFixed(6),
+                            "\n" + s_final.report("\n") + "\n",
+                            context.width_cont_natural,
+                            context.width_sup_natural,
+                            "\n" + improve.report,
+                            setting_log.length,
+                            "\nsettings tried"
+                        );
+                    }
+                    that.fix_caption_width();
+                    var next_multiplier = multiplier * MULTIPLIER_MULTIPLIER;
+                    if (next_multiplier > LAST_MULTIPLIER && ! multipliers_done) {
+                        // iteration_report();
+                        try_multiplier(next_multiplier);
+                    } else {
+                        // NOTE:  End of the outermost loop (of multipliers)
+                        iteration_report();
+                        setTimeout(function () {
+                            var height_expansion = usable_height() / that.$sup.height();
+                            var width_expansion = usable_width() / that.$sup.width();
+                            var possible_expansion = Math.min(height_expansion, width_expansion);
+                            var practical_expansion = possible_expansion * 1.00;
+                            practical_expansion = Math.min(1.0, practical_expansion);
+                            if (practical_expansion > 1.0) {
+                                console.log("Before", that, that.$cont.height(), that.$cont.innerHeight(), that.$cont.outerHeight(), that.$cont.css('height'), that.$cont.css('font-size'));
+                                Knob.named.font.value_multiply(that, practical_expansion);
+                                console.log("After ", that, that.$cont.height(), that.$cont.outerHeight(), that.$cont.css('height'), that.$cont.css('font-size'));
+                                // NOTE:  Using $sup ratios to expand $cont elements.
+                                //        Result is more margin for the larger fonts.
+                            }
+                        }, 1000);
+                    }
+                },
+                delay_ms: 100,
+                n_chunk: 1
+            });
+        }
+
+        // try_multiplier(50.0, function () {
+        //     try_multiplier(5.0, function () {
+        //         try_multiplier(0.5);
+        //     });
+        // });
+    };
+
+    /**
+     * Call a process until it's done.  Relinquish control between chunks of process calls.
+     *
+     * @param {object}   opt - {process, delay_ms, n_chunk, then, do_early}
+     * @param {function} opt.process - callback is called until it returns false
+     * @param {number}   opt.delay_ms - milliseconds between chunks, 0 for minimal relinquishment.
+     * @param {number}   opt.n_chunk - number of times to call process() between each relinquishment.
+     * @param {function} opt.then - callback after done
+     * @param {boolean=} opt.do_early - true=get started with a chunk right away
+     *                                  false=wait delay_ms before starting the first chunk
+     * @return {number} - something to pass to clearInterval() to stop iteration prematurely.
+     *                    If this value is saved, it must be passed to clearInterval()
+     *                    before then() is called. If the value is null, no interval was started,
+     *                    and so there's no need to call clearInterval().
+     *                    Typically whatever variable stores this value, is nulled by then().
+     */
+    function iterate(opt) {
+        opt.then     = default_to(opt.then,     function (){});
+        opt.do_early = default_to(opt.do_early, false);
+        if (typeof opt.n_chunk !== 'number' || opt.n_chunk < 1) {
+            opt.n_chunk = 1;
+        }
+        var i_step = 0;
+        var is_done = false;
+        var interval = null;
+
+        function chunk() {
+            for (var i_chunk = 0 ; i_chunk < opt.n_chunk ; i_chunk++) {
+                is_done = opt.process(i_step);
+                if (is_done) {
+                    if (interval !== null) {
+                        clearInterval(interval);
+                    }
+                    opt.then(i_step);
+                    return;
+                } else {
+                    i_step++;
+                    // NOTE:  Assume the opt.process() returning false is a do-nothing step.
+                    //        So it is not counted in the value passed to opt.then().
+                }
+            }
+        }
+        if (opt.do_early) {
+            chunk();
+        }
+        if ( ! is_done) {  // If 1 chunk was enough, won't need to called setInterval().
+            interval = setInterval(function array_async_single_chunk() {
+                console.debug("interval chunk", i_step);
+                chunk();
+            }, opt.delay_ms);
+        }
+        return interval;
+    }
+
+    function CompositeScore(scorers) {
+        if ( ! (this instanceof CompositeScore)) {
+            return new CompositeScore(scorers);
+        }
+        var that = this;
+        that.score = 0.0;
+        that.scores = [];
+        that.scorers = scorers;
+        looper(that.scorers, function (i_scorer, scorer) {
+            var each_score = scorer.calculate();
+            that.score += each_score * scorer.weight;
+            that.scores[i_scorer] = each_score;
+        });
+    }
+    CompositeScore.prototype.report = function Score_report(delimiter) {
+        delimiter = delimiter || ", ";
+        var that = this;
+        var sub_reports = []
+        looper(that.scores, function (i_scorer, sub_score) {
+            var sub_report = "{i}. {name} {score}"
+                .replace('{i}', (parseInt(i_scorer) + 1).toString())
+                .replace('{name}', that.scorers[i_scorer].name)
+                .replace('{score}', sub_score.toFixed(3))
+            ;
+            sub_reports.push(sub_report);
+        });
+        return sub_reports.join(delimiter);
+    }
+
+    // noinspection JSUnusedGlobalSymbols
+    CompositeScore.prototype.INDETERMINATE = NaN;   // TODO:  Number.NEGATIVE_INFINITY?
+    CompositeScore.prototype.is_indeterminate = function Score_is_indeterminate() {
+        return isNaN(this.score);
+    }
+
+    // var scores_we_care_about = [];
+
+    // function window_fixed_top() {
+    //     return $('#up-top').innerHeight();
+    // }
+
+    // noinspection JSUnusedGlobalSymbols
+    Contribution.prototype.score_composer_prep = function Contribution_score_composer_prep() {
+        var that = this;
+
+        // var width_body = $(window.document.body).width();
+        var left_was = parseFloat(that.$sup.css('left'));
+        var width_was = that.$cont.width();
+        var height_was = that.$cont.height();
+
+        that.$sup.css('left', 0);
+        that.$cont.width('auto');
+        that.$cont.height('auto');
+
+        var width_sup_natural = that.$sup.width()
+        var height_sup_natural = that.$sup.height();
+        var width_cont_natural = that.$cont.width();
+        var height_cont_natural = that.$cont.height();
+
+        var does_man_spread = width_sup_natural > (usable_width() * 0.95);
+        // NOTE:  Does the content take up all the width you can give it?
+
+        var is_poetry = any_lone_newlines(that.content) && ! does_man_spread;
+        // NOTE:  Poetry wants to be a certain width.
+        //        To be considered poetry, the text must have some lone newlines in it.
+        //        (Double newlines are paragraph boundaries and don't count.)
+        //        It also not have any lines could stretch to the full width of the window
+        //        if we let them, aka man-spreading lines, aka free-flowing paragraph.
+
+        that.$sup.css('left', left_was);
+        that.$cont.width(width_was);
+        that.$cont.height(height_was);
+
+        that.score_composer_context = {
+            width_cont_natural:  width_cont_natural,
+            width_sup_natural:   width_sup_natural,
+            height_cont_natural: height_cont_natural,
+            height_sup_natural:  height_sup_natural,
+            // width_body:          width_body,
+            is_poetry:           is_poetry,
+            latest_score:        null,
+            iterator_interval:   null
+        };
+    }
+
+    Contribution.prototype.score_composer = function Contribution_score_composer() {
+        var that = this;
+        var context = that.score_composer_context;
+
+        // function centered_horizontal() {
+        //     var window_middle_x = $(window).width() / 2.0;
+        //     var rect = that.$sup.get(0).getBoundingClientRect();
+        //     var cont_middle_x = rect.left + that.$sup.outerWidth() / 2.0;
+        //     var distance_px = Math.abs(window_middle_x - cont_middle_x);
+        //     var distance_portion = distance_px / window_middle_x;
+        //     var distance_score = 1.0 - distance_portion;   // 1 at center, 0 at edges
+        //     return distance_score;
+        // }
+        // function centered_vertical() {
+        //     var window_middle_y = (TOP_SPACER_PX + $(window).height()) / 2.0;
+        //     var rect = that.$sup.get(0).getBoundingClientRect();
+        //     var cont_middle_y = rect.top + that.$sup.outerHeight() / 2.0;
+        //     var distance_px = Math.abs(window_middle_y - cont_middle_y);
+        //     var distance_portion = distance_px / window_middle_y;
+        //     var distance_score = 1.0 - distance_portion;   // 1 at center, 0 at edges
+        //     return distance_score;
+        // }
+
+        function fit_horizontal() {
+            var rect = that.$sup.get(0).getBoundingClientRect();
+            // THANKS:  Element on-screen, https://stackoverflow.com/a/34505360/673991
+            // SEE:  https://developer.mozilla.org/Web/API/Element/getBoundingClientRect#Value
+            var sup_left = rect.left;
+            var sup_right = rect.right;
+            var window_width = $(window).width();
+            var window_left = 0;
+            var window_right = window_width;
+            var hid_left = Math.max(0, window_left - sup_left);
+            var hid_right = Math.max(0, sup_right - window_right);
+            var hid_portion = (hid_left + hid_right) / usable_width();   // 0=none 1=window-width hid
+            var fit_score = 1.0 - hid_portion;
+            return fit_score;
+        }
+
+        function fit_top() {
+            var rect = that.$sup.get(0).getBoundingClientRect();
+            var sup_top = rect.top;
+            var window_top = TOP_SPACER_PX;
+            var hid_top = Math.max(0, window_top - sup_top);
+            var hid_portion = hid_top / usable_height();   // 0=none 1=window-height hid
+            var fit_score = 1.0 - hid_portion;
+            return fit_score;
+        }
+
+        function fit_bottom() {
+            var rect = that.$sup.get(0).getBoundingClientRect();
+            var sup_bottom = rect.bottom;
+            var window_height = $(window).height();
+            var window_bottom = window_height;
+            var hid_bottom = Math.max(0, sup_bottom - window_bottom);
+            var hid_portion = hid_bottom / usable_height();   // 0=none 1=window-height hid
+            var fit_score = 1.0 - hid_portion;
+            return fit_score;
+        }
+
+        // var font_ok_rem = 1.0;      // score is zero here, negative below this point
+        // var font_ideal_rem = 3.0;   // score peaks here at one
+        // var font_ok_px = px_from_em(font_ok_rem);
+        // var font_ideal_px = px_from_em(font_ideal_rem);
+        // function font_readable() {
+        //     var font_px = font_size(that.$cont);
+        //     var font_error = Math.abs(font_px - font_ideal_px);
+        //     var font_error_scaled = font_error / Math.abs(font_ideal_px - font_ok_px);
+        //     var font_score = 1.0 - font_error_scaled;
+        //     // console.debug("Font", font_score, font_error, font_rem, font_px);
+        //     return font_score;
+        // }
+
+        // // noinspection JSUnusedLocalSymbols
+        // function is_wrapped() {
+        //     var wrapped_width = that.$cont.width();
+        //     var wrapped_height = that.$cont.height();
+        //     that.$cont.css({'width': 'auto'});
+        //     var unwrapped_width = that.$cont.width();
+        //     var unwrapped_height = that.$cont.height();
+        //     that.$cont.width(wrapped_width);
+        //     var width_says_yes = unwrapped_width > wrapped_width * 1.001;
+        //     var height_says_yes = unwrapped_height < wrapped_height / 1.001;
+        //     var did_wrap = width_says_yes || height_says_yes;
+        //     if (width_says_yes && ! height_says_yes) console.log("Wrapped on WIDTH only.");
+        //     if (height_says_yes && ! width_says_yes) console.log("Wrapped on HEIGHT only.");
+        //     // console.debug("Wrap", did_wrap, wrapped_width, wrapped_height, unwrapped_width, unwrapped_height);
+        //     return did_wrap ? 0.0 : 1.0;
+        // }
+
+        function wrap_accuracy() {
+            var wrapped_width = that.$cont.width();   // The current width setting
+            var unwrapped_width = context.width_cont_natural + 10;
+            // TODO:  Less crude scrollbar prevention than + 10 above.
+            //        The reason there's a scrollbar to prevent is improvement incrementing by 10
+            //        would stop 4 units below optimum, because the next candidate would be
+            //        6 units above optimum, which would have a lower score.
+            //        So + 10 could be + 5 I guess in theory.
+
+            // that.$cont.width(wrapped_width);
+            var wrap_error = Math.abs(wrapped_width - unwrapped_width);
+            if (unwrapped_width < 10) {
+                return 0.0;
+            }
+            var wrap_error_scaled = wrap_error / usable_height();   // height[sic] - common units
+            var wrap_score = 1.0 - wrap_error_scaled;
+            return wrap_score;
+        }
+
+        /**
+         * Hang accuracy means is the height natural?  Versus wasted space at the bottom.
+         *
+         * @return {number} 1 = perfect fit
+         */
+        function hang_accuracy() {
+            var current_height = that.$cont.height();   // The current height setting
+
+            // that.$cont.css({'height': 'auto'});
+            // // var natural_height = that.$cont.height();   // Nope, this lets scroll hide stuff.
+            // var natural_height = that.$cont.get(0).scrollHeight;
+            // // NOTE:  We want to know what the height would be if there were no scrolling and no
+            // //        air at the bottom.  So we need to include height hidden by scrolling!
+            // that.$cont.height(current_height);
+
+
+            var range = window.document.createRange();
+            console.assert(that.$cont.length === 1);
+            console.assert(that.$cont.get(0).childNodes.length === 1);
+            var cont_text_node = that.$cont.get(0).childNodes[0];
+            range.selectNodeContents(cont_text_node);
+            var text_rectangle = range.getBoundingClientRect();
+            var natural_height = text_rectangle.height;
+
+
+            natural_height += 5;   // crude scrollbar prevention, avoid being just UNDER natural
+            // NOTE:  Unlike natural width, natural height cannot be calculated ahead of time
+            //        outside the optimize loop, because it changes as width changes, because wraps
+            //        come and go.  This may be more true of prose than of poetry.
+            // TODO:  Could / should poetry use context.height_cont_natural?
+
+            var hang_error = Math.abs(current_height - natural_height);
+            var hang_error_normalized = hang_error / usable_height();
+            var hang_score = 1.0 - hang_error_normalized;
+            return hang_score;
+        }
+
+        function less_vertical_scrollbar() {
+            var content_height = that.$cont.innerHeight();
+            var scroll_height = that.$cont.get(0).scrollHeight;
+            var hid_pixels = scroll_height - content_height;
+            var hid_screens = hid_pixels / usable_height();
+            var scroll_score = 1.0 - hid_screens;
+            // NOTE:  1=no scrollbar, 0.5=half a screen worth is hidden
+            // THANKS:  detect scrollbar, https://stackoverflow.com/a/9016183/673991
+            return scroll_score;
+        }
+
+        function aspect_ratio_match_window() {
+            // var aspect_window = usable_width() / usable_height();
+            // var width_shrinkage = that.$cont.width() / usable_width();
+            // var height_shrinkage = that.$cont.height() / usable_height();
+            // var height_shrinkage_should_be = width_shrinkage / aspect_window;
+            // var height_error = Math.abs(height_shrinkage - height_shrinkage_should_be);
+            // // NOTE:  0.0 means aspect of contribution exactly the same as aspect of window.
+            // //        0.1 means contribution height is 1/10 of a screen too tall or to short.
+            // var aspect_score = 1.0 - height_error;
+
+
+
+            var aspect_window = usable_width() / usable_height();
+            var width_is = that.$sup.width();
+            var height_is = that.$sup.height();
+            var height_should_be = width_is / aspect_window;
+            var height_error = Math.abs(height_is - height_should_be);
+            var height_error_normalized = height_error / usable_height();
+            // NOTE:  0.0 means aspect of sup-contribution same as aspect of usable window.
+            //        0.1 means sup-contribution height is 1/10 of a screen too tall or too short
+            //            for its width, and for the window's aspect ratio.
+            var aspect_score = 1.0 - height_error_normalized;
+            return aspect_score;
+
+
+
+            // var aspect_cont = that.$cont.width() / that.$cont.height();
+            // var aspect_error = Math.abs(aspect_window - aspect_cont);
+            // var aspect_error_portion = aspect_error / aspect_window;
+            // var aspect_score = 1.0 - aspect_error_portion;
+            // return aspect_score;
+
+
+
+            // var aspect_aspect = aspect_window / aspect_cont;
+            // if (aspect_aspect > 1.0) {
+            //     aspect_aspect = 1.0 / aspect_aspect;
+            // }
+            // return aspect_aspect;
+        }
+
+        // var does_man_spread = context.width_sup_natural > (context.width_body * 0.95);
+        // // NOTE:  Does the content take up all the width you can give it?
+        //
+        // var is_poetry = context.any_lone_newlines && ! does_man_spread;
+        // // NOTE:  Poetry wants to be a certain width.
+        // //        To be considered poetry, the text must have some lone newlines in it.
+        // //        (Double newlines are paragraph boundaries and don't count.)
+        // //        It also not have any lines could stretch to the full width of the window
+        // //        if we let them, aka man-spreading lines, aka free-flowing paragraph.
+
+        // TODO:  Could a score capture the idea this should not go on forever?
+        //        Something about the time since started.
+        //        That would reduce the problem of diminishing returns.
+        //        But I don't see how exactly that number might go into a score that would do that.
+
+        // TODO:  Natch this structure should be inited OUTSIDE the scoring function.
+
+        var composite_score = CompositeScore([
+            // {name: "h_center", calculate: centered_horizontal,       weight: 1.0},
+            // {name: "v_center", calculate: centered_vertical,         weight: 0.5},
+            {name: "h_fit",    calculate: fit_horizontal,            weight: 3.0},
+            {name: "t_fit",    calculate: fit_top,                   weight: 3.0},
+            {name: "b_fit",    calculate: fit_bottom,                weight: 3.0},
+            // {name: "font",     calculate: font_readable,             weight: 1.0},
+            {name: "wrap",     calculate: wrap_accuracy,             weight: context.is_poetry ? 2.0 : 0.0},
+            {name: "hang",     calculate: hang_accuracy,             weight: 1.0},
+            {name: "v_scroll", calculate: less_vertical_scrollbar,   weight: 0.75},
+            {name: "aspect",   calculate: aspect_ratio_match_window, weight: context.is_poetry ? 0.0 : 0.5}
+        ]);
+
+        // composite_score.is_poetry = is_poetry;
+        //
+        // var header = "Score {score}\n".replace('{score}', composite_score.score) ;
+        // var sub_reports = [];
+        // looper(composite_score.scorers, function (i_scorer, scorer) {
+        //     var sub_report = "\t{name}: {value}\n"
+        //         .replace('{name}', scorer.name)
+        //         .replace('{value}', composite_score.scores[i_scorer])
+        //     ;
+        //     sub_reports.push(sub_report);
+        // });
+        // console.log(header + sub_reports.join(""));
+        return composite_score;
+    };
+
+    function font_size(selector, noob) {
+        if (is_specified(noob)) {
+            $(selector).css('font-size', noob.toString() + 'px');
+        } else {
+            return parseFloat($(selector).css('font-size'));   // Assume px units.
+        }
+    }
+
+    function usable_width() {
+        return Math.min(
+            $(window).width(),
+            $(window.document.body).width()
+            // NOTE:  Body might be wider than window if horizontal scrollbar is active.
+        );
+    }
+
+    function usable_height() {
+        return $(window).height() - TOP_SPACER_PX;
+    }
 
     /**
      * Enumeration with names, values, and optional descriptions.
@@ -1750,6 +3070,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
      *                    }
      */
     // SEE:  Debate on value order, https://stackoverflow.com/q/5525795/673991
+    // TODO:  Method to test whether some random object is a member of an Enumeration?
     function Enumerate(enumeration) {
         var value_zero_based = 0;
         looper(enumeration, function (name, object) {
@@ -1758,7 +3079,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             }
             object.name = name;
             object.value = value_zero_based;
-            enumeration[name] = object;
+            enumeration[name] = object;   // replaces the member if it was a string (description)
             value_zero_based++;
         });
         enumeration.number_of_values = value_zero_based;
@@ -1964,6 +3285,38 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         }
     }
 
+    function thumb_click(evt) {
+        var div = this;
+        if ( ! check_contribution_edit_dirty(false, true)) {
+            var cont = Contribution_from_element(this);
+            console.log("thumb click", cont.id_attribute);
+            bigger(div, true);
+            evt.stopPropagation();
+            evt.preventDefault();
+            return false;
+        }
+    }
+
+    /**
+     * Respond to the buttons under individual contribution thumbnails.
+     *
+     * @param element - anywhere in a contribution
+     * @param do_play - false for the bigger button, true for the play button
+     */
+    function bigger(element, do_play) {
+        bot.stop();
+        var cont = Contribution_from_element(element);
+        console.assert(cont.exists(), element);
+        $(window.document.body).addClass('pop-up-manual');
+        // NOTE:  body.pop-up-manual results from clicking any of:
+        //        1. the contribution's save-bar "bigger" button with the fullscreen icon
+        //        2. the contribution's save-bar "play" button with the triangle icon
+        //        3. the contribution render-bar thumbnail
+        //        This does not happen when clicking the global bot play button,
+        //        nor its subsequent automated pop-ups.
+        pop_up(cont, do_play);
+    }
+
     /**
      * Do something with the iFrameResizer object.  Call back if there is one.  Explain if not.
      *
@@ -2030,17 +3383,19 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         var $pop_ups = $('.pop-up');
         var pop_cont = null;
         var pop_conts = [];   // In case there are more than one.
+        var pop_ids = "";
+
+        deanimate("pop down", $pop_ups);
+
         $pop_ups.each(function () {
             // NOTE:  There's almost certainly only one .pop-up at a time.
             //        Maybe lingering animations could cause multiple?
             //        But this makes sure to un-pop them all.  And exactly once.
 
             pop_cont = Contribution_from_element(this);
+            var cont = Contribution(pop_cont.idn_decimal);
             pop_conts.push(pop_cont);
-            // var $popup = $(this);
-            // cont_idn = $popup.attr('original_id');
-            // cont_idn = strip_prefix($popup, MONTY.POPUP_ID_PREFIX);
-            // console.assert(cont_idn === null, "NEGLECTED INTERACTION TARGET", cont_idn);
+            pop_ids += cont.id_attribute + " ";
 
             pop_cont.$sup.removeClass('pop-up');
             // NOTE:  This immediate removal of the pop-up class, though premature
@@ -2055,18 +3410,60 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             // TODO:  Instead, just remember the pop-down DOM object ($sup_cont in pop_up()),
             //        and recalculate HERE AND NOW its current "fixed" coordinates from that object.
 
-            embed_message(pop_cont.$sup, {
-                action: 'un-pop-up',
-                width: pop_stuff.render_width,
-                height: pop_stuff.render_height,
-                did_bot_transition: did_bot_transition
-            });
+            if (pop_cont.is_media) {
+                embed_message(pop_cont.$sup, {
+                    action: 'un-pop-up',
+                    width: pop_stuff.render_width,
+                    height: pop_stuff.render_height,
+                    did_bot_transition: did_bot_transition
+                });
+            } else {
+                pop_cont.cancel_optimize();
+
+                pop_cont.$cont.animate({
+                    width: pop_stuff.cont_css_width,
+                    height: pop_stuff.cont_css_height,
+                    'font-size': px_from_em(1)
+                }, {
+                    duration: POP_DOWN_ANIMATE_MS,
+                    easing: POP_DOWN_ANIMATE_EASING,
+                    queue: false
+                });
+                pop_cont.$caption_bar.animate({
+                    width: pop_stuff.caption_css_width,
+                    height: pop_stuff.caption_css_height,
+                    'background-color': pop_stuff.caption_css_background
+                }, {
+                    duration: POP_DOWN_ANIMATE_MS,
+                    easing: POP_DOWN_ANIMATE_EASING,
+                    queue: false
+                });
+                $('#popup-screen').animate({
+                    'background-color': 'rgba(0,0,0,0)'
+                }, {
+                    duration: POP_DOWN_ANIMATE_MS,
+                    easing: POP_DOWN_ANIMATE_EASING,
+                    queue: false
+                });
+                // NOTE:  Rely on the $sup animation to remove the popup-screen element,
+                //        at about the same time as this animation finishes fading.
+                //        Has to be that way because that animation completion function
+                //        also removes the popup $sup from the DOM.
+
+                // TODO:  Velocity.js animation?  https://github.com/julianshapiro/velocity
+            }
+
+
+            // FALSE WARNING:  Argument type {complete: complete} is not assignable to parameter type number | KeyframeAnimationOptions | undefined
             // noinspection JSCheckFunctionSignatures
-            pop_cont.$sup.animate({
-                top: pop_stuff.fixed_top,
-                left: pop_stuff.fixed_left
-            }, {
-                complete: function () {
+            pop_cont.$sup.animate(cont.fixed_coordinates(), {
+                duration: POP_DOWN_ANIMATE_MS,
+                easing: POP_DOWN_ANIMATE_EASING,
+                queue: false,
+                // THANKS:  Concurrent animations, https://stackoverflow.com/a/4719034/673991
+                //          Queue false means animate immediately, in this case mostly
+                //          simultaneously with shrinking text caption.
+                complete: function pop_down_scoot_done() {
                     iframe_resizer(pop_cont.$sup, function (resizer) {
                         resizer.close();
                         // NOTE:  Without close() the un-full window generates warnings on resizing.
@@ -2074,23 +3471,19 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                         //            iframeResizer.js:134
                         //            [iFrameSizer][Host page: popup_iframe_1834]
                         //            [Window resize] IFrame(popup_iframe_1834) not found
-                        //        And probably leaks memory.
+                        //        And probably maybe leaks memory.
                     });
-                    pop_cont.$sup.data('popped-down').removeClass('pop-down');
-                    pop_cont.$sup.removeData('popped-down');
-                    pop_cont.$sup.remove();
+
+                    // pop_cont.$sup.data('popped-down').removeClass('pop-down');
+                    // pop_cont.$sup.removeData('popped-down');
+                    cont.$sup.removeClass('pop-down');
+                    // NOTE:  Unhide the original un-popped contribution
+
+                    $('#popup-screen').remove();   // Removes contained popup contribution too.
                 }
             });
         });
         console.assert(pop_conts.length <= 1, "MULTIPLE POP-UPS", pop_conts);
-
-        if ($animation_in_progress !== null) {
-            console.log("DEANIMATING", $animation_in_progress.map(function () {
-                return $(this).find('.contribution').attr('id');
-            }).toArray().join());
-            $animation_in_progress.stop();
-            $animation_in_progress = null;
-        }
 
         if (talkify_player !== null) {
             console.log("DISPOSE", talkify_player.correlationId, "player");
@@ -2141,67 +3534,99 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         }
     }
 
-    function thumb_click(evt) {
-        var div = this;
-        if ( ! check_contribution_edit_dirty(false, true)) {
-            var cont = Contribution_from_element(this);
-            console.log("thumb click", cont.id_attribute);
-            bigger(div, true);
-            evt.stopPropagation();
-            evt.preventDefault();
-            return false;
-        }
+    function deanimate(what) {
+        $(':animated').each(function () {
+            var $element = $(this);
+            var deanimating_cont = Contribution_from_element($element);
+            if (deanimating_cont.does_exist) {
+                console.warn(
+                    "Deanimating before",
+                    what,
+                    deanimating_cont.id_attribute,
+                    $element.attr('class') || "(no classes)"
+                );
+            } else {
+                console.warn(
+                    "Deanimating before",
+                    what,
+                    "SOME ELEMENT",
+                    $element.attr('id') || "(no id)",
+                    $element.attr('class') || "(no classes)"
+                );
+            }
+            $element.finish();
+        });
+
+        // if ($animation_in_progress !== null) {
+        //     var ids_being_animated = $animation_in_progress.map(function () {
+        //         return $(this).find('.contribution').attr('id');
+        //     }).toArray();
+        //     console.log("DEANIMATING", what, ids_being_animated.join(","));
+        //     $animation_in_progress.finish();
+        //     console.assert(
+        //         $animation_in_progress === null,
+        //         "Animation complete callback didn't null progress",
+        //         $animation_in_progress
+        //     );
+        //     $animation_in_progress = null;
+        // }
     }
 
+    // Contribution.prototype.deanimate = function Contribution_deanimate() {
+    //     var that = this;
+    //     function deanimate(which, $element) {
+    //         $element.filter(':animated').each(function () {
+    //             console.warn("Deanimating", that.id_attribute, which);
+    //         });
+    //         $element.finish();
+    //     }
+    //     deanimate('screen',  that.$screen);
+    //     deanimate('sup',     that.$sup);
+    //     deanimate('cont',    that.$cont);
+    //     deanimate('caption', that.$caption_bar);
+    // }
+
     /**
-     * Respond to the buttons under individual contribution thumbnails.
+     * Compute coordinates for position:fixed clone that would appear in the same place.
      *
-     * @param element - anywhere in a contribution
-     * @param do_play - false for the bigger button, true for the play button
+     * @return {{top: number, left: number}}
      */
-    function bigger(element, do_play) {
-        bot.stop();
-        var cont = Contribution_from_element(element);
-        console.assert(cont.exists(), element);
-        $(window.document.body).addClass('pop-up-manual');
-        // NOTE:  body.pop-up-manual results from clicking any of:
-        //        1. the contribution's save-bar bigger button with the fullscreen icon
-        //        2. the contribution's save-bar play button with the triangle icon
-        //        3. the contribution render-bar thumbnail
-        //        This does not happen when clicking the global bot play button,
-        //        nor its subsequent automated pop-ups.
-        pop_up(cont, do_play);
-    }
+    Contribution.prototype.fixed_coordinates = function Contribution_fixed_coordinates() {
+        var that = this;
+        var offset = that.$sup.offset();
+        return {
+            top: offset.top - $(window).scrollTop(),
+            left: offset.left - $(window).scrollLeft()
+        };
+        // THANKS:  Recast position from relative to fixed, with no apparent change,
+        //          (my own compendium) https://stackoverflow.com/a/44438131/673991
+    };
 
     function pop_up(cont, auto_play) {
         var cont_idn = cont.id_attribute;
         var popup_cont_idn = MONTY.POPUP_ID_PREFIX + cont_idn;
+        // TODO:  Less misleading symbol name than popup_cont_idn.
+        //        It's less of an idn than cont_idn, which at least is a decimal string of the qiki
+        //        idn.  This thing e.g. "popup_1809" is the id attribute
+        //        of the popup .contribution element.
         var popup_cont_selector = selector_from_id(popup_cont_idn);
         var was_already_popped_up = $(popup_cont_selector).length > 0;
 
         pop_down_all(false);
         if (was_already_popped_up) {
-            console.error("Oops, somehow", cont_idn, "was already popped up.");
+            console.log("Contribution", cont_idn, "is popping itself down by 2nd click.");
             // NOTE:  Avoid double-pop-up.  Just pop down, don't pop-up again.
             return null;
         }
 
-        var top_air = $('.sup-category-first').offset().top;
-        var offset = cont.$sup.offset();
-        var window_width = $(window).width();
-        var window_height = $(window).height();
-        console.debug(
-            "WINDOW",
-
-            window_width.toString() + "x" + window_height.toString(),
-            // EXAMPLE:  1369x630 - browser window WITHOUT scrollbars
-
-            window.innerWidth.toString() + "x" + window.innerHeight.toString()
-            // EXAMPLE:  1386x630 - browser window WITH scrollbars
-        );
+        // var top_air = $('.sup-category-first').offset().top;
         var render_width = cont.$render_bar.width();
         var render_height = cont.$render_bar.height();
-        var caption_height = cont.$sup.find('.caption-bar').height();
+        var cont_css_width = cont.$cont.css('width');
+        var cont_css_height = cont.$cont.css('height');
+        var caption_css_width = cont.$caption_bar.css('width');
+        var caption_css_height = cont.$caption_bar.css('height');
+        var caption_css_background = cont.$caption_bar.css('background-color');
         var save_height = cont.$save_bar.height() || cont.$save_bar.find('.edit').height();
         var vertical_padding_in_css = px_from_em(0.3 + 0.3);
 
@@ -2239,52 +3664,58 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         // TODO:  Try "Float Fix Float" http://complexspiral.com/publications/containing-floats/
         //        More tricks:  https://stackoverflow.com/a/5369963/673991
 
-        var $popup = cont.$sup.clone(false, true);
+        var $popup = cont.$sup.clone();
+        // TODO:  Why in the world was this .clone(false, true)??
+        //        It seems to have worked; sup data wasn't cloned but cont data was.
+        //        Anyway I don't think I need it.  Do I??
 
         $popup.find('[id]').attr('id', function () {
             return MONTY.POPUP_ID_PREFIX + $(this).attr('id');
         });
-        // NOTE:  Prefix all ids in the clone, to avoid duplicate ids.
+        // NOTE:  Prefix all id attributes in the clone elements, to avoid duplicate ids.
 
         $popup.find('.grip').removeClass('grip').addClass('grip-inoperative');
         // NOTE:  No dragging popped-up stuff.
         //        It was a little disconcerting not seeing the grip symbol there.
-        //        So just disabling the feature seemed the lesser UX crime.
+        //        So just disabling the feature and dimming the icon
+        //        seemed the lesser UX crime.
 
         $popup.addClass('pop-up');
         cont.$sup.addClass('pop-down');
         $popup.data('popped-down', cont.$sup);
-        cont.$sup.before($popup);
+
+        var $popup_screen = $('<div>', {id: 'popup-screen'});
+        $popup_screen.append($popup);
+        cont.$sup.before($popup_screen);
+
         var pop_cont = Contribution_from_element($popup);
 
-        var fixed_top = offset.top - $(window).scrollTop();
-        var fixed_left = offset.left - $(window).scrollLeft();
         $popup.data('pop-stuff', {
             render_width: render_width,
             render_height: render_height,
-            fixed_top: fixed_top,
-            fixed_left: fixed_left
+            cont_css_width: cont_css_width,
+            cont_css_height: cont_css_height,
+            caption_css_width: caption_css_width,
+            caption_css_height: caption_css_height,
+            caption_css_background: caption_css_background
         });
+
         $popup.css({
             position: 'fixed',
-            top: fixed_top,
-            left: fixed_left,
             'z-index': 1
         });
-        // THANKS:  Recast position from relative to fixed, with no apparent change,
-        //          (my own compendium) https://stackoverflow.com/a/44438131/673991
+        $popup.css(pop_cont.fixed_coordinates());
 
+        var max_live_width = usable_width();
+        var caption_height_px = cont.$caption_bar.outerHeight();
+        // NOTE:  Wrapped captions may result in less tall popups, because popped-up captions
+        //        don't need to be wrapped.
         var max_live_height = Math.round(
-            window_height
-            - top_air
-            - caption_height
+            usable_height()
+            - caption_height_px
             // - save_height   // Not this; we eliminated buttons below the pop-up.
             - vertical_padding_in_css
             - 30
-        );
-        var max_live_width = Math.round(
-            window_width
-            -30
         );
 
         if (cont.is_media) {
@@ -2313,16 +3744,17 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                     //        and let iFrameResizer handle the outer size.
                     // SEE:  Tricky iframe height 100%, https://stackoverflow.com/a/5871861/673991
 
-                    $animation_in_progress = $popup;
+                    deanimate("pop up media " + popup_cont_idn);
+                    // $animation_in_progress = $popup;
                     $popup.animate({
                         left: 0,
-                        top: top_air,
+                        top: TOP_SPACER_PX,
                         'background-color': 'rgba(0,0,0,0.25)'
                         // THANKS:  Alpha, not opacity, https://stackoverflow.com/a/5770362/673991
                     }, {
                         easing: 'swing',
                         complete: function () {
-                            $animation_in_progress = null;
+                            // $animation_in_progress = null;
                             pop_cont.resizer_nudge();
                             pop_cont.zero_iframe_recover();
                             // NOTE:  A little extra help for pop-ups
@@ -2333,75 +3765,124 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                 }
             );
         } else {
-            $popup.css({
-                'background-color': 'rgba(0,0,0,0)',
-                transform: 'translateX(-50%)'
-            });
-            $animation_in_progress = $popup;
-            $popup.animate({
-                left: '50%',
-                top: top_air,
-                'background-color': 'rgba(0,0,0,0.25)'
-                // THANKS:  Alpha, not opacity, https://stackoverflow.com/a/5770362/673991
-            }, {
-                easing: 'swing',
-                complete: function () {
-                    $animation_in_progress = null;
-                    var $pop_cont = $popup.find('.contribution');
-                    console.assert($pop_cont.length === 1, $popup);
+            // $popup.css({
+            //     'background-color': 'rgba(0,0,0,0)'
+            //     //            ,
+            //     // transform: 'translateX(-50%)'
+            // });
+            // $animation_in_progress = $popup;
+            // $popup.animate({
+            //     // left: '50%',
+            //     left: 0,
+            //     top: TOP_SPACER_PX,
+            //     'background-color': 'rgba(0,0,0,0.25)'
+            //     // THANKS:  Alpha, not opacity, https://stackoverflow.com/a/5770362/673991
+            // }, {
+            //     easing: 'swing',
+            //     complete: function () {
+            //         $animation_in_progress = null;
 
-                    var max_live_height_em = em_from_px(max_live_height);
-                    var max_live_width_em = em_from_px(max_live_width);
-                    POPUP_HEIGHT_MAX_EM.soft = max_live_height_em;
-                    POPUP_HEIGHT_MAX_EM.hard = max_live_height_em;
-                    POPUP_HEIGHT_MAX_EM.extreme = max_live_height_em;
+            // $popup_screen.css({
+            //     'background-color': 'rgba(0,0,0,0)'
+            // });
+            // deanimate("pop up quote " + popup_cont_idn);
+            // // console.assert($animation_in_progress === null, "Thief", cont_idn, $animation_in_progress);
+            // // $animation_in_progress = $popup;
+            // $popup_screen.animate({
+            //     'background-color': 'rgba(0,0,0,0.25)'
+            //     // THANKS:  Alpha, not opacity, https://stackoverflow.com/a/5770362/673991
+            // }, {
+            //     duration: POP_UP_ANIMATE_MS,
+            //     easing: POP_UP_ANIMATE_EASING,
+            //     queue: false,
+            //     complete: function () {
+            //         if ($animation_in_progress === $popup) {
+            //             $animation_in_progress = null;
+            //         } else {
+            //             console.error("Thievery, popup animation", cont_idn, "conflicts with", $animation_in_progress);
+            //         }
+            //         // FIXME:  Bug where pop-down doesn't move the clone's left,top
+            //         //         Symptom is the pop-down $cont and $caption_bar animations complete
+            //         //         but the $sup animation doesn't budge OR complete.
+            //         //         Was it something to do with optimize() having OTHER tandem animations??
+            //     }
+            // });
 
-                    var dim = size_adjust($pop_cont, POPUP_WIDTH_MAX_EM, POPUP_HEIGHT_MAX_EM);
 
-                    if (dim.width_em > 1 && dim.height_em > 1) {
-                        var h_amplify = max_live_width_em / dim.width_em;
-                        var height_wannabe_em = em_from_px($pop_cont.get(0).scrollHeight);
-                        var v_amplify = max_live_height_em / height_wannabe_em;
-                        var amplify = Math.min(h_amplify, v_amplify);
-                        amplify = Math.min(amplify, 2.0);
-                        amplify = Math.max(amplify, 0.75);
-                        if (amplify < 1.0) {
-                            var max_live_height_amplified_em = max_live_height_em / amplify;
-                            set_em($pop_cont, 'height', max_live_height_amplified_em);
-                            console.log("set_em", window_height, max_live_height, max_live_height_em);
-                        }
 
-                        var FONT_AMPLIFICATION_RELUCTANCE = 0.95;
-                        amplify *= FONT_AMPLIFICATION_RELUCTANCE;
-                        var font_size = (amplify * 100.0).toFixed(1) + '%';
-                        $pop_cont.css({'font-size': font_size});
+            pop_cont.full_ish_screen_text(function () {
 
-                        var WIDTH_AMPLIFICATION_TO_AVOID_WRAP = 1.05;
-                        // TODO:  Explain why this is the right value.
-                        //        Coincidence that it's reciprocal FONT_AMPLIFICATION_RELUCTANCE?
-                        //        If so, why would DECREASING the font size go along with
-                        //        INCREASING the width to the same extent?
-                        var ADDITIONAL_WIDTH_FOR_ANIMATION_TO_AVOID_WRAP_EM = 3.0;
-                        // NOTE:  Avoids wrap for FIXED width contributions.
-                        //        Long paragraphs will wrap during animation.
-                        //        Derived empirically from LUnslumping Sesquipedalian Limerick
-                        //        http://localhost.visibone.com:5000/?cont=3947
-                        var adjusted_width = (
-                            dim.width_em * WIDTH_AMPLIFICATION_TO_AVOID_WRAP +
-                            ADDITIONAL_WIDTH_FOR_ANIMATION_TO_AVOID_WRAP_EM
-                        );
-                        set_em($pop_cont, 'width', adjusted_width);
 
-                        console.log(
-                            "Amplify",
-                            font_size,
-                            h_amplify,
-                            v_amplify,
-                            dim,
-                            height_wannabe_em,
-                            adjusted_width
-                        );
-                    }
+
+                    // var $pop_cont = $popup.find('.contribution');
+                    // console.assert($pop_cont.length === 1, $popup);
+                    //
+                    // var max_live_height_em = em_from_px(max_live_height);
+                    // var max_live_width_em = em_from_px(max_live_width);
+                    // POPUP_HEIGHT_MAX_EM.soft = max_live_height_em;
+                    // POPUP_HEIGHT_MAX_EM.hard = max_live_height_em;
+                    // POPUP_HEIGHT_MAX_EM.extreme = max_live_height_em;
+                    //
+                    // var dim = size_adjust($pop_cont, POPUP_WIDTH_MAX_EM, POPUP_HEIGHT_MAX_EM);
+                    //
+                    // if (dim.width_em > 1 && dim.height_em > 1) {
+                    //     var h_amplify = max_live_width_em / dim.width_em;
+                    //     var height_wannabe_em = em_from_px($pop_cont.get(0).scrollHeight);
+                    //     var v_amplify = max_live_height_em / height_wannabe_em;
+                    //     var amplify = Math.min(h_amplify, v_amplify);
+                    //     amplify = Math.min(amplify, 2.0);
+                    //     amplify = Math.max(amplify, 0.75);
+                    //     if (amplify < 1.0) {
+                    //         var max_live_height_amplified_em = max_live_height_em / amplify;
+                    //         set_em($pop_cont, 'height', max_live_height_amplified_em);
+                    //         console.log("set_em", window_height, max_live_height, max_live_height_em);
+                    //     }
+                    //
+                    //     var FONT_AMPLIFICATION_RELUCTANCE = 0.95;
+                    //     amplify *= FONT_AMPLIFICATION_RELUCTANCE;
+                    //     var font_size = (amplify * 100.0).toFixed(1) + '%';
+                    //     $pop_cont.css({'font-size': font_size});
+                    //
+                    //     var WIDTH_MULTIPLIER_TO_AVOID_WRAP = 1.05;
+                    //     // TODO:  Explain why this is the right value.
+                    //     //        Coincidence that it's reciprocal FONT_AMPLIFICATION_RELUCTANCE?
+                    //     //        If so, why would DECREASING the font size go along with
+                    //     //        INCREASING the width to the same extent?
+                    //     var WIDTH_ADDITIONAL_EM_TO_AVOID_WRAP = 3.0;
+                    //     // NOTE:  Avoids wrap for FIXED width contributions.
+                    //     //        Long paragraphs will wrap during animation.
+                    //     //        Derived empirically from LUnslumping Sesquipedalian Limerick
+                    //     //        http://localhost.visibone.com:5000/?cont=3947
+                    //     var adjusted_width = (
+                    //         dim.width_em * WIDTH_MULTIPLIER_TO_AVOID_WRAP +
+                    //         WIDTH_ADDITIONAL_EM_TO_AVOID_WRAP
+                    //     );
+                    //     var double_padding_px = pop_cont.$sup.innerWidth() - $pop_cont.width();
+                    //     // NOTE:  Account for padding and border for BOTH cont and sup elements.
+                    //     var double_padding_em = em_from_px(double_padding_px);
+                    //     var max_practical_width_em = max_live_width_em - double_padding_em;
+                    //     adjusted_width = Math.min(adjusted_width, max_practical_width_em);
+                    //     set_em($pop_cont, 'width', adjusted_width);
+                    //     // NOTE:  Confine contribution, including padding and border.
+                    //     //        https://stackoverflow.com/a/58158042/673991
+                    //
+                    //     console.log(
+                    //         "Amplify",
+                    //         font_size,
+                    //         h_amplify,
+                    //         v_amplify,
+                    //         dim,
+                    //         height_wannabe_em,
+                    //         adjusted_width,
+                    //         "live",
+                    //         max_live_width,
+                    //         max_live_width_em,
+                    //         double_padding_em,
+                    //         max_practical_width_em,
+                    //         $pop_cont.width(),
+                    //         $pop_cont.innerWidth()
+                    //     );
+                    // }
                     if (auto_play) {
                         var pop_text = pop_cont.content;
 
@@ -2551,10 +4032,9 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                             var end_word = start_word + len_word;
                             var the_word = pop_text.slice(start_word, end_word+1);
                             var range_word = window.document.createRange();
-                            $pop_cont.text(pop_text);
-                            console.assert($pop_cont[0].childNodes.length > 0, $pop_cont[0]);
-                            var text_node = $pop_cont[0].childNodes[0];
-                            console.assert(text_node.nodeName === '#text', text_node);
+                            pop_cont.$cont.text(pop_text);
+                            var text_node = pop_cont.$cont[0].childNodes[0];
+                            console.assert(text_node.nodeName === '#text', text_node, pop_cont);
                             range_word.setStart(text_node, start_word);
                             range_word.setEnd(text_node, end_word);
                             // THANKS:  Range of text, https://stackoverflow.com/a/29903556/673991
@@ -2596,7 +4076,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                             }
                         });
                         $(utter).on('end', function (evt) {
-                            $pop_cont.text(pop_text);
+                            pop_cont.$cont.text(pop_text);
                             if (utter === null) {
                                 console.error(
                                     "Utterance interruptus (vestigial end after aborted speech)",
@@ -2654,6 +4134,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                             //       https://jsfiddle.net/mknm62nx/1/
                             //       https://talkify.net/api/speech/v1/voices?key= + talkify api key
 
+                            // noinspection JSUnusedAssignment
                             var popup_cont_node_list = document.querySelectorAll(popup_cont_selector);
                             // NOTE:  Although $(popup_cont_selector) appears to work, the doc calls for
                             //        "DOM elements" and the example passes a NodeList object.
@@ -2787,11 +4268,20 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                                     duration_report
                                 );
                             };
+                            // noinspection JSUnusedAssignment
                             pop_cont.$sup.trigger(pop_cont.Event.SPEECH_PLAY);
                         }
                     }
-                }
+
+
+
             });
+
+
+
+            //     }
+            // });
+
         }
         console.log("Popup", cont_idn, cont.media_domain);
         return pop_cont;
@@ -2985,8 +4475,8 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                             console.log("...", index, JSON.stringify(s));
                         });
                         // THANKS:  Dropped link, getting the actual URL,
-                        //          https://developer.mozilla.org/en-US/docs/Web/API/DataTransferItemList/DataTransferItem#Example_Drag_and_Drop
-                        // TODO:  Drop anything, https://developer.mozilla.org/en-US/docs/Web/API/HTML_Drag_and_Drop_API/Recommended_drag_types
+                        //          https://developer.mozilla.org/Web/API/DataTransferItemList/DataTransferItem#Example_Drag_and_Drop
+                        // TODO:  Drop anything, https://developer.mozilla.org/Web/API/HTML_Drag_and_Drop_API/Recommended_drag_types
                         // SEE:  Drop link, https://stackoverflow.com/q/11124320/673991
                         if (
                             item.kind === 'string' &&
@@ -3144,7 +4634,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             //        -html5-drag-and-drop-events-in-web-browsers/
             //        Hint:  you have to cancel dragover / dragenter
             // SEE:  Valid drop target
-            //       https://developer.mozilla.org/en-US/docs/Web/API/HTML_Drag_and_Drop_API/Drag_operations#drop
+            //       https://developer.mozilla.org/Web/API/HTML_Drag_and_Drop_API/Drag_operations#drop
             //       https://stackoverflow.com/q/8414154/673991
             return true;
         } else {
@@ -3381,7 +4871,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
 
     function set_em($element, dimension, em) {
         var property = {};
-        property[dimension] = em.toFixed(2) + 'em';
+        property[dimension] = em.toFixed(2) + 'rem';
         $element.css(property);
     }
 
@@ -3622,9 +5112,12 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         //         Should we instead empty and append a div within body?
         $(window.document.body).addClass('dirty-nowhere');
 
-        var $up_top_spacer = $('<div>', {id: 'up-top-spacer'});
+        // var $up_top_spacer = $('<div>', {id: 'up-top-spacer'});
+        // // NOTE:  #up-top-spacer is a position:static element that takes one for the "team" of other
+        // //        position:static elements (which begin with .sup-category-first).
+        // //        It is hidden under the position:fixed #up-top element, so the "team" is not.
         var $up_top = $('<div>', {id: 'up-top'});
-        $(window.document.body).append($up_top_spacer);
+        // $(window.document.body).append($up_top_spacer);
         $(window.document.body).append($up_top);
 
         var $status_prompt = $('<div>', {id: 'status-prompt'});
@@ -4505,10 +5998,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
      * @return {jQuery}
      */
     function build_contribution_dom(contribution_word) {
-        var $sup_contribution = $('<div>', {
-            class: 'sup-contribution word',
-            original_id: contribution_word.idn   // idn of the original contribution, before edits.
-        });
+        var $sup_contribution = $('<div>', {class: 'sup-contribution word'});
         var $contribution = $('<div>', {
             id: contribution_word.idn,
             class: 'contribution size-adjust-once'
@@ -4605,6 +6095,12 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         // THANKS:  leading spaces to nbsp, https://stackoverflow.com/a/4522228/673991
     }
 
+    /**
+     *
+     * @return {{cat: [], cont: {}}} - .cat - array of category idns in display order
+     *                                 .cont - association from each category idn to an array
+     *                                         of its contributions in order
+     */
     function order_of_contributions_in_each_category() {
         var order = { cat:[], cont:{} };
 
@@ -4619,6 +6115,11 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         return order;
     }
 
+    /**
+     *
+     * @param order {{cat: [], cont: {}}}
+     * @return {string}
+     */
     function order_report(order) {
         var cont_nonempty = order.cat.filter(function (cat) {
             return has(order.cont, cat) && order.cont[cat].length > 0
@@ -4947,7 +6448,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     }
 
     function notable_occurrence(message) {
-        qoolbar.post('notable_occurrence', {message: message});
+        qoolbar.post('notable_occurrence', { message: message });
     }
 }
 

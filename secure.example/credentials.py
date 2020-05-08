@@ -130,7 +130,7 @@ class Options(object):
                            2. iframes won't resize to fit their contents.
                               (Though they might resize anyway, sheesh,
                               apparently postMessage isn't needed for everything.)
-    SEE:  targetOrigin, https://developer.mozilla.org/en-US/docs/Web/API/Window/postMessage
+    SEE:  targetOrigin, https://developer.mozilla.org/Web/API/Window/postMessage
     """
     home_page_title = "my title"
     enable_answer_qiki = False

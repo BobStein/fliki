@@ -59,7 +59,7 @@ function domain_from_url(url) {
         }
     }
     return 'no.domain';
-    // TODO:  Make this more generic.
+    // TODO:  Make this special case string more generic.
 }
 console.assert('example.com' === domain_from_url('http://example.com/'));
 console.assert('exam-ple.com' === domain_from_url('https://Exam-ple.com/Foo/?Bar=Baz'));
@@ -79,92 +79,6 @@ function selector_from_id(id) {
 function selector_from_class(class_) {
     return '.' + $.escapeSelector(class_);
 }
-
-/**
- * Is a string nonempty?  That is, not undefined, not null, and not the empty string.
- *
- * THANKS:  Nonnegative synonym for nonempty, https://english.stackexchange.com/a/102788/18673
- *
- * @param txt - usually a string, when null or undefined means the same as empty.
- * @return {boolean}
- */
-function is_laden(txt) {
-    return is_specified(txt) && txt !== "";
-}
-console.assert(false === is_laden(null));
-console.assert(false === is_laden(""));
-console.assert( true === is_laden(" "));
-console.assert( true === is_laden(0));
-
-/**
- * Not undefined, and not null.
- */
-function is_specified(x) {
-    return is_defined(x) && x !== null;
-}
-console.assert(false === is_specified(undefined));
-console.assert(false === is_specified(null));
-console.assert( true === is_specified(0));
-console.assert( true === is_specified(''));
-
-/**
- * Not undefined.
- */
-function is_defined(x) {
-    return typeof x !== 'undefined';
-}
-console.assert(false === is_defined(undefined));
-console.assert( true === is_defined(0));
-
-function is_string(x) {
-    return typeof x === 'string';
-}
-console.assert( true === is_string(''));
-console.assert(false === is_string(0));
-
-function has(collection, thing) {
-    if (typeof collection === 'undefined') {
-        return false;
-    } else if (collection instanceof Array) {
-        return $.inArray(thing, collection) !== -1;
-    } else if (collection instanceof Object) {
-        return collection.hasOwnProperty(thing);
-    } else if (is_string(collection)) {
-        return collection.indexOf(thing) !== -1;
-    } else {
-        console.error("Don't understand has(", type_name(collection), ", )");
-    }
-}
-console.assert( true === has([1, 2, 3], 2));
-console.assert(false === has([1, 2, 3], 9));
-console.assert( true === has({one:1, two:2, three:3}, 'three'));
-console.assert(false === has({one:1, two:2, three:3}, 3));
-console.assert( true === has('alphabet', 'a'));
-console.assert(false === has('alphabet', 'z'));
-console.assert(false === has(undefined, 'anything'));
-
-function type_name(z) {
-    var the_name = typeof z;
-    if (the_name === 'object') {
-        the_name = z.constructor.name;
-    }
-    return the_name;
-}
-console.assert('number' === type_name(3));
-console.assert('Date' === type_name(new Date()));
-
-/**
- * Does a long string start with a short string?  Case sensitive.
- *
- * @param string {string}
- * @param str {string}
- * @return {boolean}
- */
-function starts_with(string, str) {
-    return string.substr(0, str.length) === str;
-}
-console.assert( true === starts_with("string", "str"));
-console.assert(false === starts_with("string", "ing"));
 
 function query_get(name, default_value) {
     var query_params = new window.URLSearchParams(window.location.search);
@@ -243,7 +157,7 @@ if (!String.prototype.startsWith) {
 }
 console.assert('string'.startsWith('str'));
 // THANKS:  .startsWith() polyfill,
-//          https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/String/startsWith
+//          https://developer.mozilla.org/Web/JavaScript/Reference/Global_Objects/String/startsWith
 
 /**
  * Remove a prefix.  Or if it wasn't there, return the same string.
@@ -330,17 +244,6 @@ Timing.prototype.moment = function Timing_moment(what) {
     }
 })(window);
 
-fit_element.FIT_FORGIVENESS = 5;
-// NOTE:  This works around the tweet-creep bug, where a contribution would repeatedly shrink a
-//        tiny bit.  A TWITTER-WIDGET (yes that's a tag name) reduced height, over and over,
-//        at the POLL_MILLISECONDS rate.  Caused by a very minor bug (or possibly some kind of
-//        twitter shenanigans) where $e.width(N) resulted in $e.width() == N+3  D'oh!
-//        Anyway it led to pedantic fit_width() persistently shrinking width (which had no
-//        effect) along with a proportional shrinkage of height (which did have an effect).
-//        So this value increases the likelihood fit_width() or fit_height() will just leave
-//        the element alone.  In the problematic case, fit_width kept trying to set the width
-//        of the TWITTER-WIDGET to 200, and kept seeing its width as 203.
-
 /**
  * Make sure an element isn't too big.  Shrink width & height so both fit, preserving aspect ratio.
  *
@@ -380,101 +283,222 @@ function fit_element($element, max_width, max_height, callback_shrinkage) {
     }
 }
 
+/**
+ * Are there any single newlines in this string?  They indicate "poetry" formatting.
+ *
+ * Double newlines don't count.  They're paragraph boundaries.
+ * CRs dont count.  Some browsers may use them.
+ * Final line terminators don't count.  Might have seen Chrome append LF for no reason.
+ *
+ * THANKS:  match 1 or 2 newlines, https://stackoverflow.com/a/18012324/673991
+ *          Using String.replace() to loop through each bundle of line terminators.
+ *
+ * SEE:  String.replace() callback,
+ *       https://developer.mozilla.org/Web/JavaScript/Reference/Global_Objects/String/replace#Specifying_a_function_as_a_parameter
+ */
+function any_lone_newlines(string) {
+    var LF_OR_CRLF_BUNDLES = /(\r?\n)+/g;
+    var return_value = false;
+    var string_trimmed = string.trim();
+    string_trimmed.replace(LF_OR_CRLF_BUNDLES, function (terminator) {
+         var newlines_only = terminator.replace(/\r/g, '');
+         if (newlines_only.length === 1) {
+             return_value = true;
+         }
+    });
+    return return_value;
+}
+console.assert(false === any_lone_newlines("abcdef"));
+console.assert(false === any_lone_newlines("abc\n"));
+console.assert( true === any_lone_newlines("abc\ndef"));
+console.assert(false === any_lone_newlines("abc\n\ndef"));
+console.assert(false === any_lone_newlines("abc\n\n\ndef"));
+console.assert(false === any_lone_newlines("abc" + "\r\n" + "\r\n" + "\r\n" + "def"));
+console.assert( true === any_lone_newlines("abc\n\ndef\n\nghi\njkl"));
 
-// // noinspection JSUnusedGlobalSymbols
-// function fit_element_the_hard_way($element, max_width, max_height, callback_shrinkage) {
-//     $element = $($element);
-//     callback_shrinkage = callback_shrinkage || function () {};
-//
-//     if ($element.length === 1) {
-//         var old_width = $element.width();
-//         var old_height = $element.height();
-//         if (old_width === 0 || old_height === 0) {
-//             // Silently leave alone zero-area element.  Must not be done loading yet.
-//         } else if ($element.data('fit-element-tried')) {
-//             // Silently leave alone if we already tried to resize it.
-//         } else if (
-//             old_width > max_width + fit_element.FIT_FORGIVENESS ||
-//             old_height > max_height + fit_element.FIT_FORGIVENESS
-//         ) {
-//             var shrink_factor_width = max_width / old_width;      // \ One of these (but not both)
-//             var shrink_factor_height = max_height / old_height;   // / could be Infinity
-//             var shrink_factor;
-//             var shrink_who;
-//             if (shrink_factor_width < shrink_factor_height) {
-//                 shrink_factor = shrink_factor_width;              // No way either of these...
-//                 shrink_who = "width";
-//             } else {
-//                 shrink_factor = shrink_factor_height;             // ...could be Infinity.
-//                 shrink_who = "height";
-//             }
-//             console.assert(shrink_factor <= 1.0, shrink_factor);
-//             var new_width = old_width * shrink_factor;
-//             var new_height = old_height * shrink_factor;
-//             $element.width(new_width);
-//             $element.height(new_height);
-//             $element.data('fit-element-tried', true);
-//             var actual_width = $element.width();
-//             var actual_height = $element.height();
-//             var got_desired_width = equal_ish(actual_width, new_width, 1.0);
-//             var got_desired_height = equal_ish(actual_height, new_height, 1.0);
-//             if (got_desired_width && got_desired_height) {
-//                 callback_shrinkage(
-//                     $element[0].tagName + "." + shrink_who + " " +
-//                     old_width.toFixed() + "x" +
-//                     old_height.toFixed() + " " +
-//                     new_width.toFixed() + "x" +
-//                     new_height.toFixed() + " " +
-//                     (shrink_factor*100.0).toFixed(0) + "%"
-//                 );
-//             } else {   // didn't get the dimensions we asked for
-//                 // NOTE:  Twitter sends us here somehow.
-//                 callback_shrinkage(
-//                     "DIVERT " +
-//                     $element[0].tagName + "." + shrink_who + " " +
-//                     old_width.toFixed() + "x" +
-//                     old_height.toFixed() + " " +
-//                     new_width.toFixed() + "x" +
-//                     new_height.toFixed() + " " +
-//                     actual_width.toFixed() + "x" +
-//                     actual_height.toFixed() + " " +
-//                     (shrink_factor*100.0).toFixed(0) + "%"
-//                 );
-//
-//                 // $element.width(old_width);
-//                 // $element.height(old_height);
-//                 // var revert_width = $element.width();
-//                 // var revert_height = $element.height();
-//                 // var able_to_revert_width = equal_ish(revert_width, old_width, 1.0);
-//                 // var able_to_revert_height = equal_ish(revert_height, old_height, 1.0);
-//                 // if (able_to_revert_width && able_to_revert_height) {
-//                 //     callback_shrinkage(
-//                 //         "REVERT " +
-//                 //         $element[0].tagName + "." + shrink_who + " " +
-//                 //         old_width.toFixed() + "x" +
-//                 //         old_height.toFixed() + " " +
-//                 //         new_width.toFixed() + "x" +
-//                 //         new_height.toFixed() + " " +
-//                 //         actual_width.toFixed() + "x" +
-//                 //         actual_height.toFixed() + " " +
-//                 //         (shrink_factor*100.0).toFixed(0) + "%"
-//                 //     );
-//                 // } else {
-//                 //     callback_shrinkage(
-//                 //         "PREVENTED " +
-//                 //         $element[0].tagName + "." + shrink_who + " " +
-//                 //         old_width.toFixed() + "x" +
-//                 //         old_height.toFixed() + " " +
-//                 //         new_width.toFixed() + "x" +
-//                 //         new_height.toFixed() + " " +
-//                 //         actual_width.toFixed() + "x" +
-//                 //         actual_height.toFixed() + " " +
-//                 //         revert_width.toFixed() + "x" +
-//                 //         revert_height.toFixed() + " " +
-//                 //         (shrink_factor*100.0).toFixed(0) + "%"
-//                 //     );
-//                 // }
-//             }
-//         }
-//     }
-// }
+/**
+ * Does a long string start with a short string?  Case sensitive.
+ *
+ * @param string {string}
+ * @param str {string}
+ * @return {boolean}
+ */
+function starts_with(string, str) {
+    return string.substr(0, str.length) === str;
+}
+console.assert( true === starts_with("string", "str"));
+console.assert(false === starts_with("string", "ing"));
+
+/**
+ * Is a string nonempty?  That is, not undefined, not null, and not the empty string.
+ *
+ * THANKS:  Nonnegative synonym for nonempty, https://english.stackexchange.com/a/102788/18673
+ *
+ * @param txt - usually a string, when null or undefined means the same as empty.
+ * @return {boolean}
+ */
+function is_laden(txt) {
+    return is_specified(txt) && txt !== "";
+}
+console.assert(false === is_laden(null));
+console.assert(false === is_laden(""));
+console.assert( true === is_laden(" "));
+console.assert( true === is_laden(0));
+
+/**
+ * Not undefined, and not null.
+ */
+function is_specified(z) {
+    return is_defined(z) && z !== null;
+}
+console.assert(false === is_specified(undefined));
+console.assert(false === is_specified(null));
+console.assert( true === is_specified(0));
+console.assert( true === is_specified(''));
+
+/**
+ * Not undefined.
+ */
+function is_defined(x) {
+    return typeof x !== 'undefined';
+}
+console.assert(false === is_defined(undefined));
+console.assert( true === is_defined(0));
+
+function is_string(x) {
+    return typeof x === 'string';
+}
+console.assert( true === is_string(''));
+console.assert(false === is_string(0));
+
+/**
+ * Does an array, object, or string contain a thing?
+ *
+ * @param collection - array, object, or string
+ * @param thing
+ * @return {boolean}
+ */
+function has(collection, thing) {
+    if (collection === null || typeof collection === 'undefined') {
+        return false;
+    } else if (is_array(collection)) {
+        return $.inArray(thing, collection) !== -1;
+    } else if (is_associative_array(collection)) {
+        return collection.hasOwnProperty(thing);
+    } else if (is_string(collection)) {
+        return collection.indexOf(thing) !== -1;
+    } else {
+        console.error("Don't understand has(", type_name(collection), ", )");
+    }
+}
+console.assert( true === has([1, 2, 3], 2));
+console.assert(false === has([1, 2, 3], 9));
+console.assert( true === has({one:1, two:2, three:3}, 'three'));
+console.assert(false === has({one:1, two:2, three:3}, 3));
+console.assert( true === has('alphabet', 'a'));
+console.assert(false === has('alphabet', 'z'));
+console.assert(false === has(undefined, 'anything'));
+console.assert(false === has(null, 'anything'));
+
+function is_array(z) {
+    return official_type_name(z) === 'Array';
+    // return Object.prototype.toString.call(z) === '[object Array]';
+    // THANKS:  isArray polyfill, https://stackoverflow.com/a/22289982/673991
+}
+console.assert( true === is_array([]));
+console.assert( true === is_array([1,2,3]));
+// noinspection JSPrimitiveTypeWrapperUsage
+console.assert( true === is_array(new Array));
+console.assert( true === is_array(Array(1,2,3)));
+console.assert(false === is_array({a:1, b:2}));
+console.assert(false === is_array(42));
+console.assert(false === is_array("etc"));
+console.assert(false === is_array(null));
+console.assert(false === is_array(undefined));
+console.assert(false === is_array(true));
+console.assert(false === is_array(function () {}));
+
+function is_associative_array(z) {
+    return official_type_name(z) === 'Object';
+    // return Object.prototype.toString.call(z) === '[object Object]';
+}
+console.assert( true === is_associative_array({a:1, b:2}));
+console.assert( true === is_associative_array(new function Legacy_Class(){}));
+// console.assert( true === is_associative_array(new class ES2015_Class{}));
+
+console.assert(false === is_associative_array(window));
+console.assert(false === is_associative_array(new Date()));
+console.assert(false === is_associative_array([]));
+console.assert(false === is_associative_array([1,2,3]));
+console.assert(false === is_associative_array(Array(1,2,3)));
+console.assert(false === is_associative_array(42));
+console.assert(false === is_associative_array("etc"));
+console.assert(false === is_associative_array(null));
+console.assert(false === is_associative_array(undefined));
+console.assert(false === is_associative_array(true));
+console.assert(false === is_associative_array(function () {}));
+
+/**
+ * Get a reliable type name from the Object class toString() method, which always gives
+ * a string like "[Object {type name}]"
+ *
+ * @param z - an object of any type
+ * @return {string} - a simple reliable name for the type of the object
+ */
+function official_type_name(z) {
+    var simple_reliable_type_description = Object.prototype.toString.call(z);
+    // EXAMPLE:  '[object Object]'
+    // THANKS:  ES3 vintage Object.toString(), https://stackoverflow.com/a/22289869/673991
+    var matcher = simple_reliable_type_description.match(/object (\w+)/);
+    if (matcher === null) {
+        return simple_reliable_type_description;   // but this should never happen
+    } else {
+        return matcher[1];
+    }
+}
+console.assert('Boolean'   === official_type_name(true));
+console.assert('Number'    === official_type_name(3));
+console.assert('String'    === official_type_name("three"));
+console.assert('Function'  === official_type_name(function () {}));
+console.assert('Null'      === official_type_name(null));
+console.assert('Undefined' === official_type_name(undefined));
+console.assert('Array'     === official_type_name([1,2,3]));
+console.assert('Object'    === official_type_name({a:1, b:2}));
+console.assert('Date'      === official_type_name(new Date()));
+console.assert('String'    === official_type_name(Date()));
+console.assert('Object'    === official_type_name(new function Legacy_Class(){}));
+// console.assert('Object'    === official_type_name(new class ES2015_Class{}));
+
+/**
+ * Get an informative type name, especially for JavaScript Legacy classes.
+ *
+ * @param z
+ * @return {string|*}
+ */
+function type_name(z) {
+    var the_official_name = official_type_name(z);
+    if (the_official_name === 'Object') {
+        return z.constructor.name;
+    } else {
+        return the_official_name;
+    }
+}
+console.assert('Object'       === type_name({a:1, b:2}));
+console.assert('Legacy_Class' === type_name(new function Legacy_Class(){}));
+// console.assert('ES2015_Class' === type_name(new class ES2015_Class{}));
+
+function default_to(parameter, default_value) {
+    if (is_defined(parameter)) {
+        return parameter;
+    } else {
+        return default_value;
+    }
+}
+console.assert('red'  === default_to('red',     'blue'));
+console.assert('blue' === default_to(undefined, 'blue'));
+console.assert(null   === default_to(null,      'blue'));
+function missing_parameters_are_undefined(missing_parameter) {
+    console.assert(missing_parameter === undefined);
+}
+missing_parameters_are_undefined();
+missing_parameters_are_undefined(undefined);
