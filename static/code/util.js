@@ -502,3 +502,138 @@ function missing_parameters_are_undefined(missing_parameter) {
 }
 missing_parameters_are_undefined();
 missing_parameters_are_undefined(undefined);
+
+// noinspection JSUnusedGlobalSymbols
+/**
+ * Call a process until it's done.  Relinquish control between chunks of process calls.
+ *
+ * @param {object}   opt - {process, delay_ms, n_chunk, then, do_early}
+ * @param {function} opt.process - callback is called until it returns false
+ * @param {number}   opt.delay_ms - milliseconds between chunks, 0 for minimal relinquishment.
+ * @param {number}   opt.n_chunk - number of times to call process() between each relinquishment.
+ * @param {function} opt.then - callback after done
+ * @param {boolean=} opt.do_early - true=get started with a chunk right away
+ *                                  false=wait delay_ms before starting the first chunk
+ * @return {number} - something to pass to clearInterval() to stop iteration prematurely.
+ *                    If this value is saved, it must be passed to clearInterval()
+ *                    before then() is called. If the value is null, no interval was started,
+ *                    and so there's no need to call clearInterval().
+ *                    Typically whatever variable stores this value, is nulled by then().
+ */
+function iterate(opt) {
+    opt.then     = default_to(opt.then,     function (){});
+    opt.do_early = default_to(opt.do_early, false);
+    if (typeof opt.n_chunk !== 'number' || opt.n_chunk < 1) {
+        opt.n_chunk = 1;
+    }
+    var i_step = 0;
+    var is_done = false;
+    var interval = null;
+
+    function chunk() {
+        for (var i_chunk = 0 ; i_chunk < opt.n_chunk ; i_chunk++) {
+            is_done = opt.process(i_step);
+            if (is_done) {
+                if (interval !== null) {
+                    clearInterval(interval);
+                }
+                opt.then(i_step);
+                return;
+            } else {
+                i_step++;
+                // NOTE:  Assume the opt.process() returning false is a do-nothing step.
+                //        So it is not counted in the value passed to opt.then().
+            }
+        }
+    }
+    if (opt.do_early) {
+        chunk();
+    }
+    if ( ! is_done) {  // If 1 chunk was enough, won't need to called setInterval().
+        interval = setInterval(function array_async_single_chunk() {
+            console.debug("interval chunk", i_step);
+            chunk();
+        }, opt.delay_ms);
+    }
+    return interval;
+}
+
+/**
+ * Process the members of an array asynchronously.  looper() for compute-bound tasks.
+ *
+ * Avoid Chrome warnings e.g. 'setTimeout' handler took 1361ms
+ *
+ * THANKS:  Code derived from 4th option at https://stackoverflow.com/a/45484448/673991
+ *
+ * @param array - e.g. $('div')
+ * @param process - callback function (parameter is each array element)
+ * @param delay_ms - milliseconds between calls, 0 to run "immediately" though OS intervenes
+ *                   (higher value means SLOWER)
+ * @param n_chunk - (optional) e.g 10 to handle 10 elements per iteration
+ *                  (higher value means FASTER, but may hamstring UX)
+ * @param then - (optional) called after array is finished, to do what's next
+ * @return {object} setInterval object, caller could pass to clearInterval() to abort.
+ */
+function array_async(array, process, delay_ms, n_chunk, then) {
+    console.assert(typeof array.length === 'number', "Cannot async " + typeof array);
+    if (typeof n_chunk !== 'number' || n_chunk < 1) {
+        n_chunk = 1;
+    }
+    var i = 0;
+    var interval = setInterval(function array_async_single_chunk() {
+        var i_chunk;
+        for (i_chunk = 0 ; i_chunk < n_chunk ; i_chunk++) {
+            process(array[i]);
+            // FIXME:  Overflows an empty array.
+            if (i++ >= array.length - 1) {
+                clearInterval(interval);
+                if (is_specified(then)) {
+                    then();
+                }
+                return;
+            }
+        }
+    }, delay_ms);
+    return interval;
+}
+
+/**
+ * Enumeration with names, values, and optional descriptions.
+ *
+ * Example:
+ *     Color = Enumerate({
+ *         RED: "the color of cabernet sauvignon",
+ *         GOLD: "as Zeus' famous shower",
+ *         BLACK:  "starless winter night's tale"
+ *     });
+ *     var wish = Color.BLACK;
+ *     console.assert(wish.name === 'BLACK');
+ *     console.assert(wish.value === 2);
+ *     console.assert(wish.description.indexOf('night') !== -1);
+ *     console.assert(Color.number_of_values === 3);
+ *
+ * @param enumeration - e.g. {NAME1: {description: "one"}, NAME2: "two"}
+ * @return {object} - returns the enumeration object of objects,
+ *                    each one of which has name, description, and value members.
+ *                    e.g. {
+ *                        NAME1: {name: 'NAME1', description: "one", value: 0},
+ *                        NAME2: {name: 'NAME2', description: "two", value: 1},
+ *                        number_of_values: 2
+ *                    }
+ */
+// SEE:  Debate on value order, https://stackoverflow.com/q/5525795/673991
+// TODO:  Method to test whether some random object is a member of an Enumeration?
+function Enumerate(enumeration) {
+    var value_zero_based = 0;
+    looper(enumeration, function (name, object) {
+        if (object === null || typeof object !== 'object') {
+            object = {description: object};
+        }
+        object.name = name;
+        object.value = value_zero_based;
+        enumeration[name] = object;   // replaces the member if it was a string (description)
+        value_zero_based++;
+    });
+    enumeration.number_of_values = value_zero_based;
+    return enumeration;
+}

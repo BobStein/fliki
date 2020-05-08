@@ -710,45 +710,6 @@ function js_for_meta_lex(window, $, MONTY) {
         }
     }
 
-    /**
-     * Process the members of an array asynchronously.  looper() for compute-bound tasks.
-     *
-     * Avoid Chrome warnings e.g. 'setTimeout' handler took 1361ms
-     *
-     * THANKS:  Code derived from 4th option at https://stackoverflow.com/a/45484448/673991
-     *
-     * @param array - e.g. $('div')
-     * @param process - callback function (parameter is each array element)
-     * @param delay_ms - milliseconds between calls, 0 to run "immediately" though OS intervenes
-     *                   (higher value means SLOWER)
-     * @param n_chunk - (optional) e.g 10 to handle 10 elements per iteration
-     *                  (higher value means FASTER, but may hamstring UX)
-     * @param then - (optional) called after array is finished, to do what's next
-     * @return {object} setInterval object, caller could pass to clearInterval() to abort.
-     */
-    function array_async(array, process, delay_ms, n_chunk, then) {
-        console.assert(typeof array.length === 'number', "Cannot async " + typeof array);
-        if (typeof n_chunk !== 'number' || n_chunk < 1) {
-            n_chunk = 1;
-        }
-        var i = 0;
-        var interval = setInterval(function array_async_single_chunk() {
-            var i_chunk;
-            for (i_chunk = 0 ; i_chunk < n_chunk ; i_chunk++) {
-                process(array[i]);
-                // FIXME:  Overflows an empty array.
-                if (i++ >= array.length - 1) {
-                    clearInterval(interval);
-                    if (is_specified(then)) {
-                        then();
-                    }
-                    return;
-                }
-            }
-        }, delay_ms);
-        return interval;
-    }
-
     function date_from_whn(whn) {
         return new Date(whn * 1000.0);
     }
