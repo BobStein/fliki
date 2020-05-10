@@ -236,7 +236,9 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     //                       // it's just annoying to show a tiny bit scrolled out of view)
     //     extreme: 40       // above extreme-max, display at soft-max.
     // };
-    var MIN_CAPTION_WIDTH = 100;   // Prevent zero-width iframe from clobbering caption too.
+
+    var MIN_CAPTION_WIDTH = 100;
+    // NOTE:  Prevent zero-width iframe or other crazy situation from scrunching caption too narrow.
 
     var is_editing_some_contribution = false;
     // TODO:  $(window.document.body).hasClass('edit-somewhere')
@@ -441,7 +443,6 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         $('.category, .frou-category').sortable(sortable_options());
 
         $(window.document)
-            // .on('click', '.contribution', contribution_click)
             .on('input', '.contribution, .caption-span', contribution_dirty)
             .on('click', '.contribution', stop_propagation)
             .on('click', '.caption-bar, .save-bar', stop_propagation)
@@ -451,7 +452,10 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             .on('click', '.save-bar .discard', contribution_cancel)
             .on('click', '.save-bar .save',    contribution_save)
             .on('click', '.save-bar .play',    function () { bigger(this, true); })
-            .on('click', '.save-bar .expand',    function () { bigger(this, false); })
+            .on('click', '.save-bar .expand',  function () { bigger(this, false); })
+            // TODO:  Should play or expand end non-dirty edits?  That could be more consistent:
+            //        Closing the popup with Escape does this already.
+            //        Closing with the close button, or clicking on the pop-screen does not.
 
             .on('keyup', function (evt) {
                 if (evt.key === 'Escape') {
@@ -1653,23 +1657,32 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         // TODO:  Call this function more places where $caption_bar.width(is set to something)
         // noinspection JSUnusedAssignment
         var that = this;
-        var media_width = that.$iframe.outerWidth();
-        var thumb_width = that.$img_thumb.outerWidth();
-        var wordy_width = that.$cont.outerWidth();
-        // NOTE:  wordy_width is the last resort, in case ever used for quote contributions
-        //        But it has width even when invisible.  In that case choose media or thumb.
-        var overall_width = media_width || thumb_width || wordy_width;
-        if (overall_width > MIN_CAPTION_WIDTH) {
-            if (equal_ish(overall_width, that.$caption_bar.outerWidth(), 1.0)) {
+
+
+        var media_width = that.$iframe   .outerWidth() || 0;
+        var thumb_width = that.$img_thumb.outerWidth() || 0;
+        var wordy_width = that.$cont     .outerWidth() || 0;
+
+        function adjust_to(width) {
+            if (equal_ish(width, that.$caption_bar.outerWidth(), 1.0)) {
                 // width is already within 1 pixel, don't upset the UI.
             } else {
                 // EXAMPLE:  caption tweak 296 -> 162 55% thumb loading
                 // EXAMPLE:  caption tweak 221 -> 210 95% quote size adjust
-                that.$caption_bar.outerWidth(overall_width);
+                that.$caption_bar.outerWidth(width);
             }
-        } else {
-            // NOTE:  overall_width === 2 is common, but temporary
         }
+
+        if (media_width > MIN_CAPTION_WIDTH) {
+            adjust_to(media_width);
+        } else if (thumb_width > MIN_CAPTION_WIDTH) {
+            adjust_to(thumb_width);
+            // NOTE:  thumb_width === 2 (or some width) is common, but temporary
+        } else if (wordy_width > MIN_CAPTION_WIDTH) {
+            adjust_to(wordy_width);
+        }
+        // NOTE:  wordy_width is the last resort, in case of quote contributions
+        //        But it has width even when invisible.  In that case choose media or thumb.
     };
 
     Contribution.prototype.resizer_nudge = function Contribution_resizer_nudge() {
@@ -1967,7 +1980,9 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
      *     If editing another contribution - yes, always want to silently close an old clean edit.
      *     Escape key - yes, Escape closes a clean edit.  And reddens a dirty edit.
      *     Thumb-click - yes, popping up media closes a clean edit.
-     * @return {boolean} - true if a contribution was being edited and there are unsaved changes.
+     * @return {boolean} - true if a contribution was being edited and there are unsaved changes,
+     *                          meaning you can't edit some other contribution now.
+     *                     false if okay to go ahead with whatever edit user wants to do now.
      */
     function check_contribution_edit_dirty(do_scroll_into_view, do_close_clean) {
         if (is_editing_some_contribution) {
@@ -3324,6 +3339,8 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         $sup_cont.addClass('contribution-edit');
         $cont.prop('contentEditable', true);
         $caption_span.prop('contentEditable', true);
+        var cont = Contribution_from_element($cont);
+        cont.fix_caption_width();
     }
 
     function contribution_edit_hide($cont) {
@@ -3334,6 +3351,8 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         $caption_span.prop('contentEditable', false);
         var $save_bar = $save_bar_from_cont($cont);
         $save_bar.removeClass('abandon-alert');
+        var cont = Contribution_from_element($cont);
+        cont.fix_caption_width();
     }
 
     function $save_bar_from_cont($cont) {
