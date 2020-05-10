@@ -106,6 +106,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     //        Makes more sense with DO_LONG_PRESS_EDIT.  Less so without it.
 
     var DEBUG_SIZE_ADJUST = false;
+    var DEBUG_BOT_STATES = true;
 
     var MS_IFRAME_RESIZER_INIT = 100;
     // NOTE:  Increase to 2000 milliseconds to avoid the following Chrome error:
@@ -555,7 +556,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                 var is_entering = isFullScreen;
                 var is_exiting = ! isFullScreen;
                 var which_way = is_entering ? "ENTER" : "EXIT";
-                console.debug(
+                console.log(
                     which_way,
                     "full screen",
                     window.innerWidth.toString() + "x" + window.innerHeight.toString()
@@ -758,7 +759,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                 that.State.PLAYING_CONTRIBUTION
             ];
             if ( ! has(LESS_INTERESTING_STATES, that.state)) {
-                console.debug("Bot", that.state.name, that.ticks_this_state, that.state.description);
+                if (DEBUG_BOT_STATES) console.debug("Bot", that.state.name, that.ticks_this_state, that.state.description);
             }
             that.last_tick_state = that.state;
             that.finite_state_machine();
@@ -769,7 +770,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     Bot.prototype.on_exit_full_screen = function Bot_on_exit_full_screen() {
         var that = this;
         if (that.state === that.State.UNFULL_CONTRIBUTION) {
-            console.debug("Moving on after exiting full screen.");
+            console.log("Moving on after exiting full screen.");
             that.state = that.State.NEXT_CONTRIBUTION;
             // TODO:  Hasten to finite_state_machine() for this step?
             //        Instead of waiting (for 0-1 seconds)?
@@ -804,7 +805,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             break;
         case that.State.PREP_CONTRIBUTION:
             if (isFullScreen) {
-                console.debug("Full screen.  Ending that first, before next contribution.");
+                console.log("Full screen.  Ending that first, before next contribution.");
                 // NOTE:  Otherwise, the next eager-beaver pop_up() used to get full-screen values
                 //        for window width and height, passing them on to the iframe
                 //        embed_content.js.
@@ -906,7 +907,6 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                         // NOTE:  Expected - main-page pause fed back by iframe
                         //        main page --> iframe
                     } else {
-                        console.debug("Pause initiated by embedded iframe");
                         // NOTE:  Surprise - the embedded pause button was hit.
                         //        main page <-- iframe
                         that._pause_begins();
@@ -920,7 +920,6 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                 that.pop_cont.$sup.on(that.pop_cont.Event.MEDIA_RESUME, function () {
                     // NOTE:  This event only happens when resuming paused STATIC media.
                     if (that.is_paused) {
-                        console.debug("Resume static media");
                         // NOTE:  Surprise - the embedded resume button was hit.
                         //        main page <-- iframe
                         // TODO:  This isn't possible any more, only static media gets here.
@@ -1052,7 +1051,6 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         case that.State.MEDIA_STARTED:
             that.pause_media();
             // TODO:  This might come too early.  Do only after Event.MEDIA_WOKE?
-            console.debug("Extra prodding media to pause.");
             break;
         case that.State.SPEECH_SHOULD_PLAY:
             that.pause_speech();
@@ -2454,6 +2452,10 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                     'background-position': 'center center',
                     'background-size': 'cover'
                 });
+                // NOTE:  This makes the thumbnail resemble the unplayed youtube video, at least
+                //        today it seems to, and with lower resolution.
+                // THANKS:  Scale background to cover element, without distorting aspect ratio,
+                //          https://stackoverflow.com/a/7372377/673991
             }
 
             pop_cont.live_media_iframe({
@@ -2470,6 +2472,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                     'background-size': ''
                 });
                 // NOTE:  This removes unsightly background echo for some vimeo and flickr embeds.
+                // THANKS:  Remove CSS style, https://stackoverflow.com/a/4036868/673991
             });
             // NOTE:  This is what overrides the thumbnail image cloned from the original
             //        .contribution element, and makes it live media (e.g. a video) in the pop-up.
@@ -3727,10 +3730,10 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                     var $from_cat = $(evt.from);
                     var $from_neighbor = $from_cat.find('.sup-contribution').eq(evt.oldDraggableIndex);
                     if ($from_neighbor.length === 1) {
-                        console.debug("Revert to before", first_word($from_neighbor.text()));
+                        console.warn("Revert to before", first_word($from_neighbor.text()));
                         $from_neighbor.before($movee);
                     } else {
-                        console.debug("Revert to end of category", from_cat_idn);
+                        console.warn("Revert to end of category", from_cat_idn);
                         $from_cat.append($movee);
                     }
                 }
