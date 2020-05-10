@@ -1272,14 +1272,14 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         // THANKS:  Automatic 'new', https://stackoverflow.com/a/383503/673991
 
         if (is_specified(id_attribute)) {
-            this.does_exist = true;
+            this.id_specified = true;
             this.id_attribute = id_attribute;
             this.idn_decimal = strip_prefix(this.id_attribute, MONTY.POPUP_ID_PREFIX);
             this.$cont = $_from_id(this.id_attribute);
             this.$sup = this.$cont.closest('.sup-contribution');
             this.handler = null;
         } else {
-            this.does_exist = false;
+            this.id_specified = false;
         }
 }
 
@@ -1352,7 +1352,6 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         $render_bar:      { get: function () {return this.$sup.find('.render-bar');}},
         $save_bar:        { get: function () {return this.$sup.find('.save-bar');}},
         $caption_bar:     { get: function () {return this.$sup.find('.caption-bar');}},
-        $screen:          { get: function () {return this.$sup.closest('#popup-screen');}},
         $caption_span:    { get: function () {return this.$sup.find('.caption-span');}},
         caption_text:     { get: function () {return this.$caption_span.text();}},
         is_noembed_error: { get: function () {return this.$sup.hasClass('noembed-error');}},
@@ -1371,12 +1370,13 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         category_id:    { get: function () {return this.$cat.attr('id');}},
         is_my_category: { get: function () {return this.category_id === MONTY.IDN.CAT_MY.toString();}},
         is_media:       { get: function () {return could_be_url(this.content);}},
-        content:        { get: function () {return this.$cont.text();}}
+        content:        { get: function () {return this.$cont.text();}},
+        media_url:      { get: function () {return this.is_media ? this.content : null;}}
     });
 
     Contribution.prototype.exists = function Contribution_exists() {
         // noinspection JSConstructorReturnsPrimitive
-        return this.$sup.length === 1;
+        return this.id_specified && this.$sup.length === 1;
     };
 
     /**
@@ -1410,7 +1410,77 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                             stuff.iframe.parentElement,
                             stuff.height, stuff.width, stuff.type
                         );
-                        msg_cont.fix_caption_width(stuff.type);
+
+                        var pop_stuff = msg_cont.$sup.data('pop-stuff');
+                        if (is_defined(pop_stuff)) {
+                            var progress_width = linear_transform(
+                                stuff.width,
+                                pop_stuff.render_width, pop_stuff.max_live_width,
+                                0.0, 1.0
+                            )
+                            // FALSE WARNING:  'render_height' should probably not be passed as parameter 'x1'
+                            // noinspection JSSuspiciousNameCombination
+                            var progress_height = linear_transform(
+                                stuff.height,
+                                pop_stuff.render_height, pop_stuff.max_live_height,
+                                0.0, 1.0
+                            )
+                            var progress = Math.max(progress_width, progress_height);
+                            // NOTE:  Rely on whichever is further along the way to a full screen.
+
+                            if (0.0 <= progress && progress <= 1.0) {
+                                // NOTE:  Limiting progress's range prevents a zero-size iframe
+                                //        from moving to the "vanishing" point.
+
+                                // console.log(
+                                //     "iframe resized",
+                                //     msg_cont.id_attribute,
+                                //     stuff.width,
+                                //     stuff.height,
+                                //     pop_stuff.render_width,
+                                //     pop_stuff.render_height,
+                                //     pop_stuff.max_live_width,
+                                //     pop_stuff.max_live_height
+                                // );
+                                // EXAMPLE:  iframe resized popup_1990 168.53125 136 162 92 1583 1390
+                                //           iframe resized popup_1990 216.90625 178 162 92 1583 1390
+                                //           iframe resized popup_1990 265.296875 221 162 92 1583 1390
+                                //           :
+                                //           iframe resized popup_1990 1526.078125 1340 162 92 1583 1390
+                                //           iframe resized popup_1990 1546 1357 162 92 1583 1390
+                                //           iframe resized popup_1990 1583 1390 162 92 1583 1390
+                                // NOTE:  It doesn't START at render dimensions,
+                                //        but it does seem to END at max_live dimensions.
+
+                                var pop_left = 0;
+                                var pop_top = TOP_SPACER_PX;
+                                // FALSE WARNING:  'left' should probably not be passed as parameter 'y1'
+                                // noinspection JSSuspiciousNameCombination
+                                var sliding_left = linear_transform(
+                                    progress,
+                                    0.0, 1.0,
+                                    pop_stuff.fixed_coordinates.left, pop_left
+                                )
+                                var sliding_top = linear_transform(
+                                    progress,
+                                    0.0, 1.0,
+                                    pop_stuff.fixed_coordinates.top, pop_top
+                                )
+                                msg_cont.$sup.css({left: sliding_left, top: sliding_top});
+                            } else {
+                                if (stuff.width === 0 && stuff.height === 0) {
+                                    // Neither animate nor warn about zero-size iframe.  Boring.
+                                } else {
+                                    console.warn(
+                                        "Resize out of range",
+                                        msg_cont.id_attribute,
+                                        stuff.width,
+                                        stuff.height
+                                    );
+                                }
+                            }
+                        }
+                        msg_cont.fix_caption_width();
                     }
                     /*,
                     targetOrigin: MONTY.OEMBED_OTHER_ORIGIN*/
@@ -1635,10 +1705,24 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             $iframe.is(':visible') &&
             ($iframe.width() === 0 || $iframe.height() === 0)
         ) {
-            $iframe.attr('src', $iframe.attr('src'));
-            console.log("ZERO-IFRAME, RECOVERY", $iframe.attr('id'));
+            var MAX_IFRAME_RECOVERY_TRIES = 10;
+            var i_recovery = $iframe.data('recovery-count') || 0;
+            i_recovery++;
+            $iframe.data('recovery-count', i_recovery);
+            if (i_recovery > MAX_IFRAME_RECOVERY_TRIES) {
+                console.error("Too many iframe recoveries, giving up", $iframe.attr('id'));
+                // NOTE:  This can stop an endless cycle of reloading, for embedded media that
+                //        for whatever reason always has zero size.
+            } else {
+                reload_iframe($iframe);
+                console.log("ZERO-IFRAME, RECOVERY", i_recovery, $iframe.attr('id'));
+            }
         }
     };
+
+    function reload_iframe(iframe) {
+        $(iframe).attr('src', $(iframe).attr('src'));
+    }
 
     /**
      * (Re)build the render bar element contents, using the media URL in the contribution text.
@@ -1728,18 +1812,11 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         $img.attr('src', thumb_url);
     };
 
-    Contribution.prototype.live_media_iframe = function Contribution_live_media_iframe(
-        media_url,
-        more_parameters
-    ) {
-        // TODO:  No need to pass media_url, it's gotta be that.text().
-        //        Okay make a that.media_url().  Return null if no URL in that.text().
+    Contribution.prototype.live_media_iframe = function Contribution_live_media_iframe(parameters, then) {
         var that = this;
-        more_parameters = more_parameters || {};
-        more_parameters.idn = that.id_attribute;
         var $iframe = $('<iframe>', {
             id: 'iframe_' + that.id_attribute,   // This is NOT how a pop-up gets made.
-            src: our_oembed_relay_url(media_url, more_parameters),
+            src: our_oembed_relay_url(parameters),
                   allowFullScreen : 'true',
                mozallowFullScreen : 'true',
             webkitallowFullScreen : 'true',
@@ -1749,13 +1826,13 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         that.$render_bar.empty().append($iframe);   // The iframe is dead, long live the iframe.
 
         $iframe.on('load', function () {
-            // console.log("IFRAME LOAD", that.id_attribute);
             // DONE:  Verify iframe load event happens on "all" browsers.
             //        Claim that it does:  https://stackoverflow.com/a/751458/673991
             //        Yes:  Chrome, Firefox, Opera, Edge, UCBrowser7
             //        No:  IE11
             // NOTE:  Cannot delegate the iframe load event, because it doesn't bubble.
             //        https://developer.mozilla.org/Web/API/Window/load_event
+
             var older_loader_timer = $iframe.data('loader_timer');
             if (is_specified(older_loader_timer)) {
                 clearInterval(older_loader_timer);
@@ -1781,6 +1858,11 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                 that.zero_iframe_recover();
             }, MS_IFRAME_RECOVERY_CHECK);
             $iframe.data('loader_timer', loader_timer);
+
+            if (is_specified(then)) {
+                then();
+                // NOTE:  Zero-iframe recovery (i.e. reload) might come AFTER callback is called.
+            }
         });
         // NOTE:  Chrome's ooey gooey autoplay policy needs iframe delegation.
         //        https://developers.google.com/web/updates/2017/09/autoplay-policy-changes
@@ -2136,13 +2218,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                     easing: POP_DOWN_ANIMATE_EASING,
                     queue: false
                 });
-                $('#popup-screen').animate({
-                    'background-color': 'rgba(0,0,0,0)'
-                }, {
-                    duration: POP_DOWN_ANIMATE_MS,
-                    easing: POP_DOWN_ANIMATE_EASING,
-                    queue: false
-                });
+                pop_screen_fade_out();
                 // NOTE:  Rely on the $sup animation to remove the popup-screen element,
                 //        at about the same time as this animation finishes fading.
                 //        Has to be that way because that animation completion function
@@ -2318,26 +2394,10 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
 
         var pop_cont = Contribution_from_element($popup);
 
-        $popup.data('pop-stuff', {
-            render_width: render_width,
-            render_height: render_height,
-            cont_css_width: cont_css_width,
-            cont_css_height: cont_css_height,
-            caption_css_width: caption_css_width,
-            caption_css_height: caption_css_height,
-            caption_css_background: caption_css_background
-        });
-
-        $popup.css({
-            position: 'fixed',
-            'z-index': 1
-        });
-        $popup.css(pop_cont.fixed_coordinates());
-
         var max_live_width = usable_width();
         var caption_height_px = cont.$caption_bar.outerHeight();
-        // NOTE:  Wrapped captions may result in less tall popups, because popped-up captions
-        //        don't need to be wrapped.
+        // NOTE:  Wrapped thumbnail captions may result in less tall popups,
+        //        because popped-up captions don't need to be wrapped.
         var max_live_height = Math.round(
             usable_height()
             - caption_height_px
@@ -2345,24 +2405,65 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             - vertical_padding_in_css
             - 30
         );
+        // NOTE:  Extra 30-pixel reduction in height.
+        //        Tends to prevent scrollbars from spontaneously appearing.
+        //        Someday a less crude way would be good.
+
+        $popup.data('pop-stuff', {
+            render_width: render_width,
+            render_height: render_height,
+            cont_css_width: cont_css_width,
+            cont_css_height: cont_css_height,
+            caption_css_width: caption_css_width,
+            caption_css_height: caption_css_height,
+            caption_css_background: caption_css_background,
+            max_live_width: max_live_width,
+            max_live_height: max_live_height,
+            fixed_coordinates: cont.fixed_coordinates()
+        });
+
+        $popup.css({
+            position: 'fixed',
+            'z-index': 1
+        });
+        $popup.css(cont.fixed_coordinates());
+        // NOTE:  Start the popup right where the original thumbnail was on the screen, but with
+        //        fixed coordinates.
 
         if (cont.is_media) {
-            var more_relay_parameters = {
-                idn: popup_cont_idn,
+
+            var img_src = pop_cont.$img_thumb.attr('src');
+            if (is_defined(img_src)) {
+                pop_cont.$render_bar.css({
+                    'background-image': 'url(' + img_src + ')',
+                    'background-position': 'center center',
+                    'background-size': 'cover'
+                });
+            }
+
+            pop_cont.live_media_iframe({
+                idn: pop_cont.id_attribute,
+                url: pop_cont.media_url,
                 is_pop_up: true,
                 auto_play: auto_play.toString(),
                 width:  max_live_width,
                 height: max_live_height
-            };
-            // NOTE:  Extra 30-pixel reduction in height and width.
-            //        Tends to prevent scrollbars from spontaneously appearing.
-            //        Someday a less crude way would be good.
+            }, function media_iframe_loaded() {
+                pop_cont.$render_bar.css({
+                    'background-image': '',
+                    'background-position': '',
+                    'background-size': ''
+                });
+                // NOTE:  This removes unsightly background echo for some vimeo and flickr embeds.
+            });
+            // NOTE:  This is what overrides the thumbnail image cloned from the original
+            //        .contribution element, and makes it live media (e.g. a video) in the pop-up.
 
-            pop_cont.live_media_iframe(pop_cont.content, more_relay_parameters);
-            // NOTE:  This is what overrides the thumbnail image from the original,
-            //        and makes it live media (e.g. a video) in the pop-up.
+            pop_cont.$iframe.width(render_width);
+            pop_cont.$iframe.height(render_height);
+            // NOTE:  Until embed_content.js gets up and sets the size of the iframe through the
+            //        iFrameResizer, let it start off as the same size as the thumbnail.
 
-            $popup.css({'background-color': 'rgba(0,0,0,0)'});
             pop_cont.resizer_init(
                 function pop_media_init() {
                     pop_cont.$sup.trigger(pop_cont.Event.MEDIA_INIT);
@@ -2373,23 +2474,13 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                     // SEE:  Tricky iframe height 100%, https://stackoverflow.com/a/5871861/673991
 
                     deanimate("popping up media " + popup_cont_idn);
-                    // $animation_in_progress = $popup;
-                    $popup.animate({
-                        left: 0,
-                        top: TOP_SPACER_PX,
-                        'background-color': 'rgba(0,0,0,0.25)'
-                        // THANKS:  Alpha, not opacity, https://stackoverflow.com/a/5770362/673991
-                    }, {
-                        easing: 'swing',
-                        complete: function () {
-                            // $animation_in_progress = null;
-                            pop_cont.resizer_nudge();
-                            pop_cont.zero_iframe_recover();
-                            // NOTE:  A little extra help for pop-ups
-                            //        with either a zero-iframe bug in iFrameResizer,
-                            //        or a poor internet connection.
-                        }
-                    });
+                    pop_cont.resizer_nudge();
+                    pop_cont.zero_iframe_recover();
+                    // NOTE:  A little extra help for pop-ups
+                    //        with either a zero-iframe bug in iFrameResizer,
+                    //        or a poor internet connection.
+
+                    pop_screen_fade_in();
                 }
             );
         } else {
@@ -2788,7 +2879,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                 }
             });
         }
-        console.log("Popup", cont_idn, cont.media_domain);
+        console.log("Popup", cont_idn, cont.media_domain || "(quote)");
         return pop_cont;
     }
 
@@ -2801,7 +2892,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         $(':animated').each(function () {
             var $element = $(this);
             var deanimating_cont = Contribution_from_element($element);
-            if (deanimating_cont.does_exist) {
+            if (deanimating_cont.exists()) {
                 console.warn(
                     "Deanimating before",
                     what,
@@ -2813,8 +2904,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                     "Deanimating before",
                     what,
                     "SOME ELEMENT",
-                    $element.attr('id') || "(no id)",
-                    $element.attr('class') || "(no classes)"
+                    $element
                 );
             }
             $element.finish();
@@ -2987,25 +3077,30 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             font_size_setting = font_size_normal;
         }
 
-        console.log(
-            "Text pop up",
-            sup_left, sup_top, sup_height,
-            is_poetry ? "POEM" : "prose",
-            expand_font,
-            "\n",
-            cont_css_width, cont_css_height,
-            cont_width_setting, cont_height_setting,
-            usable_width(), usable_height(),
-            sup_chrome_h, sup_chrome_v,
-            expandable_h, expandable_v,
-            type_name(cont_width_setting), type_name(cont_height_setting),
-            "\n",
-            that.$sup.css('left'),
-            that.$sup.css('top'),
-            that.$cont.css('width'),
-            that.$cont.css('height'),
-            that.$caption_bar.css('width')
-        );
+
+
+        // console.log(
+        //     "Text pop up",
+        //     sup_left, sup_top, sup_height,
+        //     is_poetry ? "POEM" : "prose",
+        //     expand_font,
+        //     "\n",
+        //     cont_css_width, cont_css_height,
+        //     cont_width_setting, cont_height_setting,
+        //     usable_width(), usable_height(),
+        //     sup_chrome_h, sup_chrome_v,
+        //     expandable_h, expandable_v,
+        //     type_name(cont_width_setting), type_name(cont_height_setting),
+        //     "\n",
+        //     that.$sup.css('left'),
+        //     that.$sup.css('top'),
+        //     that.$cont.css('width'),
+        //     that.$cont.css('height'),
+        //     that.$caption_bar.css('width')
+        // );
+        // EXAMPLE:  Text pop up 10.760767208223115 87.73450000000003 460.781 prose 1.3039538714991763
+        //           192px 80px 1538.6766070994775 auto 1583 741 34 50.39300000000003 1.3039538714991763 1.5753187309861578 Number String
+        //           10.7608px 87.7345px 1561.47px 593.938px 1545.48px
 
 
 
@@ -3071,16 +3166,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             }
         }).promise();
 
-        that.$screen.css({
-            'background-color': 'rgba(0,0,0,0)'
-        });
-        var screen_promise = that.$screen.animate({
-            'background-color': 'rgba(0,0,0,0.25)'
-        }, {
-            duration: POP_UP_ANIMATE_MS,
-            easing: POP_UP_ANIMATE_EASING,
-            queue: false
-        }).promise();
+        var screen_promise = pop_screen_fade_in().promise();
 
         var combined_promise = $.when(
             sup_promise,
@@ -3092,6 +3178,27 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             then();
         });
     };
+
+    function pop_screen_fade_out() {
+        return pop_screen_fade('rgba(0,0,0,0.25)', 'rgba(0,0,0,0)')
+    }
+
+    function pop_screen_fade_in() {
+        return pop_screen_fade('rgba(0,0,0,0)', 'rgba(0,0,0,0.25)')
+    }
+
+    function pop_screen_fade(from_color, to_color) {
+        var $pop_screen = $('#popup-screen');
+        $pop_screen.css({'background-color': from_color});
+        $pop_screen.animate({
+            'background-color': to_color
+        }, {
+            duration: POP_UP_ANIMATE_MS,
+            easing: POP_UP_ANIMATE_EASING,
+            queue: false
+        });
+        return $pop_screen;
+    }
 
     function usable_width() {
         return Math.min(
@@ -4633,9 +4740,8 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         }
     }
 
-    function our_oembed_relay_url(url, parameters) {
-        // TODO:  Pass url in the parameters
-        parameters.url = url;
+    function our_oembed_relay_url(parameters) {
+        console.assert(is_associative_array(parameters), parameters);
         return MONTY.OEMBED_CLIENT_PREFIX + "?" + $.param(parameters);
         // THANKS:  jQuery query string, https://stackoverflow.com/a/31599255/673991
     }

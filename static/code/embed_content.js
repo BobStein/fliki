@@ -230,10 +230,11 @@ function embed_content_js(window, $, MONTY) {
                         $body.prepend($you_frame);
                         $you_frame.animate({
                             width: oppressed_width,
-                            height: oppressed_height,
-                            easing: 'linear'
+                            height: oppressed_height
                         }, {
-                            complete: dynamic_player
+                            complete: dynamic_player,
+                            duration: 500,
+                            easing: 'linear'
                         });
                     });
                 } else if (is_youtube && SHOW_YOUTUBE_THUMBS) {
@@ -426,15 +427,15 @@ function embed_content_js(window, $, MONTY) {
             'iframeResizer.contentWindow.js'
         );
     } else {
-        // NOTE:  Make this page work stand-alone.  For development purposes.
-        //        That is, when browsing a URL like this:
-        //        https://unslumping.org/meta/oembed/?url=https://www.youtu.be/3SwNXQMoNps
         console.log("Stand-alone embed.");
         window.iFrameResizer.onReady();
+        // NOTE:  Make this page work stand-alone, for development purposes.
+        //        That is, when browsing a URL like this:
+        //        https://unslumping.org/meta/oembed/?url=https://www.youtu.be/3SwNXQMoNps
     }
 
     /**
-     * Begin playing if auto-play, otherwise get all the events ready to respond to playing.
+     * Begin auto-play if we're doing that.  Otherwise get all events ready to respond to playing.
      *
      * NOTE:  PlayerState sequences:
      *        cued=>unstarted=>buffering=>playing=>ended
@@ -616,9 +617,8 @@ function embed_content_js(window, $, MONTY) {
 
     function fix_embedded_content() {
         var $child = $body.children().first();
-        // noinspection JSUnresolvedFunction
         var $grandchild = $child.children().first();
-        // NOTE:  flickr.com needs the $grandchild fit,
+        // NOTE:  flickr.com needs the $grandchild to get fit,
         //        which is an img-tag inside an a-tag.
         //        Dropbox images may have the same need.
 
@@ -634,6 +634,8 @@ function embed_content_js(window, $, MONTY) {
         if (is_pop_up) {
             $body.css({width: oppressed_width, height: oppressed_height});
             $child.css({width: oppressed_width, height: oppressed_height});
+            // NOTE:  An exception, this appears not to need a light touch, and setting these
+            //        over and over does not churn visually.
         } else {
             fit_element(
                 $grandchild,

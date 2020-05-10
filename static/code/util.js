@@ -418,9 +418,25 @@ console.assert(false === is_array(undefined));
 console.assert(false === is_array(true));
 console.assert(false === is_array(function () {}));
 
+/**
+ * Is this a plain object with properties?
+ *
+ * Why is_associative_array() is a better name for this function than is_object()?
+ * Because 'object' is too generic a term in JavaScript.  Lotsa things are objects.
+ *     'object' === typeof [1,2,3]
+ *     true === [1,2,3] instanceof Object
+ *         but we don't think of an array as a "plain object"
+ *     'object' === typeof null
+ *         but we don't think of null as a "plain object"
+ *         by the way:  false === null instanceof Object
+ *
+ * SEE:  (my post) https://stackoverflow.com/a/61426885/673991
+ *
+ * @param z
+ * @return {boolean}
+ */
 function is_associative_array(z) {
     return official_type_name(z) === 'Object';
-    // return Object.prototype.toString.call(z) === '[object Object]';
 }
 console.assert( true === is_associative_array({a:1, b:2}));
 console.assert( true === is_associative_array(new function Legacy_Class(){}));
@@ -637,3 +653,33 @@ function Enumerate(enumeration) {
     enumeration.number_of_values = value_zero_based;
     return enumeration;
 }
+
+/**
+ * Map a number from one range to another range, linearly.
+ *
+ * In other words, x1, x, x2 maps to
+ *                 y1, y, y2 where y is the return value
+ *
+ * x does not have to be BETWEEN x1 and x2.  So out-of-range is not an error.
+ *
+ * @param  {number} x - input value
+ * @param  {number} x1 \
+ * @param  {number} x2 / range of the input
+ * @param  {number} y1 \
+ * @param  {number} y2 / range of the output
+ * @return {number} - y output value
+ */
+function linear_transform(
+    x,
+    x1, x2,
+    y1, y2
+) {
+    if (x1 === x2) return NaN;
+    if (y1 === y2) return NaN;
+
+    var y = (x - x1) * (y2 - y1) / (x2 - x1) + y1;
+    return y;
+}
+console.assert(220 === linear_transform(22, 0, 100, 0, 1000));
+console.assert(-1000 === linear_transform(890, 880, 870, 0, 1000));
+

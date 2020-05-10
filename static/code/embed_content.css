@@ -10,6 +10,12 @@ body {
     /* NOTE:  The padding in the embedded elements is enough. */
 }
 
+              .twitter-tweet { background-color: white; }
+twitter-widget.twitter-tweet { background-color: transparent; }
+/* NOTE:  Head start on tweet text having opaque background.  Avoids text overlap while loading.
+          But only works in some intermediate stage where the .twitter-tweet class element
+          is not yet a twitter-widget. */
+
 .twitter-tweet {   /* <twitter-widget> in most browsers, <iframe> in IE11 */
     margin-top:    0 !important;
     margin-bottom: 0 !important;
@@ -34,4 +40,7 @@ body {
     display: block;
     /* NOTE:  Avoid gap at bottom of iframe. */
     border: 0;
+}
+
+.EmbeddedTweet {
 }

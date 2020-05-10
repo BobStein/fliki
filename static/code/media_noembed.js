@@ -26,6 +26,7 @@
                 url: cont.content
             }, function (oembed_response) {
                 var oembed = oembed_response.oembed;
+
                 var is_title_a_copy_of_url = oembed.title === oembed.url;
                 // NOTE:  Twitter does this, title same as url, WTF?!?
                 //        https://twitter.com/ICRC/status/799571646331912192
@@ -36,6 +37,7 @@
                 //        And that oembed has no thumbnail_url
                 //        Okay trying the official facebook oembed endpoint, there is no title, so
                 //        it's probably noembed.com that copies the url to the title.
+
                 var is_error_usable = is_laden(oembed.error);
                 var is_title_usable = is_laden(oembed.title) && ! is_title_a_copy_of_url;
                 var is_caption_usable = is_laden(cont.caption_text);
@@ -66,26 +68,20 @@
                                     oembed.thumbnail_url,
                                     "-- revert to iframe"
                                 );
-                                cont.live_media_iframe(cont.content);
+                                cont.live_media_iframe({url: cont.media_url});
                             }
                         );
                     } else {   // oembed data is missing a thumbnail URL
-                        cont.live_media_iframe(cont.content);
+                        cont.live_media_iframe({url: cont.media_url});
                     }
                 } else {   // oembed error message
                     var error_message;
-                    // noinspection JSIncompatibleTypesComparison
                     if (cont.media_domain === 'no_domain') {
                         error_message = oembed.error;
                     } else {
                         error_message = oembed.error + " for '" + cont.media_domain + "'";
                     }
                     cont.render_error(error_message)
-                    // cont.$render_bar.empty().text(error_message).addClass('oembed-error');
-                    // // NOTE:  How the text gets its peachy background color.
-                    //
-                    // cont.$sup.addClass('noembed-error');
-                    // // NOTE:  How non-live thumbnails skip the bot.
                 }
             });
         },
