@@ -1426,8 +1426,6 @@ def url_var(url, key, default):
     the_dict = urllib.parse.parse_qs(the_parts.query)
     the_value = the_dict.get(key, [default])[-1]
     return the_value
-
-
 assert 'bar' == url_var('http://example.com/?foo=bar', 'foo', 'qux')
 assert 'qux' == url_var('http://example.com/',         'foo', 'qux')
 
@@ -1469,6 +1467,7 @@ def web_path_qiki_javascript(relative_url):
 
 
 class Parse(object):
+    """ Remove a prefix and deal with what remains. """
 
     def __init__(self, original_string):
         self.remains = original_string
@@ -1487,6 +1486,9 @@ class Parse(object):
 
     def __str__(self):
         return self.remains
+p = Parse("rethink")
+assert True is p.remove_prefix("re")
+assert "think" == p.remains
 
 
 class FlikiHTML(web_html.WebHTML):

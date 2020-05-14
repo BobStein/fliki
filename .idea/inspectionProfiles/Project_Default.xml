@@ -8,6 +8,7 @@
     <inspection_tool class="ES6ConvertVarToLetConst" enabled="false" level="WEAK WARNING" enabled_by_default="false" />
     <inspection_tool class="JSFunctionExpressionToArrowFunction" enabled="false" level="INFORMATION" enabled_by_default="false" />
     <inspection_tool class="JSStringConcatenationToES6Template" enabled="false" level="INFORMATION" enabled_by_default="false" />
+    <inspection_tool class="JSValidateTypes" enabled="false" level="WEAK WARNING" enabled_by_default="false" />
     <inspection_tool class="PointlessArithmeticExpressionJS" enabled="false" level="WARNING" enabled_by_default="false" />
     <inspection_tool class="PyCompatibilityInspection" enabled="true" level="WARNING" enabled_by_default="true">
       <option name="ourVersions">
@@ -53,6 +54,8 @@
         </list>
       </option>
     </inspection_tool>
+    <inspection_tool class="TypeScriptValidateJSTypes" enabled="false" level="WEAK WARNING" enabled_by_default="false" />
+    <inspection_tool class="TypeScriptValidateTypes" enabled="false" level="ERROR" enabled_by_default="false" />
     <inspection_tool class="UnnecessaryLocalVariableJS" enabled="false" level="WARNING" enabled_by_default="false">
       <option name="m_ignoreImmediatelyReturnedVariables" value="true" />
       <option name="m_ignoreAnnotatedVariables" value="false" />

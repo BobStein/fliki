@@ -41,6 +41,7 @@
  * @param MONTY.AJAX_URL
  * @param MONTY.cat.order
  * @param MONTY.cat.txt
+ * @param MONTY.cat.txt[] {string}
  * @param MONTY.FENCE_POST_RIGHT
  * @param MONTY.IDN
  * @param MONTY.IDN.CAPTION
@@ -441,7 +442,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         $('#post_it_button').on('click', post_it_click);
 
 
-        $('.category, .frou-category').sortable(sortable_options());
+        $('.category, .frou-category').sortable(sortable_module_options());
 
         $(window.document)
             .on('input', '.contribution, .caption-span', contribution_dirty)
@@ -674,7 +675,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         that.ticker_interval_ms(1000);
         that.breather_seconds = null;
         that.cont = null;       // e.g. id_attribute '1821' a thumbnail
-        that.pop_cont = null;   // e.g. id_attribute 'popup_1821'
+        that.pop_cont = null;   // e.g. id_attribute 'popup_1821' an almost full screen pop-up
         that.is_paused = false;
         that.cont_idn = null;
         that.did_bot_transition = null;  // Did the bot initiate transition to the next contribution?
@@ -844,9 +845,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                 that.crash("Missing contribution", that.cont_idn, index_play_bot);
                 break;
             }
-            // TODO:  Fix the following dumb noinspection.
-            //        Or wait and pray JetBrains fixes it.
-            //        Otherwise it generates the following warning:
+            // FALSE WARNING:  The following dumb noinspection prevents the following warning:
             //            Condition is always false since types
             //            '{get: (function(): jQuery | null)} | {get: function(): *}'
             //            and 'string' have no overlap
@@ -1059,7 +1058,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     };
 
     /**
-     * Begin working with Contribution object, store it in that.pop_cont
+     * Begin working with a popped-up Contribution object, store it in that.pop_cont
      *
      * @param pop_cont
      */
@@ -1070,7 +1069,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     };
 
     /**
-     * Done working with Contribution object, if any.
+     * Done working with the popped-up Contribution object, if any.
      */
     Bot.prototype.pop_end = function Bot_pop_end() {
         var that = this;
@@ -1259,6 +1258,166 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         );
     }
 
+    /**
+     * Freakish name for a thing that stores idn-referenced stuff.
+     *
+     * It's almost sorta maybe like a Lex.
+     *
+     * @param word_class constructs instances for the lexi.  Takes an idn to construct.
+     * @return {Lexi}
+     * @constructor
+     */
+    function Lexi(word_class) {
+        if ( ! (this instanceof Lexi)) {
+            return new Lexi(word_class);
+        }
+        this.word_class = word_class;
+        this._word_from_idn = {}
+    }
+    Lexi.prototype.get = function Lexi_get(idn) {
+        var that = this;
+        if (has(that._word_from_idn, idn)) {
+            return that._word_from_idn[idn];
+        } else {
+            console.error(type_name(that), "has not got", idn);
+            return null;
+        }
+    }
+    Lexi.prototype.has = function Lexi_has(idn) {
+        var that = this;
+        return has(that._word_from_idn, idn);
+    }
+    Lexi.prototype.add = function Lexi_add(idn) {
+        var that = this;
+        if (has(that._word_from_idn, idn)) {
+            console.error(type_name(that), "already added", idn);
+        } else {
+            that._word_from_idn[idn] = that.word_class(idn);
+        }
+        return that._word_from_idn[idn];
+    }
+
+    /**
+     * Know about contributions.
+     *
+     * @return {ContributionLexi}
+     * @constructor
+     */
+    function ContributionLexi(category_list) {
+        if ( ! (this instanceof ContributionLexi)) {
+            return new ContributionLexi(category_list);
+        }
+        this.category_list = category_list;
+        Lexi.apply(this, [Contribution]);
+    }
+    ContributionLexi.prototype = new Lexi(Contribution);
+    ContributionLexi.prototype.constructor = ContributionLexi;
+
+    ContributionLexi.prototype.word_pass = function ContributionLexi_add(word) {
+        var that = this;
+        switch (word.vrb) {
+        case MONTY.IDN.UNSLUMP_OBSOLETE:
+        case MONTY.IDN.CONTRIBUTE:
+            contribute_word(word);
+            break;
+        case MONTY.IDN.CAPTION:
+            caption_word(word);
+            break;
+        case MONTY.IDN.EDIT:
+            edit_word(word);
+            break;
+        default:
+            var cat = that.category_list.get(word.vrb);
+            if (cat !== null) {
+                cat_ordering_word(cat, word);
+            }
+        }
+
+        function contribute_word(word) {
+            var cont = that.add(word.idn);
+            console.assert(cont !== null, word, that);
+            var cat_idn = original_cat(word);
+            cont.cat_idn = cat_idn;
+        }
+
+        function caption_word(word) {
+        }
+
+        function edit_word(word) {
+        }
+
+        function cat_ordering_word(cat, word) {
+            var cont_idn = word.obj;
+            if (that.has(cont_idn)) {
+                var cont = that.get(cont_idn);
+                cat.cont_idn_sequence.unshift(cont_idn);
+                cont.cat = cat;
+            } else {
+                console.warn("Can't order", cont_idn);
+            }
+        }
+    }
+
+    /**
+     * What we need to know about each category.
+     *
+     * @param idn - e.g. MONTY.IDN.CAT_MY
+     * @return {Category}
+     * @constructor
+     */
+    function Category(idn) {
+        if ( ! (this instanceof Category)) {
+            return new Category(idn);
+        }
+        this.idn = idn;
+        this.txt = null;
+        this.cont_idn_sequence = null;
+    }
+
+    /**
+     * Know about Categories
+     *
+     * @return {CategoryLexi}
+     * @constructor
+     */
+    function CategoryLexi() {
+        if ( ! (this instanceof CategoryLexi)) {
+            return new CategoryLexi();
+        }
+        Lexi.apply(this, [Category]);
+    }
+    CategoryLexi.prototype = new Lexi(Category);
+    CategoryLexi.prototype.constructor = CategoryLexi;
+
+    CategoryLexi.prototype.from_monty = function CategoryLexi_from_monty(monty_cat) {
+        var that = this;
+        looper(monty_cat.order, function (_, cat_idn) {
+            var category = that.add(cat_idn);
+            category.txt = monty_cat.txt[cat_idn];
+            category.cont_idn_sequence = [];
+        });
+    }
+
+
+
+    var contribution_list = null;
+
+    function alternative_build_contributions() {
+        var category_list = CategoryLexi();
+        category_list.from_monty(MONTY.cat);
+        console.debug("CategoryLexi", category_list);
+
+        contribution_list = ContributionLexi(category_list);
+        looper(MONTY.w, function (_, word) {
+            contribution_list.word_pass(word);
+        });
+
+        looper(MONTY.cat.order, function (_, cat_idn) {
+            var cat = category_list.get(cat_idn);
+            console.log("Category", cat.txt, cat.cont_idn_sequence.join(","));
+        });
+
+    }
 
     /**
      * Representing a little contribution box on the screen.  Or the popup.
@@ -1274,8 +1433,12 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         // THANKS:  Automatic 'new', https://stackoverflow.com/a/383503/673991
 
         if (is_specified(id_attribute)) {
+            if (typeof id_attribute === 'number') {
+                id_attribute = id_attribute.toString();
+            }
             this.id_specified = true;
             this.id_attribute = id_attribute;
+            this.idn = parseInt(id_attribute);
             this.idn_decimal = strip_prefix(this.id_attribute, MONTY.POPUP_ID_PREFIX);
             this.$cont = $_from_id(this.id_attribute);
             this.$sup = this.$cont.closest('.sup-contribution');
@@ -1283,7 +1446,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         } else {
             this.id_specified = false;
         }
-}
+    }
 
     /**
      * Construct a Contribution, not from its id, but from any element inside it.
@@ -1355,6 +1518,8 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         $save_bar:        { get: function () {return this.$sup.find('.save-bar');}},
         $caption_bar:     { get: function () {return this.$sup.find('.caption-bar');}},
         $caption_span:    { get: function () {return this.$sup.find('.caption-span');}},
+        content:          { get: function () {return this.$cont.text();}},
+        is_media:         { get: function () {return could_be_url(this.content);}},
         caption_text:     { get: function () {return this.$caption_span.text();}},
         is_noembed_error: { get: function () {return this.$sup.hasClass('noembed-error');}},
         /**
@@ -1364,16 +1529,14 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
          */
         // TODO:  This JSDoc header STILL doesn't obviate the need for a
         //        noinspection JSIncompatibleTypesComparison
-        media_domain:   { get: function () {return this.$sup.attr('data-domain') || null;}},
-        $iframe:        { get: function () {return this.$render_bar.find('iframe');}},
-        $img_thumb:     { get: function () {return this.$render_bar.find('img.thumb');}},
-        iframe:         { get: function () {return this.$iframe.get(0) || null;}},
-        $cat:           { get: function () {return this.$sup.closest('.category');}},
-        category_id:    { get: function () {return this.$cat.attr('id');}},
-        is_my_category: { get: function () {return this.category_id === MONTY.IDN.CAT_MY.toString();}},
-        is_media:       { get: function () {return could_be_url(this.content);}},
-        content:        { get: function () {return this.$cont.text();}},
-        media_url:      { get: function () {return this.is_media ? this.content : null;}}
+        media_domain:     { get: function () {return this.$sup.attr('data-domain') || null;}},
+        $iframe:          { get: function () {return this.$render_bar.find('iframe');}},
+        $img_thumb:       { get: function () {return this.$render_bar.find('img.thumb');}},
+        iframe:           { get: function () {return this.$iframe.get(0) || null;}},
+        $cat:             { get: function () {return this.$sup.closest('.category');}},
+        category_id:      { get: function () {return this.$cat.attr('id');}},
+        is_my_category:   { get: function () {return this.category_id === MONTY.IDN.CAT_MY.toString();}},
+        media_url:        { get: function () {return this.is_media ? this.content : null;}}
     });
 
     Contribution.prototype.exists = function Contribution_exists() {
@@ -3621,7 +3784,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         }
     }
 
-    function sortable_options() {
+    function sortable_module_options() {
         // noinspection JSUnusedGlobalSymbols
         return {
             animation: 150,
@@ -3980,8 +4143,8 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                             } else {
                                 $cat.append($sup_cont);
                             }
-                            // NOTE:  This is when the first time a new contribution is in the DOM
-                            //        and when the Contribution constructor could be called.
+                            // NOTE:  Now for the first time ever, a new contribution is in the DOM
+                            //        and now the Contribution constructor could be called.
                             $text.val("");
                             $caption_input.val("");
                             post_it_button_appearance();
@@ -4057,6 +4220,9 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         //         Including jQuery and MONTY and THIS contribution.js script and a bunch of others!
         //         But is that a problem for some other browser??
         //         Should we instead empty and append a div within body?
+        //         Or put the js in the header?
+        //         What good is it in the body if the page is all JavaScript generated?
+
         $(window.document.body).addClass('dirty-nowhere');
 
         // var $up_top_spacer = $('<div>', {id: 'up-top-spacer'});
@@ -4126,7 +4292,6 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         if (MONTY.is_anonymous) {
             var $anon_blurb = $('<p>', {id: 'anon-v-anon-blurb'}).text(ANON_V_ANON_BLURB);
             $categories[MONTY.IDN.CAT_ANON].append($anon_blurb);
-
             $sup_categories[MONTY.IDN.CAT_ANON].addClass('double-anon');
             // Anonymous users see a faded anonymous category with explanation.
         }
@@ -4176,59 +4341,12 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         }
         consistent_cat_cont();   // empty is consistent with empty
 
-        /**
-         * Give a contribution a new idn, in cat_of_cont{} and conts_in_cat{}[].
-         *
-         * So an edit word takes the place of a contribution word (or an older edit word).
-         *
-         * @param old_idn - idn of the original contribution word (or an older edit word).
-         * @param new_idn - idn of a new edit word.
-         */
-        function renumber_cont(old_idn, new_idn) {
-            var cat = cat_of_cont[old_idn];
-            console.assert(is_defined(cat), old_idn);
-            var i = conts_in_cat[cat].indexOf(old_idn);
-            console.assert(i !== -1, old_idn);
-            conts_in_cat[cat][i] = new_idn;
-            cat_of_cont[new_idn] = cat;
-            delete cat_of_cont[old_idn];
-            // NOTE:  Delete old categorization, so consistent_cat_cont() passes.
-        }
-
-        function insert_cont(cat, cont_idn, i_position) {
-            if (i_position === MONTY.IDN.FENCE_POST_RIGHT) {
-                conts_in_cat[cat].push(cont_idn);   // Stick it on the right end.
-            } else {
-                var i = conts_in_cat[cat].indexOf(i_position);
-                if (i === -1) {
-                    // console.error("insert_cont", cat, cont_idn, i_position, JSON.stringify(conts_in_cat));
-                    console.log(
-                        "(Can't insert", cont_idn,
-                        "before", i_position,
-                        "so it's going on the left end of", MONTY.cat.txt[cat],
-                        "instead.)"
-                    );
-                    // NOTE:  Whatever was in there to anchor the rearranging is gone now.
-                    //        Oh well, stick it in with the "latest" stuff (probably on the left).
-                    //        This was happening when I wasn't processing obsolete unslump verbs.
-                    //        It could also happen for anonymous users because the following
-                    //        cont was from ANOTHER anonymous user so they don't see it.
-                    //        Consequence is it's just out of order, no biggie.
-                    conts_in_cat[cat].unshift(cont_idn);   // Stick it on the left end.
-                } else {
-                    conts_in_cat[cat].splice(i, 0, cont_idn);
-                }
-            }
-        }
-
         auth_log = [];
 
         looper(MONTY.w, function (_, word) {
             var $sup;
             var $cont;
             var $caption_span;
-            // var handler_idn;
-            // var handler_url;
             if (word !== null) {
                 switch (word.vrb) {
                 case MONTY.IDN.CONTRIBUTE:
@@ -4270,7 +4388,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                             $cont.text(word.txt);
                             delete $sup_contributions[old_idn];
                             // TODO:  Instead of deleting, just flag it as overrode or something?
-                            //        That would prevent vacuous "unknown word" situations.
+                            //        That would prevent SOME vacuous "unknown word" situations.
                             $sup_contributions[new_idn] = $sup;
                             renumber_cont(old_idn, new_idn);
                             consistent_cat_cont();
@@ -4280,11 +4398,14 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                         //        and likewise moves to the more recent end.
                     } else {
                         // TODO:  Editable captions.
+                        //        (Currently, an edited caption is submitted as a new caption.)
                         console.log("(Can't edit " + word.obj + ")");
-                        // NOTE:  One harmless way this could come about,
+                        // NOTE:  Edit for an unknown contribution.  One harmless way we get here:
                         //        A logged-in user could edit an anonymous user's contribution.
                         //        Other anon user would get this edit-word, but not the original word.
                         //        TODO:  They should see this edit.   Now they won't.
+                        //               Or not.  Maybe the contribution should be explicitly
+                        //               APPROVED before other anonymous users could see it.
                         //
                         //        Another is if user A then B edits contribution x (by a third user).
                         //        B won't enforce A's edit, so although B's edit is later,
@@ -4299,40 +4420,35 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                         if (has($sup_contributions, word.obj)) {   // Are we rendering what it categorizes?
                             var new_cat = word.vrb;
                             var cont_idn = word.obj;
-                            var i_position = word.num;
+                            var idn_position = word.num;
                             // CAUTION:  Don't $_from_id(cont_idn) because it's not in the DOM yet.
                             $sup = $sup_contributions[cont_idn];
                             $cont = $sup.find('.contribution');
-                            var is_right = i_position === MONTY.IDN.FENCE_POST_RIGHT;
-                            var where = is_right ? "right" : i_position.toString();
+                            var is_right = idn_position === MONTY.IDN.FENCE_POST_RIGHT;
+                            var where = is_right ? "right" : idn_position.toString();
                             var action = "drag to " + MONTY.cat.txt[new_cat] + "." + where + ",";
                             if (is_authorized(word, $cont.attr('data-owner'), action)) {
-                                var post;
-                                if (i_position === MONTY.IDN.FENCE_POST_RIGHT) {
-                                    post = "[right edge]";
-                                } else {
-                                    post = i_position.toString();
-                                }
                                 var old_cat = cat_of_cont[cont_idn];
                                 if (is_defined(old_cat)) {
-                                    var i_cont = conts_in_cat[old_cat].indexOf(cont_idn);
-                                    if (i_cont === -1) {
+                                    var i_cont_within_cat = conts_in_cat[old_cat].indexOf(cont_idn);
+                                    if (i_cont_within_cat === -1) {
                                         console.error(
-                                            "Can't find cont in order_cont",
-                                            old_cat,
+                                            "Can't find cont",
+                                            cont_idn,
+                                            "within conts_in_cat[" + old_cat + "]",
                                             conts_in_cat
                                         );
                                     } else {
-                                        conts_in_cat[old_cat].splice(i_cont, 1);
-                                        insert_cont(new_cat, cont_idn, i_position);
+                                        conts_in_cat[old_cat].splice(i_cont_within_cat, 1);
+                                        insert_cont(new_cat, cont_idn, idn_position);
                                         cat_of_cont[cont_idn] = new_cat;
                                         $cont.attr('data-owner', word.sbj);
                                         consistent_cat_cont();
                                     }
                                 } else {
-                                    console.warn(
+                                    console.error(
                                         "Lost track of cat for",
-                                        cont_idn.toString(),
+                                        cont_idn,
                                         cat_of_cont
                                     );
                                 }
@@ -4370,8 +4486,59 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             }
         });
         // NOTE:  MONTY.w loop is done.
-
         consistent_cat_cont();   // One final check for good measure.
+
+
+
+        alternative_build_contributions();
+
+
+
+        /**
+         * Give a contribution a new idn, in cat_of_cont{} and conts_in_cat{}[].
+         *
+         * So an edit word takes the place of a contribution word (or an older edit word).
+         *
+         * @param old_idn - idn of the original contribution word (or an older edit word).
+         * @param new_idn - idn of a new edit word.
+         */
+        function renumber_cont(old_idn, new_idn) {
+            var cat = cat_of_cont[old_idn];
+            console.assert(is_defined(cat), old_idn);
+            var i = conts_in_cat[cat].indexOf(old_idn);
+            console.assert(i !== -1, old_idn);
+            conts_in_cat[cat][i] = new_idn;
+            cat_of_cont[new_idn] = cat;
+            delete cat_of_cont[old_idn];
+        }
+
+        function insert_cont(cat, cont_idn, i_position) {
+            if (i_position === MONTY.IDN.FENCE_POST_RIGHT) {
+                conts_in_cat[cat].push(cont_idn);   // Stick it on the right end.
+            } else {
+                var i = conts_in_cat[cat].indexOf(i_position);
+                if (i === -1) {
+                    // console.error("insert_cont", cat, cont_idn, i_position, JSON.stringify(conts_in_cat));
+                    console.log(
+                        "(Can't insert", cont_idn,
+                        "before", i_position,
+                        "so it's going on the LEFT end of", MONTY.cat.txt[cat],
+                        "instead.)"
+                    );
+                    // NOTE:  Whatever was in there to anchor the rearranging is gone now.
+                    //        Oh well, stick it in with the "latest" stuff (probably on the left).
+                    //        This was happening when I wasn't processing obsolete unslump verbs.
+                    //        It could also happen for anonymous users because the following
+                    //        cont was from ANOTHER anonymous user so they don't see it.
+                    //        Consequence is it's just out of order, no biggie.
+                    conts_in_cat[cat].unshift(cont_idn);   // Stick it on the left end.
+                } else {
+                    conts_in_cat[cat].splice(i, 0, cont_idn);
+                }
+            }
+        }
+
+
 
         // console.log("cat_of_cont", JSON.stringify(cat_of_cont, null, 2));
         // EXAMPLE:  cat_of_cont {
@@ -4441,7 +4608,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         // EXAMPLE:  conts_in_cat {
         //   "1435": [   (Order of categories does not matter in the outer associative array.)
         //     3486,     (Order of contributions DOES matter, and is defined by, each inner array.)
-        //     3470,     (By the way, category order is defined by the MONTY.cat.order[] array.)
+        //     3470,     (By the way, category order is defined by MONTY.cat.order[].)
         //     1809,
         //     1990,
         //     2001,
@@ -4511,13 +4678,29 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         //     1729
         //   ]
         // }
+        // $(window.document.body).append(
+        //     $('<div>', {title: 'Authorization History Comment'}).append(
+        //         $('<!-- \n' + auth_log.join("\n") + '\n-->')
+        //     )
+        // );
+        // // NOTE:  Slightly less intrusive stowing of the auth_log than console.log(auth_log).
+        // //        See it in F12 | Elements.
+        // EXAMPLE:
+        //     1433. Yes Bob Stein may caption 1432, work of Bob Stein
+        //     1441. Yes Bob Stein may drag to trash.right, 1430, work of Bob Stein
+        //     1442. Yes Bob Stein may drag to trash.right, 1024, work of Bob Stein
+        //     :
+        //     1457. Nope anon#1267 won't drag to my.1432, 956, work of Bob Stein
+        //     1459. Yes anon#1267 may caption 1458, work of anon#1267
+        //     1461. Yes anon#1267 may caption 1460, work of anon#1267
+        //     1463. Yes anon#1267 may caption 1462, work of anon#1267
+        //     1465. Yes Bob Stein may drag to trash.right, 1462, work of anon#1267
+        //     :
+        //     4144. Yes Bob Stein may caption 4143, work of Bob Stein
+        //     4215. Yes Bob Stein may edit 1450, work of Bob Stein
+        //     4222. Yes Bob Stein may drag to my.right, 1432, work of Bob Stein
 
-        $(window.document.body).append(
-            $('<div>', {title: 'Authorization History Comment'}).append(
-                $('<!-- \n' + auth_log.join("\n") + '\n-->')
-            )
-        );
-        // NOTE:  Slightly less intrusive stowing of the auth_log than console.log(auth_log).
+
 
         /**
          * Put the newly minted contribution elements in their category DOMs.
@@ -4722,18 +4905,6 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         }
     }
 
-    // noinspection JSUnusedLocalSymbols
-    function word_from_idn(idn) {
-        var the_word = null;
-        looper(MONTY.w, function (_, word) {
-            if (word.idn === idn) {
-                the_word = word;
-                return false;
-            }
-        });
-        return the_word;
-    }
-
     function rebuild_all_render_bars() {
         $('.sup-contribution').each(function () {
             rebuild_a_render_bar(this);
@@ -4769,6 +4940,12 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     }
 
 
+    /**
+     * What's the category idn where this contribution went (for CURRENT user) before it was edited?
+     *
+     * @param word
+     * @return {number} - idn of CAT_MY, CAT_ANON, or CAT_THEIR
+     */
     function original_cat(word) {
         if (word.sbj === MONTY.me_idn) {
             return MONTY.IDN.CAT_MY;
