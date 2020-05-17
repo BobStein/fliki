@@ -189,7 +189,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         $('<img>', {src: laugh_url, alt: "laughing"})
     ];
 
-    var MAX_CAPTION_LENGTH = 100;  // Because some oembed titles are huge
+    var MAX_OEMBED_CAPTION_LENGTH = 100;  // Because some oembed titles are huge
 
     var me_name;
     var me_possessive;
@@ -203,7 +203,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     }
     var me_title = me_possessive + " " + MONTY.WHAT_IS_THIS_THING;
 
-    // Aux outputs of build_category(), which puts the (orphan) DOM objects it creates here.
+    // Aux outputs of build_category_dom(), which puts the (orphan) DOM objects it creates here.
     var $sup_categories = {};  // outer category divs:  div.sup-category
                                //                       includes h2 header and triangle valve
     var $categories = {};      // inner category divs:  div.category
@@ -225,19 +225,6 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                           // annoying to show a tiny bit scrolled out of view)
         extreme: 8        // above extreme-max, display at soft-max.
     };
-    // var POPUP_WIDTH_MAX_EM = {
-    //     soft: 30,         // below the hard-max, display as is.
-    //     hard: 60,         // between hard and extreme-max, limit to hard-max.
-    //                       // (a reason to have a soft-hard gap horizontally: minimize wrapping)
-    //     extreme: 65       // above extreme-max, display at soft-max.
-    // };
-    // var POPUP_HEIGHT_MAX_EM = {
-    //     soft: 20,         // below the hard-max, display as is.
-    //     hard: 30,         // between hard and extreme-max, limit to hard-max.
-    //                       // (no big reason to have a gap between soft and hard vertically:
-    //                       // it's just annoying to show a tiny bit scrolled out of view)
-    //     extreme: 40       // above extreme-max, display at soft-max.
-    // };
 
     var MIN_CAPTION_WIDTH = 100;
     // NOTE:  Prevent zero-width iframe or other crazy situation from scrunching caption too narrow.
@@ -249,11 +236,11 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
 
     var cont_only = cont_list_from_query_string();
 
-    // var progress_play_bot = null;   // setTimeout timer for the current contribution in play
     var list_play_bot;   // array of contribution id's
     var index_play_bot;
-    // TODO:  These should be properties of Bot instance, right??
+    // TODO:  These should be properties of the Bot instance, right??
 
+    // window.localStorage item names
     var SETTING_PLAY_BOT_SEQUENCE = 'setting.play_bot.sequence';
     var PLAY_BOT_SEQUENCE_ORDER = 'in_order';
     var PLAY_BOT_SEQUENCE_RANDOM = 'random';
@@ -841,7 +828,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             }
             that.cont_idn = list_play_bot[index_play_bot];
             that.cont = Contribution(that.cont_idn);
-            if ( ! that.cont.exists()) {
+            if ( ! that.cont.does_exist()) {
                 that.crash("Missing contribution", that.cont_idn, index_play_bot);
                 break;
             }
@@ -1101,7 +1088,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     ) {
         var that = this;
         that.did_bot_transition = did_bot_transition;
-        console.log("(bot breather {})".replace('{}', seconds_delay.toFixed(1)));
+        console.log("(bot breather {sec})".replace('{sec}', seconds_delay.toFixed(1)));
         that.breather_seconds = seconds_delay;
         that.state = that.State.BREATHER;
     };
@@ -1261,7 +1248,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     /**
      * Freakish name for a thing that stores idn-referenced stuff.
      *
-     * It's almost sorta maybe like a Lex.
+     * It's almost sorta maybe like the Python Lex class.
      *
      * @param word_class constructs instances for the lexi.  Takes an idn to construct.
      * @return {Lexi}
@@ -1274,22 +1261,22 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         this.word_class = word_class;
         this._word_from_idn = {}
     }
+    Lexi.prototype.has = function Lexi_has(idn) {
+        var that = this;
+        return has(that._word_from_idn, idn);
+    }
     Lexi.prototype.get = function Lexi_get(idn) {
         var that = this;
-        if (has(that._word_from_idn, idn)) {
+        if (that.has(idn)) {
             return that._word_from_idn[idn];
         } else {
             console.error(type_name(that), "has not got", idn);
             return null;
         }
     }
-    Lexi.prototype.has = function Lexi_has(idn) {
-        var that = this;
-        return has(that._word_from_idn, idn);
-    }
     Lexi.prototype.add = function Lexi_add(idn) {
         var that = this;
-        if (has(that._word_from_idn, idn)) {
+        if (that.has(idn)) {
             console.error(type_name(that), "already added", idn);
         } else {
             that._word_from_idn[idn] = that.word_class(idn);
@@ -1303,17 +1290,18 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
      * @return {ContributionLexi}
      * @constructor
      */
-    function ContributionLexi(category_list) {
+    function ContributionLexi(category_lexi) {
         if ( ! (this instanceof ContributionLexi)) {
-            return new ContributionLexi(category_list);
+            return new ContributionLexi(category_lexi);
         }
-        this.category_list = category_list;
+        this.category_lexi = category_lexi;
+        this.notify = function () {};
         Lexi.apply(this, [Contribution]);
     }
     ContributionLexi.prototype = new Lexi(Contribution);
     ContributionLexi.prototype.constructor = ContributionLexi;
 
-    ContributionLexi.prototype.word_pass = function ContributionLexi_add(word) {
+    ContributionLexi.prototype.word_pass = function ContributionLexi_word_pass(word) {
         var that = this;
         switch (word.vrb) {
         case MONTY.IDN.UNSLUMP_OBSOLETE:
@@ -1327,35 +1315,154 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             edit_word(word);
             break;
         default:
-            var cat = that.category_list.get(word.vrb);
-            if (cat !== null) {
-                cat_ordering_word(cat, word);
+            if (that.category_lexi.has(word.vrb)) {
+                cat_ordering_word(word);
             }
         }
 
         function contribute_word(word) {
-            var cont = that.add(word.idn);
-            console.assert(cont !== null, word, that);
+            var new_cont_idn = word.idn;
+            var new_cont_owner = word.sbj;
+
+            var cont = that.add(new_cont_idn);
             var cat_idn = original_cat(word);
-            cont.cat_idn = cat_idn;
+            var cat = that.category_lexi.get(cat_idn);
+            cont.cat = cat;
+            cat.cont_sequence.insert(new_cont_idn);   // insert LEFT end, nothing ever goes wrong
+            cont.owner = new_cont_owner;
+            that.notify(f("{idn}. {owner} contributes to {cat_txt}", {
+                idn: new_cont_idn,
+                owner: user_name_short(new_cont_owner),
+                cat_txt: cat.txt
+            }));
         }
 
+        /**
+         *
+         * @param word
+         * @property {Contribution} cont
+         */
         function caption_word(word) {
+            var cont_idn = word.obj;
+            var new_capt_idn = word.idn;
+            var new_capt_txt = word.txt;
+            var new_capt_owner = word.sbj;
+
+            if (that.has(cont_idn)) {
+                var cont = that.get(cont_idn);
+                var is_capt_already = is_specified(cont.capt);
+                var old_capt_owner;
+                if (is_capt_already) {
+                    old_capt_owner = cont.capt.owner;
+                } else {
+                    old_capt_owner = cont.owner;
+                }
+                if (that.is_authorized(word, old_capt_owner, "caption")) {
+                    cont.capt = Caption(new_capt_idn);
+                    cont.capt.txt = new_capt_txt;
+                    cont.capt.owner = new_capt_owner;
+                }
+            } else {
+                that.notify(f("{capt_idn}. (Can't caption {cont_idn})", {
+                    cont_idn: cont_idn,
+                    capt_idn: new_capt_idn
+                }));
+            }
         }
 
         function edit_word(word) {
-        }
+            var old_cont_idn = word.obj;
+            var new_cont_idn = word.idn;
+            var new_cont_owner = word.sbj;
+            var new_cont_txt = word.txt;
 
-        function cat_ordering_word(cat, word) {
-            var cont_idn = word.obj;
-            if (that.has(cont_idn)) {
-                var cont = that.get(cont_idn);
-                cat.cont_idn_sequence.unshift(cont_idn);
-                cont.cat = cat;
+            if (that.has(old_cont_idn)) {
+                var old_cont = that.get(old_cont_idn);
+                var old_cont_owner = old_cont.owner;
+                if (that.is_authorized(word, old_cont_owner, "edit")) {
+                    var new_cont = that.add(new_cont_idn);
+                    new_cont.cat = old_cont.cat;
+                    new_cont.owner = new_cont_owner;
+                    new_cont.content = new_cont_txt;
+                    new_cont.cat.cont_sequence.renumber(old_cont_idn, new_cont_idn);
+                }
             } else {
-                console.warn("Can't order", cont_idn);
+                that.notify(f("{new_cont_idn}. (Can't edit {old_cont_idn})", {
+                    new_cont_idn: new_cont_idn,
+                    old_cont_idn: old_cont_idn
+                }));
             }
         }
+
+        function cat_ordering_word(word) {
+            var reordering_idn = word.idn;
+            var new_cont_owner = word.sbj;
+            var new_cat_idn = word.vrb;
+            var new_cat = that.category_lexi.get(new_cat_idn);
+            var cont_idn = word.obj;
+            var idn_to_the_right = word.num;
+            var is_far_right = idn_to_the_right === MONTY.IDN.FENCE_POST_RIGHT;
+
+            if (that.has(cont_idn)) {
+                var cont = that.get(cont_idn);
+                var old_cat = cont.cat;
+                var old_cont_owner = cont.owner;
+                var action_template = is_far_right
+                    ? "drag to right of {cat},"
+                    : "drag to {idn_to_the_right} in {cat_txt},";
+                var action = f(action_template, {
+                    cat_txt: new_cat.txt,
+                    idn_to_the_right: idn_to_the_right
+                });
+                if (that.is_authorized(word, old_cont_owner, action)) {
+                    if (is_specified(old_cat)) {
+                        old_cat.cont_sequence.delete(cont_idn, cat_ordering_error);
+                    }
+                    new_cat.cont_sequence.insert(cont_idn, idn_to_the_right, cat_ordering_error);
+                    cont.cat = new_cat;
+                    cont.owner = new_cont_owner;
+                }
+            } else {
+                that.notify(f("{reordering_idn}. (Can't reorder {cont_idn})", {
+                    reordering_idn: reordering_idn,
+                    cont_idn: cont_idn
+                }));
+            }
+
+            function cat_ordering_error(message) {
+                console.error(f("{idn}. {message}", {
+                    idn: reordering_idn,
+                    message: message
+                }));
+            }
+        }
+    }
+
+    ContributionLexi.prototype.is_authorized = function ContributionLexi_is_authorized(
+        word,
+        old_owner,
+        action
+    ) {
+        var that = this;
+        return is_authorized(word, old_owner, action, function (message) {
+            that.notify(message);
+        });
+    };
+
+    /**
+     * What we need to know about each category.
+     *
+     * @param idn - e.g. MONTY.IDN.CAT_MY
+     * @return {Category}
+     * @constructor
+     */
+    function Caption(idn) {
+        if ( ! (this instanceof Caption)) {
+            return new Caption(idn);
+        }
+        this.idn = idn;
+        this.txt = null;
+        this.owner = null;
     }
 
     /**
@@ -1371,7 +1478,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         }
         this.idn = idn;
         this.txt = null;
-        this.cont_idn_sequence = null;
+        this.cont_sequence = IdnSequence(MONTY.IDN.FENCE_POST_RIGHT);
     }
 
     /**
@@ -1389,34 +1496,127 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     CategoryLexi.prototype = new Lexi(Category);
     CategoryLexi.prototype.constructor = CategoryLexi;
 
-    CategoryLexi.prototype.from_monty = function CategoryLexi_from_monty(monty_cat) {
+    /**
+     * Initialize a category list from names and ordering.
+     *
+     * @param {Array<number>} cat_order - array of category idns in top-down display order
+     * @param txt_from_idn - associative array of category names, indexed by category idn
+     * @return {CategoryLexi}
+     */
+    CategoryLexi.prototype.from_monty = function CategoryLexi_from_monty(cat_order, txt_from_idn) {
         var that = this;
-        looper(monty_cat.order, function (_, cat_idn) {
-            var category = that.add(cat_idn);
-            category.txt = monty_cat.txt[cat_idn];
-            category.cont_idn_sequence = [];
+        looper(cat_order, function (_, cat_idn) {
+            var cat = that.add(cat_idn);
+            cat.txt = txt_from_idn[cat_idn];
         });
+        return that;
+    }
+
+    /**
+     * What we need to know about each category.
+     *
+     * @param fence_post_right - special value for idn_to_right to represent right-most.
+     * @return {Category}
+     * @constructor
+     */
+    function IdnSequence(fence_post_right) {
+        if ( ! (this instanceof IdnSequence)) {
+            return new IdnSequence(fence_post_right);
+        }
+        this._sequence = [];   // array of idns
+        this.fence_post_right = fence_post_right;
+    }
+
+    IdnSequence.prototype.idn_array = function IdnSequence_idn_array() {
+        var that = this;
+        return that._sequence.slice(0);
+        // THANKS:  Array shallow copy, https://stackoverflow.com/a/21514254/673991
+    }
+
+    IdnSequence.prototype.delete = function IdnSequence_delete(idn, error_callback) {
+        error_callback = error_callback || function () {};
+        var that = this;
+        var index = that._sequence.indexOf(idn);
+        if (index === -1) {
+            error_callback(f("Can't delete {idn} in:\n{idns}", {
+                idn: idn,
+                idns: that._sequence.join(" ")
+            }));
+        } else {
+            that._sequence.splice(index, 1);
+        }
+    }
+    IdnSequence.prototype.renumber = function IdnSequence_insert(idn_old, idn_new, error_callback) {
+        error_callback = error_callback || function () {};
+        var that = this;
+        var index = that._sequence.indexOf(idn_old);
+        if (index === -1) {
+            error_callback(f("Can't renumber {idn_old} to {idn_new} in:\n{idns}", {
+                idn_old: idn_old,
+                idn_new: idn_new,
+                idns: that._sequence.join(" ")
+            }));
+            that._sequence.push(idn_new);
+        } else {
+            that._sequence[index] = idn_new;
+        }
+    }
+    IdnSequence.prototype.insert = function IdnSequence_insert(idn, idn_to_right, error_callback) {
+        error_callback = error_callback || function () {};
+        var that = this;
+        if (is_specified(idn_to_right)) {
+            if (idn_to_right === that.fence_post_right) {
+                that._sequence.push(idn);
+            } else {
+                var index = that._sequence.indexOf(idn_to_right);
+                if (index === -1) {
+                    error_callback(f("Can't insert {idn} at {idn_to_right} in:\n{idns}", {
+                        idn: idn,
+                        idn_to_right: idn_to_right,
+                        idns: that._sequence.join(" ")
+                    }));
+                    that._sequence.unshift(idn);
+                } else {
+                    that._sequence.splice(index, 0, idn);
+                }
+            }
+        } else {
+            that._sequence.unshift(idn);
+        }
     }
 
 
 
-    var contribution_list = null;
+    var contribution_lexi = null;
 
-    function alternative_build_contributions() {
-        var category_list = CategoryLexi();
-        category_list.from_monty(MONTY.cat);
-        console.debug("CategoryLexi", category_list);
-
-        contribution_list = ContributionLexi(category_list);
+    function alternative_build_contributions(conts_in_cat) {
+        var category_lexi = CategoryLexi().from_monty(MONTY.cat.order, MONTY.cat.txt);
+        contribution_lexi = ContributionLexi(category_lexi);
+        contribution_lexi.notify = function alt_notifier(message) {
+            console.log("Alt --", message);
+        };
         looper(MONTY.w, function (_, word) {
-            contribution_list.word_pass(word);
+            contribution_lexi.word_pass(word);
         });
 
+        console.log("The alternative way:");
         looper(MONTY.cat.order, function (_, cat_idn) {
-            var cat = category_list.get(cat_idn);
-            console.log("Category", cat.txt, cat.cont_idn_sequence.join(","));
+            var cat = contribution_lexi.category_lexi.get(cat_idn);
+            var original_idns = conts_in_cat[cat_idn].join(" ");
+            var alternative_idns = cat.cont_sequence.idn_array().join(" ");
+            var is_same = alternative_idns === original_idns;
+            console.log(f(
+                "Category {name} {comparison} ({how_many}):\n" +
+                "{old_idns}\n" +
+                "{new_idns}", {
+                    name: cat.txt,
+                    comparison: is_same ? "SAME" : "DIFFERENT",
+                    how_many: cat.cont_sequence.idn_array().length,
+                    old_idns: original_idns,
+                    new_idns: alternative_idns
+                }
+            ));
         });
-
     }
 
     /**
@@ -1436,6 +1636,8 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             if (typeof id_attribute === 'number') {
                 id_attribute = id_attribute.toString();
             }
+            // FALSE WARNING:  Unused definition id_specified
+            // noinspection JSUnusedGlobalSymbols
             this.id_specified = true;
             this.id_attribute = id_attribute;
             this.idn = parseInt(id_attribute);
@@ -1443,7 +1645,16 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             this.$cont = $_from_id(this.id_attribute);
             this.$sup = this.$cont.closest('.sup-contribution');
             this.handler = null;
+            this.owner = null;
+            // FALSE WARNING:  Unused definition capt
+            // noinspection JSUnusedGlobalSymbols
+            this.capt = null;
+            // FALSE WARNING:  Unused definition cat
+            // noinspection JSUnusedGlobalSymbols
+            this.cat = null;
         } else {
+            // FALSE WARNING:  Unused definition id_specified
+            // noinspection JSUnusedGlobalSymbols
             this.id_specified = false;
         }
     }
@@ -1518,7 +1729,10 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         $save_bar:        { get: function () {return this.$sup.find('.save-bar');}},
         $caption_bar:     { get: function () {return this.$sup.find('.caption-bar');}},
         $caption_span:    { get: function () {return this.$sup.find('.caption-span');}},
-        content:          { get: function () {return this.$cont.text();}},
+        content:          {
+                              get: function () {return this.$cont.text();},
+                              set: function (new_content) {return this.$cont.text(new_content);}
+                          },
         is_media:         { get: function () {return could_be_url(this.content);}},
         caption_text:     { get: function () {return this.$caption_span.text();}},
         is_noembed_error: { get: function () {return this.$sup.hasClass('noembed-error');}},
@@ -1539,9 +1753,9 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         media_url:        { get: function () {return this.is_media ? this.content : null;}}
     });
 
-    Contribution.prototype.exists = function Contribution_exists() {
-        // noinspection JSConstructorReturnsPrimitive
-        return this.id_specified && this.$sup.length === 1;
+    Contribution.prototype.does_exist = function Contribution_does_exist() {
+        var that = this;
+        return that.id_specified && that.$sup.length === 1;
     };
 
     /**
@@ -1570,7 +1784,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                     onResized: function iframe_resized_itself(stuff) {
                         var msg_cont = Contribution_from_element(stuff.iframe);
                         console.assert(
-                            msg_cont.exists(),
+                            msg_cont.does_exist(),
                             stuff.iframe,
                             stuff.iframe.parentElement,
                             stuff.height, stuff.width, stuff.type
@@ -1925,11 +2139,11 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             // EXAMPLE:  Sophisticated Media 1792 handler 3 any url  Mr Bean's ...
             that.handler.media.render_thumb(that);
             var can_play = that.handler.media.can_play();
-            this.$sup.toggleClass('can-play', can_play);
-            this.$sup.toggleClass('cant-play', ! can_play);
+            that.$sup.toggleClass('can-play', can_play);
+            that.$sup.toggleClass('cant-play', ! can_play);
         } else {
-            this.$sup.removeClass('can-play');
-            this.$sup.removeClass('cant-play');
+            that.$sup.removeClass('can-play');
+            that.$sup.removeClass('cant-play');
             console.error(
                 "No fallback media handler for",
                 that.id_attribute,
@@ -2201,7 +2415,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     function contribution_edit(evt) {
         // TODO:  Make these functions members of Contribution "class".
         var cont = Contribution_from_element(this);
-        console.assert(cont.exists(), this);
+        console.assert(cont.does_exist(), this);
         var $clicked_on = $(evt.target);
         // SEE:  this vs evt.target, https://stackoverflow.com/a/21667010/673991
         if ($clicked_on.is('.contribution') && is_click_on_the_resizer(evt, $clicked_on[0])) {
@@ -2227,7 +2441,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
 
     function contribution_cancel() {
         var cont = Contribution_from_element(this);
-        console.assert(cont.exists(), this);
+        console.assert(cont.does_exist(), this);
         console.assert(is_editing_some_contribution);
         // If not editing, how was the cancel button visible?
         if (is_editing_some_contribution) {
@@ -2241,7 +2455,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
 
     function contribution_dirty() {
         var cont = Contribution_from_element(this);
-        console.assert(cont.exists(), this);
+        console.assert(cont.does_exist(), this);
         var class_attr = this.classList;
         if ( ! cont.$sup.hasClass('edit-dirty')) {
             cont.$sup.addClass('edit-dirty');
@@ -2288,7 +2502,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     function bigger(element, do_play) {
         bot.stop();
         var cont = Contribution_from_element(element);
-        console.assert(cont.exists(), element);
+        console.assert(cont.does_exist(), element);
         $(window.document.body).addClass('pop-up-manual');
         // NOTE:  body.pop-up-manual results from clicking any of:
         //        1. the contribution's save-bar "bigger" button with the fullscreen icon
@@ -2309,7 +2523,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     function iframe_resizer(selector_or_element, callback_good, callback_bad) {
         callback_bad = callback_bad || function () {};
         var cont = Contribution_from_element(selector_or_element);
-        if (cont.exists()) {
+        if (cont.does_exist()) {
             var iframe = cont.iframe;
             // noinspection JSIncompatibleTypesComparison
             if (iframe === null) {
@@ -3073,7 +3287,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         $(':animated').each(function () {
             var $element = $(this);
             var deanimating_cont = Contribution_from_element($element);
-            if (deanimating_cont.exists()) {
+            if (deanimating_cont.does_exist()) {
                 console.warn(
                     "Deanimating before",
                     what,
@@ -3730,7 +3944,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                 } else {
                     oembed_object.caption_for_media = "(neither title nor author)";
                 }
-                var limited_caption = oembed_object.caption_for_media.substr(0, MAX_CAPTION_LENGTH);
+                var limited_caption = oembed_object.caption_for_media.substr(0, MAX_OEMBED_CAPTION_LENGTH);
                 oembed_object.caption_for_media = limited_caption;
                 oembed_handler(oembed_object);
             });
@@ -4342,6 +4556,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         consistent_cat_cont();   // empty is consistent with empty
 
         auth_log = [];
+        var auth_log_push = auth_log.push.bind(auth_log);
 
         looper(MONTY.w, function (_, word) {
             var $sup;
@@ -4367,7 +4582,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                     if (has($sup_contributions, word.obj)) {
                         $sup = $sup_contributions[word.obj];
                         $caption_span = $sup.find('.caption-span');
-                        if (is_authorized(word, $caption_span.attr('data-owner'), "caption")) {
+                        if (is_authorized(word, $caption_span.attr('data-owner'), "caption", auth_log_push)) {
                             $caption_span.attr('id', word.idn);
                             $caption_span.attr('data-owner', word.sbj);
                             $caption_span.text(word.txt);
@@ -4380,7 +4595,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                     if (has($sup_contributions, word.obj)) {
                         $sup = $sup_contributions[word.obj];
                         $cont = $sup.find('.contribution');
-                        if (is_authorized(word, $cont.attr('data-owner'), "edit")) {
+                        if (is_authorized(word, $cont.attr('data-owner'), "edit", auth_log_push)) {
                             var old_idn = word.obj;
                             var new_idn = word.idn;
                             $cont.attr('id', new_idn);
@@ -4427,7 +4642,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                             var is_right = idn_position === MONTY.IDN.FENCE_POST_RIGHT;
                             var where = is_right ? "right" : idn_position.toString();
                             var action = "drag to " + MONTY.cat.txt[new_cat] + "." + where + ",";
-                            if (is_authorized(word, $cont.attr('data-owner'), action)) {
+                            if (is_authorized(word, $cont.attr('data-owner'), action, auth_log_push)) {
                                 var old_cat = cat_of_cont[cont_idn];
                                 if (is_defined(old_cat)) {
                                     var i_cont_within_cat = conts_in_cat[old_cat].indexOf(cont_idn);
@@ -4490,7 +4705,17 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
 
 
 
-        alternative_build_contributions();
+        console.log("The original way:");
+        looper(MONTY.cat.order, function (_, cat_idn) {
+            var original_idns = conts_in_cat[cat_idn].join(" ");
+            console.log(f("Category {name} ({how_many}): {idns}", {
+                name: MONTY.cat.txt[cat_idn],
+                how_many: conts_in_cat[cat_idn.toString()].length.toString(),
+                idns: original_idns
+            }));
+        });
+
+        alternative_build_contributions(conts_in_cat);
 
 
 
@@ -4678,11 +4903,11 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         //     1729
         //   ]
         // }
-        // $(window.document.body).append(
-        //     $('<div>', {title: 'Authorization History Comment'}).append(
-        //         $('<!-- \n' + auth_log.join("\n") + '\n-->')
-        //     )
-        // );
+        $(window.document.body).append(
+            $('<div>', {title: 'Authorization History Comment'}).append(
+                $('<!-- \n' + auth_log.join("\n") + '\n-->')
+            )
+        );
         // // NOTE:  Slightly less intrusive stowing of the auth_log than console.log(auth_log).
         // //        See it in F12 | Elements.
         // EXAMPLE:
@@ -4987,7 +5212,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
      *
      * @param word - the word causing a change (e.g. edit or re-categorization or rearrangement)
      *               word.sbj is the id_attribute of the user who initiated this change.
-     * @param owner - tricky - id of the last person we authorized to change this contribution.
+     * @param old_owner - tricky - id of the last person we authorized to change this contribution.
      *                It starts off as the original contributor.
      *                But then if I (the browsing user) moved it or edited it, then I'm the owner.
      *                But before that if the system admin moved or edited it,
@@ -4996,6 +5221,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
      *                then we expect data-owner to be overridden by whoever initiated THIS change!
      * @param action - text describing the change.
      *                 (This is probably word.verb.txt, as if that were accessible in JS)
+     * @param {function} reporter - callback for what went right or wrong and why
      * @return {boolean}
      */
 
@@ -5023,18 +5249,23 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     //            or by what we want to do with them?
     //                (my unslumping, others, trash)
 
-    function is_authorized(word, owner, action) {
+    function is_authorized(word, old_owner, action, reporter) {
+        reporter = reporter || function () {};
+        var change_idn = word.idn;
+        var new_owner = word.sbj;
+        var change_vrb = word.vrb;
+        var target = word.obj;
 
         // First stage of decision-making:
-        var is_change_mine = word.sbj === MONTY.me_idn;
-        var is_change_admin = is_admin(word.sbj);
-        var is_change_owner = word.sbj === owner;
-        var did_i_change_last = owner === MONTY.me_idn;
-        var did_admin_change_last = is_admin(owner);
+        var is_change_mine = new_owner === MONTY.me_idn;
+        var did_i_change_last = old_owner === MONTY.me_idn;
+        var is_change_admin = is_admin(new_owner);
+        var did_admin_change_last = is_admin(old_owner);
+        var is_same_owner = new_owner === old_owner;
 
         // Second stage of decision making:
         var let_admin_change = ! did_i_change_last                            && is_change_admin;
-        var let_owner_change = ! did_i_change_last && ! did_admin_change_last && is_change_owner;
+        var let_owner_change = ! did_i_change_last && ! did_admin_change_last && is_same_owner;
 
         // Third stage of decision making:
         var only_i_can_do_these = [
@@ -5044,7 +5275,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             MONTY.IDN.CAT_ANON
         ];
         var ok;
-        if (has(only_i_can_do_these, word.vrb)) {
+        if (has(only_i_can_do_these, change_vrb)) {
             ok = is_change_mine;
         } else {
             ok = is_change_mine || let_admin_change || let_owner_change;
@@ -5052,18 +5283,39 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
 
         // Decision:
         if (ok) {
-            auth_log.push(word.idn + ". Yes " + user_name_short(word.sbj) + " may " + action + " " + word.obj + ", work of " + user_name_short(owner));
+            reporter(
+                change_idn +
+                ". Yes " +
+                user_name_short(new_owner) +
+                " may " +
+                action +
+                " " +
+                target +
+                ", work of " +
+                user_name_short(old_owner)
+            );
         } else {
-            auth_log.push(word.idn + ". Nope " + user_name_short(word.sbj) + " won't " + action + " " + word.obj + ", work of " + user_name_short(owner));
+            reporter(
+                change_idn +
+                ". Nope " +
+                user_name_short(new_owner) +
+                " won't " +
+                action +
+                " " +
+                target +
+                ", work of " +
+                user_name_short(old_owner)
+            );
             if (let_admin_change || let_owner_change) {
-                auth_log.push("     ...because only I can recategorize like this.");
+                reporter("     ...because only I can recategorize like this.");
             }
             // TODO:  Display more thorough explanations on why or why not ok.
             //        This might be a big idea:
             //        Explain reasons by seeing which boolean inputs were critical,
             //        that is, which if flipped, would have changed the "ok" output.
             //        Would this really be interesting and complete?
-            //        What about pairs of inputs that together change the output?
+            //        What about pairs of inputs that together change the output
+            //        but don't individually?  Are there any such pairs?  Or triples?
             //        How to compose the human-readable explanations once we know which
             //        inputs were critical?
         }

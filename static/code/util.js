@@ -422,7 +422,7 @@ console.assert(false === is_array(function () {}));
  * Is this a plain object with properties?
  *
  * Why is_associative_array() is a better name for this function than is_object()?
- * Because 'object' is too generic a term in JavaScript.  Lotsa things are objects.
+ * Because 'object' is too generic a term in JavaScript.  Lots of things are objects.
  *     'object' === typeof [1,2,3]
  *     true === [1,2,3] instanceof Object
  *         but we don't think of an array as a "plain object"
@@ -683,3 +683,31 @@ function linear_transform(
 console.assert(220 === linear_transform(22, 0, 100, 0, 1000));
 console.assert(-1000 === linear_transform(890, 880, 870, 0, 1000));
 
+/**
+ * Plain jane string formatter.
+ *
+ * @param message - string with "{name}" symbols in it.
+ * @param parameters - name to value mapping.
+ * @return {string}
+ *
+ * TODO:  Support multiple instances of a symbol, e.g. "to {be} or not to {be}",
+ *        https://stackoverflow.com/a/1144788/673991
+ * TODO:  Warn of any unspecified symbols.
+ */
+function f(message, parameters) {
+    var formatted_message = message;
+    looper(parameters, function(name, value) {
+        var symbol = '{' + name + '}';
+        formatted_message = formatted_message.replace(symbol, to_string(value));
+    });
+    return formatted_message;
+}
+console.assert("life + everything = 42" === f("life + {a} = {b}", {a:'everything', b:42}));
+
+function to_string(z) {
+    if (is_specified(z)) {
+        return z.toString();
+    } else {
+        return official_type_name(z).toLowerCase();
+    }
+}
