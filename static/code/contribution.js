@@ -1593,7 +1593,13 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         var category_lexi = CategoryLexi().from_monty(MONTY.cat.order, MONTY.cat.txt);
         contribution_lexi = ContributionLexi(category_lexi);
         contribution_lexi.notify = function alt_notifier(message) {
-            console.log("Alt --", message);
+            // console.log("Alt --", message);
+            // EXAMPLE:
+            //     Alt -- 1918. Yes Bob Stein may caption 1917, work of Bob Stein
+            //     Alt -- 1919. Nope Hoabart won't edit 956, work of Bob Stein
+            //     Alt -- 1920. (Can't caption 1919)
+            //     Alt -- 1921. Nope Hoabart won't drag to 1871 in their, 1849, work of Hoabart
+            //     Alt --      ...because only I can recategorize like this.
         };
         looper(MONTY.w, function (_, word) {
             contribution_lexi.word_pass(word);
@@ -1789,18 +1795,19 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                             stuff.iframe.parentElement,
                             stuff.height, stuff.width, stuff.type
                         );
-
+                        var siz_width = parseFloat(stuff.width);
+                        var siz_height = parseFloat(stuff.height);
                         var pop_stuff = msg_cont.$sup.data('pop-stuff');
                         if (is_defined(pop_stuff)) {
                             var progress_width = linear_transform(
-                                stuff.width,
+                                siz_width,
                                 pop_stuff.render_width, pop_stuff.max_live_width,
                                 0.0, 1.0
                             )
                             // FALSE WARNING:  'render_height' should probably not be passed as parameter 'x1'
                             // noinspection JSSuspiciousNameCombination
                             var progress_height = linear_transform(
-                                stuff.height,
+                                siz_height,
                                 pop_stuff.render_height, pop_stuff.max_live_height,
                                 0.0, 1.0
                             )
@@ -1846,17 +1853,27 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                                     pop_stuff.fixed_coordinates.top, pop_top
                                 )
                                 msg_cont.$sup.css({left: sliding_left, top: sliding_top});
+                                console.log(
+                                    "Resize in",
+                                    msg_cont.id_attribute,
+                                    siz_width, "x", siz_height,
+                                    pct(progress),
+                                    sliding_left.toFixed(0) + "," + sliding_top.toFixed(0)
+                                );
                             } else {
-                                if (stuff.width === 0 && stuff.height === 0) {
-                                    // Neither animate nor warn about zero-size iframe.  Boring.
-                                } else {
-                                    console.warn(
-                                        "Resize out of range",
-                                        msg_cont.id_attribute,
-                                        stuff.width,
-                                        stuff.height
-                                    );
-                                }
+                                console.warn(
+                                    "Resize out",
+                                    msg_cont.id_attribute,
+                                    siz_width, "x", siz_height,
+                                    pct(progress), "[",
+                                    pct(progress_width), pct(progress_height), "]",
+                                    msg_cont.$render_bar.width(), msg_cont.$render_bar.height(), "~",
+                                    pop_stuff.render_width, pop_stuff.render_height, "->",
+                                    pop_stuff.max_live_width, pop_stuff.max_live_height
+                                );
+                            }
+                            function pct(z) {
+                                return (z * 100.0).toFixed(1) + "%";
                             }
                         }
                         msg_cont.fix_caption_width();
@@ -2555,97 +2572,101 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
      */
     function pop_down_all(did_bot_transition) {
         var $pop_ups = $('.pop-up');
-        var pop_cont = null;
-        var pop_conts = [];   // In case there are more than one.
+        if ($pop_ups.length > 1) {
+            console.error("multiple popups?!", $pop_ups);
+        } else if ($pop_ups.length === 1) {
+            var pop_cont = null;
+            var pop_conts = [];   // In case there are more than one.
 
-        deanimate("popping down " + $pop_ups.find('.contribution').attr('id'));
+            deanimate("popping down", $pop_ups);
 
-        $pop_ups.each(function () {
-            // NOTE:  There's almost certainly only one .pop-up at a time.
-            //        Maybe lingering animations could cause multiple?
-            //        But this makes sure to un-pop them all.  And exactly once.
+            $pop_ups.each(function () {
+                // NOTE:  There's almost certainly only one .pop-up at a time.
+                //        Maybe lingering animations could cause multiple?
+                //        But this makes sure to un-pop them all.  And exactly once.
 
-            pop_cont = Contribution_from_element(this);
-            var cont = Contribution(pop_cont.idn_decimal);
-            pop_conts.push(pop_cont);
+                pop_cont = Contribution_from_element(this);
+                var cont = Contribution(pop_cont.idn_decimal);
+                pop_conts.push(pop_cont);
 
-            pop_cont.$sup.removeClass('pop-up');
-            // NOTE:  This immediate removal of the pop-up class, though premature
-            //        (because the animation of the popping down is not complete),
-            //        allows redundant back-to-back calls to pop_down_all().
-            //        Because it means a second call won't find any .pop-up elements.
+                pop_cont.$sup.removeClass('pop-up');
+                // NOTE:  This immediate removal of the pop-up class, though premature
+                //        (because the animation of the popping down is not complete),
+                //        allows redundant back-to-back calls to pop_down_all().
+                //        Because it means a second call won't find any .pop-up elements.
 
-            $(window.document.body).removeClass('pop-up-manual');
-            $(window.document.body).removeClass('pop-up-auto');
+                $(window.document.body).removeClass('pop-up-manual');
+                $(window.document.body).removeClass('pop-up-auto');
 
-            var pop_stuff = pop_cont.$sup.data('pop-stuff');
-            // TODO:  Instead, just remember the pop-down DOM object ($sup_cont in pop_up()),
-            //        and recalculate HERE AND NOW its current "fixed" coordinates from that object.
+                var pop_stuff = pop_cont.$sup.data('pop-stuff');
+                // TODO:  Instead, just remember the pop-down DOM object ($sup_cont in pop_up()),
+                //        and recalculate HERE AND NOW its current "fixed" coordinates from that object.
 
-            if (pop_cont.is_media) {
-                embed_message(pop_cont.$sup, {
-                    action: 'un-pop-up',
-                    width: pop_stuff.render_width,
-                    height: pop_stuff.render_height,
-                    did_bot_transition: did_bot_transition
-                });
-            } else {
-                pop_cont.$cont.animate({
-                    width: pop_stuff.cont_css_width,
-                    height: pop_stuff.cont_css_height,
-                    'font-size': px_from_em(1)
-                }, {
-                    duration: POP_DOWN_ANIMATE_MS,
-                    easing: POP_DOWN_ANIMATE_EASING,
-                    queue: false
-                });
-                pop_cont.$caption_bar.animate({
-                    width: pop_stuff.caption_css_width,
-                    height: pop_stuff.caption_css_height,
-                    'background-color': pop_stuff.caption_css_background
-                }, {
-                    duration: POP_DOWN_ANIMATE_MS,
-                    easing: POP_DOWN_ANIMATE_EASING,
-                    queue: false
-                });
-                pop_screen_fade_out();
-                // NOTE:  Rely on the $sup animation to remove the popup-screen element,
-                //        at about the same time as this animation finishes fading.
-                //        Has to be that way because that animation completion function
-                //        also removes the popup $sup from the DOM.
-
-                // TODO:  Velocity.js animation?  https://github.com/julianshapiro/velocity
-            }
-
-
-            // FALSE WARNING:  Argument type {complete: complete} is not assignable to parameter type number | KeyframeAnimationOptions | undefined
-            // noinspection JSCheckFunctionSignatures
-            pop_cont.$sup.animate(cont.fixed_coordinates(), {
-                duration: POP_DOWN_ANIMATE_MS,
-                easing: POP_DOWN_ANIMATE_EASING,
-                queue: false,
-                // THANKS:  Concurrent animations, https://stackoverflow.com/a/4719034/673991
-                //          Queue false means animate immediately, in this case mostly
-                //          simultaneously with shrinking text caption.
-                complete: function pop_down_scoot_done() {
-                    iframe_resizer(pop_cont.$sup, function (resizer) {
-                        resizer.close();
-                        // NOTE:  Without close() the un-full window generates warnings on resizing.
-                        //        Example:
-                        //            iframeResizer.js:134
-                        //            [iFrameSizer][Host page: popup_iframe_1834]
-                        //            [Window resize] IFrame(popup_iframe_1834) not found
-                        //        And probably maybe leaks memory.
+                if (pop_cont.is_media) {
+                    embed_message(pop_cont.$sup, {
+                        action: 'un-pop-up',
+                        width: pop_stuff.render_width,
+                        height: pop_stuff.render_height,
+                        did_bot_transition: did_bot_transition
                     });
+                } else {
+                    pop_cont.$cont.animate({
+                        width: pop_stuff.cont_css_width,
+                        height: pop_stuff.cont_css_height,
+                        'font-size': px_from_em(1)
+                    }, {
+                        duration: POP_DOWN_ANIMATE_MS,
+                        easing: POP_DOWN_ANIMATE_EASING,
+                        queue: false
+                    });
+                    pop_cont.$caption_bar.animate({
+                        width: pop_stuff.caption_css_width,
+                        height: pop_stuff.caption_css_height,
+                        'background-color': pop_stuff.caption_css_background
+                    }, {
+                        duration: POP_DOWN_ANIMATE_MS,
+                        easing: POP_DOWN_ANIMATE_EASING,
+                        queue: false
+                    });
+                    pop_screen_fade_out();
+                    // NOTE:  Rely on the $sup animation to remove the popup-screen element,
+                    //        at about the same time as this animation finishes fading.
+                    //        Has to be that way because that animation completion function
+                    //        also removes the popup $sup from the DOM.
 
-                    cont.$sup.removeClass('pop-down');
-                    // NOTE:  Unhide the original un-popped contribution
-
-                    $('#popup-screen').remove();   // Removes contained popup contribution too.
+                    // TODO:  Velocity.js animation?  https://github.com/julianshapiro/velocity
                 }
+
+
+                // FALSE WARNING:  Argument type {complete: complete} is not assignable to parameter type number | KeyframeAnimationOptions | undefined
+                // noinspection JSCheckFunctionSignatures
+                pop_cont.$sup.animate(cont.fixed_coordinates(), {
+                    duration: POP_DOWN_ANIMATE_MS,
+                    easing: POP_DOWN_ANIMATE_EASING,
+                    queue: false,
+                    // THANKS:  Concurrent animations, https://stackoverflow.com/a/4719034/673991
+                    //          Queue false means animate immediately, in this case mostly
+                    //          simultaneously with shrinking text caption.
+                    complete: function pop_down_scoot_done() {
+                        iframe_resizer(pop_cont.$sup, function (resizer) {
+                            resizer.close();
+                            // NOTE:  Without close() the un-full window generates warnings on resizing.
+                            //        Example:
+                            //            iframeResizer.js:134
+                            //            [iFrameSizer][Host page: popup_iframe_1834]
+                            //            [Window resize] IFrame(popup_iframe_1834) not found
+                            //        And probably maybe leaks memory.
+                        });
+
+                        cont.$sup.removeClass('pop-down');
+                        // NOTE:  Unhide the original un-popped contribution
+
+                        $('#popup-screen').remove();   // Removes contained popup contribution too.
+                    }
+                });
             });
-        });
-        console.assert(pop_conts.length <= 1, "MULTIPLE POP-UPS", pop_conts);
+            console.assert(pop_conts.length <= 1, "MULTIPLE POP-UPS", pop_conts);
+        }
 
         if (talkify_player !== null) {
             console.log("DISPOSE", talkify_player.correlationId, "player");
@@ -2868,7 +2889,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                     //        and let iFrameResizer handle the outer size.
                     // SEE:  Tricky iframe height 100%, https://stackoverflow.com/a/5871861/673991
 
-                    deanimate("popping up media " + popup_cont_idn);
+                    deanimate("popping up media", popup_cont_idn);
                     pop_cont.resizer_nudge();
                     pop_cont.zero_iframe_recover();
                     // NOTE:  A little extra help for pop-ups
@@ -3281,22 +3302,25 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     /**
      * Finish up all animations.
      *
-     * @param {string} what - some context for the warnings.
+     * @param {string} context - some string about what we're doing
+     * @param {string} what - more info
      */
-    function deanimate(what) {
+    function deanimate(context, what) {
         $(':animated').each(function () {
             var $element = $(this);
             var deanimating_cont = Contribution_from_element($element);
             if (deanimating_cont.does_exist()) {
                 console.warn(
-                    "Deanimating before",
+                    "Deanimating",
+                    context,
                     what,
                     deanimating_cont.id_attribute,
                     $element.attr('class') || "(no classes)"
                 );
             } else {
                 console.warn(
-                    "Deanimating before",
+                    "Deanimating",
+                    context,
                     what,
                     "SOME ELEMENT",
                     $element
@@ -3501,7 +3525,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
 
         //// Animate
 
-        deanimate("popping up quote " + that.id_attribute);
+        deanimate("popping up quote", that.id_attribute);
 
         var cont = Contribution(that.idn_decimal);
 
@@ -3544,7 +3568,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             easing: POP_UP_ANIMATE_EASING,
             queue: false,
             complete: function popup_text_contribution_complete() {
-                that.$cont.width(cont_width_setting);
+                that.$cont.width(cont_width_setting);   // because animate chokes on 'auto'
                 that.$cont.height(cont_height_setting);
             }
         }).promise();
@@ -4705,15 +4729,15 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
 
 
 
-        console.log("The original way:");
-        looper(MONTY.cat.order, function (_, cat_idn) {
-            var original_idns = conts_in_cat[cat_idn].join(" ");
-            console.log(f("Category {name} ({how_many}): {idns}", {
-                name: MONTY.cat.txt[cat_idn],
-                how_many: conts_in_cat[cat_idn.toString()].length.toString(),
-                idns: original_idns
-            }));
-        });
+        // console.log("The original way:");
+        // looper(MONTY.cat.order, function (_, cat_idn) {
+        //     var original_idns = conts_in_cat[cat_idn].join(" ");
+        //     console.log(f("Category {name} ({how_many}): {idns}", {
+        //         name: MONTY.cat.txt[cat_idn],
+        //         how_many: conts_in_cat[cat_idn.toString()].length.toString(),
+        //         idns: original_idns
+        //     }));
+        // });
 
         alternative_build_contributions(conts_in_cat);
 
@@ -4982,7 +5006,8 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             handler.$script.one('load.script2', function () {
                 handler.$script.off('.script2');
                 handler.did_load = true;
-                console.log("Media handler loaded:", handler.$script.attr('src'));
+                // console.log("Media handler loaded:", handler.$script.attr('src'));
+                // EXAMPLE:  Media handler loaded: http://localhost:5000/meta/static/code/media_youtube.js
                 if ( ! handler.did_register) {
                     console.error(
                         "HANDLER", handler_index,
@@ -5057,7 +5082,8 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         var handler = media_handlers[handler_index];
         console.assert(is_defined(handler), "handler object broke", handler_index, media_handlers);
         if (is_defined(handler)) {
-            console.log("Media handler registered:", media.description_long);
+            // console.log("Media handler registered:", media.description_long);
+            // EXAMPLE:  Media handler registered: noembed.com handler for qiki media applications
             handler.media = media;
             handler.did_register = true;
         }

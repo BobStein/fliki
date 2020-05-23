@@ -664,7 +664,7 @@ function Enumerate(enumeration) {
  *
  * @param  {number} x - input value
  * @param  {number} x1 \
- * @param  {number} x2 / range of the input
+ * @param  {number} x2 / range of the input (CAUTION:  x1 == x2 will return NaN)
  * @param  {number} y1 \
  * @param  {number} y2 / range of the output
  * @return {number} - y output value
