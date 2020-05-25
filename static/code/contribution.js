@@ -1244,8 +1244,9 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                 // console.warn("Cannot iframe", message.action, "--", why);
                 // Cannot pause or resume text -- no iframe
                 // NOTE:  This harmlessly happens because of the redundant un-pop-up,
-                //        when POP_DOWN_ONE state does a precautionary pop_down_all()
-                //        before it punts to NEXT_CONTRIBUTION which pops up.
+                //        when POP_DOWN_ONE state does a pop_down_all()
+                //        before it punts to NEXT_CONTRIBUTION which pops up
+                //        (which also does a pop_down_all()).
             }
         );
     }
@@ -1781,7 +1782,11 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     Contribution.prototype.resizer_init = function Contribution_resizer_init(on_init) {
         var that = this;
         console.assert(typeof on_init === 'function', "Expecting on_init function, not", on_init);
-        if (that.$iframe.length >= 1 && typeof that.$iframe[0].iFrameResizer !== 'object') {
+        var is_an_iframe = that.$iframe.length >= 1;
+        var was_iframe_initialized = typeof that.$iframe[0].iFrameResizer === 'object';
+        // NOTE:  This typeof apparently does not prevent a warning on twice initializing
+        //        an iframe in a pop-up, cloned from a thumbnail contribution.
+        if (is_an_iframe && ! was_iframe_initialized) {
             setTimeout(function () {
                 // noinspection JSUnusedGlobalSymbols
                 that.$iframe.iFrameResize({
@@ -1809,7 +1814,8 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                                 pop_stuff.render_width, pop_stuff.max_live_width,
                                 0.0, 1.0
                             )
-                            // FALSE WARNING:  'render_height' should probably not be passed as parameter 'x1'
+                            // FALSE WARNING:  'render_height' should probably not be passed as
+                            //                 parameter 'x1'
                             // noinspection JSSuspiciousNameCombination
                             var progress_height = linear_transform(
                                 siz_height,
@@ -1858,24 +1864,32 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                                     pop_stuff.fixed_coordinates.top, pop_top
                                 )
                                 msg_cont.$sup.css({left: sliding_left, top: sliding_top});
-                                console.log(
-                                    "Resize in",
-                                    msg_cont.id_attribute,
-                                    siz_width, "x", siz_height,
-                                    pct(progress),
-                                    sliding_left.toFixed(0) + "," + sliding_top.toFixed(0)
-                                );
+                                // console.log(
+                                //     "Resize in",
+                                //     msg_cont.id_attribute,
+                                //     siz_width, "x", siz_height,
+                                //     pct(progress),
+                                //     sliding_left.toFixed(0) + "," + sliding_top.toFixed(0)
+                                // );
+                                // EXAMPLE:
+                                //     Resize in popup_1990 278.671875 x 194 17.4% 238,70
+                                //     Resize in popup_1990 312.296875 x 213 20.6% 229,68
+                                //     Resize in popup_1990 345.921875 x 231 23.7% 220,66
                             } else {
-                                console.warn(
-                                    "Resize out",
-                                    msg_cont.id_attribute,
-                                    siz_width, "x", siz_height,
-                                    pct(progress), "[",
-                                    pct(progress_width), pct(progress_height), "]",
-                                    msg_cont.$render_bar.width(), msg_cont.$render_bar.height(), "~",
-                                    pop_stuff.render_width, pop_stuff.render_height, "->",
-                                    pop_stuff.max_live_width, pop_stuff.max_live_height
-                                );
+                                if (siz_width === 0 && siz_height === 0) {
+                                    // Harmlessly start out zero-size iframe.
+                                } else {
+                                    console.warn(
+                                        "Resize out",
+                                        msg_cont.id_attribute,
+                                        siz_width, "x", siz_height,
+                                        pct(progress), "[",
+                                        pct(progress_width), pct(progress_height), "]",
+                                        msg_cont.$render_bar.width(), msg_cont.$render_bar.height(), "~",
+                                        pop_stuff.render_width, pop_stuff.render_height, "->",
+                                        pop_stuff.max_live_width, pop_stuff.max_live_height
+                                    );
+                                }
                             }
                             function pct(z) {
                                 return (z * 100.0).toFixed(1) + "%";
@@ -2553,31 +2567,40 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
 
         var cont = Contribution_from_element(selector_or_element);
         if (cont.does_exist()) {
-            var iframe = cont.iframe;
-            // noinspection JSIncompatibleTypesComparison
-            if (iframe === null) {
-                // NOTE:  E.g. harmlessly trying to use a cont with no render-bar iframe.
-                bad("No iframe " + selector_or_element.toString());
-            } else {
-                var resizer;
-                try {
-                    resizer = iframe.iFrameResizer;
-                } catch (e) {
-                    bad(
-                        "No resizer " +
-                        selector_or_element.toString() + " " +
-                        e.message + " - " +
-                        iframe.id
-                    );
-                    return
+            if (cont.is_media) {
+                var iframe = cont.iframe;
+                // FALSE WARNING:  Condition is always false since types '{get: (function():
+                //                 any | null)}' and 'null' have no overlap
+                // noinspection JSIncompatibleTypesComparison
+                if (iframe === null) {
+                    bad("No iframe " + string_from_$(selector_or_element));
+                } else {
+                    var resizer;
+                    try {
+                        resizer = iframe.iFrameResizer;
+                    } catch (e) {
+                        bad(
+                            "No resizer " +
+                            string_from_$(selector_or_element) + " " +
+                            e.message + " - " +
+                            iframe.id
+                        );
+                        return
+                    }
+                    console.assert(typeof resizer.sendMessage === 'function', resizer, selector_or_element);
+                    console.assert(typeof resizer.close === 'function', resizer, selector_or_element);
+                    callback_good(resizer);
                 }
-                console.assert(typeof resizer.sendMessage === 'function', resizer, selector_or_element);
-                console.assert(typeof resizer.close === 'function', resizer, selector_or_element);
-                callback_good(resizer);
+            } else {
+                // NOTE:  E.g. harmlessly trying to use a cont with no render-bar iframe.
             }
         } else {
-            bad("No element " + selector_or_element.toString());
+            bad("No element " + string_from_$(selector_or_element));
         }
+    }
+
+    function string_from_$($element) {
+        return $($element).attr('id') || $($element).attr('class') || JSON.stringify($element);
     }
 
     /**
@@ -2732,7 +2755,6 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                         // NOTE:  Unhide the original un-popped contribution
 
                         $('#popup-screen').remove();   // Removes contained popup contribution too.
-                        then();
                     }
                 }).promise());
 
@@ -2912,6 +2934,11 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             //        iFrameResizer, let it start off as the same size as the thumbnail.
 
             pop_cont.resizer_init(
+                // NOTE:  Harmless warning:
+                //        [iFrameSizer][Host page: iframe_popup_1990] Ignored iFrame, already setup.
+                //        because the popup is CLONED from a contribution that already
+                //        initialized its iFrameResizer.  Apparently it still needs to be
+                //        initialized but it thinks it doesn't.
                 function pop_media_init() {
                     pop_cont.$sup.trigger(pop_cont.Event.MEDIA_INIT);
 
