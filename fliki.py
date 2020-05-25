@@ -1607,9 +1607,9 @@ def contribution_home(home_page_title):
                 foot.js('https://cdn.jsdelivr.net/npm/jquery-sortablejs@1.0.0/jquery-sortable.js')
                 # foot.comment("SEE:  /meta/static/code/jquery-sortable-LICENSE.txt")
 
-                # foot.js(static_code_url('iframeResizer.js'))
-                foot.js('https://cdn.jsdelivr.net/npm/iframe-resizer@4.1.1/js/iframeResizer.min.js')
-                # foot.comment("SEE:  /meta/static/code/iframe-resizer-LICENSE.txt")
+                # foot.js('https://cdn.jsdelivr.net/npm/iframe-resizer@4.1.1/js/iframeResizer.min.js')
+                foot.js(static_code_url('iframeResizer.js'))
+                foot.comment("SEE:  /meta/static/code/iframe-resizer-LICENSE.txt")
 
                 # foot.js('https://use.fontawesome.com/49adfe8390.js')   # req by talkify
                 # foot.js('https://cdn.jsdelivr.net/npm/talkify-tts@2.6.0/dist/talkify.min.js')

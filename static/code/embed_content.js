@@ -58,7 +58,7 @@ function embed_content_js(window, $, MONTY) {
     //        So the "fix_embedded_content" may be incomplete.
 
     var POP_UP_ANIMATION_MS = 500;
-    var POP_UP_ANIMATION_TIMEOUT_MS = 1500;   // Fix for the ASS-OS bug.
+    // var POP_UP_ANIMATION_TIMEOUT_MS = 1500;   // Fix for the ASS-OS bug.
 
     // TODO:  Why does twitter + IE11 + fit_height() go on changing height in EVERY repetition?
 
@@ -231,42 +231,51 @@ function embed_content_js(window, $, MONTY) {
                         $you_frame.width(MONTY.THUMB_MAX_WIDTH);
                         $you_frame.height(MONTY.THUMB_MAX_HEIGHT);
                         $body.prepend($you_frame);
-                        var pop_settings = {
+                        // var pop_settings = {
+                        //     width: oppressed_width,
+                        //     height: oppressed_height
+                        // };
+                        // console.log("You tooob animation start");
+                        // var animation_timeout = setTimeout(function () {
+                        //     animation_timeout = null;
+                        //     console.log("AVERTED ASS-OS BUG:  ANIMATION STUCK SCROLLED OFF SCREEN");
+                        //     // NOTE:  Give up on animation, it's taking too long.
+                        //     //        First observed in Chrome circa 2020.0518.
+                        //     //        Then in Opera and Edge.  But never in Firefox.
+                        //     //        Did someone somewhere decide animations scrolled off screen
+                        //     //        don't need no lovin?
+                        //     $you_frame.stop();
+                        //     $you_frame.css(pop_settings);
+                        //     dynamic_player();
+                        // }, POP_UP_ANIMATION_TIMEOUT_MS);
+                        // $you_frame.animate(pop_settings, {
+                        //     complete: function () {
+                        //         if (animation_timeout !== null) {
+                        //             clearTimeout(animation_timeout);
+                        //             animation_timeout = null;
+                        //             console.log("You tooob animation complete");
+                        //             dynamic_player();
+                        //             // NOTE:  dynamic_player() is called exactly once.  Either by
+                        //             //        animation doing its duty and completing.  Or by it
+                        //             //        going into la-la-land for some reason and leaving
+                        //             //        animation_timeout to do its job.
+                        //         }
+                        //     },
+                        //     progress: function (animation, progress, remainingMs) {
+                        //         console.log("You tooob animation progress", progress.toFixed(3), remainingMs);
+                        //     },
+                        //     duration: POP_UP_ANIMATION_MS,
+                        //     easing: 'linear'
+                        // });
+                        animate_surely($you_frame, {
                             width: oppressed_width,
                             height: oppressed_height
-                        };
-                        console.log("You tooob animation start");
-                        var animation_timeout = setTimeout(function () {
-                            animation_timeout = null;
-                            console.log("AVERTED ASS-OS BUG:  ANIMATION STUCK SCROLLED OFF SCREEN");
-                            // NOTE:  Give up on animation, it's taking too long.
-                            //        First observed in Chrome circa 2020.0518.
-                            //        Then in Opera and Edge.  But never in Firefox.
-                            //        Did someone somewhere decide animations scrolled off screen
-                            //        don't need no lovin?
-                            $you_frame.stop();
-                            $you_frame.css(pop_settings);
-                            dynamic_player();
-                        }, POP_UP_ANIMATION_TIMEOUT_MS);
-                        $you_frame.animate(pop_settings, {
+                        }, {
                             complete: function () {
-                                if (animation_timeout !== null) {
-                                    clearTimeout(animation_timeout);
-                                    animation_timeout = null;
-                                    console.log("You tooob animation complete");
-                                    dynamic_player();
-                                    // NOTE:  dynamic_player() is called exactly once.  Either by
-                                    //        animation doing its duty and completing.  Or by it
-                                    //        going into la-la-land for some reason and leaving
-                                    //        animation_timeout to do its job.
-                                }
-                            },
-                            progress: function (animation, progress, remainingMs) {
-                                console.log("You tooob animation progress", progress.toFixed(3), remainingMs);
+                                dynamic_player();
                             },
                             duration: POP_UP_ANIMATION_MS,
-                            easing: 'linear'
-                        });
+                            easing: 'linear'                        })
                     });
                 } else if (is_youtube && SHOW_YOUTUBE_THUMBS) {
                     var src = MONTY.oembed.thumbnail_url;

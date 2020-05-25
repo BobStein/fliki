@@ -665,7 +665,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         that.pop_cont = null;   // e.g. id_attribute 'popup_1821' an almost full screen pop-up
         that.is_paused = false;
         that.cont_idn = null;
-        that.did_bot_transition = null;  // Did the bot initiate transition to the next contribution?
+        that.did_bot_transition = false;  // Did the bot initiate transition to the next contribution?
     }
 
     Bot.prototype.State = Enumerate({
@@ -682,6 +682,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         SPEECH_STARTED: "The speaking has started",
         DONE_CONTRIBUTION: "Natural ending of a contribution in playlist",
         BREATHER: "Take a breather between popups.",
+        POP_DOWN_ONE: "Pop down the current popped-up contribution.",
         BEGIN_ANOTHER: "Begin the next contribution.",
         PLAYING_CONTRIBUTION: "Quiescently automatically playing",
         END_AUTO: "Play ends",
@@ -942,7 +943,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             // Static media, e.g. jpg on flickr, show it for a while.
             if (that.ticks_this_state >= MEDIA_STATIC_SECONDS) {
                 that.did_bot_transition = true;
-                that.state = that.State.BEGIN_ANOTHER;
+                that.state = that.State.POP_DOWN_ONE;
             }
             break;
         case that.State.MEDIA_STARTED:
@@ -986,12 +987,16 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             if (that.ticks_this_state < that.breather_seconds) {
                 // time at the end of media or text
             } else {
-                that.state = that.State.BEGIN_ANOTHER;
+                that.state = that.State.POP_DOWN_ONE;
             }
             break;
-        case that.State.BEGIN_ANOTHER:
+        case that.State.POP_DOWN_ONE:
             that.pop_end();
-            pop_down_all(that.did_bot_transition);
+            pop_down_all(that.did_bot_transition, function bot_pop_down_then() {
+                that.transit([that.State.POP_DOWN_ONE], that.State.BEGIN_ANOTHER);
+            });
+            break;
+        case that.State.BEGIN_ANOTHER:
             index_play_bot++;
             that.state = that.State.PREP_CONTRIBUTION;
             break;
@@ -1239,7 +1244,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                 // console.warn("Cannot iframe", message.action, "--", why);
                 // Cannot pause or resume text -- no iframe
                 // NOTE:  This harmlessly happens because of the redundant un-pop-up,
-                //        when BEGIN_ANOTHER state does a precautionary pop_down_all()
+                //        when POP_DOWN_ONE state does a precautionary pop_down_all()
                 //        before it punts to NEXT_CONTRIBUTION which pops up.
             }
         );
@@ -2317,8 +2322,8 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
      *
      * Make red controls that could save unfinished work.
      *
-     * @param do_scroll_into_view {boolean} - if reddening controls, also scroll entry into view?
-     * @param do_close_clean {boolean} - If an edit was started but no changes, do we just close it?
+     * @param {boolean} do_scroll_into_view - if reddening controls, also scroll entry into view?
+     * @param {boolean} do_close_clean - If an edit was started but no changes, do we just close it?
      * @return {boolean} - true = confirm exit, false = exit harmless, don't impede
      */
     function check_page_dirty(do_scroll_into_view, do_close_clean) {
@@ -2362,8 +2367,8 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
      *
      * If so, make its [save] and [discard] buttons red.
      *
-     * @param do_scroll_into_view {boolean} - if reddening controls, also scroll edits into view?
-     * @param do_close_clean {boolean} - If an edit was started but no changes, do we just close it?
+     * @param {boolean} do_scroll_into_view - if reddening controls, also scroll edits into view?
+     * @param {boolean} do_close_clean - If an edit was started but no changes, do we just close it?
      *     There are five callers to this function.
      *     At the risk of taunting the stale-comment gods, here are those three three cases:
      *     If unloading the page - doesn't matter, if a started edit was clean,
@@ -2538,21 +2543,32 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
      * @param {function} callback_bad - pass it an explanation if not
      */
     function iframe_resizer(selector_or_element, callback_good, callback_bad) {
-        callback_bad = callback_bad || function () {};
+
+        function bad(message) {
+            console.error(message);
+            if (is_specified(callback_bad)) {
+                callback_bad(message);
+            }
+        }
+
         var cont = Contribution_from_element(selector_or_element);
         if (cont.does_exist()) {
             var iframe = cont.iframe;
             // noinspection JSIncompatibleTypesComparison
             if (iframe === null) {
                 // NOTE:  E.g. harmlessly trying to use a cont with no render-bar iframe.
-                callback_bad("No iframe " + selector_or_element.toString());
+                bad("No iframe " + selector_or_element.toString());
             } else {
                 var resizer;
                 try {
                     resizer = iframe.iFrameResizer;
                 } catch (e) {
-                    console.error("iframe without a resizer??", e.message, iframe.id);
-                    callback_bad("No resizer " + selector_or_element.toString());
+                    bad(
+                        "No resizer " +
+                        selector_or_element.toString() + " " +
+                        e.message + " - " +
+                        iframe.id
+                    );
                     return
                 }
                 console.assert(typeof resizer.sendMessage === 'function', resizer, selector_or_element);
@@ -2560,7 +2576,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                 callback_good(resizer);
             }
         } else {
-            callback_bad("No element " + selector_or_element.toString());
+            bad("No element " + selector_or_element.toString());
         }
     }
 
@@ -2568,105 +2584,15 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
      * End pop-up.
      *
      * @param did_bot_transition - true = Bot automatic timeout of the contribution,
-     *                           false or unspecified = manually terminated
+     *                            false = manually terminated
+     * @param {function=} then - callback when popping down (if any) is done.
      */
-    function pop_down_all(did_bot_transition) {
+    function pop_down_all(did_bot_transition, then) {
+        then = then || function () {};
+
         var $pop_ups = $('.pop-up');
-        if ($pop_ups.length > 1) {
-            console.error("multiple popups?!", $pop_ups);
-        } else if ($pop_ups.length === 1) {
-            var pop_cont = null;
-            var pop_conts = [];   // In case there are more than one.
-
-            deanimate("popping down", $pop_ups);
-
-            $pop_ups.each(function () {
-                // NOTE:  There's almost certainly only one .pop-up at a time.
-                //        Maybe lingering animations could cause multiple?
-                //        But this makes sure to un-pop them all.  And exactly once.
-
-                pop_cont = Contribution_from_element(this);
-                var cont = Contribution(pop_cont.idn_decimal);
-                pop_conts.push(pop_cont);
-
-                pop_cont.$sup.removeClass('pop-up');
-                // NOTE:  This immediate removal of the pop-up class, though premature
-                //        (because the animation of the popping down is not complete),
-                //        allows redundant back-to-back calls to pop_down_all().
-                //        Because it means a second call won't find any .pop-up elements.
-
-                $(window.document.body).removeClass('pop-up-manual');
-                $(window.document.body).removeClass('pop-up-auto');
-
-                var pop_stuff = pop_cont.$sup.data('pop-stuff');
-                // TODO:  Instead, just remember the pop-down DOM object ($sup_cont in pop_up()),
-                //        and recalculate HERE AND NOW its current "fixed" coordinates from that object.
-
-                if (pop_cont.is_media) {
-                    embed_message(pop_cont.$sup, {
-                        action: 'un-pop-up',
-                        width: pop_stuff.render_width,
-                        height: pop_stuff.render_height,
-                        did_bot_transition: did_bot_transition
-                    });
-                } else {
-                    pop_cont.$cont.animate({
-                        width: pop_stuff.cont_css_width,
-                        height: pop_stuff.cont_css_height,
-                        'font-size': px_from_em(1)
-                    }, {
-                        duration: POP_DOWN_ANIMATE_MS,
-                        easing: POP_DOWN_ANIMATE_EASING,
-                        queue: false
-                    });
-                    pop_cont.$caption_bar.animate({
-                        width: pop_stuff.caption_css_width,
-                        height: pop_stuff.caption_css_height,
-                        'background-color': pop_stuff.caption_css_background
-                    }, {
-                        duration: POP_DOWN_ANIMATE_MS,
-                        easing: POP_DOWN_ANIMATE_EASING,
-                        queue: false
-                    });
-                    pop_screen_fade_out();
-                    // NOTE:  Rely on the $sup animation to remove the popup-screen element,
-                    //        at about the same time as this animation finishes fading.
-                    //        Has to be that way because that animation completion function
-                    //        also removes the popup $sup from the DOM.
-
-                    // TODO:  Velocity.js animation?  https://github.com/julianshapiro/velocity
-                }
-
-
-                // FALSE WARNING:  Argument type {complete: complete} is not assignable to parameter type number | KeyframeAnimationOptions | undefined
-                // noinspection JSCheckFunctionSignatures
-                pop_cont.$sup.animate(cont.fixed_coordinates(), {
-                    duration: POP_DOWN_ANIMATE_MS,
-                    easing: POP_DOWN_ANIMATE_EASING,
-                    queue: false,
-                    // THANKS:  Concurrent animations, https://stackoverflow.com/a/4719034/673991
-                    //          Queue false means animate immediately, in this case mostly
-                    //          simultaneously with shrinking text caption.
-                    complete: function pop_down_scoot_done() {
-                        iframe_resizer(pop_cont.$sup, function (resizer) {
-                            resizer.close();
-                            // NOTE:  Without close() the un-full window generates warnings on resizing.
-                            //        Example:
-                            //            iframeResizer.js:134
-                            //            [iFrameSizer][Host page: popup_iframe_1834]
-                            //            [Window resize] IFrame(popup_iframe_1834) not found
-                            //        And probably maybe leaks memory.
-                        });
-
-                        cont.$sup.removeClass('pop-down');
-                        // NOTE:  Unhide the original un-popped contribution
-
-                        $('#popup-screen').remove();   // Removes contained popup contribution too.
-                    }
-                });
-            });
-            console.assert(pop_conts.length <= 1, "MULTIPLE POP-UPS", pop_conts);
-        }
+        var any_pop_ups = $pop_ups.length > 0;
+        var pop_cont = null;
 
         if (talkify_player !== null) {
             console.log("DISPOSE", talkify_player.correlationId, "player");
@@ -2705,8 +2631,9 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             // CAUTION:  .cancel() then immediately .play() may not have worked at some point.
             //           https://stackoverflow.com/a/44042494/673991
             //           Though it seems to have been fixed in Chrome.
-            if (speech_progress !== null && pop_cont !== null) {
-                // NOTE:  No QUIT after END.
+            if (speech_progress !== null && any_pop_ups) {
+                // NOTE:  No manual QUIT after automated END.
+                pop_cont = Contribution_from_element($pop_ups[0]);
                 interact.QUIT(pop_cont.idn_decimal, speech_progress);
             }
         }
@@ -2714,6 +2641,108 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             console.log("(breather cut short)");
             clearTimeout(breather_timer);
             breather_timer = null;
+        }
+
+        if ($pop_ups.length > 1) {
+            console.error("multiple popups?!", $pop_ups);
+            then();
+        } else if ($pop_ups.length === 1) {
+
+            deanimate("popping down", $pop_ups);
+
+            $pop_ups.each(function () {
+                // NOTE:  There's almost certainly only one .pop-up at a time.
+                //        Maybe lingering animations could cause multiple?
+                //        But this makes sure to un-pop them all.  And exactly once.
+
+                pop_cont = Contribution_from_element(this);
+                var cont = Contribution(pop_cont.idn_decimal);
+
+                pop_cont.$sup.removeClass('pop-up');
+                // NOTE:  This immediate removal of the pop-up class, though premature
+                //        (because the animation of the popping down is not complete),
+                //        allows redundant back-to-back calls to pop_down_all().
+                //        Because it means a second call won't find any .pop-up elements.
+
+                $(window.document.body).removeClass('pop-up-manual');
+                $(window.document.body).removeClass('pop-up-auto');
+
+                var pop_stuff = pop_cont.$sup.data('pop-stuff');
+                // TODO:  Instead, just remember the pop-down DOM object ($sup_cont in pop_up()),
+                //        and recalculate HERE AND NOW its current "fixed" coordinates from that object.
+
+                var promises = [];
+                if (pop_cont.is_media) {
+                    embed_message(pop_cont.$sup, {
+                        action: 'un-pop-up',
+                        width: pop_stuff.render_width,
+                        height: pop_stuff.render_height,
+                        did_bot_transition: did_bot_transition
+                    });
+                } else {
+                    promises.push(pop_cont.$cont.animate({
+                        width: pop_stuff.cont_css_width,
+                        height: pop_stuff.cont_css_height,
+                        'font-size': px_from_em(1)
+                    }, {
+                        duration: POP_DOWN_ANIMATE_MS,
+                        easing: POP_DOWN_ANIMATE_EASING,
+                        queue: false
+                    }).promise());
+                    promises.push(pop_cont.$caption_bar.animate({
+                        width: pop_stuff.caption_css_width,
+                        height: pop_stuff.caption_css_height,
+                        'background-color': pop_stuff.caption_css_background
+                    }, {
+                        duration: POP_DOWN_ANIMATE_MS,
+                        easing: POP_DOWN_ANIMATE_EASING,
+                        queue: false
+                    }).promise());
+                    promises.push(pop_screen_fade_out().promise());
+                    // NOTE:  Rely on the $sup animation to remove the popup-screen element,
+                    //        at about the same time as this animation finishes fading.
+                    //        Has to be that way because that animation completion function
+                    //        also removes the popup $sup from the DOM.
+
+                    // TODO:  Velocity.js animation?  https://github.com/julianshapiro/velocity
+                }
+
+
+                // FALSE WARNING:  Argument type {complete: complete} is not assignable to parameter type number | KeyframeAnimationOptions | undefined
+                // noinspection JSCheckFunctionSignatures
+                promises.push(pop_cont.$sup.animate(cont.fixed_coordinates(), {
+                    duration: POP_DOWN_ANIMATE_MS,
+                    easing: POP_DOWN_ANIMATE_EASING,
+                    queue: false,
+                    // THANKS:  Concurrent animations, https://stackoverflow.com/a/4719034/673991
+                    //          Queue false means animate immediately, in this case mostly
+                    //          simultaneously with shrinking text caption.
+                    complete: function pop_down_scoot_done() {
+                        iframe_resizer(pop_cont.$sup, function (resizer) {
+                            resizer.close();
+                            // NOTE:  Without close() the un-full window generates warnings on resizing.
+                            //        Example:
+                            //            iframeResizer.js:134
+                            //            [iFrameSizer][Host page: popup_iframe_1834]
+                            //            [Window resize] IFrame(popup_iframe_1834) not found
+                            //        And probably maybe leaks memory.
+                        });
+
+                        cont.$sup.removeClass('pop-down');
+                        // NOTE:  Unhide the original un-popped contribution
+
+                        $('#popup-screen').remove();   // Removes contained popup contribution too.
+                        then();
+                    }
+                }).promise());
+
+                var combined_promise = $.when.apply($, promises);
+                combined_promise.done(function popdown_animation_done() {
+                    then();
+                });
+            });
+        } else {   // zero pop-ups
+            then();
         }
     }
 
@@ -2728,9 +2757,11 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         var was_already_popped_up = $(popup_cont_selector).length > 0;
 
         pop_down_all(false);
+
         if (was_already_popped_up) {
             console.log("Contribution", cont_idn, "is popping itself down by 2nd click.");
             // NOTE:  Avoid double-pop-up.  Just pop down, don't pop-up again.
+            //        This may no longer be possible, with the popup-screen.
             return null;
         }
 

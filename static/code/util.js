@@ -711,3 +711,54 @@ function to_string(z) {
         return official_type_name(z).toLowerCase();
     }
 }
+
+/**
+ * Drop-in replacement for jQuery $element.animate(props, opts), but works around the ASS-OS bug.
+ *
+ * These are equivalent:
+ *     $element.animate(properties, options);
+ *     animate_surely($element, properties, options);
+ *
+ * CAUTION:  Does not support the legacy jQuery .animate() form, with separate parameters for
+ *           duration, easing, complete.  Must use the form with the options object.
+ * CAUTION:  Returns undefined.
+ *
+ * @param element
+ * @param properties
+ * @param options
+ */
+function animate_surely(element, properties, options) {
+    var duration = options.duration || 1000;
+    var timeout = duration * 2;
+    var complete = options.complete || function () {};
+    var $element = $(element);
+    var animation_timeout = setTimeout(function () {
+        animation_timeout = null;
+        console.log(
+            "AVERTED ASS-OS BUG:  ANIMATION STUCK SCROLLED OFF SCREEN",
+            $element.attr('id') || $element.attr('class')
+        );
+        // NOTE:  Give up on animation, it's taking too long.
+        //        First observed in Chrome circa 2020.0518.
+        //        Then in Opera and Edge.  But never in Firefox.
+        //        Did someone somewhere decide animations scrolled off screen
+        //        don't need no lovin?
+        $element.stop();
+        $element.css(properties);
+        complete();
+    }, timeout);
+    var modified_options = $.extend({}, options, {
+        complete: function () {
+            if (animation_timeout !== null) {
+                clearTimeout(animation_timeout);
+                animation_timeout = null;
+                complete();
+                // NOTE:  complete() is called exactly once.  Either by
+                //        animation doing its duty and completing.  Or by it
+                //        going into la-la-land for some reason and leaving
+                //        animation_timeout to do its job.
+            }
+        }
+    });
+    $element.animate(properties, modified_options);
+}
