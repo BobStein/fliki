@@ -1771,7 +1771,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     };
 
     /**
-     * Initialize the iFrameResizer on an iframe jQuery object3.
+     * Initialize the iFrameResizer on an iframe jQuery object.
      *
      * @param {function=} on_init - callback after iFrameResizer was initialized.
      */
@@ -1825,9 +1825,14 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                             var progress = Math.max(progress_width, progress_height);
                             // NOTE:  Rely on whichever is further along the way to a full screen.
 
-                            if (0.0 <= progress && progress <= 1.0) {
-                                // NOTE:  Limiting progress's range prevents a zero-size iframe
+                            if (0.0 <= progress && progress <= 1.05) {
+                                // NOTE:  Is size between thumbnail and popup?
+                                // NOTE:  Limiting progress's range prevents e.g. a zero-size iframe
                                 //        from moving to the "vanishing" point.
+                                // NOTE:  A little forgiveness on the high end prevents a slightly
+                                //        oversize popup from never getting top & left set, e.g.
+                                //        a 401 error message.  Although that should now not be
+                                //        oversized.  (Multiple fixes.)
 
                                 // console.log(
                                 //     "iframe resized",
@@ -2190,7 +2195,9 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
 
     Contribution.prototype.render_error = function Contribution_render_error(error_message) {
         var that = this;
-        that.$render_bar.empty().text(error_message);   // .addClass('oembed-error');
+        var $p = $('<p>', {class: 'error-message'});
+        $p.text(error_message);
+        that.$render_bar.empty().append($p);
         that.$sup.addClass('noembed-error');
         // NOTE:  How non-live thumbnails skip the bot.
         //        Also how the text gets its peachy background color.
@@ -2933,30 +2940,29 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             // NOTE:  Until embed_content.js gets up and sets the size of the iframe through the
             //        iFrameResizer, let it start off as the same size as the thumbnail.
 
-            pop_cont.resizer_init(
+            pop_cont.resizer_init(function pop_media_init() {
                 // NOTE:  Harmless warning:
                 //        [iFrameSizer][Host page: iframe_popup_1990] Ignored iFrame, already setup.
                 //        because the popup is CLONED from a contribution that already
                 //        initialized its iFrameResizer.  Apparently it still needs to be
                 //        initialized but it thinks it doesn't.
-                function pop_media_init() {
-                    pop_cont.$sup.trigger(pop_cont.Event.MEDIA_INIT);
 
-                    // NOTE:  Finally decided the best way to make the popup iframe big
-                    //        was to focus on the inner CONTENTS size,
-                    //        and let iFrameResizer handle the outer size.
-                    // SEE:  Tricky iframe height 100%, https://stackoverflow.com/a/5871861/673991
+                pop_cont.$sup.trigger(pop_cont.Event.MEDIA_INIT);
 
-                    deanimate("popping up media", popup_cont_idn);
-                    pop_cont.resizer_nudge();
-                    pop_cont.zero_iframe_recover();
-                    // NOTE:  A little extra help for pop-ups
-                    //        with either a zero-iframe bug in iFrameResizer,
-                    //        or a poor internet connection.
+                // NOTE:  Finally decided the best way to make the popup iframe big
+                //        was to focus on the inner CONTENTS size,
+                //        and let iFrameResizer handle the outer size.
+                // SEE:  Tricky iframe height 100%, https://stackoverflow.com/a/5871861/673991
 
-                    pop_screen_fade_in();
-                }
-            );
+                deanimate("popping up media", popup_cont_idn);
+                pop_cont.resizer_nudge();
+                pop_cont.zero_iframe_recover();
+                // NOTE:  A little extra help for pop-ups
+                //        with either a zero-iframe bug in iFrameResizer,
+                //        or a poor internet connection.
+
+                pop_screen_fade_in();
+            });
         } else {
             pop_cont.full_ish_screen_text(function () {
                 if (auto_play) {

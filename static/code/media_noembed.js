@@ -82,6 +82,8 @@
                         error_message = oembed.error + " for '" + cont.media_domain + "'";
                     }
                     cont.render_error(error_message)
+                    // EXAMPLE:  no matching providers found for 'adage'
+                    // EXAMPLE:  no matching providers found for 'pinterest'
                 }
             });
         },

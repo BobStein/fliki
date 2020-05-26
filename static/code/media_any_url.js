@@ -52,6 +52,9 @@
                             "Provider: " +
                             provider_name
                         );
+                        // EXAMPLE:  facebook is not supported.
+                        //           noembed provides some info but not a thumbnail.
+                        //           Provider: Facebook
                     }
                 }
             });

@@ -155,12 +155,6 @@ function embed_content_js(window, $, MONTY) {
                     //     https://noembed.com/embed?url=https://www.youtube.com/watch?v=qqLIH2UiPXg
                     //     {"url":"https://www.youtube.com/watch?v=qqLIH2UiPXg","error":"401 Unauthorized"}
                     fix_embedded_content();
-                    // TODO:  Trigger a resize, so containing iframe doesn't expose
-                    //        a bit of blank area below this <p>.  Or something.
-                    //        Sometimes the message is cut off (div needs to be bigger).
-                    //        Maybe this?
-                    //            parent_iframe().autoResize(false);
-                    //            parent_iframe().autoResize(true);
                     console.debug("Noembed error on", contribution_idn, url_outer_iframe);
                     parent_message('noembed-error-notify', {
                         contribution_idn: contribution_idn,
@@ -231,42 +225,6 @@ function embed_content_js(window, $, MONTY) {
                         $you_frame.width(MONTY.THUMB_MAX_WIDTH);
                         $you_frame.height(MONTY.THUMB_MAX_HEIGHT);
                         $body.prepend($you_frame);
-                        // var pop_settings = {
-                        //     width: oppressed_width,
-                        //     height: oppressed_height
-                        // };
-                        // console.log("You tooob animation start");
-                        // var animation_timeout = setTimeout(function () {
-                        //     animation_timeout = null;
-                        //     console.log("AVERTED ASS-OS BUG:  ANIMATION STUCK SCROLLED OFF SCREEN");
-                        //     // NOTE:  Give up on animation, it's taking too long.
-                        //     //        First observed in Chrome circa 2020.0518.
-                        //     //        Then in Opera and Edge.  But never in Firefox.
-                        //     //        Did someone somewhere decide animations scrolled off screen
-                        //     //        don't need no lovin?
-                        //     $you_frame.stop();
-                        //     $you_frame.css(pop_settings);
-                        //     dynamic_player();
-                        // }, POP_UP_ANIMATION_TIMEOUT_MS);
-                        // $you_frame.animate(pop_settings, {
-                        //     complete: function () {
-                        //         if (animation_timeout !== null) {
-                        //             clearTimeout(animation_timeout);
-                        //             animation_timeout = null;
-                        //             console.log("You tooob animation complete");
-                        //             dynamic_player();
-                        //             // NOTE:  dynamic_player() is called exactly once.  Either by
-                        //             //        animation doing its duty and completing.  Or by it
-                        //             //        going into la-la-land for some reason and leaving
-                        //             //        animation_timeout to do its job.
-                        //         }
-                        //     },
-                        //     progress: function (animation, progress, remainingMs) {
-                        //         console.log("You tooob animation progress", progress.toFixed(3), remainingMs);
-                        //     },
-                        //     duration: POP_UP_ANIMATION_MS,
-                        //     easing: 'linear'
-                        // });
                         animate_surely($you_frame, {
                             width: oppressed_width,
                             height: oppressed_height
@@ -275,7 +233,8 @@ function embed_content_js(window, $, MONTY) {
                                 dynamic_player();
                             },
                             duration: POP_UP_ANIMATION_MS,
-                            easing: 'linear'                        })
+                            easing: 'linear'
+                        })
                     });
                 } else if (is_youtube && SHOW_YOUTUBE_THUMBS) {
                     var src = MONTY.oembed.thumbnail_url;
@@ -386,10 +345,13 @@ function embed_content_js(window, $, MONTY) {
                                 contribution_idn: contribution_idn,
                                 current_time: yt_player.getCurrentTime()
                             });
+                            // NOTE:  This is an unnatural, manual end of a YouTube video.
+                            //        The natural, automated end of a YouTube video is noted in the
+                            //        handler for the YT.PlayerState.ENDED event.
+                            //        The Bot will take credit for it there.
                         }
-                        // NOTE:  The natural, automated end of a YouTube video is noted in the
-                        //        handler for the YT.PlayerState.ENDED event.
-                        //        The Bot will take credit for it there.
+                    } else if (is_laden(MONTY.oembed.error)) {
+                        console.log("Harmlessly popping down video with an error", contribution_idn);
                     } else {
                         console.error("Unhandled dynamic pop-down.", window.location.search, yt_player);
                     }
@@ -666,6 +628,12 @@ function embed_content_js(window, $, MONTY) {
     }
     console.assert('?foo=bar' === query_string_from_url('https://example.com/?foo=bar'));
 
+    /**
+     * Adjust the size of this embedded iframe.
+     *
+     * If thumbnail set it to MONTY.THUMB_MAX
+     * If popup set it to the oppressed dimensions passed in the URL query string
+     */
     function fix_embedded_content() {
         var $child = $body.children().first();
         var $grandchild = $child.children().first();
@@ -683,8 +651,12 @@ function embed_content_js(window, $, MONTY) {
         tag_width($grandchild);
 
         if (is_pop_up) {
-            $body.css({width: oppressed_width, height: oppressed_height});
-            $child.css({width: oppressed_width, height: oppressed_height});
+            $body.outerWidth(oppressed_width);
+            $body.outerHeight(oppressed_height);
+            $child.outerWidth(oppressed_width);
+            $child.outerHeight(oppressed_height);
+            // $body.css({width: oppressed_width, height: oppressed_height});
+            // $child.css({width: oppressed_width, height: oppressed_height});
             // NOTE:  An exception, this appears not to need a light touch, and setting these
             //        over and over does not churn visually.
         } else {

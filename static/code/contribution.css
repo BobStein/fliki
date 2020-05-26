@@ -238,7 +238,11 @@ select#thumb-res option { direction: rtl; }
 
 .noembed-error .render-bar {
     background-color: #FFF8F0;
-    padding: 8px;
+}
+
+.noembed-error .error-message {
+    padding: 0.5em;
+    margin: 0;
 }
 
 #popup-screen .caption-bar {
