@@ -292,6 +292,11 @@ select#thumb-res option { direction: rtl; }
     visibility: visible;
 }
 
+.save-bar button,
+.save-bar .among-buttons {
+    vertical-align: middle;
+}
+
 .save-bar button {
     font: small-caption;
     cursor: pointer;
@@ -319,31 +324,33 @@ select#thumb-res option { direction: rtl; }
 
 /* Visibility of individual contribution controls */
 
-.sup-contribution.pop-up                  .save-bar .edit    { display: none; }
-.sup-contribution.contribution-edit       .save-bar .edit    { display: none; }
-body.playing-somewhere                    .save-bar .edit    { display: none; }
-.sup-contribution:not(.contribution-edit) .save-bar .cancel  { display: none; }
-.sup-contribution.edit-dirty              .save-bar .cancel  { display: none; }
-.sup-contribution:not(.edit-dirty)        .save-bar .save    { display: none; }
-.sup-contribution:not(.edit-dirty)        .save-bar .discard { display: none; }
+.sup-contribution.pop-up                         .save-bar .edit    { display: none; }
+.sup-contribution.contribution-edit              .save-bar .edit    { display: none; }
+body.playing-somewhere                           .save-bar .edit    { display: none; }
+.sup-contribution:not(.contribution-edit)        .save-bar .cancel  { display: none; }
+.sup-contribution.edit-dirty                     .save-bar .cancel  { display: none; }
+.sup-contribution:not(.edit-dirty)               .save-bar .save    { display: none; }
+.sup-contribution:not(.edit-dirty)               .save-bar .discard { display: none; }
 
-.sup-contribution                         .save-bar   .play { display: inline-block; }
-.sup-contribution.contribution-edit       .save-bar   .play { display: none; }
-body.playing-somewhere                    .save-bar   .play { display: none; }
-.sup-contribution.pop-up                  .save-bar   .play { display: none; }
-.sup-contribution.cant-play               .save-bar   .play { display: none; }
+.sup-contribution                                .save-bar   .play { display: inline-block; }
+.sup-contribution.contribution-edit              .save-bar   .play { display: none; }
+body.playing-somewhere                           .save-bar   .play { display: none; }
+.sup-contribution.pop-up                         .save-bar   .play { display: none; }
+.sup-contribution.cant-play                      .save-bar   .play { display: none; }
 
-.sup-contribution                         .save-bar   .expand { display: inline-block; }
-.sup-contribution.contribution-edit       .save-bar   .expand { display: none; }
-body.playing-somewhere                    .save-bar   .expand { display: none; }
-.sup-contribution.pop-up                  .save-bar   .expand { display: none; }
-.sup-contribution.noembed-error           .save-bar   .expand { display: none; }
+.sup-contribution                                .save-bar   .expand { display: inline-block; }
+.sup-contribution.contribution-edit              .save-bar   .expand { display: none; }
+body.playing-somewhere                           .save-bar   .expand { display: none; }
+.sup-contribution.pop-up                         .save-bar   .expand { display: none; }
+.sup-contribution.noembed-error                  .save-bar   .expand { display: none; }
 
-.sup-contribution.can-play                .save-bar   .expand span { display: none; }
+.sup-contribution.can-play                       .save-bar   .expand span { display: none; }
 /* NOTE:  Hide the "bigger" label to make room for the "play" label". */
 
-/*.sup-contribution                         .save-bar .unfull { display: none; }*/
-/*.sup-contribution.pop-up                  .save-bar .unfull { display: inline-block; }*/
+.sup-contribution                                .save-bar   .external-link { display: none; }
+.sup-contribution.render-media                   .save-bar   .external-link { display: inline-block; }
+.sup-contribution.render-media.noembed-error     .save-bar   .external-link { display: none; }
+.sup-contribution.render-media.contribution-edit .save-bar   .external-link { display: none; }
 
 
 

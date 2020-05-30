@@ -1741,6 +1741,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         $save_bar:        { get: function () {return this.$sup.find('.save-bar');}},
         $caption_bar:     { get: function () {return this.$sup.find('.caption-bar');}},
         $caption_span:    { get: function () {return this.$sup.find('.caption-span');}},
+        $external_link:   { get: function () {return this.$sup.find('.external-link');}},
         content:          {
                               get: function () {return this.$cont.text();},
                               set: function (new_content) {return this.$cont.text(new_content);}
@@ -2508,14 +2509,16 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     }
 
     function contribution_save() {
+        var cont_editing = Contribution_from_element($cont_editing)
         if (is_editing_some_contribution) {
-            var cont_idn_old = $cont_editing.attr('id');
+            var cont_idn_old = cont_editing.$cont.attr('id');
             edit_submit($cont_editing, "contribution", MONTY.IDN.EDIT, cont_idn_old, function () {
                 var $sup_cont = $cont_editing.closest('.sup-contribution');
                 var $caption_span = $sup_cont.find('.caption-span');
-                var cont_idn_new = $cont_editing.attr('id');
+                var cont_idn_new = cont_editing.$cont.attr('id');
+                // CAUTION:  Not the same as cont_editing.id_attribute - edit_submit() changed id.
                 edit_submit($caption_span, "caption", MONTY.IDN.CAPTION, cont_idn_new, function () {
-                    rebuild_a_render_bar($cont_editing);
+                    cont_editing.rebuild_bars();
                     contribution_edit_end();
                 });
             });
@@ -3702,6 +3705,17 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         );
     }
 
+    /**
+     * Create a word in a lex, associated with a jQuery element.
+     *
+     * @param $div
+     * @param what
+     * @param vrb
+     * @param obj
+     * @param then
+     *
+     * Aux output is $div.attr('id'), the idn of the new word.
+     */
     function edit_submit($div, what, vrb, obj, then) {
         var new_text = $div.text();
         if ($div.data('original_text') === new_text) {
@@ -3712,7 +3726,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                 vrb_idn: vrb,
                 obj_idn: obj,
                 txt: new_text
-            }, function edit_submit_done(edit_word) {
+            }, function sentence_created(edit_word) {
                 console.log("Saved", what, edit_word.idn);
                 $div.attr('id', edit_word.idn);
                 then(edit_word);
@@ -4410,6 +4424,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
 
             benefit_of_the_doubt_post();
 
+            // TODO:  Use edit_submit() or something like it here?
             qoolbar.sentence(
                 {
                     vrb_idn: MONTY.IDN.CONTRIBUTE,
@@ -4438,6 +4453,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                             // MONTY.words.cont.push(contribute_word);
                             // Another good thing, that we don't have to do this.
                             var $sup_cont = build_contribution_dom(contribute_word);
+                            var cont_sup = Contribution_from_element($sup_cont);
                             var $cat = $categories[MONTY.IDN.CAT_MY];
                             var $first_old_sup = $cat.find('.sup-contribution').first();
                             if ($first_old_sup.length === 1) {
@@ -4450,7 +4466,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                             $text.val("");
                             $caption_input.val("");
                             post_it_button_appearance();
-                            rebuild_a_render_bar($sup_cont);
+                            cont_sup.rebuild_bars();
                             settle_down();
                             setTimeout(function () {  // Give rendering some airtime.
                                 new_contribution_just_created();
@@ -5194,7 +5210,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                 }
             });
             // TODO:  Profile this double loop.
-            //        Especially when it's a triple loop inside rebuild_all_render_bars()
+            //        Especially when it's a triple loop inside rebuild_all_bars()
         }
         return did_find;
     };
@@ -5215,14 +5231,15 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         //        But is that harder to follow?  And if I have to ask the answer is yes?
         // TODO:  all_done = Object.entries(media_handlers).all(handler => ! handler.need_load);
         if (all_loaded) {
-            rebuild_all_render_bars();
+            rebuild_all_bars();
             console.log("Media handlers", media_handlers);
         }
     }
 
-    function rebuild_all_render_bars() {
+    function rebuild_all_bars() {
         $('.sup-contribution').each(function () {
-            rebuild_a_render_bar(this);
+            var cont = Contribution_from_element(this);
+            cont.rebuild_bars();
         });
     }
 
@@ -5492,6 +5509,10 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                 .append($icon('play_arrow'))
                 .append(" play")
         );
+        var $external_link = $('<a>', {class: 'external-link among-buttons'});
+        $external_link.append($icon('launch'))
+        $save_bar.append($external_link);
+
         $sup_contribution.append($render_bar);
         $sup_contribution.append($caption_bar);
         $sup_contribution.append($save_bar);
@@ -5511,20 +5532,29 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         return $sup_contribution;
     }
 
-    function rebuild_a_render_bar(any_element_in_a_contribution) {
-        // TODO:  This function and all his playmates should become Contribution methods.
-        var cont = Contribution_from_element(any_element_in_a_contribution);
-        if (cont.is_media) {
-            cont.$sup.addClass('render-media');
-            cont.render_media();
+    /**
+     * Refresh the parts of a contribution's bars that might change due to content.
+     */
+    Contribution.prototype.rebuild_bars = function Contribution_rebuild_bars() {
+        var that = this;
+        if (that.is_media) {
+            that.$sup.addClass('render-media');
+            that.render_media();
+            that.$external_link.attr('href', that.media_url);
+            that.$external_link.attr('target', '_blank');
+            that.$external_link.attr('title', that.media_domain);
         } else {
-            cont.$sup.removeClass('render-media');
-            cont.$sup.addClass('can-play');
-            render_text(cont.$sup);
+            that.$sup.removeClass('render-media');
+            that.$sup.addClass('can-play');
+            render_text(that.$sup);
+            that.$external_link.removeAttr('href');
+            that.$external_link.removeAttr('target');
+            that.$external_link.removeAttr('title');
         }
     }
 
     function render_text($sup_cont) {
+        // TODO:  This function and all his playmates should become Contribution methods.
         $sup_cont.removeAttr('data-domain');
         var $render_bar = $sup_cont.find('.render-bar');
         $render_bar.empty();
