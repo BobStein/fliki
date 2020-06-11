@@ -1617,12 +1617,12 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             var original_idns = conts_in_cat[cat_idn].join(" ");
             var alternative_idns = cat.cont_sequence.idn_array().join(" ");
             var is_same = alternative_idns === original_idns;
-            console.log(f(
-                "Category {name} {comparison} ({how_many}):\n" +
+            (is_same ? console.log : console.error)(f(
+                "Category {name} {same_or_different} ({how_many}):\n" +
                 "{old_idns}\n" +
                 "{new_idns}", {
                     name: cat.txt,
-                    comparison: is_same ? "SAME" : "DIFFERENT",
+                    same_or_different: is_same ? "SAME" : "DIFFERENT",
                     how_many: cat.cont_sequence.idn_array().length,
                     old_idns: original_idns,
                     new_idns: alternative_idns
@@ -2310,6 +2310,33 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     };
 
     /**
+     * Refresh the parts of a contribution's bars that might change due to content.
+     */
+    Contribution.prototype.rebuild_bars = function Contribution_rebuild_bars() {
+        var that = this;
+        if (that.is_media) {
+            that.$sup.addClass('render-media');
+            that.render_media();
+            that.$external_link.attr('href', that.media_url);
+            that.$external_link.attr('target', '_blank');
+            that.$external_link.attr('title', that.media_domain);
+        } else {
+            that.$sup.removeClass('render-media');
+            that.$sup.addClass('can-play');   // (can bey "played" as text to speech audio)
+            that.render_text();
+            that.$external_link.removeAttr('href');
+            that.$external_link.removeAttr('target');
+            that.$external_link.removeAttr('title');
+        }
+    }
+
+    Contribution.prototype.render_text = function Contribution_render_text() {
+        var that = this;
+        that.$sup.removeAttr('data-domain');
+        that.$render_bar.empty();
+    }
+
+    /**
      * Compute coordinates for position:fixed clone that would appear in the same place.
      *
      * @return {{top: number, left: number}}
@@ -2326,18 +2353,50 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     };
 
     /**
-     * Create an icon, something ready to pass to jQuery .append()
+     * Is this media URL handled by a registered handler?
      *
-     * THANKS:  Google icons, https://stackoverflow.com/a/27053825/673991
-     * SEE:  Google icons, https://material.io/resources/icons/?style=baseline
-     * SEE:  Google icons, https://github.com/google/material-design-icons
+     * If so:
+     *     return true
+     *     set that.handler to point to the winning handler object in media_handlers.
+     *     set that.handler.match_object to the results of the match, possibly containing
+     *                                   regular expression parenthetical sub-match strings
+     *     set that.handler.pattern_index to the index into url_patterns[] for that handler.
      *
-     * @param name - e.g. 'play_arrow', 'volume_up'
-     * @return {jQuery|string}
+     * The first pattern of the first handler wins.  So catch-all patterns should come last in
+     * the media_handlers[] array.
+     *
+     * @return {boolean}
      */
-    function $icon(name) {
-        return $('<i>', {'class': 'material-icons'}).text(name);
-    }
+    Contribution.prototype.handler_scan = function contribution_handler_scan() {
+        var that = this;
+        var did_find = false;
+        if (that.is_media) {
+            looper(media_handlers, function handler_loop(_, media_handler) {
+                if (media_handler.did_register) {
+                    console.assert(is_specified(media_handler.media), media_handler);
+                    console.assert(is_specified(media_handler.media.url_patterns), media_handler.media);
+                    looper(media_handler.media.url_patterns, function pattern_loop(pattern_index, url_pattern) {
+                        var match_object = that.content.match(url_pattern);
+                        if (match_object !== null) {
+                            that.handler = media_handler;
+                            that.handler.match_object = match_object;
+                            that.handler.pattern_index = pattern_index;
+                            did_find = true;
+                            return false;
+                            // NOTE:  Exit url pattern loop, FIRST pattern wins.
+                        }
+                    });
+                    if (did_find) {
+                        return false;
+                        // NOTE:  Exit handler loop, FIRST handler wins.
+                    }
+                }
+            });
+            // TODO:  Profile this double loop.
+            //        Especially when it's a triple loop inside rebuild_all_bars()
+        }
+        return did_find;
+    };
 
     /**
      * Is there unfinished entry or editing on the page?
@@ -4168,7 +4227,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                         "where cont", $movee[0].id,
                         "goes into cat", to_cat_idn
                     );
-                    relocate_contribution_to_category_left_edge($cat_of(evt.to), $movee);
+                    locate_contribution_at_category_left_edge($cat_of(evt.to), $movee);
                 }
 
                 // NOTE:  buttee means the contribution shoved over to the right, if any
@@ -4229,6 +4288,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     function new_contribution_just_created() {
         initialize_contribution_sizes();
     }
+
     function initialize_contribution_sizes() {
         $('.size-adjust-once:visible').each(function () {
             var $element = $(this);
@@ -4310,14 +4370,27 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         return px / parseFloat($element.css('font-size'));
     }
 
-    function relocate_contribution_to_category_left_edge($cat, $movee) {
-        if ($cat.find('.container-entry').length > 0) {
+    /**
+     * Move or store a contribution to the left edge of a category.
+     *
+     * Works to either move a sup-contribution, or store it for the first time, in the DOM.
+     *
+     * @param {jQuery} $cat - e.g. $categories[MONTY.IDN.CAT_MY]
+     * @param {jQuery} $movee - e.g. Contribution('1461')
+     */
+    function locate_contribution_at_category_left_edge($cat, $movee) {
+        var $container_entry = $cat.find('.container-entry');
+        if ($container_entry.length > 0) {
             // Drop after contribution entry form (the one in 'my' category))
-            $cat.find('.container-entry').last().after($movee);
+            $container_entry.last().after($movee);
         } else {
             // drop into any other category, whether empty or not
             $cat.prepend($movee);
         }
+        // THANKS:  https://www.elated.com/jquery-removing-replacing-moving-elements/
+        //          'While there are no specific jQuery methods for moving elements around the DOM
+        //          tree, in fact it's very easy to do. All you have to do is select the element(s)
+        //          you want to move, then call an "adding" method such as append()'
     }
 
     /**
@@ -4401,7 +4474,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         var $text = $('#enter_some_text');
         var $caption_input = $('#enter_a_caption');
         var text = $text.val();
-        var caption = $caption_input.val();
+        var caption_text = $caption_input.val();
         if (text.length === 0) {
             $text.focus();
             console.warn("Enter some content.");
@@ -4425,58 +4498,73 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             benefit_of_the_doubt_post();
 
             // TODO:  Use edit_submit() or something like it here?
+            var cont_sentence = {
+                vrb_idn: MONTY.IDN.CONTRIBUTE,
+                obj_idn: MONTY.IDN.QUOTE,
+                txt: text
+            };
             qoolbar.sentence(
-                {
-                    vrb_idn: MONTY.IDN.CONTRIBUTE,
-                    obj_idn: MONTY.IDN.QUOTE,
-                    txt: text
-                },
-                function post_it_done_1(contribute_word) {
-                    console.log("contribution", contribute_word);
-                    var caption_sentence;
-                    if (caption.length === 0) {
-                        caption_sentence = null;
+                cont_sentence,
+                function post_it_done_1(cont_word) {
+                    console.log("contribution", cont_word);
+                    if (caption_text.length === 0) {
+                        new_my_contribution(cont_word, null);
                     } else {
-                        caption_sentence = {
+                        var capt_sentence = {
                             vrb_idn: MONTY.IDN.CAPTION,
-                            obj_idn: contribute_word.idn,
-                            txt: caption
+                            obj_idn: cont_word.idn,
+                            txt: caption_text
                         };
+                        qoolbar.sentence(
+                            capt_sentence,
+                            function post_it_done_2(capt_word) {
+                                // NOTE:  contribution_word and caption_word may be missing the
+                                //        was_submitted_anonymous attribute, as exists in MONTY.w[]
+                                //        but is not fed back via ajax here.
+                                if (is_specified(capt_word)) {
+                                    console.log("caption", capt_word);
+                                    // contribute_word.jbo = [caption_word];
+                                }
+                                new_my_contribution(cont_word, capt_word);
+                            },
+                            failed_post
+                        );
                     }
-                    qoolbar.sentence(
-                    caption_sentence,
-                        function post_it_done_2(caption_word) {
-                            if (is_specified(caption_word)) {
-                                console.log("caption", caption_word);
-                                contribute_word.jbo = [caption_word];
-                            }
-                            // MONTY.words.cont.push(contribute_word);
-                            // Another good thing, that we don't have to do this.
-                            var $sup_cont = build_contribution_dom(contribute_word);
-                            var cont_sup = Contribution_from_element($sup_cont);
-                            var $cat = $categories[MONTY.IDN.CAT_MY];
-                            var $first_old_sup = $cat.find('.sup-contribution').first();
-                            if ($first_old_sup.length === 1) {
-                                $first_old_sup.before($sup_cont);
-                            } else {
-                                $cat.append($sup_cont);
-                            }
-                            // NOTE:  Now for the first time ever, a new contribution is in the DOM
-                            //        and now the Contribution constructor could be called.
-                            $text.val("");
-                            $caption_input.val("");
-                            post_it_button_appearance();
-                            cont_sup.rebuild_bars();
-                            settle_down();
-                            setTimeout(function () {  // Give rendering some airtime.
-                                new_contribution_just_created();
-                            });
-                        },
-                        failed_post
-                    );
                 },
                 failed_post
             );
+        }
+
+        function new_my_contribution(cont_word, capt_word) {
+            var $sup_cont = build_contribution_dom(cont_word, capt_word);
+            var $cat = $categories[MONTY.IDN.CAT_MY];
+
+            // NOTE:  Old way:
+            //     var $first_old_sup = $cat.find('.sup-contribution').first();
+            //     if ($first_old_sup.length === 0) {
+            //         $cat.append($sup_cont);   // first ever contribution for this user
+            //     } else {
+            //         $first_old_sup.before($sup_cont);
+            //     }
+
+            // NOTE:  A simpler way?
+            //     $('.container-entry').after($sup_cont);
+
+            // NOTE:  The best D.R.Y. way:
+            locate_contribution_at_category_left_edge($cat, $sup_cont);
+
+            // NOTE:  From this point on, a new contribution is in the DOM,
+            //        so the Contribution constructor can be called to deal with it.
+            var cont_sup = Contribution_from_element($sup_cont);
+
+            $text.val("");
+            $caption_input.val("");
+            post_it_button_appearance();
+            cont_sup.rebuild_bars();
+            settle_down();
+            setTimeout(function () {   // Give rendering some airtime.
+                new_contribution_just_created();
+            });
         }
     }
 
@@ -4671,7 +4759,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                 case MONTY.IDN.CONTRIBUTE:
                 case MONTY.IDN.UNSLUMP_OBSOLETE:
                     if (query_string_filter(word, cont_only)) {
-                        $sup = build_contribution_dom(word);
+                        $sup = build_contribution_dom(word, null);
                         $cont = $sup.find('.contribution');
                         $caption_span = $sup.find('.caption-span');
                         $cont.attr('data-owner', word.sbj);
@@ -4686,7 +4774,12 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                     if (has($sup_contributions, word.obj)) {
                         $sup = $sup_contributions[word.obj];
                         $caption_span = $sup.find('.caption-span');
-                        if (is_authorized(word, $caption_span.attr('data-owner'), "caption", auth_log_push)) {
+                        if (is_authorized(
+                            word,
+                            $caption_span.attr('data-owner'),
+                            "caption",
+                            auth_log_push
+                        )) {
                             $caption_span.attr('id', word.idn);
                             $caption_span.attr('data-owner', word.sbj);
                             $caption_span.text(word.txt);
@@ -5169,52 +5262,6 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         }
     };
 
-    /**
-     * Is this media URL handled by a registered handler?
-     *
-     * If so:
-     *     return true
-     *     set that.handler to point to the winning handler object in media_handlers.
-     *     set that.handler.match_object to the results of the match, possibly containing
-     *                                   regular expression parenthetical sub-match strings
-     *     set that.handler.pattern_index to the index into url_patterns[] for that handler.
-     *
-     * The first pattern of the first handler wins.  So catch-all patterns should come last in
-     * the media_handlers[] array.
-     *
-     * @return {boolean}
-     */
-    Contribution.prototype.handler_scan = function contribution_handler_scan() {
-        var that = this;
-        var did_find = false;
-        if (that.is_media) {
-            looper(media_handlers, function handler_loop(_, media_handler) {
-                if (media_handler.did_register) {
-                    console.assert(is_specified(media_handler.media), media_handler);
-                    console.assert(is_specified(media_handler.media.url_patterns), media_handler.media);
-                    looper(media_handler.media.url_patterns, function pattern_loop(pattern_index, url_pattern) {
-                        var match_object = that.content.match(url_pattern);
-                        if (match_object !== null) {
-                            that.handler = media_handler;
-                            that.handler.match_object = match_object;
-                            that.handler.pattern_index = pattern_index;
-                            did_find = true;
-                            return false;
-                            // NOTE:  Exit url pattern loop, FIRST pattern wins.
-                        }
-                    });
-                    if (did_find) {
-                        return false;
-                        // NOTE:  Exit handler loop, FIRST handler wins.
-                    }
-                }
-            });
-            // TODO:  Profile this double loop.
-            //        Especially when it's a triple loop inside rebuild_all_bars()
-        }
-        return did_find;
-    };
-
     function are_we_done_loading_handlers() {
         var all_loaded = true;
         looper(media_handlers, function (_, handler) {
@@ -5476,10 +5523,11 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
      *
      * It's returned free-range, not inserted in the DOM.
      *
-     * @param contribution_word
+     * @param {object} contribution_word
+     * @param {object=} caption_word (optional)
      * @return {jQuery}
      */
-    function build_contribution_dom(contribution_word) {
+    function build_contribution_dom(contribution_word, caption_word) {
         var $sup_contribution = $('<div>', {class: 'sup-contribution word'});
         var $contribution = $('<div>', {
             id: contribution_word.idn,
@@ -5521,10 +5569,14 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         $grip.text(GRIP_SYMBOL);
         var $caption_span = $('<span>', {class: 'caption-span'});
         $caption_bar.append($caption_span);
-        var caption_txt = latest_txt(contribution_word.jbo, MONTY.IDN.CAPTION);
-        if (caption_txt !== undefined) {
-            $caption_span.append(caption_txt);
+        if (is_specified(caption_word)) {
+            $caption_span.append(caption_word.txt);
+            // TODO:  Why .append() here and .text() when looping through CAPTION words?
         }
+        // var caption_txt = latest_txt(contribution_word.jbo, MONTY.IDN.CAPTION);
+        // if (caption_txt !== undefined) {
+        //     $caption_span.append(caption_txt);
+        // }
 
         if (contribution_word.was_submitted_anonymous) {
             $sup_contribution.addClass('was-submitted-anonymous');
@@ -5532,36 +5584,11 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         return $sup_contribution;
     }
 
-    /**
-     * Refresh the parts of a contribution's bars that might change due to content.
-     */
-    Contribution.prototype.rebuild_bars = function Contribution_rebuild_bars() {
-        var that = this;
-        if (that.is_media) {
-            that.$sup.addClass('render-media');
-            that.render_media();
-            that.$external_link.attr('href', that.media_url);
-            that.$external_link.attr('target', '_blank');
-            that.$external_link.attr('title', that.media_domain);
-        } else {
-            that.$sup.removeClass('render-media');
-            that.$sup.addClass('can-play');
-            render_text(that.$sup);
-            that.$external_link.removeAttr('href');
-            that.$external_link.removeAttr('target');
-            that.$external_link.removeAttr('title');
-        }
-    }
 
-    function render_text($sup_cont) {
-        // TODO:  This function and all his playmates should become Contribution methods.
-        $sup_cont.removeAttr('data-domain');
-        var $render_bar = $sup_cont.find('.render-bar');
-        $render_bar.empty();
-        // var cont = Contribution_from_element($sup_cont);
-        // cont.fix_caption_width('quote rendering');
-        // console.log("render_text()", cont.id_attribute);
-    }
+
+    // TODO:  Make more Contribution functions into methods.  They're here somewhere.
+
+
 
     function could_be_url(text) {
         return starts_with(text, 'http://') || starts_with(text, 'https://');
@@ -5721,25 +5748,25 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         });
     }
 
-    /**
-     * Find the txt of the latest word of a specific verb.
-     *
-     * Either the words array input, or the return value may be undefined.
-     *
-     * @param words {array|undefined} - list of words, e.g. MONTY.words.cont[].jbo
-     * @param vrb_sought - id_attribute of the verb you want, e.g. IDN.CAPTION
-     * @return {string|undefined} - string (maybe '') if found, undefined if there are none.
-     */
-    function latest_txt(words, vrb_sought) {
-        if (is_defined(words)) {
-            for (var i = words.length - 1 ; i >= 0 ; i--) {
-                if (words[i].vrb === vrb_sought) {
-                    return words[i].txt;
-                }
-            }
-        }
-        return undefined;
-    }
+    // /**
+    //  * Find the txt of the latest word of a specific verb.
+    //  *
+    //  * Either the words array input, or the return value may be undefined.
+    //  *
+    //  * @param words {array|undefined} - list of words, e.g. MONTY.words.cont[].jbo
+    //  * @param vrb_sought - id_attribute of the verb you want, e.g. IDN.CAPTION
+    //  * @return {string|undefined} - string (maybe '') if found, undefined if there are none.
+    //  */
+    // function latest_txt(words, vrb_sought) {
+    //     if (is_defined(words)) {
+    //         for (var i = words.length - 1 ; i >= 0 ; i--) {
+    //             if (words[i].vrb === vrb_sought) {
+    //                 return words[i].txt;
+    //             }
+    //         }
+    //     }
+    //     return undefined;
+    // }
 
     /**
      * Try to keep the caption input and textarea same width.  If not, no sweat.
@@ -5846,6 +5873,20 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     ////////////////////////////
     ////// Generic stuff follows
     ////////////////////////////
+
+    /**
+     * Create an icon, something ready to pass to jQuery .append()
+     *
+     * THANKS:  Google icons, https://stackoverflow.com/a/27053825/673991
+     * SEE:  Google icons, https://material.io/resources/icons/?style=baseline
+     * SEE:  Google icons, https://github.com/google/material-design-icons
+     *
+     * @param name - e.g. 'play_arrow', 'volume_up'
+     * @return {jQuery|string}
+     */
+    function $icon(name) {
+        return $('<i>', {'class': 'material-icons'}).text(name);
+    }
 
     function exit_full_screen() {
         // THANKS:  Exit full screen, https://stackoverflow.com/a/36672683/673991
