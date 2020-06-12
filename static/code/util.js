@@ -104,6 +104,10 @@ console.assert(42 === random_element([42, 42, 42]));
  *      SEE jQuery .call():  https://github.com/jquery/jquery/blob/438b1a3e8/src/core.js#L247
  *      Reason for this incompatibility:  the one-line test #3 below
  *                                        that modifies in-place.
+ *
+ * Callback parameters are (key, value) where key is always a string, even for array indices.
+ * SEE:  object property keys are strings, https://stackoverflow.com/a/3633390/673991
+ *
  * SEE:  $.each() bug for objects, https://stackoverflow.com/a/49652688/673991
  *
  * @param object - e.g. {a:1, b:2} or [1,2,3]

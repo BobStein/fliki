@@ -351,6 +351,7 @@ body.playing-somewhere                           .save-bar   .expand { display: 
 .sup-contribution.render-media                   .save-bar   .external-link { display: inline-block; }
 .sup-contribution.render-media.noembed-error     .save-bar   .external-link { display: none; }
 .sup-contribution.render-media.contribution-edit .save-bar   .external-link { display: none; }
+.sup-contribution.pop-up                         .save-bar   .external-link { display: none; }
 
 
 
