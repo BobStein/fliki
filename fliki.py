@@ -104,24 +104,28 @@ INSTAGRAM_PATTERNS = [
 
 
 # noinspection SpellCheckingInspection
-NOEMBED_PATTERNS = YOUTUBE_PATTERNS + INSTAGRAM_PATTERNS + [
-    "https?://(?:www\\.)?vimeo\\.com/.+",
+NOEMBED_PATTERNS = (
+    YOUTUBE_PATTERNS +
+    INSTAGRAM_PATTERNS +
+    [
+        "https?://(?:www\\.)?vimeo\\.com/.+",
 
-    "https?://(?:www|mobile\\.)?twitter\\.com/(?:#!/)?([^/]+)/status(?:es)?/(\\d+)",
-    "https?://twitter\\.com/.*/status/.*",
+        "https?://(?:www|mobile\\.)?twitter\\.com/(?:#!/)?([^/]+)/status(?:es)?/(\\d+)",
+        "https?://twitter\\.com/.*/status/.*",
 
-    "https?://.*\\.flickr\\.com/photos/.*",
-    "https?://flic\\.kr/p/.*",
+        "https?://.*\\.flickr\\.com/photos/.*",
+        "https?://flic\\.kr/p/.*",
 
-    "https?://www\\.(dropbox\\.com/s/.+\\.(?:jpg|png|gif))",
-    "https?://db\\.tt/[a-zA-Z0-9]+",
+        "https?://www\\.(dropbox\\.com/s/.+\\.(?:jpg|png|gif))",
+        "https?://db\\.tt/[a-zA-Z0-9]+",
 
-    "https?://soundcloud\\.com/.*",   # but it can't currently be animated
+        "https?://soundcloud\\.com/.*",   # but it can't currently be animated
 
-    "https?://www\\.dailymotion\\.com/video/.*",
+        "https?://www\\.dailymotion\\.com/video/.*",
 
-    # NON_ROUTABLE_URL,   # for testing
-]
+        # NON_ROUTABLE_URL,   # for testing
+    ]
+)
 
 time_lex = qiki.TimeLex()
 t_last_anonymous_question = time_lex.now_word()
@@ -2742,6 +2746,7 @@ def noembed_render(url, idn, matched_groups):
             matched_groups=matched_groups,
             # TODO:  Do we really have to go through all patterns again?
             oembed=oembed_dict,
+            original_url=url,
             target_origin=secure.credentials.Options.oembed_target_origin,
             THUMB_MAX_WIDTH=THUMB_MAX_WIDTH,
             THUMB_MAX_HEIGHT=THUMB_MAX_HEIGHT,

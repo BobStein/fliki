@@ -9,7 +9,7 @@
         url_patterns: [
             RegExp('^https?://(?:www\\.)?(?:instagram\\.com|instagr\\.am)/p/([^/]+)/?$')
         ],
-        render_thumb: function instagram_render_thumb(cont) {
+        render_thumb: function instagram_render_thumb(cont, then) {
             var that = this;
             console.assert(that.description_short === "instagram");
             console.assert(that === cont.handler.media);   // Hint object organization could improve
@@ -21,14 +21,17 @@
             cont.thumb_image(
                 image_url(media_id, THUMB_SIZE),
                 caption,
+                then,
                 function instagram_render_thumb_take_2() {
                     cont.thumb_image(
                         image_url(media_id, MEDIUM_SIZE),
                         caption,
+                        then,
                         function instagram_render_thumb_take_3() {
                             cont.thumb_image(
                                 image_url(media_id, LARGE_SIZE),
                                 caption,
+                                then,
                                 function instagram_render_thumb_give_up() {
                                     console.error("No instagram images", cont.content);
                                 }

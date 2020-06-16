@@ -1,16 +1,14 @@
-// NoEmbed media handler
+// NoEmbed media handler - fallback for all URLs not matched by other handlers.
 
 // noinspection JSUnusedLocalSymbols
 (function (window, $) {
-    // noinspection JSUnusedGlobalSymbols,JSUnusedLocalSymbols
-    var MAX_CAPTION_LENGTH = 100;  // Because some oembed titles are huge
     var media = {
         description_short: "any url",   // should be unique within a domain
         description_long: "URL fallback handler for qiki media applications",
         url_patterns: [
             RegExp("^https?://")
         ],
-        render_thumb: function noembed_render_thumb(cont) {
+        render_thumb: function noembed_render_thumb(cont, _) {
             var that = this;
             console.assert(that.description_short === "any url");
             console.assert(that === cont.handler.media);   // Hint object organization could improve

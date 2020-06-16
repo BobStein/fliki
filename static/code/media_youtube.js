@@ -11,7 +11,7 @@
             RegExp("^https?://(?:[^.]+\\.)?(?:youtu\\.be|youtube\\.com/embed)/([a-zA-Z0-9_-]+)")
             // THANKS:  Media URL patterns, https://noembed.com/providers
         ],
-        render_thumb: function youtube_render_thumb(cont) {
+        render_thumb: function youtube_render_thumb(cont, then) {
             var that = this;
             console.assert(that.description_short === "youtube");
             console.assert(that === cont.handler.media);   // Hint object organization could improve
@@ -25,11 +25,13 @@
             cont.thumb_image(
                 thumbnail_url,
                 caption,
+                then,
                 function youtube_render_thumb_take_2() {
                     thumbnail_url = 'https://img.youtube.com/vi/' + media_id + '/2.jpg';
                     cont.thumb_image(
                         thumbnail_url,
                         caption,
+                        then,
                         function youtube_render_thumb_give_up() {
                             console.error("No youtube images", cont.content);
                         }

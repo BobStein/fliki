@@ -154,6 +154,12 @@ function embed_content_js(window, $, MONTY) {
                     // EXAMPLE:
                     //     https://noembed.com/embed?url=https://www.youtube.com/watch?v=qqLIH2UiPXg
                     //     {"url":"https://www.youtube.com/watch?v=qqLIH2UiPXg","error":"401 Unauthorized"}
+                    // EXAMPLE:
+                    //     MONTY.oembed = {
+                    //         "error":"no matching providers found",
+                    //         "url":"https://www.youtube.com/watch?time_continue=206"
+                    //     },
+                    //     https://www.youtube.com/watch?time_continue=206&v=ubTJI_UphPk&feature=emb_logo&ab_channel=DoctorWho
                     fix_embedded_content();
                     console.debug("Noembed error on", contribution_idn, url_outer_iframe);
                     parent_message('noembed-error-notify', {

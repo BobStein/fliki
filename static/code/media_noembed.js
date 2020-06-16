@@ -2,7 +2,6 @@
 
 // noinspection JSUnusedLocalSymbols
 (function (window, $) {
-    // noinspection JSUnusedGlobalSymbols,JSUnusedLocalSymbols
     var MAX_CAPTION_LENGTH = 100;  // Because some oembed titles are huge
     var media = {
         description_short: "noembed",   // should be unique within a domain
@@ -18,7 +17,7 @@
             RegExp("^https?://soundcloud\\.com/.*$"),
             RegExp("^https?://www\\.dailymotion\\.com/video/.*$")
         ],
-        render_thumb: function noembed_render_thumb(cont) {
+        render_thumb: function noembed_render_thumb(cont, then) {
             var that = this;
             console.assert(that.description_short === "noembed");
             console.assert(that === cont.handler.media);   // Hint object organization could improve
@@ -61,6 +60,7 @@
                         cont.thumb_image(
                             oembed.thumbnail_url,
                             caption_for_media,
+                            then,
                             function thumb_url_error() {
                                 console.warn(
                                     cont.media_domain,
@@ -68,11 +68,11 @@
                                     oembed.thumbnail_url,
                                     "-- revert to iframe"
                                 );
-                                cont.live_media_iframe({url: cont.media_url});
+                                cont.live_media_iframe({url: cont.media_url}, then);
                             }
                         );
                     } else {   // oembed data is missing a thumbnail URL
-                        cont.live_media_iframe({url: cont.media_url});
+                        cont.live_media_iframe({url: cont.media_url}, then);
                     }
                 } else {   // oembed error message
                     var error_message;

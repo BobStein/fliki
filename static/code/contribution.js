@@ -203,6 +203,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     }
     var me_title = me_possessive + " " + MONTY.WHAT_IS_THIS_THING;
 
+    var contribution_lexi = null;
     // Aux outputs of build_category_dom(), which puts the (orphan) DOM objects it creates here.
     var $sup_categories = {};  // outer category divs:  div.sup-category
                                //                       includes h2 header and triangle valve
@@ -210,6 +211,8 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                                //                       id of this inner div is the id_attribute of the category
                                //                       Includes all div.sup-contribution elements,
                                //                       plus (for my_category) div.container-entry
+    var popup_cont = null;
+    js_for_contribution.popup_cont = popup_cont;
 
     // Config options for size_adjust()
     var WIDTH_MAX_EM = {
@@ -380,29 +383,10 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
 
 
     $(function document_ready() {
-        if (window.speechSynthesis !== null) {
-            window.speechSynthesis.onvoiceschanged = function () {
-                // THANKS:  voices ready, https://stackoverflow.com/a/22978802/673991
-                voices = window.speechSynthesis.getVoices();
-                console.log("Voices loaded", voices);
-                voice_weights = Array(voices.length);
-                for (var i = 0; i < voices.length; i++) {
-                    if (/^en-GB/.test(voices[i].lang)) {
-                        voice_weights[i] = 10.0;
-                    } else if (/^en/.test(voices[i].lang)) {
-                        voice_weights[i] = 5.0;
-                    } else {
-                        voice_weights[i] = 0.0;
-                    }
-                    if (voices[i].default) {
-                        voice_default = voices[i];
-                    }
-                }
-            };
-        }
+        speech_synthesis_init();
         qoolbar.ajax_url(MONTY.AJAX_URL);
 
-        build_dom();
+        build_body_dom();
 
         $( '#close-button').on('click', function () { pop_down_all(false); });
         $(  '#play-button').on('click', function () { bot.play(); });
@@ -410,12 +394,15 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         $('#resume-button').on('click', function () { bot.resume(); });
         $(  '#stop-button').on('click', function () { bot.stop(); });
         $(  '#skip-button').on('click', function () { bot.skip(); });
-        // NOTE:  You might expect INTERACTION words to all be generated near here, where most
+        // NOTE:  You might expect lex INTERACTION words to all be generated near here, where most
         //        user interaction originates.  But then how to record the controls inside a youtube
         //        video?  Those actions can be detected by events in the youtube API, but those
-        //        events also include these actions.
+        //        events also trigger as a result of the click events here.
+        //        So most of those words are generated there, in response to youtube events.
+        //        But they're generated elsewhere (I forget) for other media interactions.
         //        So the words are generated in diverse places with fiddly conditions.
-        //        This is a tiny part of the most complex project:  machines understanding people.
+        //        This is a tiny part of that perennially difficult quest:
+        //        machines understanding people.
 
         $('#play_bot_speech').on('change', play_bot_speech_change);
         play_bot_speech_change();
@@ -427,7 +414,6 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             .on('drop',                     text_or_caption_drop)
         ;
         $('#post_it_button').on('click', post_it_click);
-
 
         $('.category, .frou-category').sortable(sortable_module_options());
 
@@ -610,7 +596,6 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         var setting = window.localStorage.getItem(storage_name);
         if (is_specified(setting)) {
             $(selector).val(setting);
-            console.log("Recalling", storage_name, setting);
         }
     }
 
@@ -644,7 +629,12 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     }
 
 
-
+    /**
+     * Bot - automate the playing of media and text.  "Play" button in the upper left, and friends.
+     *
+     * @return {Bot}
+     * @constructor
+     */
     function Bot() {
         if ( ! (this instanceof Bot)) {
             return new Bot();
@@ -748,7 +738,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                 that.State.PLAYING_CONTRIBUTION
             ];
             if ( ! has(LESS_INTERESTING_STATES, that.state)) {
-                if (DEBUG_BOT_STATES) console.debug("Bot", that.state.name, that.ticks_this_state, that.state.description);
+                if (DEBUG_BOT_STATES) console.log("Bot", that.state.name, that.ticks_this_state, that.state.description);
             }
             that.last_tick_state = that.state;
             that.finite_state_machine();
@@ -828,7 +818,8 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                 break;
             }
             that.cont_idn = list_play_bot[index_play_bot];
-            that.cont = Contribution(that.cont_idn);
+            // that.cont = Contribution(that.cont_idn);
+            that.cont = contribution_lexi.get(that.cont_idn);
             if ( ! that.cont.does_exist()) {
                 that.crash("Missing contribution", that.cont_idn, index_play_bot);
                 break;
@@ -847,7 +838,8 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                 that.end_one_begin_another(SECONDS_BREATHER_AT_NOEMBED_ERROR, true);
             } else {
                 $(window.document.body).addClass('pop-up-auto');
-                that.pop_begin(pop_up(that.cont, true));
+                pop_up(that.cont, true);
+                that.pop_begin(popup_cont);
                 that.state = that.State.PLAYING_CONTRIBUTION;
                 that.pop_cont.$sup.on(that.pop_cont.Event.MEDIA_INIT, function () {
                     that.transit([that.State.PLAYING_CONTRIBUTION], that.State.MEDIA_READY);
@@ -1154,7 +1146,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     };
 
     Bot.prototype.pause_media = function Bot_pause_media() {
-        embed_message('.pop-up', { action: 'pause' });
+        popup_cont.embed_message({ action: 'pause' });
     };
 
     /**
@@ -1190,7 +1182,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         var that = this;
         console.log("Resume initiated by main page");
         if (utter === null) {
-            embed_message('.pop-up', { action: 'resume' });
+            popup_cont.embed_message({ action: 'resume' });
             // NOTE:  _pause_ends() after embed messages back auto-play-playing.
         } else {
             window.speechSynthesis.resume();
@@ -1231,9 +1223,10 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
 
 
     /**
-    /* Lexi - Freakish name for a thing that stores idn-referenced stuff.
+     /* Lexi - Freakish name for a thing that stores idn-referenced stuff.
      *
      * It's almost sorta maybe like the Python Lex class.
+     * An idn is an integer number here.
      *
      * @param word_class constructs instances for the lexi.  Takes an idn to construct.
      * @return {Lexi}
@@ -1357,15 +1350,28 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
      * Build up an understanding of contributions by passing through relevant words, one at a time.
      *
      * Relevant words are words with these verbs:
-     *     contribute
-     *     caption
-     *     edit
+     *     'contribute'
+     *     'caption'
+     *     'edit'
      *     categorization & ordering verbs:
-     *         my
-     *         their
-     *         anon
-     *         trash
-     *         about
+     *         'my'
+     *         'their'
+     *         'anon'
+     *         'trash'
+     *         'about'
+     *
+     * .word_pass() after constructing a Contribution knowing only its idn, affect these fields:
+     *     .was_submitted_anonymous
+     *     .cat
+     *     .cat.cont_sequence
+     *     .owner
+     *     .capt
+     *     .capt.idn
+     *     .capt.txt
+     *     .capt.owner
+     *     .superseded_by_idn
+     *
+     * Notably ignored, the .txt or .content of the contribution.  Though the .capt.txt is set.
      *
      * @param word - properties idn, sbj, vrb, obj, num, txt
      */
@@ -1391,20 +1397,34 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         }
 
         function contribute_word(word) {
-            var new_cont_idn = word.idn;
-            var new_cont_owner = word.sbj;
+            if (query_string_filter(word, cont_only)) {
+                var new_cont_idn = word.idn;
+                var new_cont_owner = word.sbj;
 
-            var cont = that.add(new_cont_idn);
-            var cat_idn = original_cat(word);
-            var cat = that.category_lexi.get(cat_idn);
-            cont.cat = cat;
-            cat.cont_sequence.insert(new_cont_idn);   // insert LEFT end, nothing ever goes wrong
-            cont.owner = new_cont_owner;
-            that.notify(f("{idn}. {owner} contributes to {cat_txt}", {
-                idn: new_cont_idn,
-                owner: user_name_short(new_cont_owner),
-                cat_txt: cat.txt
-            }));
+                var cont = that.add(new_cont_idn);
+                if (word.was_submitted_anonymous) {
+                    cont.was_submitted_anonymous = true;
+                    // NOTE:  Captioning or moving a contribution retains its .was_submitted_anonymous
+                    //        But editing by a logged-in user removes it.
+                }
+                var cat_idn = original_cat(word);
+                var cat = that.category_lexi.get(cat_idn);
+                cont.cat = cat;
+                cat.cont_sequence.insert(new_cont_idn);   // insert LEFT end, nothing ever goes wrong
+                cont.owner = new_cont_owner;
+                // NOTE:  Captioning does not change a contribution's owner.
+                //        (It does change the caption's owner.)
+                //        Moving and editing do change the contribution's owner.
+                //        (They do not change the caption's owner.  One way this could be weird:
+                //        if I move an anonymous contribution to "my" category, then that user
+                //        edits the caption, I will see the new caption too.  So this is a possible
+                //        leak between anonymous users.)
+                that.notify(f("{idn}. {owner} contributes to {cat_txt}", {
+                    idn: new_cont_idn,
+                    owner: user_name_short(new_cont_owner),
+                    cat_txt: cat.txt
+                }));
+            }
         }
 
         function caption_word(word) {
@@ -1439,7 +1459,6 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             var old_cont_idn = word.obj;
             var new_cont_idn = word.idn;
             var new_cont_owner = word.sbj;
-            var new_cont_txt = word.txt;
 
             if (that.has(old_cont_idn)) {
                 var old_cont = that.get(old_cont_idn);
@@ -1447,10 +1466,34 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                 if (that.is_authorized(word, old_cont_owner, "edit")) {
                     var new_cont = that.add(new_cont_idn);
                     new_cont.cat = old_cont.cat;
+                    new_cont.capt = old_cont.capt;
                     new_cont.owner = new_cont_owner;
-                    new_cont.content = new_cont_txt;
+                    // TODO:  Should a lesser-privileged caption owner
+                    //        be replaced by new_cont_owner?
+                    //        Maybe always do this here:
+                    //            new_cont.capt.owner = new_cont_owner;
+                    //        Is there a downside?
+                    //        What does it mean to "own" a contribution or caption??
+                    //        It's certainly not equivalent to being permitted to edit it.
                     new_cont.cat.cont_sequence.renumber(old_cont_idn, new_cont_idn);
-                    old_cont.was_superseded = true;
+                    var fork_cont_idn = old_cont.superseded_by_idn;
+                    if (fork_cont_idn !== null) {
+                        console.warn(
+                            "Edit fork",
+                            old_cont_idn,
+                            "superseded by",
+                            fork_cont_idn,
+                            "and",
+                            new_cont_idn
+                        );
+                        // Probably harmless.  Different non-admin users, editing the same cont?
+                        // TODO:  Report the sequence of owners too?
+                        //        that.get( old_cont_idn).owner == old_cont_owner
+                        //        that.get(fork_cont_idn).owner
+                        //        that.get( new_cont_idn).owner === new_cont_owner
+                        // NOTE:  This is probably not the only fork.
+                    }
+                    old_cont.superseded_by_idn = new_cont_idn;
                 }
             } else {
                 that.notify(f("{new_cont_idn}. (Can't edit {old_cont_idn})", {
@@ -1487,18 +1530,20 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                     new_cat.cont_sequence.insert(cont_idn, idn_to_the_right, cat_ordering_error);
                     cont.cat = new_cat;
                     cont.owner = new_cont_owner;
+                    // TODO:  Commandeer the caption too?
+                    //        cont.capt.owner = new_cont_owner;
+                }
+
+                function cat_ordering_error(message) {
+                    console.error(f("{idn}. {message}", {
+                        idn: reordering_idn,
+                        message: message
+                    }));
                 }
             } else {
                 that.notify(f("{reordering_idn}. (Can't reorder {cont_idn})", {
                     reordering_idn: reordering_idn,
                     cont_idn: cont_idn
-                }));
-            }
-
-            function cat_ordering_error(message) {
-                console.error(f("{idn}. {message}", {
-                    idn: reordering_idn,
-                    message: message
                 }));
             }
         }
@@ -1509,6 +1554,9 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
      */
     ContributionLexi.prototype.assert_consistent = function ContributionLexi_assert_consistent() {
         var that = this;
+
+        // NOTE:  1. Within each category, go through each of its contributions.
+        //           Each contribution should know what category it's in.
         that.category_lexi.loop(function (idn_category, category) {
             category.cont_sequence.loop(function (idn_contribution) {
                 var contribution = that.get(idn_contribution);
@@ -1523,27 +1571,34 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                 );
             });
         });
+
+        // NOTE:  2. Go through all contributions.
+        //           Unsuperseded contributions should be in their category's sequence.
+        //           Superseded contributions should not.
         that.loop(function (idn_contribution, contribution) {
-            if (contribution.was_superseded) {
-                console.assert(
-                    ! contribution.cat.cont_sequence.has(idn_contribution),
-                    "ECLIPSED CONTRIBUTION",
-                    idn_contribution,
-                    "should not be among the",
-                    contribution.cat.cont_sequence.len(),
-                    "contributions of cat",
-                    contribution.cat.idn
-                );
-            } else {
-                console.assert(
-                    contribution.cat.cont_sequence.has(idn_contribution),
+            var does_cat_have_cont = contribution.cat.cont_sequence.has(idn_contribution);
+            if (contribution.superseded_by_idn === null) {
+                 console.assert(
+                    does_cat_have_cont,
                     "INCONSISTENT CONTRIBUTION",
                     idn_contribution,
                     "thinks it's in cat",
                     contribution.cat.idn,
                     "- but that cat has no record among its",
                     contribution.cat.cont_sequence.len(),
-                    "contributions"
+                    "conts"
+                );
+           } else {
+                console.assert(
+                    ! does_cat_have_cont,
+                    "SUPERSEDED CONTRIBUTION",
+                    idn_contribution,
+                    "by",
+                    contribution.superseded_by_idn,
+                    "should not be among the",
+                    contribution.cat.cont_sequence.len(),
+                    "conts of cat",
+                    contribution.cat.idn
                 );
             }
         });
@@ -1577,12 +1632,14 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     }
 
     /**
-     * IdnSequence - A sequence of idns, such as the contributions within a category.
+     * IdnSequence - A sequence of idns, representing e.g. the contributions within a category.
      *
      * @param fence_post_right - special idn value to represent right-most edge.
-     *                           (When a sequence of idns represents the cracks BETWEEN things,
-     *                           then each crack is TO THE LEFT of the thing the idn otherwise
-     *                           represents.  So the first idn represents the left-most edge.)
+     *                           (To represent any crack BETWEEN a sequence of idns,
+     *                           then use the idn to the RIGHT of the crack,
+     *                           i.e. that idn represents the crack to the LEFT of the idn.
+     *                           So the first idn represents the left-most edge.
+     *                           And fence_post_right will represent the right-edge crack.)
      * @return {Category}
      * @constructor
      */
@@ -1594,6 +1651,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         this.fence_post_right = fence_post_right;
     }
 
+    // noinspection JSUnusedGlobalSymbols
     /**
      * Get an array of the idns, a shallow copy of the internal idn array.
      *
@@ -1633,7 +1691,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     }
 
     /**
-     * Does this sequence contain an idn?
+     * Does this sequence contain a particular idn?
      *
      * @param idn
      * @return {boolean}
@@ -1646,6 +1704,8 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
 
     /**
      * Renumber (NOT MOVE) an idn in the sequence.
+     *
+     * (To move an idn, changing the order, call .delete() then .insert().)
      *
      * @param idn_old
      * @param idn_new
@@ -1701,74 +1761,83 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
 
 
 
-    var contribution_lexi = null;
-
-    function alternative_build_contributions(conts_in_cat) {
-        // TODO:  This code should be in build_dom()
+    function alternative_build_contributions(/*conts_in_cat*/) {
+        // TODO:  This code should be in build_body_dom()
         var category_lexi = CategoryLexi().from_monty(MONTY.cat.order, MONTY.cat.txt);
         contribution_lexi = ContributionLexi(category_lexi);
-        // contribution_lexi.notify = function alt_notifier(message) {
-        //     console.log("Alt --", message);
-        //     // EXAMPLE:
-        //     //     Alt -- 1918. Yes Bob Stein may caption 1917, work of Bob Stein
-        //     //     Alt -- 1919. Nope Horatio won't edit 956, work of Bob Stein
-        //     //     Alt -- 1920. (Can't caption 1919)
-        //     //     Alt -- 1921. Nope Horatio won't drag to 1871 in their, 1849, work of Horatio
-        //     //     Alt --      ...because only admin can recategorize like this.
-        // };
+
+        contribution_lexi.assert_consistent();   // HACK
+
+        contribution_lexi.notify = function alt_notifier(message) {
+            // console.log("Alt --", message);
+            // EXAMPLE:
+            //     Alt -- 1918. Yes Bob Stein may caption 1917, work of Bob Stein
+            //     Alt -- 1919. Nope Horatio won't edit 956, work of Bob Stein
+            //     Alt -- 1920. (Can't caption 1919)
+            //     Alt -- 1921. Nope Horatio won't drag to 1871 in their, 1849, work of Horatio
+            //     Alt --      ...because only admin can recategorize like this.
+        };
         looper(MONTY.w, function (_, word) {
             contribution_lexi.word_pass(word);
         });
 
-        console.log("Comparing the original with the alternative ways:");
-        looper(MONTY.cat.order, function (_, cat_idn) {
-            var cat = contribution_lexi.category_lexi.get(cat_idn);
-            var original_idns = conts_in_cat[cat_idn].join(" ");
-            var alternative_idns = cat.cont_sequence.idn_array().join(" ");
-            var is_same = alternative_idns === original_idns;
-            (is_same ? console.log : console.error)(f(
-                "{cat_idn}. Category {name} {same_or_different} ({how_many}):\n" +
-                "{old_idns}\n" +
-                "{new_idns}", {
-                    cat_idn: cat_idn,
-                    name: cat.txt,
-                    same_or_different: is_same ? "SAME" : "DIFFERENT",
-                    how_many: cat.cont_sequence.len(),
-                    old_idns: original_idns,
-                    new_idns: alternative_idns
-                }
-            ));
-        });
-
-        contribution_lexi.assert_consistent();
+        // console.log("Comparing the original with the alternative ways:");
+        // looper(MONTY.cat.order, function (_, cat_idn) {
+        //     var cat = contribution_lexi.category_lexi.get(cat_idn);
+        //     var original_idns = conts_in_cat[cat_idn].join(" ");
+        //     var alternative_idns = cat.cont_sequence.idn_array().join(" ");
+        //     var is_same = alternative_idns === original_idns;
+        //     (is_same ? console.log : console.error)(f(
+        //         "{cat_idn}. Category {name} {same_or_different} ({how_many}):\n" +
+        //         "{old_idns}\n" +
+        //         "{new_idns}", {
+        //             cat_idn: cat_idn,
+        //             name: cat.txt,
+        //             same_or_different: is_same ? "SAME" : "DIFFERENT",
+        //             how_many: cat.cont_sequence.len(),
+        //             old_idns: original_idns,
+        //             new_idns: alternative_idns
+        //         }
+        //     ));
+        // });
     }
 
     /**
      * Contribution - A quote or video.  Rendered as a little box on the screen.  Or the popup.
      *
-     * @param id_attribute - e.g. '1281' the contribution idn or 'popup_1281' its popup.
+     * @param {number} idn - e.g. 1281 the idn of the contribution word in the lex.
      * @return {Contribution}
      * @constructor
      */
-    function Contribution(id_attribute) {
+    function Contribution(idn) {
         if ( ! (this instanceof Contribution)) {
-            return new Contribution(id_attribute);
+            return new Contribution(idn);
         }
         // THANKS:  Automatic 'new', https://stackoverflow.com/a/383503/673991
 
-        if (is_specified(id_attribute)) {
-            if (typeof id_attribute === 'number') {
-                id_attribute = id_attribute.toString();
-            }
-            // FALSE WARNING:  Unused definition id_specified
+        this.idn = idn;
+        if (is_specified(idn)) {
+            console.assert(typeof idn === 'number');
+            // FALSE WARNING:  Unused definition id_prefix
             // noinspection JSUnusedGlobalSymbols
-            this.id_specified = true;
-            this.id_attribute = id_attribute;
-            this.idn = parseInt(id_attribute);
-            this.idn_decimal = strip_prefix(this.id_attribute, MONTY.POPUP_ID_PREFIX);
-            this.$cont = $_from_id(this.id_attribute);
-            this.$sup = this.$cont.closest('.sup-contribution');
+            this.id_prefix = '';
+            // NOTE:  If you're going to change the prefix (e.g. to MONTY.POPUP_ID_PREFIX),
+            //        do it after this constructor, but before .build_dom() or .render_media()
+            //        are called.
+
+            //     id_attribute = id_attribute.toString();
+            // if (typeof id_attribute === 'number') {
+            // }
+            // this.id_attribute = id_attribute.toString();
+            // this.idn = parseInt(id_attribute);
+
+            // this.$cont = $_from_id(this.id_attribute);
+            // this.$sup = this.$cont.closest('.sup-contribution');
+            this.$sup = null;
+            this.$cont = null;
             this.handler = null;
+
+            // Fields set by ContributionLexi.word_pass()
             this.owner = null;
             // FALSE WARNING:  Unused definition capt
             // noinspection JSUnusedGlobalSymbols
@@ -1780,11 +1849,8 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             //        its category.
             //        cont.category_id is the old way and relies on the DOM
             //        both to get the id and to use it.
-            this.was_superseded = false;   // by an edit
+            this.superseded_by_idn = null;   // this old cont points to latest that superseded it
         } else {
-            // FALSE WARNING:  Unused definition id_specified
-            // noinspection JSUnusedGlobalSymbols
-            this.id_specified = false;
             console.error("Why do we need id-null contribution objects??");
         }
     }
@@ -1821,7 +1887,8 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         var $sup_cont = $(element_or_selector).closest('.sup-contribution');
         var $cont = $sup_cont.find('.contribution');
         var cont_idn = $cont.attr('id');
-        return Contribution(cont_idn);
+        // return Contribution(cont_idn);
+        return contribution_lexi.get(cont_idn);
     }
 
     Contribution.prototype.Event = {
@@ -1844,25 +1911,37 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     //            that.pop_cont.$sup.on(that.pop_cont.Event.MEDIA_INIT, function () { ... } );
     //            that.pop_cont.$sup.on(that.pop_cont.Event.MEDIA_INIT.name, function () { ... } );
 
-    function Contribution_loop(callback) {
-        $('.contribution').each(function () {
-            var cont = Contribution(this.id);
-            var return_value = callback(cont);
-            if (return_value === false) {
-                return false;
-            }
-        });
-    }
+    // function Contribution_loop(callback) {
+    //     $('.contribution').each(function () {
+    //         var cont = Contribution(this.id);
+    //         var return_value = callback(cont);
+    //         if (return_value === false) {
+    //             return false;
+    //         }
+    //     });
+    // }
 
     Object.defineProperties(Contribution.prototype, {
+        idn_string:      { get: function () {return this.idn.toString();}},
+        /**
+         * @return {string}
+         */
+        id_attribute:     { get:
+                /**
+                 * @return {string}
+                 */
+                function () {return this.id_prefix + this.idn_string;}
+                },
+        // $cont:            { get: function () {return this.$sup.find('.contribution');}},
         $render_bar:      { get: function () {return this.$sup.find('.render-bar');}},
         $save_bar:        { get: function () {return this.$sup.find('.save-bar');}},
         $caption_bar:     { get: function () {return this.$sup.find('.caption-bar');}},
         $caption_span:    { get: function () {return this.$sup.find('.caption-span');}},
         $external_link:   { get: function () {return this.$sup.find('.external-link');}},
         content:          {
-                              get: function () {return this.$cont.text();},
-                              set: function (new_content) {return this.$cont.text(new_content);}
+                              get: function () {return this.$cont.text();}
+                              // ,
+                              // set: function (new_content) {return this.$cont.text(new_content);}
                           },
         is_media:         { get: function () {return could_be_url(this.content);}},
         caption_text:     { get: function () {return this.$caption_span.text();}},
@@ -1886,13 +1965,13 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
 
     Contribution.prototype.does_exist = function Contribution_does_exist() {
         var that = this;
-        return that.id_specified && that.$sup.length === 1;
+        return is_specified(that.idn) && that.$sup.length === 1;
     };
 
     /**
      * Initialize the iFrameResizer on an iframe jQuery object.
      *
-     * @param {function=} on_init - callback after iFrameResizer was initialized.
+     * @param {function} on_init - callback after iFrameResizer was initialized.
      */
     // NOTE:  Intermittent error made 2 of 3 youtube videos inoperative:
     //        iframeResizer.min.js:8 Failed to execute 'postMessage' on 'DOMWindow':
@@ -1914,19 +1993,20 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                     sizeHeight: true,
                     widthCalculationMethod: 'taggedElement',
                     onMessage: function (twofer) {
-                        iframe_incoming_message(that, twofer);
+                        that.iframe_incoming(twofer);
                     },
                     onResized: function iframe_resized_itself(stuff) {
-                        var msg_cont = Contribution_from_element(stuff.iframe);
+                        console.assert(stuff.iframe === that.iframe, stuff.iframe, that);
+                        // var msg_cont = Contribution_from_element(stuff.iframe);
                         console.assert(
-                            msg_cont.does_exist(),
+                            that.does_exist(),
                             stuff.iframe,
                             stuff.iframe.parentElement,
                             stuff.height, stuff.width, stuff.type
                         );
                         var siz_width = parseFloat(stuff.width);
                         var siz_height = parseFloat(stuff.height);
-                        var pop_stuff = msg_cont.$sup.data('pop-stuff');
+                        var pop_stuff = that.$sup.data('pop-stuff');
                         if (is_defined(pop_stuff)) {
                             var progress_width = linear_transform(
                                 siz_width,
@@ -1955,7 +2035,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
 
                                 // console.log(
                                 //     "iframe resized",
-                                //     msg_cont.id_attribute,
+                                //     that.id_attribute,
                                 //     stuff.width,
                                 //     stuff.height,
                                 //     pop_stuff.render_width,
@@ -1987,10 +2067,10 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                                     0.0, 1.0,
                                     pop_stuff.fixed_coordinates.top, pop_top
                                 )
-                                msg_cont.$sup.css({left: sliding_left, top: sliding_top});
+                                that.$sup.css({left: sliding_left, top: sliding_top});
                                 // console.log(
                                 //     "Resize in",
-                                //     msg_cont.id_attribute,
+                                //     that.id_attribute,
                                 //     siz_width, "x", siz_height,
                                 //     pct(progress),
                                 //     sliding_left.toFixed(0) + "," + sliding_top.toFixed(0)
@@ -2005,11 +2085,11 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                                 } else {
                                     console.warn(
                                         "Resize out",
-                                        msg_cont.id_attribute,
+                                        that.id_attribute,
                                         siz_width, "x", siz_height,
                                         pct(progress), "[",
                                         pct(progress_width), pct(progress_height), "]",
-                                        msg_cont.$render_bar.width(), msg_cont.$render_bar.height(), "~",
+                                        that.$render_bar.width(), that.$render_bar.height(), "~",
                                         pop_stuff.render_width, pop_stuff.render_height, "->",
                                         pop_stuff.max_live_width, pop_stuff.max_live_height
                                     );
@@ -2019,7 +2099,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                                 return (z * 100.0).toFixed(1) + "%";
                             }
                         }
-                        msg_cont.fix_caption_width();
+                        that.fix_caption_width();
                     }
                     /*,
                     targetOrigin: MONTY.OEMBED_OTHER_ORIGIN*/
@@ -2033,10 +2113,12 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             console.error("Missing iframe or resizer", that);
         }
     };
-    function iframe_incoming_message(that, twofer) {
+
+    Contribution.prototype.iframe_incoming = function Contribution_iframe_incoming(twofer) {
+        var that = this;
         var message = twofer.message;
         var cont_idn = strip_prefix(message.contribution_idn, MONTY.POPUP_ID_PREFIX);
-        console.assert(cont_idn === that.idn_decimal, cont_idn, that.idn_decimal);
+        console.assert(cont_idn === that.idn_string, cont_idn, that.idn_string);
         // noinspection JSRedundantSwitchStatement
         switch (message.action) {
         case 'auto-play-presaged':
@@ -2279,7 +2361,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
      *
      * Happens on page load, on entering a new contribution, or editing an old one.
      */
-    Contribution.prototype.render_media = function Contribution_render_media() {
+    Contribution.prototype.render_media = function Contribution_render_media(then) {
         // NOTE:  that.$iframe may not exist yet, e.g. on page reload, or entering a new cont.
         //        If it did exist it gets displaced here, e.g. after an edit.
         var that = this;
@@ -2297,10 +2379,10 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             // EXAMPLE:  Sophisticated Media 994 handler 1 instagram BNCeThsAhVT
             // EXAMPLE:  Sophisticated Media 1857 handler 2 noembed  Switched a...
             // EXAMPLE:  Sophisticated Media 1792 handler 3 any url  Mr Bean's ...
-            that.handler.media.render_thumb(that);
             var can_play = that.handler.media.can_play();
             that.$sup.toggleClass('can-play', can_play);
             that.$sup.toggleClass('cant-play', ! can_play);
+            that.handler.media.render_thumb(that, then);
         } else {
             that.$sup.removeClass('can-play');
             that.$sup.removeClass('cant-play');
@@ -2316,6 +2398,11 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         var that = this;
         var $p = $('<p>', { class: 'error-message' });
         $p.text(error_message);
+        console.warn(f("Render error on #{id_attribute}\n{error_message}\n{media_url}", {
+            id_attribute: that.id_attribute,
+            media_url: that.media_url,
+            error_message: error_message
+        }));
         that.$render_bar.empty().append($p);
         that.$sup.addClass('noembed-error');
         // NOTE:  How non-live thumbnails skip the bot.
@@ -2328,11 +2415,12 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     Contribution.prototype.thumb_image = function Contribution_thumb_image(
         thumb_url,
         thumb_title,
+        load_callback,
         error_callback
     ) {
         var that = this;
         var $a = $('<a>', {
-            id: 'thumb_' + that.id_attribute,
+            id: that.id_prefix + 'thumb_' + that.idn_string,
             class: 'thumb-link',
             href: thumb_url,
             target: '_blank',
@@ -2351,6 +2439,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             $img.removeClass('thumb-loading');
             $img.addClass('thumb-loaded');
             that.fix_caption_width('thumb loaded');
+            load_callback();
         });
         $img.one('error.thumb1', function render_img_error() {
             $img.off('.thumb1');
@@ -2362,20 +2451,20 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         $img.attr('src', thumb_url);
     };
 
-    Contribution.prototype.live_media_iframe = function Contribution_live_media_iframe(parameters, then) {
+    Contribution.prototype.live_media_iframe = function Contribution_live_media_iframe(
+        parameters,
+        then
+    ) {
         var that = this;
         var $iframe = $('<iframe>', {
-            id: 'iframe_' + that.id_attribute,   // This is NOT how a pop-up gets made.
+            id: that.id_prefix + 'iframe_' + that.idn_string,   // This is NOT how a pop-up gets made.
             src: our_oembed_relay_url(parameters),
                   allowFullScreen : 'true',
                mozallowFullScreen : 'true',
             webkitallowFullScreen : 'true',
             allow: 'autoplay; fullscreen'
         });
-
-        that.$render_bar.empty().append($iframe);   // The iframe is dead, long live the iframe.
-
-        $iframe.on('load', function () {
+        $iframe.one('load', function () {
             // DONE:  Verify iframe load event happens on "all" browsers.
             //        Claim that it does:  https://stackoverflow.com/a/751458/673991
             //        Yes:  Chrome, Firefox, Opera, Edge, UCBrowser7
@@ -2424,34 +2513,39 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         //        On both outer (this $iframe here) and inner (instagram-installed).
         //        Is this a bad thing?  Even if it did scroll, virtually ANY other interaction
         //        results in a new instagram tab popping up.
+
+        that.$render_bar.empty().append($iframe);   // The iframe is dead, long live the iframe.
+
         that.resizer_init(function () {});
     };
 
     /**
      * Refresh the parts of a contribution's bars that might change due to content.
      */
-    Contribution.prototype.rebuild_bars = function Contribution_rebuild_bars() {
+    Contribution.prototype.rebuild_bars = function Contribution_rebuild_bars(then) {
         var that = this;
+        then = then || function () {};
         if (that.is_media) {
             that.$sup.addClass('render-media');
-            that.render_media();
             that.$external_link.attr('href', that.media_url);
             that.$external_link.attr('target', '_blank');
             that.$external_link.attr('title', that.media_domain + " - new tab");
+            that.render_media(then);
         } else {
             that.$sup.removeClass('render-media');
             that.$sup.addClass('can-play');   // (can bey "played" as text to speech audio)
-            that.render_text();
             that.$external_link.removeAttr('href');
             that.$external_link.removeAttr('target');
             that.$external_link.removeAttr('title');
+            that.render_text(then);
         }
     }
 
-    Contribution.prototype.render_text = function Contribution_render_text() {
+    Contribution.prototype.render_text = function Contribution_render_text(then) {
         var that = this;
         that.$sup.removeAttr('data-domain');
         that.$render_bar.empty();
+        then();
     }
 
     /**
@@ -2786,13 +2880,12 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     /**
      * Send a message to the embedded iframe JavaScript.
      *
-     * @param selector_or_element_in_contribution
      * @param message {object} - with an action property, and other action-specific properties
      */
     // TODO:  Contribution method
-    function embed_message(selector_or_element_in_contribution, message) {
-        iframe_resizer(
-            selector_or_element_in_contribution,
+    Contribution.prototype.embed_message = function Contribution_embed_message(message) {
+        var that = this;
+        that.iframe_resizer(
             function (resizer) {
                 resizer.sendMessage(message);
             },
@@ -2810,12 +2903,15 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     /**
      * Do something with the iFrameResizer object.  Call back if there is one.  Explain if not.
      *
-     * @param selector_or_element - e.g. '.pop-up', $popup
      * @param {function} callback_good - pass it the iFrameResizer object, if up and running
-     * @param {function} callback_bad - pass it an explanation if not
+     * @param {function=} callback_bad - pass it an explanation if not
      */
     // TODO:  Contribution method
-    function iframe_resizer(selector_or_element, callback_good, callback_bad) {
+    Contribution.prototype.iframe_resizer = function Contribution_iframe_resizer(
+        callback_good,
+        callback_bad
+    ) {
+        var that = this;
 
         function bad(message) {
             console.error(message);
@@ -2824,15 +2920,15 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             }
         }
 
-        var cont = Contribution_from_element(selector_or_element);
-        if (cont.does_exist()) {
-            if (cont.is_media) {
-                var iframe = cont.iframe;
+        // var cont = Contribution_from_element(selector_or_element);
+        if (that.does_exist()) {
+            if (that.is_media) {
+                var iframe = that.iframe;
                 // FALSE WARNING:  Condition is always false since types '{get: (function():
                 //                 any | null)}' and 'null' have no overlap
                 // noinspection JSIncompatibleTypesComparison
                 if (iframe === null) {
-                    bad("No iframe " + string_from_$(selector_or_element));
+                    bad("No iframe element in " + that.id_attribute);
                 } else {
                     var resizer;
                     try {
@@ -2840,27 +2936,27 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                     } catch (e) {
                         bad(
                             "No resizer " +
-                            string_from_$(selector_or_element) + " " +
+                            that.id_attribute + " " +
                             e.message + " - " +
                             iframe.id
                         );
                         return
                     }
-                    console.assert(typeof resizer.sendMessage === 'function', resizer, selector_or_element);
-                    console.assert(typeof resizer.close === 'function', resizer, selector_or_element);
+                    console.assert(typeof resizer.sendMessage === 'function', resizer, that.id_attribute);
+                    console.assert(typeof resizer.close === 'function', resizer, that.id_attribute);
                     callback_good(resizer);
                 }
             } else {
                 // NOTE:  E.g. harmlessly trying to use a cont with no render-bar iframe.
             }
         } else {
-            bad("No element " + string_from_$(selector_or_element));
+            bad("No element " + that.id_attribute);
         }
-    }
+    };
 
-    function string_from_$($element) {
-        return $($element).attr('id') || $($element).attr('class') || JSON.stringify($element);
-    }
+    // function string_from_$($element) {
+    //     return $($element).attr('id') || $($element).attr('class') || JSON.stringify($element);
+    // }
 
     /**
      * End pop-up.
@@ -2872,9 +2968,9 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     function pop_down_all(did_bot_transition, then) {
         then = then || function () {};
 
-        var $pop_ups = $('.pop-up');
-        var any_pop_ups = $pop_ups.length > 0;
-        var pop_cont = null;
+        // var $pop_ups = $('.pop-up');
+        // var any_pop_ups = $pop_ups.length > 0;
+        // var pop_cont = null;
 
         if (talkify_player !== null) {
             console.log("DISPOSE", talkify_player.correlationId, "player");
@@ -2913,10 +3009,10 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             // CAUTION:  .cancel() then immediately .play() may not have worked at some point.
             //           https://stackoverflow.com/a/44042494/673991
             //           Though it seems to have been fixed in Chrome.
-            if (speech_progress !== null && any_pop_ups) {
+            if (speech_progress !== null && popup_cont !== null) {
                 // NOTE:  No manual QUIT after automated END.
-                pop_cont = Contribution_from_element($pop_ups[0]);
-                interact.QUIT(pop_cont.idn_decimal, speech_progress);
+                // pop_cont = Contribution_from_element($pop_ups[0]);
+                interact.QUIT(popup_cont.idn_string, speech_progress);
             }
         }
         if (breather_timer !== null) {
@@ -2925,22 +3021,20 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             breather_timer = null;
         }
 
-        if ($pop_ups.length > 1) {
-            console.error("multiple popups?!", $pop_ups);
-            then();
-        } else if ($pop_ups.length === 1) {
+        if (popup_cont !== null) {
 
-            deanimate("popping down", $pop_ups);
+            deanimate("popping down", popup_cont.id_attribute);
 
-            $pop_ups.each(function () {
-                // NOTE:  There's almost certainly only one .pop-up at a time.
-                //        Maybe lingering animations could cause multiple?
-                //        But this makes sure to un-pop them all.  And exactly once.
+            // $pop_ups.each(function () {
+            //     // NOTE:  There's almost certainly only one .pop-up at a time.
+            //     //        Maybe lingering animations could cause multiple?
+            //     //        But this makes sure to un-pop them all.  And exactly once.
+            //
+            //     pop_cont = Contribution_from_element(this);
+            //     // var cont = Contribution(pop_cont.idn_string);
+                var thumb_cont = contribution_lexi.get(popup_cont.idn_string);
 
-                pop_cont = Contribution_from_element(this);
-                var cont = Contribution(pop_cont.idn_decimal);
-
-                pop_cont.$sup.removeClass('pop-up');
+                popup_cont.$sup.removeClass('pop-up');
                 // NOTE:  This immediate removal of the pop-up class, though premature
                 //        (because the animation of the popping down is not complete),
                 //        allows redundant back-to-back calls to pop_down_all().
@@ -2949,20 +3043,20 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                 $(window.document.body).removeClass('pop-up-manual');
                 $(window.document.body).removeClass('pop-up-auto');
 
-                var pop_stuff = pop_cont.$sup.data('pop-stuff');
+                var pop_stuff = popup_cont.$sup.data('pop-stuff');
                 // TODO:  Instead, just remember the pop-down DOM object ($sup_cont in pop_up()),
                 //        and recalculate HERE AND NOW its current "fixed" coordinates from that object.
 
                 var promises = [];
-                if (pop_cont.is_media) {
-                    embed_message(pop_cont.$sup, {
+                if (popup_cont.is_media) {
+                    popup_cont.embed_message({
                         action: 'un-pop-up',
                         width: pop_stuff.render_width,
                         height: pop_stuff.render_height,
                         did_bot_transition: did_bot_transition
                     });
                 } else {
-                    promises.push(pop_cont.$cont.animate({
+                    promises.push(popup_cont.$cont.animate({
                         width: pop_stuff.cont_css_width,
                         height: pop_stuff.cont_css_height,
                         'font-size': px_from_em(1)
@@ -2971,7 +3065,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                         easing: POP_DOWN_ANIMATE_EASING,
                         queue: false
                     }).promise());
-                    promises.push(pop_cont.$caption_bar.animate({
+                    promises.push(popup_cont.$caption_bar.animate({
                         width: pop_stuff.caption_css_width,
                         height: pop_stuff.caption_css_height,
                         'background-color': pop_stuff.caption_css_background
@@ -2992,7 +3086,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
 
                 // FALSE WARNING:  Argument type {complete: complete} is not assignable to parameter type number | KeyframeAnimationOptions | undefined
                 // noinspection JSCheckFunctionSignatures
-                promises.push(pop_cont.$sup.animate(cont.fixed_coordinates(), {
+                promises.push(popup_cont.$sup.animate(thumb_cont.fixed_coordinates(), {
                     duration: POP_DOWN_ANIMATE_MS,
                     easing: POP_DOWN_ANIMATE_EASING,
                     queue: false,
@@ -3000,7 +3094,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                     //          Queue false means animate immediately, in this case mostly
                     //          simultaneously with shrinking text caption.
                     complete: function pop_down_scoot_done() {
-                        iframe_resizer(pop_cont.$sup, function (resizer) {
+                        popup_cont.iframe_resizer(function (resizer) {
                             resizer.close();
                             // NOTE:  Without close() the un-full window generates warnings on resizing.
                             //        Example:
@@ -3010,37 +3104,37 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                             //        And probably maybe leaks memory.
                         });
 
-                        cont.$sup.removeClass('pop-down');
+                        thumb_cont.$sup.removeClass('pop-down');
                         // NOTE:  Unhide the original un-popped contribution
-
-                        $('#popup-screen').remove();   // Removes contained popup contribution too.
                     }
                 }).promise());
 
                 var combined_promise = $.when.apply($, promises);
                 combined_promise.done(function popdown_animation_done() {
+
+                    $('#popup-screen').remove();   // Removes contained popup contribution too.
+                    popup_cont = null;
+                    js_for_contribution.popup_cont = popup_cont;
+
                     then();
                 });
-            });
+            // });
         } else {   // zero pop-ups
             then();
         }
     }
 
     function pop_up(cont, auto_play) {
+
         var cont_idn = cont.id_attribute;
-        var popup_cont_idn = MONTY.POPUP_ID_PREFIX + cont_idn;
-        // TODO:  Less misleading symbol name than popup_cont_idn.
-        //        It's less of an idn than cont_idn, which at least is a decimal string of the qiki
-        //        idn.  This thing e.g. "popup_1809" is the id attribute
-        //        of the popup .contribution element.
-        var popup_cont_selector = selector_from_id(popup_cont_idn);
+        var popup_id_attribute = MONTY.POPUP_ID_PREFIX + cont_idn;
+        var popup_cont_selector = selector_from_id(popup_id_attribute);
         var was_already_popped_up = $(popup_cont_selector).length > 0;
 
         pop_down_all(false);
 
         if (was_already_popped_up) {
-            console.log("Contribution", cont_idn, "is popping itself down by 2nd click.");
+            console.warn("Contribution", cont_idn, "is popping itself down by 2nd click.");
             // NOTE:  Avoid double-pop-up.  Just pop down, don't pop-up again.
             //        This may no longer be possible, with the popup-screen.
             return null;
@@ -3091,535 +3185,578 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         // TODO:  Try "Float Fix Float" http://complexspiral.com/publications/containing-floats/
         //        More tricks:  https://stackoverflow.com/a/5369963/673991
 
-        var $popup = cont.$sup.clone();
-        // TODO:  Why in the world was this .clone(false, true)??
-        //        It seems to have worked; sup data wasn't cloned but cont data was.
-        //        Anyway I don't think I need it.  Do I??
+        popup_cont = Contribution(cont.idn);
+        js_for_contribution.popup_cont = popup_cont;
+        popup_cont.id_prefix = MONTY.POPUP_ID_PREFIX;
+        popup_cont.capt = cont.capt;
+        popup_cont.build_dom(cont.content);
+        popup_cont.$sup.find('.grip').removeClass('grip').addClass('grip-inoperative');
+        // var $popup = cont.$sup.clone();
+        // // TODO:  Why in the world was this .clone(false, true)??
+        // //        It seems to have worked; sup data wasn't cloned but cont data was.
+        // //        Anyway I don't think I need it.  Do I??
+        //
+        // $popup.find('[id]').attr('id', function () {
+        //     return MONTY.POPUP_ID_PREFIX + $(this).attr('id');
+        // });
+        // // NOTE:  Prefix all id attributes in the clone elements, to avoid duplicate ids.
 
-        $popup.find('[id]').attr('id', function () {
-            return MONTY.POPUP_ID_PREFIX + $(this).attr('id');
-        });
-        // NOTE:  Prefix all id attributes in the clone elements, to avoid duplicate ids.
-
-        $popup.find('.grip').removeClass('grip').addClass('grip-inoperative');
+        popup_cont.$sup.find('.grip').removeClass('grip').addClass('grip-inoperative');
         // NOTE:  No dragging popped-up stuff.
         //        It was a little disconcerting not seeing the grip symbol there.
         //        So just disabling the feature and dimming the icon
         //        seemed the lesser UX crime.
 
-        $popup.addClass('pop-up');
+        popup_cont.$sup.addClass('pop-up');
         cont.$sup.addClass('pop-down');
-        $popup.data('popped-down', cont.$sup);
+        popup_cont.$sup.data('popped-down', cont.$sup);
 
         var $popup_screen = $('<div>', { id: 'popup-screen' });
-        $popup_screen.append($popup);
+        $popup_screen.append(popup_cont.$sup);
         cont.$sup.before($popup_screen);
 
-        var pop_cont = Contribution_from_element($popup);
 
-        var max_live_width = usable_width();
-        var caption_height_px = cont.$caption_bar.outerHeight();
-        // NOTE:  Wrapped thumbnail captions may result in less tall popups,
-        //        because popped-up captions don't need to be wrapped.
-        var max_live_height = Math.round(
-            usable_height()
-            - caption_height_px
-            // - save_height   // Not this; we eliminated buttons below the pop-up.
-            - vertical_padding_in_css
-            - 30
-        );
-        // NOTE:  Extra 30-pixel reduction in height.
-        //        Tends to prevent scrollbars from spontaneously appearing.
-        //        Someday a less crude way would be good.
 
-        $popup.data('pop-stuff', {
-            render_width: render_width,
-            render_height: render_height,
-            cont_css_width: cont_css_width,
-            cont_css_height: cont_css_height,
-            caption_css_width: caption_css_width,
-            caption_css_height: caption_css_height,
-            caption_css_background: caption_css_background,
-            max_live_width: max_live_width,
-            max_live_height: max_live_height,
-            fixed_coordinates: cont.fixed_coordinates()
-        });
+        popup_cont.rebuild_bars(function popup_thumbnail_rendered() {
 
-        $popup.css({
-            position: 'fixed',
-            'z-index': 1
-        });
-        $popup.css(cont.fixed_coordinates());
-        // NOTE:  Start the popup right where the original thumbnail was on the screen, but with
-        //        fixed coordinates.
 
-        if (cont.is_media) {
 
-            var img_src = pop_cont.$img_thumb.attr('src');
-            if (is_defined(img_src)) {
-                pop_cont.$render_bar.css({
-                    'background-image': 'url(' + img_src + ')',
-                    'background-position': 'center center',
-                    'background-size': 'cover'
-                });
-                // NOTE:  This makes the thumbnail resemble the unplayed youtube video, at least
-                //        today it seems to, and with lower resolution.
-                // THANKS:  Scale background to cover element, without distorting aspect ratio,
-                //          https://stackoverflow.com/a/7372377/673991
-            }
+            // var pop_cont = Contribution_from_element($popup);
 
-            pop_cont.live_media_iframe({
-                idn: pop_cont.id_attribute,
-                url: pop_cont.media_url,
-                is_pop_up: true,
-                auto_play: auto_play.toString(),
-                width:  max_live_width,
-                height: max_live_height
-            }, function media_iframe_loaded() {
-                pop_cont.$render_bar.css({
-                    'background-image': '',
-                    'background-position': '',
-                    'background-size': ''
-                });
-                // NOTE:  This removes unsightly background echo for some vimeo and flickr embeds.
-                // THANKS:  Remove CSS style, https://stackoverflow.com/a/4036868/673991
+            var max_live_width = usable_width();
+            var caption_height_px = cont.$caption_bar.outerHeight();
+            // NOTE:  Wrapped thumbnail captions may result in less tall popups,
+            //        because popped-up captions don't need to be wrapped.
+            var max_live_height = Math.round(
+                usable_height()
+                - caption_height_px
+                // - save_height   // Not this; we eliminated buttons below the pop-up.
+                - vertical_padding_in_css
+                - 30
+            );
+            // NOTE:  Extra 30-pixel reduction in height.
+            //        Tends to prevent scrollbars from spontaneously appearing.
+            //        Someday a less crude way would be good.
+
+            popup_cont.$sup.data('pop-stuff', {
+                render_width: render_width,
+                render_height: render_height,
+                cont_css_width: cont_css_width,
+                cont_css_height: cont_css_height,
+                caption_css_width: caption_css_width,
+                caption_css_height: caption_css_height,
+                caption_css_background: caption_css_background,
+                max_live_width: max_live_width,
+                max_live_height: max_live_height,
+                fixed_coordinates: cont.fixed_coordinates()
             });
-            // NOTE:  This is what overrides the thumbnail image cloned from the original
-            //        .contribution element, and makes it live media (e.g. a video) in the pop-up.
 
-            pop_cont.$iframe.width(render_width);
-            pop_cont.$iframe.height(render_height);
-            // NOTE:  Until embed_content.js gets up and sets the size of the iframe through the
-            //        iFrameResizer, let it start off as the same size as the thumbnail.
-
-            pop_cont.resizer_init(function pop_media_init() {
-                // NOTE:  Harmless warning:
-                //        [iFrameSizer][Host page: iframe_popup_1990] Ignored iFrame, already setup.
-                //        because the popup is CLONED from a contribution that already
-                //        initialized its iFrameResizer.  Apparently it still needs to be
-                //        initialized but it thinks it doesn't.
-
-                pop_cont.$sup.trigger(pop_cont.Event.MEDIA_INIT);
-
-                // NOTE:  Finally decided the best way to make the popup iframe big
-                //        was to focus on the inner CONTENTS size,
-                //        and let iFrameResizer handle the outer size.
-                // SEE:  Tricky iframe height 100%, https://stackoverflow.com/a/5871861/673991
-
-                deanimate("popping up media", popup_cont_idn);
-                pop_cont.resizer_nudge();
-                pop_cont.zero_iframe_recover();
-                // NOTE:  A little extra help for pop-ups
-                //        with either a zero-iframe bug in iFrameResizer,
-                //        or a poor internet connection.
-
-                pop_screen_fade_in();
+            popup_cont.$sup.css({
+                position: 'fixed',
+                'z-index': 1
             });
-        } else {
-            pop_cont.full_ish_screen_text(function () {
-                if (auto_play) {
-                    var pop_text = pop_cont.content;
+            popup_cont.$sup.css(cont.fixed_coordinates());
+            // NOTE:  Start the popup right where the original thumbnail was on the screen, but with
+            //        fixed coordinates.
 
-                    utter = new window.SpeechSynthesisUtterance(pop_text);
-                    js_for_contribution.utter = utter;
-                    // THANKS:  SpeechSynthesis bug workaround from 2016,
-                    //          https://stackoverflow.com/a/35935851/673991
-                    // NOTE:  Not sure if this is the same bug, but sometimes speech was
-                    //        not starting.
+            if (popup_cont.is_media) {
+                var img_src = cont.$img_thumb.attr('src');
+                // NOTE:  popup_cont.$img_thumb is ajax-loaded, use cont.$img_thumb instead.
+                if (is_defined(img_src)) {
+                    popup_cont.$render_bar.css({
+                        'background-image': 'url(' + img_src + ')',
+                        'background-position': 'center center',
+                        'background-size': 'cover'
+                    });
+                    // NOTE:  This makes the thumbnail resemble the unplayed youtube video,
+                    //        while it's expanding to pop-up size,
+                    //        albeit with lower resolution,
+                    //        at least today it seems to.
+                    // THANKS:  Scale background to cover element, without distorting aspect ratio,
+                    //          https://stackoverflow.com/a/7372377/673991
+                }
 
-                    utter.rate = 0.75;
+                popup_cont.live_media_iframe({
+                    idn: popup_cont.id_attribute,   // idn is a misnomer, it may include popup_prefix
+                    url: popup_cont.media_url,
+                    is_pop_up: true,
+                    auto_play: auto_play.toString(),
+                    width:  max_live_width,
+                    height: max_live_height
+                }, function media_iframe_loaded() {
+                    popup_cont.$render_bar.css({
+                        'background-image': '',
+                        'background-position': '',
+                        'background-size': ''
+                    });
+                    // NOTE:  This removes unsightly background echo for some vimeo and flickr embeds.
+                    // THANKS:  Remove CSS style, https://stackoverflow.com/a/4036868/673991
+                });
+                // NOTE:  This is what overwrites the original thumbnail image
+                //        and makes it live media (e.g. a video) in the pop-up.
+                //        When oembed doesn't provide a thumbnail (e.g. dropbox) this may
+                //        load the iframe twice.
 
-                    // Another attempt to fix text-not-speaking bug.
+                popup_cont.$iframe.width(render_width);
+                popup_cont.$iframe.height(render_height);
+                // NOTE:  Until embed_content.js gets up and sets the size of the iframe through the
+                //        iFrameResizer, let it start off as the same size as the thumbnail.
 
-                    utter.pitch = 1.0;    // otherwise it's -1, wtf that means
-                    // Another attempt to fix text-not-speaking bug.
+                popup_cont.resizer_init(function pop_media_init() {
+                    // NOTE:  Harmless warning:
+                    //        [iFrameSizer][Host page: iframe_popup_1990] Ignored iFrame, already setup.
+                    //        because the popup is CLONED from a contribution that already
+                    //        initialized its iFrameResizer.  Apparently it still needs to be
+                    //        initialized but it thinks it doesn't.
 
-                    switch ($('#play_bot_speech').val()) {
-                    case PLAY_BOT_SPEECH_OUT_LOUD:
-                        utter.volume = 1.0;   // otherwise it's -1, wtf that means
-                        break;
-                    case PLAY_BOT_SPEECH_ANIMATED:
-                        utter.volume = 0.0;   // otherwise it's -1, wtf that means
-                        break;
-                    case PLAY_BOT_SPEECH_OFF:
-                        utter.volume = 0.0;   // otherwise it's -1, wtf that means
-                        break;
-                    }
+                    popup_cont.$sup.trigger(popup_cont.Event.MEDIA_INIT);
 
-                    // utter.voice = chooseWeighted(voices, voice_weights);
-                    // console.log("Voice", utter.voice.name, utter.voice.lang);
-                    // NOTE:  (2019) Google voices don't report their word-boundary events.
-                    //               Microsoft voices do, and they sound better too.
-                    //        (2018) https://stackoverflow.com/a/48160824/673991
-                    //        (2016) https://bugs.chromium.org/p/chromium/issues/detail?id=521666
-                    //        Upshot is not to set voice at all.
-                    //        Microsoft Anna is default in Chrome, Firefox, Opera, Edge.
-                    //        Edge has many voices (9 English, 25 total).
-                    //        Could instead multiplicatively weight Google voices 0, Microsoft 1.
-                    //        Anyway, word boundaries are important because visual highlighting
-                    //        of words seems more potent.  Combination visual and auditory.
+                    // NOTE:  Finally decided the best way to make the popup iframe big
+                    //        was to focus on the inner CONTENTS size,
+                    //        and let iFrameResizer handle the outer size.
+                    // SEE:  Tricky iframe height 100%, https://stackoverflow.com/a/5871861/673991
 
-                    var states_before = speech_states();
+                    // FALSE WARNING:  Argument type string is not assignable to parameter type {get: (function(): string)}
+                    // noinspection JSCheckFunctionSignatures
+                    deanimate("popping up media", popup_cont.id_attribute);
 
-                    window.speechSynthesis.cancel();   // Another attempt to fix text-not-speaking bug.
-                    // NOTE:  This cancel appears to be the trick that fixed it.
+                    popup_cont.resizer_nudge();
+                    popup_cont.zero_iframe_recover();
+                    // NOTE:  A little extra help for pop-ups
+                    //        with either a zero-iframe bug in iFrameResizer,
+                    //        or a poor internet connection.
 
-                    var states_between = speech_states();
-                    window.speechSynthesis.speak(utter);
-                    // NOTE:  Play audio even if not auto_play -- because there's no way
-                    //        to start the speech otherwise.  (SpeechSynthesis has no
-                    //        native control UX.)
-                    // EXAMPLE:  Silent for UC Browser, Opera Mobile, IE11
+                    pop_screen_fade_in();
+                });
+            } else {
+                popup_cont.full_ish_screen_text(function () {
+                    if (auto_play) {
+                        var pop_text = popup_cont.content;
 
-                    var states_after = speech_states();
+                        utter = new window.SpeechSynthesisUtterance(pop_text);
+                        js_for_contribution.utter = utter;
+                        // THANKS:  SpeechSynthesis bug workaround from 2016,
+                        //          https://stackoverflow.com/a/35935851/673991
+                        // NOTE:  Not sure if this is the same bug, but sometimes speech was
+                        //        not starting.
 
-                    console.log(
-                        "Language",
-                        voice_default.name,
-                        voice_default.lang,
-                        utter.voice,   // null in Chrome
-                        typeof utter.lang, utter.lang,   // string '' in Chrome
-                        states_before,
-                        "->",
-                        states_between,
-                        "->",
-                        states_after
-                    );
-                    // NOTE:  Probe droid for occasional lack of speaking popup.
-                    // EXAMPLE:  Microsoft Anna - English (United States) en-US
-                    // EXAMPLE:  (unknown) (UC Browser -- onvoiceschanged never called)
-                    //           window.speechSynthesis.getVoices() returns []
-                    //           https://caniuse.com/#feat=speech-synthesis
+                        utter.rate = 0.75;
 
-                    $(utter).on('start end boundary error mark pause resume', function (evt) {
+                        // Another attempt to fix text-not-speaking bug.
+
+                        utter.pitch = 1.0;    // otherwise it's -1, wtf that means
+                        // Another attempt to fix text-not-speaking bug.
+
+                        switch ($('#play_bot_speech').val()) {
+                        case PLAY_BOT_SPEECH_OUT_LOUD:
+                            utter.volume = 1.0;   // otherwise it's -1, wtf that means
+                            break;
+                        case PLAY_BOT_SPEECH_ANIMATED:
+                            utter.volume = 0.0;   // otherwise it's -1, wtf that means
+                            break;
+                        case PLAY_BOT_SPEECH_OFF:
+                            utter.volume = 0.0;   // otherwise it's -1, wtf that means
+                            break;
+                        }
+
+                        // utter.voice = chooseWeighted(voices, voice_weights);
+                        // console.log("Voice", utter.voice.name, utter.voice.lang);
+                        // NOTE:  (2019) Google voices don't report their word-boundary events.
+                        //               Microsoft voices do, and they sound better too.
+                        //        (2018) https://stackoverflow.com/a/48160824/673991
+                        //        (2016) https://bugs.chromium.org/p/chromium/issues/detail?id=521666
+                        //        Upshot is not to set voice at all.
+                        //        Microsoft Anna is default in Chrome, Firefox, Opera, Edge.
+                        //        Edge has many voices (9 English, 25 total).
+                        //        Could instead multiplicatively weight Google voices 0, Microsoft 1.
+                        //        Anyway, word boundaries are important because visual highlighting
+                        //        of words seems more potent.  Combination visual and auditory.
+
+                        var states_before = speech_states();
+
+                        window.speechSynthesis.cancel();   // Another attempt to fix text-not-speaking bug.
+                        // NOTE:  This cancel appears to be the trick that fixed it.
+
+                        var states_between = speech_states();
+                        window.speechSynthesis.speak(utter);
+                        // NOTE:  Play audio even if not auto_play -- because there's no way
+                        //        to start the speech otherwise.  (SpeechSynthesis has no
+                        //        native control UX.)
+                        // EXAMPLE:  Silent for UC Browser, Opera Mobile, IE11
+
+                        var states_after = speech_states();
+
                         console.log(
-                            "Utter",
-                            evt.originalEvent.elapsedTime.toFixed(1),
-                            evt.type,
-                            evt.originalEvent.charIndex
+                            "Language",
+                            voice_default.name,
+                            voice_default.lang,
+                            utter.voice,   // null in Chrome
+                            typeof utter.lang, utter.lang,   // string '' in Chrome
+                            states_before,
+                            "->",
+                            states_between,
+                            "->",
+                            states_after
                         );
-                        // EXAMPLE:
-                        //     Utter start 0 39.220001220703125
-                        //     Utter boundary 0 158.97999572753906
-                        //     Utter boundary 0 161.0850067138672
-                        //     Utter boundary 5 359.07000732421875
-                        //     Utter boundary 8 449.2300109863281
-                        //     Utter boundary 13 759.3049926757812
-                        //     Utter boundary 15 799.1599731445312
-                        //     Utter end 0 1779.2449951171875
-                        // EXAMPLE:
-                        //                   Utter 21.7 start 0
-                        //     14:53:02.834  Utter 116.9 boundary 0
-                        //     14:53:02.837  Utter 119.9 boundary 0
-                        //     14:53:02.935  Utter 217.1 boundary 3
-                        //     14:53:03.185  Utter 467.1 boundary 7
-                        //     14:53:03.293 Bot SPEECH_PLAYING 0 The text is being spoken
-                        //     14:53:03.385  Utter 667.1 boundary 12
-                        //     14:53:03.387  Utter 669.7 boundary 14
-                        //     14:53:03.784  Utter 1067.0 boundary 25
-                        //     14:53:03.984  Utter 1267.0 boundary 28
-                        //     14:53:04.135  Utter 1417.0 boundary 32
-                        //     14:53:04.293 Bot SPEECH_PLAYING 1 The text is being spoken
-                        //     14:53:04.634  Utter 1917.0 boundary 41
-                        //     14:53:04.935  Utter 2217.1 boundary 49
-                        //     14:53:04.976 Pause player bot
-                        //     14:53:04.980  Utter 2262.8 pause 0         <-- .004 second feedback
-                        //     14:53:05.084  Utter 2366.9 boundary 52
-                        //     14:53:05.287  Utter 2569.7 boundary 55
-                        //     14:53:05.485  Utter 2767.1 boundary 61
-                        //     14:53:05.685  Utter 2967.1 boundary 64
-                        //     14:53:06.085  Utter 3367.3 boundary 70
-                        //     14:53:12.081 Resume player bot
-                        //     14:53:12.086  Utter 9368.3 resume 0
-                        //     14:53:12.294 Bot SPEECH_PLAYING 2 The text is being spoken
-                        //     14:53:13.162  Utter 10444.1 end 0
-                        //     14:53:13.162
-                    });
-                    var $svg = null;
-                    $(utter).on('start', function speech_boundary(evt) {
-                        pop_cont.$sup.trigger(pop_cont.Event.SPEECH_START);
-                        interact.START(cont_idn, evt.originalEvent.charIndex);
-                        speech_progress = 0;
-                    });
-                    $(utter).on('pause', function speech_pause() {
-                        interact.PAUSE(cont_idn, speech_progress);
-                    });
-                    $(utter).on('resume', function speech_resume() {
-                        interact.RESUME(cont_idn, speech_progress);
-                        // NOTE:  Resume can be 2-4 words later than pause!
-                        //        This is the "speechSynthesis pause delay" issue.
-                    });
-                    $(utter).on('boundary', function speech_boundary(evt) {
-                        // TODO:  Hold off HERE if pause is happening.
-                        //        This would avoid highlighting the NEXT word.
-                        //        Besides the wrong word, the animation appears unresponsive to
-                        //        the pause command, stubbornly pushing on ahead.
-                        //        (It already butts ahead 2 words anyway.)
-                        var start_word = evt.originalEvent.charIndex;
-                        // NOTE:  We don't seem to need to adjust start_word to the left
-                        //        to get to a word-boundary.  That's what's done in
-                        //        https://stackoverflow.com/a/50285928/673991
-                        //        If we did, it might look like this:
-                        //        left = str.slice(0, pos + 1).search(/\S+$/)
-                        var word_to_end = pop_text.slice(start_word);
-                        var len_word = word_to_end.search(/\s|$/);
-                        var end_word = start_word + len_word;
-                        var the_word = pop_text.slice(start_word, end_word+1);
-                        var range_word = window.document.createRange();
-                        pop_cont.$cont.text(pop_text);
-                        var text_node = pop_cont.$cont[0].childNodes[0];
-                        console.assert(text_node.nodeName === '#text', text_node, pop_cont);
-                        range_word.setStart(text_node, start_word);
-                        range_word.setEnd(text_node, end_word);
-                        // THANKS:  Range of text, https://stackoverflow.com/a/29903556/673991
-                        var speaking_node = $('<span>', { class:'speaking' })[0];
-                        range_word.surroundContents(speaking_node);
-                        // THANKS:  Range wrap, https://stackoverflow.com/a/6328906/673991
-                        speech_progress = end_word;
-                        scroll_into_view(speaking_node, {
-                            behavior: 'smooth',
-                            block: 'center',
-                            inline: 'center'
-                        });
-                        // SEE:  Highlight speech, https://stackoverflow.com/a/38122794/673991
-                        // SEE:  Select speech, https://stackoverflow.com/a/50285928/673991
+                        // NOTE:  Probe droid for occasional lack of speaking popup.
+                        // EXAMPLE:  Microsoft Anna - English (United States) en-US
+                        // EXAMPLE:  (unknown) (UC Browser -- onvoiceschanged never called)
+                        //           window.speechSynthesis.getVoices() returns []
+                        //           https://caniuse.com/#feat=speech-synthesis
 
-
-                        if (EXPERIMENTAL_RED_WORD_READING) {
-                            // NOTE:  The following experimental code would render the word being
-                            //        spoken, in red, on top of the same word in the paragraph.
-                            var r = range_word.getBoundingClientRect();
-                            console.log("Bound", the_word, r.x, r.y);
-                            if ($svg !== null) {
-                                $svg.remove();
-                            }
-                            var svg_top = r.top - $popup.position().top;
-                            var svg_left = r.left - $popup.position().left;
-                            $svg = $('<svg>', {
-                                height: r.height,
-                                width: r.width,
-                                style: (
-                                    'position:absolute;color:red;font: 16px Literata,serif;' +
-                                    'top:'+svg_top.toString()+'px;' +
-                                    'left:'+svg_left.toString()+'px;'
-                                )
-                            }).append($('<text>', { fill:'red !important' }).append(the_word));
-                            $popup.append($svg);
-                            // TODO:  Needs to scroll word into view,
-                            //        and then also position the svg right onto the scrolled word.
-                        }
-                    });
-                    $(utter).on('end', function (evt) {
-                        pop_cont.$cont.text(pop_text);
-                        if (utter === null) {
-                            console.error(
-                                "Utterance interruptus (vestigial end after aborted speech)",
-                                (evt.originalEvent.elapsedTime/1000).toFixed(3), "sec"
-                            );
-                            // TODO:  Make a better scheme for detecting a stale utter event.
-                            //        Because a NEW bot play cycle might otherwise be
-                            //        transitioned prematurely.
-                            //        Did the $(utter).off() in pop_down_all() solve this issue?
-                            interact.QUIT(cont_idn, speech_progress);
-                        } else {
+                        $(utter).on('start end boundary error mark pause resume', function (evt) {
                             console.log(
-                                "Utterance",
-                                (evt.originalEvent.elapsedTime/1000).toFixed(3), "sec,",
-                                speech_progress, "of", pop_text.length, "chars"
+                                "Utter",
+                                evt.originalEvent.elapsedTime.toFixed(1),
+                                evt.type,
+                                evt.originalEvent.charIndex
                             );
-                            pop_cont.$sup.trigger(pop_cont.Event.SPEECH_END);
-                            // NOTE:  A bit lame, this happens whether manually popped up or
-                            //        automatically played by the bot.  But it should have
-                            //        no consequence manually anyway.
-                            interact.END(cont_idn, pop_text.length);
-                        }
-                        speech_progress = null;
-                        // NOTE:  Setting speech_progress to null here
-                        //        prevents MONTY.INTERACTION.QUIT interaction after END
-                    });
-                    pop_cont.$sup.trigger(pop_cont.Event.SPEECH_PLAY);
-                    return;
+                            // EXAMPLE:
+                            //     Utter start 0 39.220001220703125
+                            //     Utter boundary 0 158.97999572753906
+                            //     Utter boundary 0 161.0850067138672
+                            //     Utter boundary 5 359.07000732421875
+                            //     Utter boundary 8 449.2300109863281
+                            //     Utter boundary 13 759.3049926757812
+                            //     Utter boundary 15 799.1599731445312
+                            //     Utter end 0 1779.2449951171875
+                            // EXAMPLE:
+                            //                   Utter 21.7 start 0
+                            //     14:53:02.834  Utter 116.9 boundary 0
+                            //     14:53:02.837  Utter 119.9 boundary 0
+                            //     14:53:02.935  Utter 217.1 boundary 3
+                            //     14:53:03.185  Utter 467.1 boundary 7
+                            //     14:53:03.293 Bot SPEECH_PLAYING 0 The text is being spoken
+                            //     14:53:03.385  Utter 667.1 boundary 12
+                            //     14:53:03.387  Utter 669.7 boundary 14
+                            //     14:53:03.784  Utter 1067.0 boundary 25
+                            //     14:53:03.984  Utter 1267.0 boundary 28
+                            //     14:53:04.135  Utter 1417.0 boundary 32
+                            //     14:53:04.293 Bot SPEECH_PLAYING 1 The text is being spoken
+                            //     14:53:04.634  Utter 1917.0 boundary 41
+                            //     14:53:04.935  Utter 2217.1 boundary 49
+                            //     14:53:04.976 Pause player bot
+                            //     14:53:04.980  Utter 2262.8 pause 0         <-- .004 second feedback
+                            //     14:53:05.084  Utter 2366.9 boundary 52
+                            //     14:53:05.287  Utter 2569.7 boundary 55
+                            //     14:53:05.485  Utter 2767.1 boundary 61
+                            //     14:53:05.685  Utter 2967.1 boundary 64
+                            //     14:53:06.085  Utter 3367.3 boundary 70
+                            //     14:53:12.081 Resume player bot
+                            //     14:53:12.086  Utter 9368.3 resume 0
+                            //     14:53:12.294 Bot SPEECH_PLAYING 2 The text is being spoken
+                            //     14:53:13.162  Utter 10444.1 end 0
+                            //     14:53:13.162
+                        });
+                        var $svg = null;
+                        $(utter).on('start', function speech_boundary(evt) {
+                            popup_cont.$sup.trigger(popup_cont.Event.SPEECH_START);
+                            interact.START(cont_idn, evt.originalEvent.charIndex);
+                            speech_progress = 0;
+                        });
+                        $(utter).on('pause', function speech_pause() {
+                            interact.PAUSE(cont_idn, speech_progress);
+                        });
+                        $(utter).on('resume', function speech_resume() {
+                            interact.RESUME(cont_idn, speech_progress);
+                            // NOTE:  Resume can be 2-4 words later than pause!
+                            //        This is the "speechSynthesis pause delay" issue.
+                        });
+                        $(utter).on('boundary', function speech_boundary(evt) {
+                            // TODO:  Hold off HERE if pause is happening.
+                            //        This would avoid highlighting the NEXT word.
+                            //        Besides the wrong word, the animation appears unresponsive to
+                            //        the pause command, stubbornly pushing on ahead.
+                            //        (It already butts ahead 2 words anyway.)
+                            var start_word = evt.originalEvent.charIndex;
+                            // NOTE:  We don't seem to need to adjust start_word to the left
+                            //        to get to a word-boundary.  That's what's done in
+                            //        https://stackoverflow.com/a/50285928/673991
+                            //        If we did, it might look like this:
+                            //        left = str.slice(0, pos + 1).search(/\S+$/)
+                            var word_to_end = pop_text.slice(start_word);
+                            var len_word = word_to_end.search(/\s|$/);
+                            var end_word = start_word + len_word;
+                            var the_word = pop_text.slice(start_word, end_word+1);
+                            var range_word = window.document.createRange();
+                            popup_cont.$cont.text(pop_text);
+                            var text_node = popup_cont.$cont[0].childNodes[0];
+                            console.assert(text_node.nodeName === '#text', text_node, popup_cont);
+                            range_word.setStart(text_node, start_word);
+                            range_word.setEnd(text_node, end_word);
+                            // THANKS:  Range of text, https://stackoverflow.com/a/29903556/673991
+                            var speaking_node = $('<span>', { class:'speaking' })[0];
+                            range_word.surroundContents(speaking_node);
+                            // THANKS:  Range wrap, https://stackoverflow.com/a/6328906/673991
+                            speech_progress = end_word;
+                            scroll_into_view(speaking_node, {
+                                behavior: 'smooth',
+                                block: 'center',
+                                inline: 'center'
+                            });
+                            // SEE:  Highlight speech, https://stackoverflow.com/a/38122794/673991
+                            // SEE:  Select speech, https://stackoverflow.com/a/50285928/673991
 
 
-
-                    // NOTE:  The following code worked with the Talkify service.
-                    //        Which I recall was more legible than the Chrome browser speech,
-                    //        (though less so than the Edge browser speech), and is reasonably
-                    //        priced, but any metering of an uber free service is vexing.
-
-
-
-                    // noinspection UnreachableCodeJS
-                    if (is_specified(talkify)) {
-                        talkify.config.remoteService.host = 'https://talkify.net';
-                        talkify.config.remoteService.apiKey = '084ff0b0-89a3-4284-96a1-205b5a2072c0';
-                        talkify.config.ui.audioControls = {
-                            enabled: false, //<-- Disable to get the browser built in audio controls
-                            container: document.getElementById("player-bot")
-                        };
-                        talkify_player = new talkify.TtsPlayer();
-                        talkify_player.enableTextHighlighting();
-
-                        talkify_player.setRate(-1.0);   // a little slower than the default
-                        // SEE:  Rate codes, https://github.com/Hagsten/Talkify#user-content-talkify-hosted-only
-
-                        talkify_voice_name = random_element(TALKIFY_VOICES_ENGLISH);
-                        talkify_player.forceVoice({name: talkify_voice_name});
-                        // SEE:  Voice names,
-                        //       https://github.com/Hagsten/Talkify/issues/20#issuecomment-347837787-permalink
-                        //       https://jsfiddle.net/mknm62nx/1/
-                        //       https://talkify.net/api/speech/v1/voices?key= + talkify api key
-
-                        // noinspection JSUnusedAssignment
-                        var popup_cont_node_list = document.querySelectorAll(popup_cont_selector);
-                        // NOTE:  Although $(popup_cont_selector) appears to work, the doc calls for
-                        //        "DOM elements" and the example passes a NodeList object.
-                        //        https://github.com/Hagsten/Talkify#play-all-top-to-bottom
-
-                        talkify_playlist = new talkify.playlist()
-                            .begin()
-                            .usingPlayer(talkify_player)
-                            // .withTextInteraction()
-                            .withElements(popup_cont_node_list)
-                            .build();
-
-                        talkify_playlist.play();
-                        // NOTE:  Play now, if not auto_play pause later.
-
-                        // console.log("Talkie", talkify_player, talkify_playlist);
-                        // EXAMPLE talkify_player (type talkify.TtsPlayer) members:
-                        //     audioSource: {play: ƒ, pause: ƒ, isPlaying: ƒ, paused: ƒ, currentTime: ƒ, …}
-                        //     correlationId: "8e90fbe4-607f-4a82-97af-6802a18e430b"
-                        //     createItems: ƒ (text)
-                        //     currentContext: {item: {…}, positions: Array(86)}
-                        //     disableTextHighlighting: ƒ ()
-                        //     dispose: ƒ ()
-                        //     enableTextHighlighting: ƒ ()
-                        //     forceLanguage: ƒ (culture)
-                        //     forceVoice: ƒ (voice)
-                        //     forcedVoice: null
-                        //     isPlaying: ƒ ()
-                        //     isPlaying: ƒ ()
-                        //     pause: ƒ ()
-                        //     paused: ƒ ()
-                        //     play: ƒ ()
-                        //     playAudio: ƒ (item)
-                        //     playItem: ƒ (item)
-                        //     playText: ƒ (text)
-                        //     playbar: {instance: null}
-                        //     setRate: ƒ (r)
-                        //     settings: {useTextHighlight: true, referenceLanguage: {…}, lockedLanguage: null, rate: 1, useControls: false}
-                        //     subscribeTo: ƒ (subscriptions)
-                        //     withReferenceLanguage: ƒ (refLang)
-                        //     wordHighlighter: {start: ƒ, highlight: ƒ, dispose: ƒ}
-                        // EXAMPLE talkify_playlist (type Object, e.g. {}) members:
-                        //     disableTextInteraction: ƒ ()
-                        //     dispose: ƒ ()
-                        //     enableTextInteraction: ƒ ()
-                        //     getQueue: ƒ ()
-                        //     insert: ƒ insertElement(element)
-                        //     isPlaying: ƒ isPlaying()
-                        //     pause: ƒ pause()
-                        //     play: ƒ play(item)
-                        //     replayCurrent: ƒ replayCurrent()
-                        //     setPlayer: ƒ (p)
-                        //     startListeningToVoiceCommands: ƒ ()
-                        //     stopListeningToVoiceCommands: ƒ ()
-
-                        var duration_report = "unknown duration";
-
-                        var pause_once = ! auto_play;
-
-                        var this_player = talkify_player;
-                        // NOTE:  Local "copy" of player needed in case pop_down_all() happens
-                        //        before the callback below has fully popped up.
-
-                        talkify.messageHub.subscribe(BOT_CONTEXT, '*', function (message, topic) {
-                            // var members = message ? Object.keys(message).join() : "(no message)";
-                            console.debug("talkify", topic/*, members*/);
-                            // EXAMPLE topics (context.type.action only, GUID context removed)
-                            //         and message members:
-                            //     player.*.prepareplay     \  text,preview,element,originalElement,
-                            //     player.tts.loading        > isPlaying,isLoading
-                            //     player.tts.loaded        /
-                            //     player.tts.play          item,positions,currentTime
-                            //     player.tts.timeupdated   currentTime,duration
-                            //     player.tts.pause         (no message)
-                            //     player.tts.ended         ((same members as loaded))
-                            if (/\.play$/.test(topic)) {
-                                if (pause_once) {
-                                    pause_once = false;
-                                    this_player.pause();
-                                    // NOTE:  Crude, mfing way to support manual-only playing.
-                                    //        Without this, player is inoperative.
+                            if (EXPERIMENTAL_RED_WORD_READING) {
+                                // NOTE:  The following experimental code would render the word being
+                                //        spoken, in red, on top of the same word in the paragraph.
+                                var r = range_word.getBoundingClientRect();
+                                console.log("Bound", the_word, r.x, r.y);
+                                if ($svg !== null) {
+                                    $svg.remove();
                                 }
+                                var svg_top = r.top - popup_cont.$sup.position().top;
+                                var svg_left = r.left - popup_cont.$sup.position().left;
+                                $svg = $('<svg>', {
+                                    height: r.height,
+                                    width: r.width,
+                                    style: (
+                                        'position:absolute;color:red;font: 16px Literata,serif;' +
+                                        'top:'+svg_top.toString()+'px;' +
+                                        'left:'+svg_left.toString()+'px;'
+                                    )
+                                }).append($('<text>', { fill:'red !important' }).append(the_word));
+                                popup_cont.$sup.append($svg);
+                                // TODO:  Needs to scroll word into view,
+                                //        and then also position the svg right onto the scrolled word.
                             }
                         });
-                        talkify.messageHub.subscribe(
-                            BOT_CONTEXT,
-                            '*.player.tts.timeupdated',
-                            function (message) {
-                                // NOTE:  This event happens roughly 20Hz, 50ms.
-                                var $highlight = $('.talkify-word-highlight');
-                                // $highlight.each(function () {
-                                //     scroll_into_view(this, {
-                                //         behavior: 'smooth',
-                                //         block: 'center',
-                                //         inline: 'center'
-                                //     });
-                                // });
-                                // TODO:  Does this work without .each()?
-                                scroll_into_view($highlight, {
-                                    behavior: 'smooth',
-                                    block: 'center',
-                                    inline: 'center'
-                                });
-                                // TODO:  Reduce frequency of this call by tagging element
-                                //        with .already-scrolled-into-view?
-                                //        Because this event happens 20Hz!
-                                duration_report = message.duration.toFixed(1) + " seconds";
+                        $(utter).on('end', function (evt) {
+                            popup_cont.$cont.text(pop_text);
+                            if (utter === null) {
+                                console.error(
+                                    "Utterance interruptus (vestigial end after aborted speech)",
+                                    (evt.originalEvent.elapsedTime/1000).toFixed(3), "sec"
+                                );
+                                // TODO:  Make a better scheme for detecting a stale utter event.
+                                //        Because a NEW bot play cycle might otherwise be
+                                //        transitioned prematurely.
+                                //        Did the $(utter).off() in pop_down_all() solve this issue?
+                                interact.QUIT(cont_idn, speech_progress);
+                            } else {
+                                console.log(
+                                    "Utterance",
+                                    (evt.originalEvent.elapsedTime/1000).toFixed(3), "sec,",
+                                    speech_progress, "of", pop_text.length, "chars"
+                                );
+                                popup_cont.$sup.trigger(popup_cont.Event.SPEECH_END);
+                                // NOTE:  A bit lame, this happens whether manually popped up or
+                                //        automatically played by the bot.  But it should have
+                                //        no consequence manually anyway.
+                                interact.END(cont_idn, pop_text.length);
                             }
-                        );
-                        talkify.messageHub.subscribe(
-                            BOT_CONTEXT,
-                            '*.player.tts.ended',
-                            function (/*message, topic*/) {
-                                pop_cont.$sup.trigger(pop_cont.Event.SPEECH_END);
-                                // console.log("talkify ended", popup_cont_idn, message, topic);
-                                // EXAMPLE:  topic
-                                //     23b92641-e7dc-46af-9f9b-cbed4de70fe4.player.tts.ended
-                                // EXAMPLE:  message object members:
-                                //     element: div#popup_1024.contribution.talkify-highlight
-                                //     isLoading: false
-                                //     isPlaying: false
-                                //     originalElement: div#popup_1024.contribution
-                                //     preview: "this is just a test"
-                                //     text: "this is just a te
-                                //     st"
-                            }
-                        );
-                        talkify_done = function () {
-                            console.log(
-                                "talkify", popup_cont_idn,
-                                "voice", talkify_voice_name,
-                                duration_report
+                            speech_progress = null;
+                            // NOTE:  Setting speech_progress to null here
+                            //        prevents MONTY.INTERACTION.QUIT interaction after END
+                        });
+                        popup_cont.$sup.trigger(popup_cont.Event.SPEECH_PLAY);
+                        return;
+
+
+
+                        // NOTE:  The following code worked with the Talkify service.
+                        //        Which I recall was more legible than the Chrome browser speech,
+                        //        (though less so than the Edge browser speech), and is reasonably
+                        //        priced, but any metering of an uber free service is vexing.
+
+
+
+                        // noinspection UnreachableCodeJS
+                        if (is_specified(talkify)) {
+                            talkify.config.remoteService.host = 'https://talkify.net';
+                            talkify.config.remoteService.apiKey = '084ff0b0-89a3-4284-96a1-205b5a2072c0';
+                            talkify.config.ui.audioControls = {
+                                enabled: false, //<-- Disable to get the browser built in audio controls
+                                container: document.getElementById("player-bot")
+                            };
+                            talkify_player = new talkify.TtsPlayer();
+                            talkify_player.enableTextHighlighting();
+
+                            talkify_player.setRate(-1.0);   // a little slower than the default
+                            // SEE:  Rate codes, https://github.com/Hagsten/Talkify#user-content-talkify-hosted-only
+
+                            talkify_voice_name = random_element(TALKIFY_VOICES_ENGLISH);
+                            talkify_player.forceVoice({name: talkify_voice_name});
+                            // SEE:  Voice names,
+                            //       https://github.com/Hagsten/Talkify/issues/20#issuecomment-347837787-permalink
+                            //       https://jsfiddle.net/mknm62nx/1/
+                            //       https://talkify.net/api/speech/v1/voices?key= + talkify api key
+
+                            // noinspection JSUnusedAssignment
+                            var popup_cont_node_list = document.querySelectorAll(popup_cont_selector);
+                            // NOTE:  Although $(popup_cont_selector) appears to work, the doc calls for
+                            //        "DOM elements" and the example passes a NodeList object.
+                            //        https://github.com/Hagsten/Talkify#play-all-top-to-bottom
+
+                            talkify_playlist = new talkify.playlist()
+                                .begin()
+                                .usingPlayer(talkify_player)
+                                // .withTextInteraction()
+                                .withElements(popup_cont_node_list)
+                                .build();
+
+                            talkify_playlist.play();
+                            // NOTE:  Play now, if not auto_play pause later.
+
+                            // console.log("Talkie", talkify_player, talkify_playlist);
+                            // EXAMPLE talkify_player (type talkify.TtsPlayer) members:
+                            //     audioSource: {play: ƒ, pause: ƒ, isPlaying: ƒ, paused: ƒ, currentTime: ƒ, …}
+                            //     correlationId: "8e90fbe4-607f-4a82-97af-6802a18e430b"
+                            //     createItems: ƒ (text)
+                            //     currentContext: {item: {…}, positions: Array(86)}
+                            //     disableTextHighlighting: ƒ ()
+                            //     dispose: ƒ ()
+                            //     enableTextHighlighting: ƒ ()
+                            //     forceLanguage: ƒ (culture)
+                            //     forceVoice: ƒ (voice)
+                            //     forcedVoice: null
+                            //     isPlaying: ƒ ()
+                            //     isPlaying: ƒ ()
+                            //     pause: ƒ ()
+                            //     paused: ƒ ()
+                            //     play: ƒ ()
+                            //     playAudio: ƒ (item)
+                            //     playItem: ƒ (item)
+                            //     playText: ƒ (text)
+                            //     playbar: {instance: null}
+                            //     setRate: ƒ (r)
+                            //     settings: {useTextHighlight: true, referenceLanguage: {…}, lockedLanguage: null, rate: 1, useControls: false}
+                            //     subscribeTo: ƒ (subscriptions)
+                            //     withReferenceLanguage: ƒ (refLang)
+                            //     wordHighlighter: {start: ƒ, highlight: ƒ, dispose: ƒ}
+                            // EXAMPLE talkify_playlist (type Object, e.g. {}) members:
+                            //     disableTextInteraction: ƒ ()
+                            //     dispose: ƒ ()
+                            //     enableTextInteraction: ƒ ()
+                            //     getQueue: ƒ ()
+                            //     insert: ƒ insertElement(element)
+                            //     isPlaying: ƒ isPlaying()
+                            //     pause: ƒ pause()
+                            //     play: ƒ play(item)
+                            //     replayCurrent: ƒ replayCurrent()
+                            //     setPlayer: ƒ (p)
+                            //     startListeningToVoiceCommands: ƒ ()
+                            //     stopListeningToVoiceCommands: ƒ ()
+
+                            var duration_report = "unknown duration";
+
+                            var pause_once = ! auto_play;
+
+                            var this_player = talkify_player;
+                            // NOTE:  Local "copy" of player needed in case pop_down_all() happens
+                            //        before the callback below has fully popped up.
+
+                            talkify.messageHub.subscribe(BOT_CONTEXT, '*', function (message, topic) {
+                                // var members = message ? Object.keys(message).join() : "(no message)";
+                                console.log("talkify", topic/*, members*/);
+                                // EXAMPLE topics (context.type.action only, GUID context removed)
+                                //         and message members:
+                                //     player.*.prepareplay     \  text,preview,element,originalElement,
+                                //     player.tts.loading        > isPlaying,isLoading
+                                //     player.tts.loaded        /
+                                //     player.tts.play          item,positions,currentTime
+                                //     player.tts.timeupdated   currentTime,duration
+                                //     player.tts.pause         (no message)
+                                //     player.tts.ended         ((same members as loaded))
+                                if (/\.play$/.test(topic)) {
+                                    if (pause_once) {
+                                        pause_once = false;
+                                        this_player.pause();
+                                        // NOTE:  Crude, mfing way to support manual-only playing.
+                                        //        Without this, player is inoperative.
+                                    }
+                                }
+                            });
+                            talkify.messageHub.subscribe(
+                                BOT_CONTEXT,
+                                '*.player.tts.timeupdated',
+                                function (message) {
+                                    // NOTE:  This event happens roughly 20Hz, 50ms.
+                                    var $highlight = $('.talkify-word-highlight');
+                                    // $highlight.each(function () {
+                                    //     scroll_into_view(this, {
+                                    //         behavior: 'smooth',
+                                    //         block: 'center',
+                                    //         inline: 'center'
+                                    //     });
+                                    // });
+                                    // TODO:  Does this work without .each()?
+                                    scroll_into_view($highlight, {
+                                        behavior: 'smooth',
+                                        block: 'center',
+                                        inline: 'center'
+                                    });
+                                    // TODO:  Reduce frequency of this call by tagging element
+                                    //        with .already-scrolled-into-view?
+                                    //        Because this event happens 20Hz!
+                                    duration_report = message.duration.toFixed(1) + " seconds";
+                                }
                             );
-                        };
-                        // noinspection JSUnusedAssignment
-                        pop_cont.$sup.trigger(pop_cont.Event.SPEECH_PLAY);
+                            talkify.messageHub.subscribe(
+                                BOT_CONTEXT,
+                                '*.player.tts.ended',
+                                function (/*message, topic*/) {
+                                    popup_cont.$sup.trigger(popup_cont.Event.SPEECH_END);
+                                    // console.log("talkify ended", popup_cont.id_attribute, message, topic);
+                                    // EXAMPLE:  topic
+                                    //     23b92641-e7dc-46af-9f9b-cbed4de70fe4.player.tts.ended
+                                    // EXAMPLE:  message object members:
+                                    //     element: div#popup_1024.contribution.talkify-highlight
+                                    //     isLoading: false
+                                    //     isPlaying: false
+                                    //     originalElement: div#popup_1024.contribution
+                                    //     preview: "this is just a test"
+                                    //     text: "this is just a te
+                                    //     st"
+                                }
+                            );
+                            talkify_done = function () {
+                                console.log(
+                                    "talkify", popup_cont.id_attribute,
+                                    "voice", talkify_voice_name,
+                                    duration_report
+                                );
+                            };
+                            // noinspection JSUnusedAssignment
+                            popup_cont.$sup.trigger(popup_cont.Event.SPEECH_PLAY);
+                        }
+                    }
+                });
+            }
+        });
+        console.log("Popup", cont_idn, cont.media_domain || "(quote)");
+        // return pop_cont;
+    }
+
+    function speech_synthesis_init() {
+        if (window.speechSynthesis !== null) {
+            window.speechSynthesis.onvoiceschanged = function () {
+                // THANKS:  voices ready, https://stackoverflow.com/a/22978802/673991
+                voices = window.speechSynthesis.getVoices();
+                console.log("Voices loaded", voices);
+                voice_weights = Array(voices.length);
+                for (var i = 0; i < voices.length; i++) {
+                    if (/^en-GB/.test(voices[i].lang)) {
+                        voice_weights[i] = 10.0;
+                    } else if (/^en/.test(voices[i].lang)) {
+                        voice_weights[i] = 5.0;
+                    } else {
+                        voice_weights[i] = 0.0;
+                    }
+                    if (voices[i].default) {
+                        voice_default = voices[i];
                     }
                 }
-            });
+            };
         }
-        console.log("Popup", cont_idn, cont.media_domain || "(quote)");
-        return pop_cont;
     }
 
     /**
      * Finish up all animations.
      *
      * @param {string} context - some string about what we're doing
-     * @param {string} what - more info
+     * @param {{get: (function(): string)}} what - more info
      */
     function deanimate(context, what) {
         $(':animated').each(function () {
@@ -3843,7 +3980,8 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
 
         deanimate("popping up quote", that.id_attribute);
 
-        var cont = Contribution(that.idn_decimal);
+        // var cont = Contribution(that.idn_string);
+        var cont = contribution_lexi.get(that.idn_string);
 
         // NOTE:  Popup text elements are now are at their FINAL place and size.
         //        But nobody has seen that yet.
@@ -4030,6 +4168,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         return {x:x, y:y};
     }
 
+    // TODO:  Contribution method
     function contribution_edit_begin($cont) {
         if ( ! check_contribution_edit_dirty(true, true)) {
             // NOTE:  The above call may never have any side effects (and this branch is always
@@ -4214,7 +4353,8 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     function duplicate_check(contribution_text) {
         if (can_i_get_meta_about_it(contribution_text)) {
             var duplicate_id = null;
-            Contribution_loop(function (cont) {
+            // Contribution_loop(function (cont) {
+            contribution_lexi.loop(function (_, cont) {
                 // TODO:  Instead, pass a category filter to Contribution_loop() for my-category.
                 if (cont.content === contribution_text && cont.is_my_category) {
                     duplicate_id = cont.id_attribute;
@@ -4228,7 +4368,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                 // ,
                 // $('<a>', {href: "#" + duplicate_id}).text("Scroll to it.")
                 // TODO:  This link is seductively simple, but it's busted.  Maybe someday, but:
-                //        1. The .contribution element is display:none for media.
+                //        1. The .contribution element itself is display:none for media.
                 //           Anchor links won't budge for invisible elements.
                 //        2. The duplicate contribution may be inside a closed category.
                 //           (Or in the trash, in which case it's not a duplicate.
@@ -4288,6 +4428,11 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                 if (is_error_usable) {
                     console.warn("Not an oembed URL", what, media_url, oembed_object.error);
                     oembed_object.caption_for_media = "(" + oembed_object.error + ")";
+                    // EXAMPLE:  (no matching providers found)
+                    //           https://www.youtube.com/watch?time_continue=2&v=dQw4w9WgXcQ&feature=emb_logo
+                    // TODO:  Find some way other than noembed to get the video caption?
+                    //        This URL comes from clicking the YouTube logo on an embedded video.
+                    // THANKS:  https://www.reddit.com/r/youtube/comments/88z1c8/_/dwo6mqk/
                 } else if (is_title_usable) {
                     oembed_object.caption_for_media = oembed_object.title;
                 } else if (is_author_usable) {
@@ -4520,19 +4665,19 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         var adjusted_em;
         if (natural_em <= max_em.hard) {
             adjusted_em = null;
-            if (DEBUG_SIZE_ADJUST) console.debug (
+            if (DEBUG_SIZE_ADJUST) console.log (
                 "Easy", dimension, first_word($element.text()),
                 natural_em.toFixed(0)
             );
         } else if (natural_em < max_em.extreme) {
             adjusted_em = max_em.hard;
-            if (DEBUG_SIZE_ADJUST) console.debug(
+            if (DEBUG_SIZE_ADJUST) console.log(
                 "Hard", dimension, first_word($element.text()),
                 adjusted_em.toFixed(0), "<-", natural_em.toFixed(0)
             );
         } else {
             adjusted_em = max_em.soft;
-            if (DEBUG_SIZE_ADJUST) console.debug(
+            if (DEBUG_SIZE_ADJUST) console.log(
                 "Soft", dimension, first_word($element.text()),
                 adjusted_em.toFixed(0), "<=", natural_em.toFixed(0)
             );
@@ -4726,7 +4871,14 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         }
 
         function build_posted_contribution(cont_word, capt_word) {
-            var $sup_cont = build_contribution_dom(cont_word, capt_word);
+            // var $sup_cont = build_contribution_dom(cont_word, capt_word);
+            contribution_lexi.word_pass(cont_word);
+            contribution_lexi.word_pass(capt_word);
+            var cont = contribution_lexi.get(cont_word.idn);
+            cont.build_dom(cont_word.txt);
+
+
+
             var $cat_my = $categories[MONTY.IDN.CAT_MY];
 
             // NOTE:  Old way:
@@ -4741,11 +4893,10 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             //     $('.container-entry').after($sup_cont);
 
             // NOTE:  The best D.R.Y. way:
-            locate_contribution_at_category_left_edge($cat_my, $sup_cont);
+            locate_contribution_at_category_left_edge($cat_my, cont.$sup);
 
-            // NOTE:  From this point on, the new contribution is in the DOM,
-            //        so the Contribution constructor can be called to deal with it.
-            var cont = Contribution_from_element($sup_cont);
+            // NOTE:  From this point on, the new contribution is in the DOM.
+            // var cont = Contribution_from_element($sup_cont);
 
             $text.val("");
             $caption_input.val("");
@@ -4754,6 +4905,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             settle_down();
             setTimeout(function () {   // Give rendering some airtime.
                 new_contribution_just_created();
+                contribution_lexi.assert_consistent();
             });
         }
     }
@@ -4798,7 +4950,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         }
     }
 
-    var auth_log;   // Record all the decisions made by is_authorized().
+    // var auth_log;   // Record all the decisions made by is_authorized().
 
     function url_with_no_query_string() {
         return window.location.href.split('?')[0];
@@ -4809,7 +4961,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
      */
     // TODO:  Faster bypassing jQuery, https://howchoo.com/g/mmu0nguznjg/
     //        learn-the-slow-and-fast-way-to-append-elements-to-the-dom
-    function build_dom() {
+    function build_body_dom() {
         $(window.document.body).empty();
         // FIXME:  This obliterates all <script> elements.
         //         They seem to continue to run fine on Win/Chrome.
@@ -4892,252 +5044,253 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             // Anonymous users see a faded anonymous category with explanation.
         }
 
-        var $sup_contributions = {};   // table of super-contribution DOM objects, by idn qstring
-        var cat_of_cont = {};   // maps contribution idn to category idn
-        var conts_in_cat = {};   // for each category idn, an ordered array of contribution idns
-        looper(MONTY.cat.order, function (_, cat) {
-            conts_in_cat[cat] = [];   // each array defines contribution order within category
-        });
-
-        /**
-         * Assert consistency of cat_of_cont{} and conts_in_cat{}[].
-         *
-         * They are roughly inverses of each other.
-         * A bit like "a place for everything, and everything in its place."
-         */
-        function consistent_cat_cont() {
-            looper(cat_of_cont, function (cont, cat) {
-                cont = parseInt(cont);
-                if (conts_in_cat[cat].indexOf(cont) === -1) {
-                    console.error(
-                        "inconsistency: contribution",
-                        cont,
-                        "should be in category",
-                        cat,
-                        JSON.stringify(cat_of_cont),
-                        JSON.stringify(conts_in_cat)
-                    );
-                    // NOTE:  cat_of_cont[] says this contribution is in a category, but
-                    //        conts_in_cat[] doesn't have it.
-                    return false;
-                }
-            });
-            looper(conts_in_cat, function (cat, conts) {
-                cat = parseInt(cat);
-                looper(conts, function (_, cont) {
-                    console.assert(
-                        cat_of_cont[cont] === cat,
-                        "inconsistency: contribution",
-                        cont,
-                        "could be in category",
-                        cat,
-                        "or",
-                        cat_of_cont[cont]
-                    );
-                    // NOTE:  conts_in_cat says this category contains a cont, but
-                    //        cat_of_conts[] does not indicate the same category.
-                });
-            });
-        }
-        consistent_cat_cont();   // empty is consistent with empty
-
-        auth_log = [];
-        var auth_log_push = auth_log.push.bind(auth_log);
-
-        looper(MONTY.w, function (_, word) {
-            var $sup;
-            var $cont;
-            var $caption_span;
-            if (word !== null) {
-                switch (word.vrb) {
-                case MONTY.IDN.CONTRIBUTE:
-                case MONTY.IDN.UNSLUMP_OBSOLETE:
-                    if (query_string_filter(word, cont_only)) {
-                        $sup = build_contribution_dom(word, null);
-                        $cont = $sup.find('.contribution');
-                        $caption_span = $sup.find('.caption-span');
-                        $cont.attr('data-owner', word.sbj);
-                        $caption_span.attr('data-owner', word.sbj);
-                        $sup_contributions[word.idn] = $sup;
-                        var cat = original_cat(word);
-                        conts_in_cat[cat].unshift(word.idn);
-                        cat_of_cont[word.idn] = cat;
-                    }
-                    break;
-                case MONTY.IDN.CAPTION:
-                    if (has($sup_contributions, word.obj)) {
-                        $sup = $sup_contributions[word.obj];
-                        $caption_span = $sup.find('.caption-span');
-                        if (is_authorized(
-                            word,
-                            $caption_span.attr('data-owner'),
-                            "caption",
-                            auth_log_push
-                        )) {
-                            $caption_span.attr('id', word.idn);
-                            $caption_span.attr('data-owner', word.sbj);
-                            $caption_span.text(word.txt);
-                        }
-                    } else {
-                        console.log("(Can't caption " + word.obj + ")");
-                    }
-                    break;
-                case MONTY.IDN.EDIT:
-                    if (has($sup_contributions, word.obj)) {
-                        $sup = $sup_contributions[word.obj];
-                        $cont = $sup.find('.contribution');
-                        if (is_authorized(word, $cont.attr('data-owner'), "edit", auth_log_push)) {
-                            var old_idn = word.obj;
-                            var new_idn = word.idn;
-                            $cont.attr('id', new_idn);
-                            $cont.attr('data-owner', word.sbj);
-                            $cont.text(word.txt);
-                            delete $sup_contributions[old_idn];
-                            // TODO:  Instead of deleting, just flag it as overrode or something?
-                            //        That would prevent SOME vacuous "unknown word" situations.
-                            $sup_contributions[new_idn] = $sup;
-                            renumber_cont(old_idn, new_idn);
-                            consistent_cat_cont();
-                        }
-                        // NOTE:  This does reorder the edited contribution
-                        //        But maybe that's good, it does get a new id_attribute,
-                        //        and likewise moves to the more recent end.
-                    } else {
-                        // TODO:  Editable captions.
-                        //        (Currently, an edited caption is submitted as a new caption.)
-                        console.log("(Can't edit " + word.obj + ")");
-                        // NOTE:  Edit for an unknown contribution.  One harmless way we get here:
-                        //        A logged-in user could edit an anonymous user's contribution.
-                        //        Other anon user would get this edit-word, but not the original word.
-                        //        TODO:  They should see this edit.   Now they won't.
-                        //               Or not.  Maybe the contribution should be explicitly
-                        //               APPROVED before other anonymous users could see it.
-                        //
-                        //        Another is if user A then B edits contribution x (by a third user).
-                        //        B won't enforce A's edit, so although B's edit is later,
-                        //        it will refer back to the original contribution.
-                        //        A will get this message when it see's B's edit word,
-                        //        because that edit word will refer to the original x's id_attribute,
-                        //        but by then x will have been displaced by A's edit word.
-                    }
-                    break;
-                default:
-                    if (has(MONTY.cat.order, word.vrb)) {   // Is this a categorization verb?
-                        if (has($sup_contributions, word.obj)) {   // Are we rendering what it categorizes?
-                            var new_cat = word.vrb;
-                            var cont_idn = word.obj;
-                            var idn_position = word.num;
-                            // CAUTION:  Don't $_from_id(cont_idn) because it's not in the DOM yet.
-                            $sup = $sup_contributions[cont_idn];
-                            $cont = $sup.find('.contribution');
-                            var is_right = idn_position === MONTY.IDN.FENCE_POST_RIGHT;
-                            var where = is_right ? "right" : idn_position.toString();
-                            var action = "drag to " + MONTY.cat.txt[new_cat] + "." + where + ",";
-                            if (is_authorized(word, $cont.attr('data-owner'), action, auth_log_push)) {
-                                var old_cat = cat_of_cont[cont_idn];
-                                if (is_defined(old_cat)) {
-                                    var i_cont_within_cat = conts_in_cat[old_cat].indexOf(cont_idn);
-                                    if (i_cont_within_cat === -1) {
-                                        console.error(
-                                            "Can't find cont",
-                                            cont_idn,
-                                            "within conts_in_cat[" + old_cat + "]",
-                                            conts_in_cat
-                                        );
-                                    } else {
-                                        conts_in_cat[old_cat].splice(i_cont_within_cat, 1);
-                                        insert_cont(new_cat, cont_idn, idn_position);
-                                        cat_of_cont[cont_idn] = new_cat;
-                                        $cont.attr('data-owner', word.sbj);
-                                        consistent_cat_cont();
-                                    }
-                                } else {
-                                    console.error(
-                                        "Lost track of cat for",
-                                        cont_idn,
-                                        cat_of_cont
-                                    );
-                                }
-                            }
-                        } else {
-                            console.log("(Can't drag " + word.obj + ")");
-                            // NOTE:  Because we're not rendering word.obj anywhere.
-                            //        Possible harmless reasons:
-                            //        - URL suffix cont=NNN restricts the contributions displayed
-                            //        - This action refers to another action we rejected already,
-                            //          because it was for another user.
-                            //          E.g. Baker edited Able's quote, then dragged it,
-                            //               resulting in two words,
-                            //               an edit word and a categorization word.
-                            //               The edit word refers to the Able's original
-                            //               contribution, and the categorization word
-                            //               refers to the edit word.
-                            //               So when Able is the browsing user,
-                            //               first the edit word gets rejected by is_authorized()
-                            //               (because Baker is not the boss of Able).
-                            //               Then the categorization word winds up here.
-                            //               That's because it uses the idn of Baker's edit word,
-                            //               when Able's rendering kept no record of that edit.
-                        }
-                    } else {
-                        console.warn(
-                            "Not dealing with idn",
-                            word.idn,
-                            "verb",
-                            txt_from_idn[word.vrb] || "(idn )" + word.vrb.toString()
-                        );
-                    }
-                    break;
-                }
-            }
-        });
+        // var $sup_contributions = {};   // table of super-contribution DOM objects, by idn qstring
+        // var cat_of_cont = {};   // maps contribution idn to category idn
+        // var conts_in_cat = {};   // for each category idn, an ordered array of contribution idns
+        // looper(MONTY.cat.order, function (_, cat) {
+        //     conts_in_cat[cat] = [];   // each array defines contribution order within category
+        // });
+        //
+        // /**
+        //  * Assert consistency of cat_of_cont{} and conts_in_cat{}[].
+        //  *
+        //  * They are roughly inverses of each other.
+        //  * A bit like "a place for everything, and everything in its place."
+        //  */
+        // function consistent_cat_cont() {
+        //     looper(cat_of_cont, function (cont, cat) {
+        //         cont = parseInt(cont);
+        //         if (conts_in_cat[cat].indexOf(cont) === -1) {
+        //             console.error(
+        //                 "inconsistency: contribution",
+        //                 cont,
+        //                 "should be in category",
+        //                 cat,
+        //                 JSON.stringify(cat_of_cont),
+        //                 JSON.stringify(conts_in_cat)
+        //             );
+        //             // NOTE:  cat_of_cont[] says this contribution is in a category, but
+        //             //        conts_in_cat[] doesn't have it.
+        //             return false;
+        //         }
+        //     });
+        //     looper(conts_in_cat, function (cat, conts) {
+        //         cat = parseInt(cat);
+        //         looper(conts, function (_, cont) {
+        //             console.assert(
+        //                 cat_of_cont[cont] === cat,
+        //                 "inconsistency: contribution",
+        //                 cont,
+        //                 "could be in category",
+        //                 cat,
+        //                 "or",
+        //                 cat_of_cont[cont]
+        //             );
+        //             // NOTE:  conts_in_cat says this category contains a cont, but
+        //             //        cat_of_conts[] does not indicate the same category.
+        //         });
+        //     });
+        // }
+        // consistent_cat_cont();   // empty is consistent with empty
+        //
+        // auth_log = [];
+        // var auth_log_push = auth_log.push.bind(auth_log);
+        //
+        // if (0) looper(MONTY.w, function (_, word) {
+        //     var $sup;
+        //     var $cont;
+        //     var $caption_span;
+        //     if (word !== null) {
+        //         switch (word.vrb) {
+        //         case MONTY.IDN.CONTRIBUTE:
+        //         case MONTY.IDN.UNSLUMP_OBSOLETE:
+        //             if (query_string_filter(word, cont_only)) {
+        //                 $sup = build_contribution_dom(word, null)
+        //                 $sup = $();   // HACK
+        //                 $cont = $sup.find('.contribution');
+        //                 $caption_span = $sup.find('.caption-span');
+        //                 $cont.attr('data-owner', word.sbj);
+        //                 $caption_span.attr('data-owner', word.sbj);
+        //                 $sup_contributions[word.idn] = $sup;
+        //                 var cat = original_cat(word);
+        //                 conts_in_cat[cat].unshift(word.idn);
+        //                 cat_of_cont[word.idn] = cat;
+        //             }
+        //             break;
+        //         case MONTY.IDN.CAPTION:
+        //             if (has($sup_contributions, word.obj)) {
+        //                 $sup = $sup_contributions[word.obj];
+        //                 $caption_span = $sup.find('.caption-span');
+        //                 if (is_authorized(
+        //                     word,
+        //                     $caption_span.attr('data-owner'),
+        //                     "caption",
+        //                     auth_log_push
+        //                 )) {
+        //                     $caption_span.attr('id', word.idn);
+        //                     $caption_span.attr('data-owner', word.sbj);
+        //                     $caption_span.text(word.txt);
+        //                 }
+        //             } else {
+        //                 console.log("(Can't caption " + word.obj + ")");
+        //             }
+        //             break;
+        //         case MONTY.IDN.EDIT:
+        //             if (has($sup_contributions, word.obj)) {
+        //                 $sup = $sup_contributions[word.obj];
+        //                 $cont = $sup.find('.contribution');
+        //                 if (is_authorized(word, $cont.attr('data-owner'), "edit", auth_log_push)) {
+        //                     var old_idn = word.obj;
+        //                     var new_idn = word.idn;
+        //                     $cont.attr('id', new_idn);
+        //                     $cont.attr('data-owner', word.sbj);
+        //                     $cont.text(word.txt);
+        //                     delete $sup_contributions[old_idn];
+        //                     // TODO:  Instead of deleting, just flag it as overrode or something?
+        //                     //        That would prevent SOME vacuous "unknown word" situations.
+        //                     $sup_contributions[new_idn] = $sup;
+        //                     renumber_cont(old_idn, new_idn);
+        //                     consistent_cat_cont();
+        //                 }
+        //                 // NOTE:  This does reorder the edited contribution
+        //                 //        But maybe that's good, it does get a new id_attribute,
+        //                 //        and likewise moves to the more recent end.
+        //             } else {
+        //                 // TODO:  Editable captions.
+        //                 //        (Currently, an edited caption is submitted as a new caption.)
+        //                 console.log("(" + word.idn + ". Unable to edit " + word.obj + ")", Object.keys($sup_contributions).join(" "));
+        //                 // NOTE:  Edit for an unknown contribution.  One harmless way we get here:
+        //                 //        A logged-in user could edit an anonymous user's contribution.
+        //                 //        Other anon user would get this edit-word, but not the original word.
+        //                 //        TODO:  They should see this edit.   Now they won't.
+        //                 //               Or not.  Maybe the contribution should be explicitly
+        //                 //               APPROVED before other anonymous users could see it.
+        //                 //
+        //                 //        Another is if user A then B edits contribution x (by a third user).
+        //                 //        B won't enforce A's edit, so although B's edit is later,
+        //                 //        it will refer back to the original contribution.
+        //                 //        A will get this message when it see's B's edit word,
+        //                 //        because that edit word will refer to the original x's id_attribute,
+        //                 //        but by then x will have been displaced by A's edit word.
+        //             }
+        //             break;
+        //         default:
+        //             if (has(MONTY.cat.order, word.vrb)) {   // Is this a categorization verb?
+        //                 if (has($sup_contributions, word.obj)) {   // Are we rendering what it categorizes?
+        //                     var new_cat = word.vrb;
+        //                     var cont_idn = word.obj;
+        //                     var idn_position = word.num;
+        //                     // CAUTION:  Don't $_from_id(cont_idn) because it's not in the DOM yet.
+        //                     $sup = $sup_contributions[cont_idn];
+        //                     $cont = $sup.find('.contribution');
+        //                     var is_right = idn_position === MONTY.IDN.FENCE_POST_RIGHT;
+        //                     var where = is_right ? "right" : idn_position.toString();
+        //                     var action = "drag to " + MONTY.cat.txt[new_cat] + "." + where + ",";
+        //                     if (is_authorized(word, $cont.attr('data-owner'), action, auth_log_push)) {
+        //                         var old_cat = cat_of_cont[cont_idn];
+        //                         if (is_defined(old_cat)) {
+        //                             var i_cont_within_cat = conts_in_cat[old_cat].indexOf(cont_idn);
+        //                             if (i_cont_within_cat === -1) {
+        //                                 console.error(
+        //                                     "Can't find cont",
+        //                                     cont_idn,
+        //                                     "within conts_in_cat[" + old_cat + "]",
+        //                                     conts_in_cat
+        //                                 );
+        //                             } else {
+        //                                 conts_in_cat[old_cat].splice(i_cont_within_cat, 1);
+        //                                 insert_cont(new_cat, cont_idn, idn_position);
+        //                                 cat_of_cont[cont_idn] = new_cat;
+        //                                 $cont.attr('data-owner', word.sbj);
+        //                                 consistent_cat_cont();
+        //                             }
+        //                         } else {
+        //                             console.error(
+        //                                 "Lost track of cat for",
+        //                                 cont_idn,
+        //                                 cat_of_cont
+        //                             );
+        //                         }
+        //                     }
+        //                 } else {
+        //                     console.log("(" + word.idn + ". Unable to drag " + word.obj + ")");
+        //                     // NOTE:  Because we're not rendering word.obj anywhere.
+        //                     //        Possible harmless reasons:
+        //                     //        - URL suffix cont=NNN restricts the contributions displayed
+        //                     //        - This action refers to another action we rejected already,
+        //                     //          because it was for another user.
+        //                     //          E.g. Baker edited Able's quote, then dragged it,
+        //                     //               resulting in two words,
+        //                     //               an edit word and a categorization word.
+        //                     //               The edit word refers to the Able's original
+        //                     //               contribution, and the categorization word
+        //                     //               refers to the edit word.
+        //                     //               So when Able is the browsing user,
+        //                     //               first the edit word gets rejected by is_authorized()
+        //                     //               (because Baker is not the boss of Able).
+        //                     //               Then the categorization word winds up here.
+        //                     //               That's because it uses the idn of Baker's edit word,
+        //                     //               when Able's rendering kept no record of that edit.
+        //                 }
+        //             } else {
+        //                 console.warn(
+        //                     "Not dealing with idn",
+        //                     word.idn,
+        //                     "verb",
+        //                     txt_from_idn[word.vrb] || "(idn )" + word.vrb.toString()
+        //                 );
+        //             }
+        //             break;
+        //         }
+        //     }
+        // });
         // NOTE:  MONTY.w loop is done.
-        consistent_cat_cont();   // One final check for good measure.
+        // consistent_cat_cont();   // One final check for good measure.
 
-        /**
-         * Give a contribution a new idn, in cat_of_cont{} and conts_in_cat{}[].
-         *
-         * So an edit word takes the place of a contribution word (or an older edit word).
-         *
-         * @param old_idn - idn of the original contribution word (or an older edit word).
-         * @param new_idn - idn of a new edit word.
-         */
-        function renumber_cont(old_idn, new_idn) {
-            var cat = cat_of_cont[old_idn];
-            console.assert(is_defined(cat), old_idn);
-            var i = conts_in_cat[cat].indexOf(old_idn);
-            console.assert(i !== -1, old_idn);
-            conts_in_cat[cat][i] = new_idn;
-            cat_of_cont[new_idn] = cat;
-            delete cat_of_cont[old_idn];
-        }
-
-        function insert_cont(cat, cont_idn, i_position) {
-            if (i_position === MONTY.IDN.FENCE_POST_RIGHT) {
-                conts_in_cat[cat].push(cont_idn);   // Stick it on the right end.
-            } else {
-                var i = conts_in_cat[cat].indexOf(i_position);
-                if (i === -1) {
-                    // console.error("insert_cont", cat, cont_idn, i_position, JSON.stringify(conts_in_cat));
-                    console.log(
-                        "(Can't insert", cont_idn,
-                        "before", i_position,
-                        "so it's going on the LEFT end of", MONTY.cat.txt[cat],
-                        "instead.)"
-                    );
-                    // NOTE:  Whatever was in there to anchor the rearranging is gone now.
-                    //        Oh well, stick it in with the "latest" stuff (probably on the left).
-                    //        This was happening when I wasn't processing obsolete unslump verbs.
-                    //        It could also happen for anonymous users because the following
-                    //        cont was from ANOTHER anonymous user so they don't see it.
-                    //        Consequence is it's just out of order, no biggie.
-                    conts_in_cat[cat].unshift(cont_idn);   // Stick it on the left end.
-                } else {
-                    conts_in_cat[cat].splice(i, 0, cont_idn);
-                }
-            }
-        }
-
+        // /**
+        //  * Give a contribution a new idn, in cat_of_cont{} and conts_in_cat{}[].
+        //  *
+        //  * So an edit word takes the place of a contribution word (or an older edit word).
+        //  *
+        //  * @param old_idn - idn of the original contribution word (or an older edit word).
+        //  * @param new_idn - idn of a new edit word.
+        //  */
+        // function renumber_cont(old_idn, new_idn) {
+        //     var cat = cat_of_cont[old_idn];
+        //     console.assert(is_defined(cat), old_idn);
+        //     var i = conts_in_cat[cat].indexOf(old_idn);
+        //     console.assert(i !== -1, old_idn);
+        //     conts_in_cat[cat][i] = new_idn;
+        //     cat_of_cont[new_idn] = cat;
+        //     delete cat_of_cont[old_idn];
+        // }
+        //
+        // function insert_cont(cat, cont_idn, i_position) {
+        //     if (i_position === MONTY.IDN.FENCE_POST_RIGHT) {
+        //         conts_in_cat[cat].push(cont_idn);   // Stick it on the right end.
+        //     } else {
+        //         var i = conts_in_cat[cat].indexOf(i_position);
+        //         if (i === -1) {
+        //             // console.error("insert_cont", cat, cont_idn, i_position, JSON.stringify(conts_in_cat));
+        //             console.log(
+        //                 "(Can't insert", cont_idn,
+        //                 "before", i_position,
+        //                 "so it's going on the LEFT end of", MONTY.cat.txt[cat],
+        //                 "instead.)"
+        //             );
+        //             // NOTE:  Whatever was in there to anchor the rearranging is gone now.
+        //             //        Oh well, stick it in with the "latest" stuff (probably on the left).
+        //             //        This was happening when I wasn't processing obsolete unslump verbs.
+        //             //        It could also happen for anonymous users because the following
+        //             //        cont was from ANOTHER anonymous user so they don't see it.
+        //             //        Consequence is it's just out of order, no biggie.
+        //             conts_in_cat[cat].unshift(cont_idn);   // Stick it on the left end.
+        //         } else {
+        //             conts_in_cat[cat].splice(i, 0, cont_idn);
+        //         }
+        //     }
+        // }
+        //
         // console.log("cat_of_cont", JSON.stringify(cat_of_cont, null, 2));
         // EXAMPLE:  cat_of_cont {
         //   "882": 1438,   (Order of contributions does not matter in this associative array.)
@@ -5276,13 +5429,15 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         //     1729
         //   ]
         // }
-        $(window.document.body).append(
-            $('<div>', {title: 'Authorization History Comment'}).append(
-                $('<!-- \n' + auth_log.join("\n") + '\n-->')
-            )
-        );
+        // $(window.document.body).append(
+        //     $('<div>', {title: 'Authorization History Comment'}).append(
+        //         $('<!-- \n' + auth_log.join("\n") + '\n-->')
+        //     )
+        // );
         // NOTE:  Slightly less intrusive stowing of the auth_log than console.log(auth_log).
         //        See it in F12 | Elements.
+        //        (Look for <div title="Authorization History Comment">)
+        //
         // EXAMPLE:
         //     1433. Yes Bob Stein may caption 1432, work of Bob Stein
         //     1441. Yes Bob Stein may drag to trash.right, 1430, work of Bob Stein
@@ -5299,19 +5454,39 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         //     4222. Yes Bob Stein may drag to my.right, 1432, work of Bob Stein
 
 
+        alternative_build_contributions(/*conts_in_cat*/);
 
-        alternative_build_contributions(conts_in_cat);
+        contribution_lexi.assert_consistent();
 
-
-
-        /**
-         * Put the newly minted contribution elements in their category DOMs.
-         */
-        looper(conts_in_cat, function (cat_idn, cont_idns) {
-            looper(cont_idns, function (_, cont_idn) {
-                $categories[cat_idn].append($sup_contributions[cont_idn]);
+        contribution_lexi.category_lexi.loop(function (idn_category, category) {
+            category.cont_sequence.loop(function (idn_contribution) {
+                var cont = contribution_lexi.get(idn_contribution);
+                if (cont.superseded_by_idn === null) {
+                    // NOTE:  A superseded contribution (by editing)
+                    //        never enters the DOM, nor uses its txt part.
+                    // cont.build_dom(function (idn) { return cont.fetch_txt(idn); }, '');
+                    cont.build_dom(monty_txt_from_idn(cont.idn));
+                    $categories[cont.cat.idn].append(cont.$sup);
+                    // NOTE:  This is where contribution renderings actually enter the DOM.
+                }
             });
         });
+
+        contribution_lexi.assert_consistent();
+
+        console.log("contribution_lexi", contribution_lexi);
+
+
+
+        // /**
+        //  * Put the newly minted contribution elements in their category DOMs.
+        //  */
+        // looper(conts_in_cat, function (cat_idn, cont_idns) {
+        //     looper(cont_idns, function (_, cont_idn) {
+        //         $categories[cat_idn].append($sup_contributions[cont_idn]);
+        //     });
+        // });
+
         /**
          * Put the categories in the page DOM.
          */
@@ -5700,28 +5875,62 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         $categories[cat_idn] = $category;
     }
 
-    /**
-     * Build the div.sup-contribution for a contribution,
-     * containing its div.contribution and div.caption-bar and div.save-bar.
-     *
-     * It's returned free-range, not inserted in the DOM.
-     *
-     * @param {object} contribution_word
-     * @param {object=} caption_word (optional)
-     * @return {jQuery}
-     */
-    // TODO:  Contribution method - somehow sorta?
-    //        Could this be the method that transforms a contribution from small to big?
-    //        The difference between referring to and rendering.
-    //        Maybe it could also augment the object
-    function build_contribution_dom(contribution_word, caption_word) {
-        var $sup_contribution = $('<div>', {class: 'sup-contribution word'});
-        var $contribution = $('<div>', {
-            id: contribution_word.idn,
+    function monty_txt_from_idn(idn) {
+        console.assert(typeof idn === 'number', idn);
+        // TODO:  parameter_type(idn, 'number');
+        var return_txt = null;
+        looper(MONTY.w, function (_, word) {
+            if (word.idn === idn) {
+                return_txt = word.txt;
+                return false;
+            }
+
+        });
+        return return_txt;
+    }
+
+    Contribution.prototype.build_dom = function Contribution_build_dom(txt) {
+        var that = this;
+        // var contribution_word = {
+        //     idn: that.idn,
+        //     txt: txt,
+        //     was_submitted_anonymous: that.was_submitted_anonymous
+        // };
+        // var caption_word;
+        // if (that.capt === null) {
+        //     caption_word = null;
+        // } else {
+        //     caption_word = {
+        //         idn: that.capt.idn,
+        //         txt: that.capt.txt
+        //     };
+        // }
+        // var $sup = build_contribution_dom(contribution_word, caption_word);
+    // };
+    // /**
+    //  * Build the div.sup-contribution for a contribution,
+    //  * containing its div.contribution and div.caption-bar and div.save-bar.
+    //  *
+    //  * It's returned free-range, not inserted in the DOM.
+    //  *
+    //  * @param {object} contribution_word
+    //  * @param {object=} caption_word (optional)
+    //  * @return {jQuery}
+    //  */
+    // // DONE:  Contribution method - somehow sorta?
+    // //        Could this be the method that transforms a contribution from small to big?
+    // //        The difference between referring to and rendering.
+    // //        Maybe it could also augment the object
+    // //        :
+    // //        Merge with .build_dom() method!
+    // function build_contribution_dom(contribution_word, caption_word) {
+        that.$sup = $('<div>', {class: 'sup-contribution word'});
+        that.$cont = $('<div>', {
+            id: that.id_attribute,
             class: 'contribution size-adjust-once'
         });
-        $sup_contribution.append($contribution);
-        $contribution.text(leading_spaces_indent(contribution_word.txt));
+        that.$sup.append(that.$cont);
+        that.$cont.text(leading_spaces_indent(txt));
         var $render_bar = $('<div>', {class: 'render-bar'});
         var $caption_bar = $('<div>', {class: 'caption-bar'});
         var $save_bar = $('<div>', {class: 'save-bar'});
@@ -5748,16 +5957,16 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         $external_link.append($icon('launch'))
         $save_bar.append($external_link);
 
-        $sup_contribution.append($render_bar);
-        $sup_contribution.append($caption_bar);
-        $sup_contribution.append($save_bar);
+        that.$sup.append($render_bar);
+        that.$sup.append($caption_bar);
+        that.$sup.append($save_bar);
         var $grip = $('<span>', {class: 'grip'});
         $caption_bar.append($grip);
         $grip.text(GRIP_SYMBOL);
         var $caption_span = $('<span>', {class: 'caption-span'});
         $caption_bar.append($caption_span);
-        if (is_specified(caption_word)) {
-            $caption_span.append(caption_word.txt);
+        if (is_specified(that.capt)) {
+            $caption_span.append(that.capt.txt);
             // TODO:  Why .append() here and .text() when looping through CAPTION words?
         }
         // var caption_txt = latest_txt(contribution_word.jbo, MONTY.IDN.CAPTION);
@@ -5765,10 +5974,11 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         //     $caption_span.append(caption_txt);
         // }
 
-        if (contribution_word.was_submitted_anonymous) {
-            $sup_contribution.addClass('was-submitted-anonymous');
+        if (that.was_submitted_anonymous) {
+            that.$sup.addClass('was-submitted-anonymous');
         }
-        return $sup_contribution;
+        // return $sup_contribution;
+        // that.$sup = $sup_contribution;
     }
 
     function could_be_url(text) {
