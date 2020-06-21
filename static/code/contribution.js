@@ -5992,7 +5992,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                         var cat_pixels_above_browser_top = doc_top - sup_top;
                         var cat_pixels_above_up_top = cat_pixels_above_browser_top + TOP_SPACER_PX;
                         if (cat_pixels_above_up_top > 0) {
-                            // NOTE:  Category is scrolled up too far, underneath #up-top
+                            // NOTE:  Category is scrolled up too far, underneath #up-top.
                             window.scrollBy(0, - TOP_SPACER_PX);
                         }
                     }
