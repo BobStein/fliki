@@ -71,6 +71,7 @@
  * @param MONTY.me_txt
  * @param MONTY.MEDIA_HANDLERS
  * @param MONTY.OEMBED_CLIENT_PREFIX
+ * @param MONTY.OEMBED_OTHER_ORIGIN
  * @param MONTY.POPUP_ID_PREFIX
  * @param MONTY.STATIC_IMAGE
  * @param MONTY.THUMB_MAX_HEIGHT
@@ -319,6 +320,11 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     var POP_DOWN_ANIMATE_MS = 250;
     var POP_DOWN_ANIMATE_EASING = 'swing';   // swing or linear
 
+    var MAX_IFRAME_RECOVERY_TRIES = 10;
+    var MAX_FONT_EXPANSION = 3.0;
+
+
+    var MAX_BIG_CONT_PER_CAT = 50;
 
     /////////////////////////////////////////////////////////////////////////////////////////
     ////// Rogues Gallery - a compendium errors and warnings on the JavaScript console.
@@ -381,9 +387,13 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     // video-toolbar.js
     // (UC Browser 7)
 
+    // ... text/plain ...
+    // THANKS:  Fix Firefox text/plain warning for static media .js files in Windows registry,
+    //          https://github.com/pallets/flask/issues/1045#issuecomment-42202749-permalink
+
 
     $(function document_ready() {
-        speech_synthesis_init();
+        pop_speech_synthesis_init();
         qoolbar.ajax_url(MONTY.AJAX_URL);
 
         build_body_dom();
@@ -418,7 +428,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         $('.category, .frou-category').sortable(sortable_module_options());
 
         $(window.document)
-            .on('input', '.contribution, .caption-span', contribution_dirty)
+            .on('input', '.contribution, .caption-span', contribution_becomes_dirty)
             .on('click', '.contribution', stop_propagation)
             .on('click', '.caption-bar, .save-bar', stop_propagation)
             .on('click', '.render-bar .thumb-link', thumb_click)
@@ -430,7 +440,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             .on('click', '.save-bar .expand',  function () { bigger(this, false); })
             // TODO:  Should play or expand end non-dirty edits?  That could be more consistent:
             //        Closing the popup with Escape does this already.
-            //        Closing with the close button, or clicking on the pop-screen does not.
+            //        Closing with the close button, or clicking on the popup-screen does not.
 
             .on('keyup', function (evt) {
                 if (evt.key === 'Escape') {
@@ -584,8 +594,11 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     }
 
     function num_contributions_in_category(category_idn) {
-        var $category = $categories[category_idn];
-        var num_contributions = $category.find('.contribution').length;
+        // var $category = $categories[category_idn];
+        // var num_contributions = $category.find('.contribution').length;
+        // return num_contributions;
+        var cat = contribution_lexi.category_lexi.get(category_idn);
+        var num_contributions = cat.cont_sequence.len();
         return num_contributions;
     }
 
@@ -612,11 +625,17 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     }
 
     function playlist_in_order() {
-        var play_bot_from_idn = cat_idn_for_playlist();
-        var $cat = $categories[play_bot_from_idn];
-        return $cat.find('.contribution[id]').map(function () {
-            return this.id;
-        }).get();
+        // var play_bot_from_idn = cat_idn_for_playlist();
+        // var $cat = $categories[play_bot_from_idn];
+        // return $cat.find('.contribution[id]').map(function () {
+        //     return this.id;
+        // }).get();
+
+        var cat_idn = cat_idn_for_playlist();
+        var cat = contribution_lexi.category_lexi.get(cat_idn);
+        var cont_array = cat.cont_sequence.idn_array();
+        return cont_array;
+        // FIXME:  These are numbers, not strings.  Problem??
     }
 
     function playlist_generate() {
@@ -741,7 +760,13 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                 if (DEBUG_BOT_STATES) console.log("Bot", that.state.name, that.ticks_this_state, that.state.description);
             }
             that.last_tick_state = that.state;
-            that.finite_state_machine();
+            try {
+                that.finite_state_machine();
+            } catch (e) {
+                that.crash("FSM:", e.message, e.stack);
+                // console.trace();
+                // console.log(e.stack);
+            }
             var did_fsm_change_state = this.state !== this.last_tick_state
         } while (did_fsm_change_state);
     };
@@ -820,9 +845,10 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             that.cont_idn = list_play_bot[index_play_bot];
             // that.cont = Contribution(that.cont_idn);
             that.cont = contribution_lexi.get(that.cont_idn);
-            if ( ! that.cont.does_exist()) {
-                that.crash("Missing contribution", that.cont_idn, index_play_bot);
-                break;
+            if ( ! that.cont.is_dom_rendered()) {
+                // that.crash("Missing contribution", that.cont_idn, index_play_bot);
+                // break;
+                console.log("Collapsed contribution", that.cont.idn);
             }
             // FALSE WARNING:  The following dumb noinspection prevents the following warning:
             //            Condition is always false since types
@@ -1298,6 +1324,11 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         this.cont_sequence = IdnSequence(MONTY.IDN.FENCE_POST_RIGHT);
     }
 
+    Object.defineProperties(Category.prototype, {
+        $cat:     { get: function () {return $categories[this.idn];}},
+        $unshown: { get: function () {return this.$cat.find('.unshown');}}
+    });
+
     /**
      * Know about all Categories
      *
@@ -1558,7 +1589,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         // NOTE:  1. Within each category, go through each of its contributions.
         //           Each contribution should know what category it's in.
         that.category_lexi.loop(function (idn_category, category) {
-            category.cont_sequence.loop(function (idn_contribution) {
+            category.cont_sequence.loop(function (index, idn_contribution) {
                 var contribution = that.get(idn_contribution);
                 console.assert(
                     idn_category === contribution.cat.idn,
@@ -1577,7 +1608,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         //           Superseded contributions should not.
         that.loop(function (idn_contribution, contribution) {
             var does_cat_have_cont = contribution.cat.cont_sequence.has(idn_contribution);
-            if (contribution.superseded_by_idn === null) {
+            if (contribution.is_unsuperseded) {   // Contribution is current, no edit supersedes.
                  console.assert(
                     does_cat_have_cont,
                     "INCONSISTENT CONTRIBUTION",
@@ -1588,7 +1619,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                     contribution.cat.cont_sequence.len(),
                     "conts"
                 );
-           } else {
+           } else {  // Contribution is obsolete, some edit superseded it.
                 console.assert(
                     ! does_cat_have_cont,
                     "SUPERSEDED CONTRIBUTION",
@@ -1685,9 +1716,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
 
     IdnSequence.prototype.loop = function IdnSequence_loop(callback) {
         var that = this;
-        looper(that._sequence, function (_, idn) {
-            callback(idn);
-        });
+        looper(that._sequence, callback);
     }
 
     /**
@@ -1766,8 +1795,6 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         var category_lexi = CategoryLexi().from_monty(MONTY.cat.order, MONTY.cat.txt);
         contribution_lexi = ContributionLexi(category_lexi);
 
-        contribution_lexi.assert_consistent();   // HACK
-
         contribution_lexi.notify = function alt_notifier(message) {
             // console.log("Alt --", message);
             // EXAMPLE:
@@ -1805,7 +1832,13 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     /**
      * Contribution - A quote or video.  Rendered as a little box on the screen.  Or the popup.
      *
-     * @param {number} idn - e.g. 1281 the idn of the contribution word in the lex.
+     * Example instance:
+     *    cont.idn              1821
+     *    cont.idn_string       '1821'
+     *    cont.id_prefix        'popup_'
+     *    cont.id_attribute     'popup_1821'
+     *
+     * @param {number} idn - the idn of the contribution word in the lex, e.g. 1821
      * @return {Contribution}
      * @constructor
      */
@@ -1820,75 +1853,60 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             console.assert(typeof idn === 'number');
             // FALSE WARNING:  Unused definition id_prefix
             // noinspection JSUnusedGlobalSymbols
-            this.id_prefix = '';
+            this._id_prefix = '';
             // NOTE:  If you're going to change the prefix (e.g. to MONTY.POPUP_ID_PREFIX),
             //        do it after this constructor, but before .build_dom() or .render_media()
             //        are called.
 
-            //     id_attribute = id_attribute.toString();
-            // if (typeof id_attribute === 'number') {
-            // }
-            // this.id_attribute = id_attribute.toString();
-            // this.idn = parseInt(id_attribute);
-
-            // this.$cont = $_from_id(this.id_attribute);
-            // this.$sup = this.$cont.closest('.sup-contribution');
             this.$sup = null;
-            this.$cont = null;
             this.handler = null;
 
-            // Fields set by ContributionLexi.word_pass()
+            // Fields set by ContributionLexi.word_pass():
+
             this.owner = null;
-            // FALSE WARNING:  Unused definition capt
-            // noinspection JSUnusedGlobalSymbols
             this.capt = null;
-            // FALSE WARNING:  Unused definition cat
-            // noinspection JSUnusedGlobalSymbols
+
             this.cat = null;
             // NOTE:  cont.cat is a Category object, and the new way of a contribution knowing
             //        its category.
             //        cont.category_id is the old way and relies on the DOM
             //        both to get the id and to use it.
+
             this.superseded_by_idn = null;   // this old cont points to latest that superseded it
         } else {
             console.error("Why do we need id-null contribution objects??");
         }
     }
 
+    function Contribution_from_idn(idn) {
+        console.assert(typeof idn === 'number', idn);
+        return contribution_lexi.get(idn);
+    }
+
     /**
-     * Construct a Contribution, not from its id, but from any element inside it.
+     * Construct a Contribution from any element inside it.
      *
      * @param element_or_selector - e.g. '#1821' or $('.pop-up')
      * @return {Contribution}
      * @constructor
      */
-    // TODO:  Combine this aux constructor with the Contribution() constructor?
-    //        There would be an ambiguity between Contribution(id_attribute)
-    //                                        and Contribution(text_selector)
-    //        Guess we could try $_from_id() first and if fails just $().  Smelly.
-    //        Or convert to everyone passing selector_or_element,
-    //        then Contribution(idn) becomes Contribution($_from_id(idn))
-    //                                    or Contribution(selector_from_id(idn))
-    //        But that requires insider knowledge that an idn is the same as the
-    //        naked id of some element in the contribution (it's the .contribution element).
-    //        Oh wow, the "official" constructor is only used two places,
-    //        when getting an idn from a playlist, or in a message from an iframe.
-    //        So maybe switch the official and the aux constructors?
-    //        Contribution_from_id_attribute()?
-    //        Is that ever called on a popup_NNNN id??  Nope!
-    //        Because the popup iframe uses the `idn=NNNN` part of its src URL in sendMessage.
-    //        Contribution_from_idn() would make sense.
-    //        In any case I tried to carefully distinguish between idn (always a decimal integer
+    // idn (always a decimal integer
     //        string in JavaScript, akin to the qiki.Number idn of a qiki.Word in Python)
     //        and an id_attribute (which may be an idn or a prefixed idn, e.g. 'popup_1821')
     //        Maybe cont.$sup.data('idn') should store a reliable idn, and cont.$sup.attr('id')
     //        should be prefixed.  Because hogging all the decimal integer ids for idns is priggish.
     function Contribution_from_element(element_or_selector) {
-        var $sup_cont = $(element_or_selector).closest('.sup-contribution');
-        var $cont = $sup_cont.find('.contribution');
-        var cont_idn = $cont.attr('id');
-        // return Contribution(cont_idn);
-        return contribution_lexi.get(cont_idn);
+        var $sup = $(element_or_selector).closest('.sup-contribution');
+        if ($sup.length === 1) {
+            var cont = $sup.data('contribution-object');
+            return cont;   // which could be undefined
+        } else {
+            return null;
+        }
+        // var $cont = $sup.find('.contribution');
+        // var idn_string = $cont.attr('id');
+        // var idn = parseInt(idn_string);
+        // return Contribution_from_idn(idn);
     }
 
     Contribution.prototype.Event = {
@@ -1922,50 +1940,74 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     // }
 
     Object.defineProperties(Contribution.prototype, {
-        idn_string:      { get: function () {return this.idn.toString();}},
         /**
-         * @return {string}
+         * .id_attribute - unique id for this Contribution, the .contribution element, id attribute
+         *
+         * @type {string}
+         *
+         * THANKS:  JSDoc for get and set accessors, https://stackoverflow.com/a/22276207/673991
+         *          Solves the overeager type warning:  Argument type {get: (function(): string)}
+         *          is not assignable to parameter type string
          */
-        id_attribute:     { get:
-                /**
-                 * @return {string}
-                 */
-                function () {return this.id_prefix + this.idn_string;}
-                },
-        // $cont:            { get: function () {return this.$sup.find('.contribution');}},
+        id_attribute:     { get: function () {return this.id_prefix + this.idn_string;}},
+
+        id_prefix:        {
+                               get: function () {return this._id_prefix || '';},
+                               set: function (new_prefix) {return this._id_prefix = new_prefix;}
+                          },
+        idn_string:       { get: function () {return this.idn.toString();}},
+        $cont:            { get: function () {return this.$sup.find('.contribution');}},
         $render_bar:      { get: function () {return this.$sup.find('.render-bar');}},
         $save_bar:        { get: function () {return this.$sup.find('.save-bar');}},
         $caption_bar:     { get: function () {return this.$sup.find('.caption-bar');}},
         $caption_span:    { get: function () {return this.$sup.find('.caption-span');}},
         $external_link:   { get: function () {return this.$sup.find('.external-link');}},
-        content:          {
-                              get: function () {return this.$cont.text();}
-                              // ,
-                              // set: function (new_content) {return this.$cont.text(new_content);}
-                          },
+        content:          { get: function () {
+            // return this.$cont.text();
+            if (this.is_dom_rendered()) {
+                return this.$cont.text();
+            } else {
+                return this.fetch_txt();
+            }
+        }},
         is_media:         { get: function () {return could_be_url(this.content);}},
         caption_text:     { get: function () {return this.$caption_span.text();}},
-        is_noembed_error: { get: function () {return this.$sup.hasClass('noembed-error');}},
+        // is_noembed_error: { get: function () {return this.$sup.hasClass('noembed-error');}},
+
         /**
-         * Compact domain for a media link (e.g. "youtube")
+         * .media_domain - Compact domain for a media link (e.g. "youtube")
          *
          * @return {string|null} or null if not a link, or "no_domain" if bad link.
          */
         // TODO:  This JSDoc header STILL doesn't obviate the need for a
         //        noinspection JSIncompatibleTypesComparison
-        media_domain:     { get: function () {return this.$sup.attr('data-domain') || null;}},
+        media_domain:     { get: function () {
+            // return this.$sup.attr('data-domain') || null;
+            return sanitized_domain_from_url(this.media_url);
+        }},
+
         $iframe:          { get: function () {return this.$render_bar.find('iframe');}},
         $img_thumb:       { get: function () {return this.$render_bar.find('img.thumb');}},
         iframe:           { get: function () {return this.$iframe.get(0) || null;}},
         $cat:             { get: function () {return this.$sup.closest('.category');}},
         category_id:      { get: function () {return this.$cat.attr('id');}},
         is_my_category:   { get: function () {return this.category_id === MONTY.IDN.CAT_MY.toString();}},
-        media_url:        { get: function () {return this.is_media ? this.content : null;}}
+        media_url:        { get: function () {return this.is_media ? this.content : null;}},
+
+        /**
+         * .is_superseded - Should we show this?  Not if an edit supersedes it.
+         */
+        is_unsuperseded:  { get: function () {return this.superseded_by_idn === null;}}
     });
 
-    Contribution.prototype.does_exist = function Contribution_does_exist() {
+    Contribution.prototype.is_idn_specified = function Contribution_is_idn_specified() {
         var that = this;
-        return is_specified(that.idn) && that.$sup.length === 1;
+        return is_specified(that.idn);
+    };
+
+    Contribution.prototype.is_dom_rendered = function Contribution_is_dom_rendered() {
+        var that = this;
+        return that.is_idn_specified() && is_specified(that.$sup) && that.$sup.length === 1;
     };
 
     /**
@@ -1999,27 +2041,31 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                         console.assert(stuff.iframe === that.iframe, stuff.iframe, that);
                         // var msg_cont = Contribution_from_element(stuff.iframe);
                         console.assert(
-                            that.does_exist(),
+                            that.is_dom_rendered(),
                             stuff.iframe,
                             stuff.iframe.parentElement,
                             stuff.height, stuff.width, stuff.type
                         );
                         var siz_width = parseFloat(stuff.width);
                         var siz_height = parseFloat(stuff.height);
-                        var pop_stuff = that.$sup.data('pop-stuff');
-                        if (is_defined(pop_stuff)) {
+                        // var pop_stuff = that.$sup.data('pop-stuff');
+                        if (is_specified(popup_cont) && is_specified(popup_cont.pop_stuff)) {
                             var progress_width = linear_transform(
                                 siz_width,
-                                pop_stuff.render_width, pop_stuff.max_live_width,
-                                0.0, 1.0
+                                popup_cont.pop_stuff.thumb_render_width,
+                                popup_cont.pop_stuff.max_live_width,
+                                0.0,
+                                1.0
                             )
-                            // FALSE WARNING:  'render_height' should probably not be passed as
+                            // FALSE WARNING:  'thumb_render_height' should probably not be passed as
                             //                 parameter 'x1'
                             // noinspection JSSuspiciousNameCombination
                             var progress_height = linear_transform(
                                 siz_height,
-                                pop_stuff.render_height, pop_stuff.max_live_height,
-                                0.0, 1.0
+                                popup_cont.pop_stuff.thumb_render_height,
+                                popup_cont.pop_stuff.max_live_height,
+                                0.0,
+                                1.0
                             )
                             var progress = Math.max(progress_width, progress_height);
                             // NOTE:  Rely on whichever is further along the way to a full screen.
@@ -2038,10 +2084,10 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                                 //     that.id_attribute,
                                 //     stuff.width,
                                 //     stuff.height,
-                                //     pop_stuff.render_width,
-                                //     pop_stuff.render_height,
-                                //     pop_stuff.max_live_width,
-                                //     pop_stuff.max_live_height
+                                //     popup_cont.pop_stuff.thumb_render_width,
+                                //     popup_cont.pop_stuff.thumb_render_height,
+                                //     popup_cont.pop_stuff.max_live_width,
+                                //     popup_cont.pop_stuff.max_live_height
                                 // );
                                 // EXAMPLE:  iframe resized popup_1990 168.53125 136 162 92 1583 1390
                                 //           iframe resized popup_1990 216.90625 178 162 92 1583 1390
@@ -2060,12 +2106,12 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                                 var sliding_left = linear_transform(
                                     progress,
                                     0.0, 1.0,
-                                    pop_stuff.fixed_coordinates.left, pop_left
+                                    popup_cont.pop_stuff.fixed_coordinates.left, pop_left
                                 )
                                 var sliding_top = linear_transform(
                                     progress,
                                     0.0, 1.0,
-                                    pop_stuff.fixed_coordinates.top, pop_top
+                                    popup_cont.pop_stuff.fixed_coordinates.top, pop_top
                                 )
                                 that.$sup.css({left: sliding_left, top: sliding_top});
                                 // console.log(
@@ -2086,12 +2132,17 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                                     console.warn(
                                         "Resize out",
                                         that.id_attribute,
-                                        siz_width, "x", siz_height,
+                                        siz_width, "x",
+                                        siz_height,
                                         pct(progress), "[",
-                                        pct(progress_width), pct(progress_height), "]",
-                                        that.$render_bar.width(), that.$render_bar.height(), "~",
-                                        pop_stuff.render_width, pop_stuff.render_height, "->",
-                                        pop_stuff.max_live_width, pop_stuff.max_live_height
+                                        pct(progress_width),
+                                        pct(progress_height), "]",
+                                        that.$render_bar.width(),
+                                        that.$render_bar.height(), "~",
+                                        popup_cont.pop_stuff.thumb_render_width,
+                                        popup_cont.pop_stuff.thumb_render_height, "->",
+                                        popup_cont.pop_stuff.max_live_width,
+                                        popup_cont.pop_stuff.max_live_height
                                     );
                                 }
                             }
@@ -2100,13 +2151,14 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                             }
                         }
                         that.fix_caption_width();
-                    }
-                    /*,
-                    targetOrigin: MONTY.OEMBED_OTHER_ORIGIN*/
-                    // onInit: function resizer_init_callback(iframe) {
-                    //     console.log("RESIZER_INIT_CALLBACK", iframe.id);
-                    // }
+                    },
+                    checkOrigin: [MONTY.OEMBED_OTHER_ORIGIN]
                 });
+                // TODO:  live_media_iframe() postMessage error from iframeResizer,
+                //        Is it wrong?  Fixable?
+                //        iframeResizer.js:754 Failed to execute 'postMessage' on 'DOMWindow':
+                //        The target origin provided ('http://...') does not match the recipient
+                //        window's origin ('http://...').
                 on_init();
             }, MS_IFRAME_RESIZER_INIT);
         } else {
@@ -2233,6 +2285,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             // TODO:  We don't need message.contribution_idn,
             //        because we know it from scope!  Right??
             that.$sup.addClass('noembed-error');
+            that.is_noembed_error = true;
             interact.ERROR(cont_idn, 1, message.error_message);
             break;
         default:
@@ -2335,7 +2388,6 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             $iframe.is(':visible') &&
             ($iframe.width() === 0 || $iframe.height() === 0)
         ) {
-            var MAX_IFRAME_RECOVERY_TRIES = 10;
             var i_recovery = $iframe.data('recovery-count') || 0;
             i_recovery++;
             $iframe.data('recovery-count', i_recovery);
@@ -2365,7 +2417,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         // NOTE:  that.$iframe may not exist yet, e.g. on page reload, or entering a new cont.
         //        If it did exist it gets displaced here, e.g. after an edit.
         var that = this;
-        that.$sup.attr('data-domain', sanitized_domain_from_url(that.content));
+        // that.$sup.attr('data-domain', sanitized_domain_from_url(that.content));
 
         if (that.handler_scan()) {
             // console.log(
@@ -2405,6 +2457,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         }));
         that.$render_bar.empty().append($p);
         that.$sup.addClass('noembed-error');
+        that.is_noembed_error = true;
         // NOTE:  How non-live thumbnails skip the bot.
         //        Also how the text gets its peachy background color.
         that.$render_bar.outerWidth(that.$cont.outerWidth());
@@ -2543,7 +2596,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
 
     Contribution.prototype.render_text = function Contribution_render_text(then) {
         var that = this;
-        that.$sup.removeAttr('data-domain');
+        // that.$sup.removeAttr('data-domain');
         that.$render_bar.empty();
         then();
     }
@@ -2555,7 +2608,12 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
      */
     Contribution.prototype.fixed_coordinates = function Contribution_fixed_coordinates() {
         var that = this;
-        var offset = that.$sup.offset();
+        var offset;
+        if (that.is_dom_rendered()) {
+            offset = that.$sup.offset();
+        } else {
+            offset = that.cat.$unshown.offset();
+        }
         return {
             top: offset.top - $(window).scrollTop(),
             left: offset.left - $(window).scrollLeft()
@@ -2701,7 +2759,8 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     /**
      * Is there an unsaved contribution edit in progress?
      *
-     * If so, make its [save] and [discard] buttons red.
+     * If so, make its [save] and [discard] buttons red.  Because the user appears to be about to
+     * inadvertently abandon edits without saving.  So which is it?  Save or advertently abandon?
      *
      * @param {boolean} do_scroll_into_view - if reddening controls, also scroll edits into view?
      * @param {boolean} do_close_clean - If an edit was started but no changes, do we just close it?
@@ -2770,10 +2829,9 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         });
     }
 
-    // TODO:  Contribution method
     function contribution_edit(evt) {
         var cont = Contribution_from_element(this);
-        console.assert(cont.does_exist(), this);
+        console.assert(cont.is_dom_rendered(), this);
         var $clicked_on = $(evt.target);
         // SEE:  this vs evt.target, https://stackoverflow.com/a/21667010/673991
         if ($clicked_on.is('.contribution') && is_click_on_the_resizer(evt, $clicked_on[0])) {
@@ -2797,10 +2855,9 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         evt.stopPropagation();   // Don't let the document get it, which would end the editing.
     }
 
-    // TODO:  Contribution method
     function contribution_cancel() {
         var cont = Contribution_from_element(this);
-        console.assert(cont.does_exist(), this);
+        console.assert(cont.is_dom_rendered(), this);
         console.assert(is_editing_some_contribution);
         // If not editing, how was the cancel button visible?
         if (is_editing_some_contribution) {
@@ -2812,10 +2869,12 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         }
     }
 
-    // TODO:  Contribution method
-    function contribution_dirty() {
+    /**
+     * The contribution or caption editing input field has changed value.  It's unsaved, so "dirty".
+     */
+    function contribution_becomes_dirty() {
         var cont = Contribution_from_element(this);
-        console.assert(cont.does_exist(), this);
+        console.assert(cont.is_dom_rendered(), this);
         var class_attr = this.classList;
         if ( ! cont.$sup.hasClass('edit-dirty')) {
             cont.$sup.addClass('edit-dirty');
@@ -2824,7 +2883,6 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         }
     }
 
-    // TODO:  Contribution method
     function contribution_save() {
         var cont_editing = Contribution_from_element($cont_editing)
         if (is_editing_some_contribution) {
@@ -2844,6 +2902,17 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         }
     }
 
+    /**
+     * Pop up and auto play a contribution.  Unless editing.
+     *
+     * If editing clean (i.e. no changes yet), just end the edit.
+     * If editing dirty, make the discard and save buttons red.
+     * In either case, no popup.
+     *
+     * @param evt - event from the click
+     * @return {boolean} - return false, not just falsy, as part of the overkill trying not to let
+     *                     the click do anything else.
+     */
     function thumb_click(evt) {
         var div = this;
         if ( ! check_contribution_edit_dirty(false, true)) {
@@ -2866,7 +2935,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     function bigger(element, do_play) {
         bot.stop();
         var cont = Contribution_from_element(element);
-        console.assert(cont.does_exist(), element);
+        console.assert(cont.is_dom_rendered(), element);
         $(window.document.body).addClass('pop-up-manual');
         // NOTE:  body.pop-up-manual results from clicking any of:
         //        1. the contribution's save-bar "bigger" button with the fullscreen icon
@@ -2920,8 +2989,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             }
         }
 
-        // var cont = Contribution_from_element(selector_or_element);
-        if (that.does_exist()) {
+        if (that.is_dom_rendered()) {
             if (that.is_media) {
                 var iframe = that.iframe;
                 // FALSE WARNING:  Condition is always false since types '{get: (function():
@@ -2942,15 +3010,21 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                         );
                         return
                     }
-                    console.assert(typeof resizer.sendMessage === 'function', resizer, that.id_attribute);
-                    console.assert(typeof resizer.close === 'function', resizer, that.id_attribute);
-                    callback_good(resizer);
+                    if ( ! is_specified(resizer)) {
+                        bad("Null resizer " + that.id_attribute);
+                    } else if (typeof resizer.sendMessage !== 'function') {
+                        bad("No resizer sendMessage " + that.id_attribute);
+                    } else if (typeof resizer.close !== 'function') {
+                        bad("No resizer close " + that.id_attribute);
+                    } else {
+                        callback_good(resizer);
+                    }
                 }
             } else {
                 // NOTE:  E.g. harmlessly trying to use a cont with no render-bar iframe.
             }
         } else {
-            bad("No element " + that.id_attribute);
+            bad("No element " + that.idn);
         }
     };
 
@@ -3011,7 +3085,6 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             //           Though it seems to have been fixed in Chrome.
             if (speech_progress !== null && popup_cont !== null) {
                 // NOTE:  No manual QUIT after automated END.
-                // pop_cont = Contribution_from_element($pop_ups[0]);
                 interact.QUIT(popup_cont.idn_string, speech_progress);
             }
         }
@@ -3024,26 +3097,23 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         if (popup_cont !== null) {
 
             deanimate("popping down", popup_cont.id_attribute);
+            // NOTE:  popup_cont could now be null if this pop-down interrupted another pop-down.
 
-            // $pop_ups.each(function () {
-            //     // NOTE:  There's almost certainly only one .pop-up at a time.
-            //     //        Maybe lingering animations could cause multiple?
-            //     //        But this makes sure to un-pop them all.  And exactly once.
-            //
-            //     pop_cont = Contribution_from_element(this);
-            //     // var cont = Contribution(pop_cont.idn_string);
-                var thumb_cont = contribution_lexi.get(popup_cont.idn_string);
+            if (popup_cont !== null) {
 
-                popup_cont.$sup.removeClass('pop-up');
-                // NOTE:  This immediate removal of the pop-up class, though premature
-                //        (because the animation of the popping down is not complete),
-                //        allows redundant back-to-back calls to pop_down_all().
-                //        Because it means a second call won't find any .pop-up elements.
+                var thumb_cont = Contribution_from_idn(popup_cont.idn);
+
+                // popup_cont.$sup.removeClass('pop-up');
+                // // NOTE:  This immediate removal of the pop-up class, though premature
+                // //        (because the animation of the popping down is not complete),
+                // //        allows redundant back-to-back calls to pop_down_all().
+                // //        Because it means a second call won't find any .pop-up elements.
 
                 $(window.document.body).removeClass('pop-up-manual');
                 $(window.document.body).removeClass('pop-up-auto');
 
-                var pop_stuff = popup_cont.$sup.data('pop-stuff');
+                // var pop_stuff = popup_cont.$sup.data('pop-stuff');
+                console.assert(is_specified(popup_cont.pop_stuff));
                 // TODO:  Instead, just remember the pop-down DOM object ($sup_cont in pop_up()),
                 //        and recalculate HERE AND NOW its current "fixed" coordinates from that object.
 
@@ -3051,14 +3121,14 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                 if (popup_cont.is_media) {
                     popup_cont.embed_message({
                         action: 'un-pop-up',
-                        width: pop_stuff.render_width,
-                        height: pop_stuff.render_height,
+                        width: popup_cont.pop_stuff.thumb_render_width,
+                        height: popup_cont.pop_stuff.thumb_render_height,
                         did_bot_transition: did_bot_transition
                     });
                 } else {
                     promises.push(popup_cont.$cont.animate({
-                        width: pop_stuff.cont_css_width,
-                        height: pop_stuff.cont_css_height,
+                        width: popup_cont.pop_stuff.cont_css_width,
+                        height: popup_cont.pop_stuff.cont_css_height,
                         'font-size': px_from_em(1)
                     }, {
                         duration: POP_DOWN_ANIMATE_MS,
@@ -3066,9 +3136,9 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                         queue: false
                     }).promise());
                     promises.push(popup_cont.$caption_bar.animate({
-                        width: pop_stuff.caption_css_width,
-                        height: pop_stuff.caption_css_height,
-                        'background-color': pop_stuff.caption_css_background
+                        width: popup_cont.pop_stuff.caption_css_width,
+                        height: popup_cont.pop_stuff.caption_css_height,
+                        'background-color': popup_cont.pop_stuff.caption_css_background
                     }, {
                         duration: POP_DOWN_ANIMATE_MS,
                         easing: POP_DOWN_ANIMATE_EASING,
@@ -3083,9 +3153,6 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                     // TODO:  Velocity.js animation?  https://github.com/julianshapiro/velocity
                 }
 
-
-                // FALSE WARNING:  Argument type {complete: complete} is not assignable to parameter type number | KeyframeAnimationOptions | undefined
-                // noinspection JSCheckFunctionSignatures
                 promises.push(popup_cont.$sup.animate(thumb_cont.fixed_coordinates(), {
                     duration: POP_DOWN_ANIMATE_MS,
                     easing: POP_DOWN_ANIMATE_EASING,
@@ -3111,14 +3178,13 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
 
                 var combined_promise = $.when.apply($, promises);
                 combined_promise.done(function popdown_animation_done() {
-
                     $('#popup-screen').remove();   // Removes contained popup contribution too.
                     popup_cont = null;
                     js_for_contribution.popup_cont = popup_cont;
 
                     then();
                 });
-            // });
+            }
         } else {   // zero pop-ups
             then();
         }
@@ -3134,72 +3200,20 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         pop_down_all(false);
 
         if (was_already_popped_up) {
-            console.warn("Contribution", cont_idn, "is popping itself down by 2nd click.");
+            console.warn("Contribution", cont.idn, "is popping itself down by 2nd click.");
             // NOTE:  Avoid double-pop-up.  Just pop down, don't pop-up again.
-            //        This may no longer be possible, with the popup-screen.
+            //        This may no longer be possible, with the popup-screen,
+            //        and the save-bar buttons all disabled on the popup.
             return null;
         }
 
-        // var top_air = $('.sup-category-first').offset().top;
-        var render_width = cont.$render_bar.width();
-        var render_height = cont.$render_bar.height();
-        var cont_css_width = cont.$cont.css('width');
-        var cont_css_height = cont.$cont.css('height');
-        var caption_css_width = cont.$caption_bar.css('width');
-        var caption_css_height = cont.$caption_bar.css('height');
-        var caption_css_background = cont.$caption_bar.css('background-color');
-        var save_height = cont.$save_bar.height() || cont.$save_bar.find('.edit').height();
-        var vertical_padding_in_css = px_from_em(0.3 + 0.3);
-
-        console.assert(
-            save_height > 0.0,
-            cont_idn,
-            save_height,
-            cont.$save_bar.height(),
-            cont.$save_bar.width(),
-            cont.$save_bar.find('.edit').height(),
-            cont.$save_bar.find('.expand').height(),
-            cont.$save_bar.css('overflow')
-        );
-        // EXAMPLE:  Assertion failed: 1929 0 ... 16 16 hidden
-        // EXAMPLE:  Assertion failed: 1851 0 0 202 16 16 hidden
-        // NOTE:  Sometimes $save_bar.height() is zero.
-        //        $save_bar is supposed to have enough .height() to contain its buttons,
-        //        but it's sometimes zero (not always), even though its overflow:hidden and
-        //        the button.full child has height.  (So does .unfull even though display none.)
-        //        See https://stackoverflow.com/a/5369963/673991
-        //        Working around it by reverting to the button height if the div height is zero.
-        //        Clear-fix didn't work https://alistapart.com/article/css-floats-101/#section7
-        //        Specifically, this code was in build_contribution_dom() below the buttons:
-        //            $save_bar.append($('<div>', { style: 'clear: both;' }).html('&nbsp;'));
-        //        Moving the .height() to before pop_down_all() didn't work.
-        //        Adds to the impression I don't understand the problem.
-        //        Along with the fact that $save_bar.height() is never zero from the console.
-        //        Not even when the item is eclipsed by something else popped up.
-        //        Both Chrome and Firefox have this problem,
-        //        and both are fixed by the || .full work-around.
-        //        Doesn't always happen.  I think it only happens when the bot is popping up
-        //        item N+1 as it is about to pop down item N.  So never for item 1.
-        //        Happens either for logged in users from their "my" category, and anon
-        //        users from the "others" category.
-        // TODO:  Try "Float Fix Float" http://complexspiral.com/publications/containing-floats/
-        //        More tricks:  https://stackoverflow.com/a/5369963/673991
+        var thumb_fixed_coordinates = cont.fixed_coordinates();
 
         popup_cont = Contribution(cont.idn);
         js_for_contribution.popup_cont = popup_cont;
         popup_cont.id_prefix = MONTY.POPUP_ID_PREFIX;
         popup_cont.capt = cont.capt;
         popup_cont.build_dom(cont.content);
-        popup_cont.$sup.find('.grip').removeClass('grip').addClass('grip-inoperative');
-        // var $popup = cont.$sup.clone();
-        // // TODO:  Why in the world was this .clone(false, true)??
-        // //        It seems to have worked; sup data wasn't cloned but cont data was.
-        // //        Anyway I don't think I need it.  Do I??
-        //
-        // $popup.find('[id]').attr('id', function () {
-        //     return MONTY.POPUP_ID_PREFIX + $(this).attr('id');
-        // });
-        // // NOTE:  Prefix all id attributes in the clone elements, to avoid duplicate ids.
 
         popup_cont.$sup.find('.grip').removeClass('grip').addClass('grip-inoperative');
         // NOTE:  No dragging popped-up stuff.
@@ -3208,528 +3222,190 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         //        seemed the lesser UX crime.
 
         popup_cont.$sup.addClass('pop-up');
-        cont.$sup.addClass('pop-down');
         popup_cont.$sup.data('popped-down', cont.$sup);
 
         var $popup_screen = $('<div>', { id: 'popup-screen' });
         $popup_screen.append(popup_cont.$sup);
-        cont.$sup.before($popup_screen);
+        if (cont.is_dom_rendered()) {
+            cont.$sup.before($popup_screen);
+            cont.$sup.addClass('pop-down');
+        } else {
+            $('.unshown').before($popup_screen);
+        }
 
-
+        popup_cont.$sup.css(thumb_fixed_coordinates);
+        popup_cont.$sup.css({
+            position: 'fixed',
+            'z-index': 1
+        });
+        // NOTE:  Start the popup right where the original thumbnail was on the screen, but with
+        //        fixed coordinates.
 
         popup_cont.rebuild_bars(function popup_thumbnail_rendered() {
+            setTimeout(function () {   // Give rendering some airtime.
+                new_rendering_of_a_contribution();
 
+                // var top_air = $('.sup-category-first').offset().top;
+                var thumb_render_width = popup_cont.$render_bar.width();
+                var thumb_render_height = popup_cont.$render_bar.height();
+                var cont_css_width = popup_cont.$cont.css('width');
+                var cont_css_height = popup_cont.$cont.css('height');
+                var caption_css_width = popup_cont.$caption_bar.css('width');
+                var caption_css_height = popup_cont.$caption_bar.css('height');
+                var caption_css_background = popup_cont.$caption_bar.css('background-color');
 
+                var vertical_padding_in_css = px_from_em(0.3 + 0.3);
 
-            // var pop_cont = Contribution_from_element($popup);
+                // var save_height = popup_cont.$save_bar.height() || popup_cont.$save_bar.find('.edit').height();
+                // console.assert(
+                //     save_height > 0.0,
+                //     cont.idn,
+                //     save_height,
+                //     cont.$save_bar.height(),
+                //     cont.$save_bar.width(),
+                //     cont.$save_bar.find('.edit').height(),
+                //     cont.$save_bar.find('.expand').height(),
+                //     cont.$save_bar.css('overflow')
+                // );
+                // // EXAMPLE:  Assertion failed: 1929 0 ... 16 16 hidden
+                // // EXAMPLE:  Assertion failed: 1851 0 0 202 16 16 hidden
+                // // NOTE:  Sometimes $save_bar.height() is zero.
+                // //        $save_bar is supposed to have enough .height() to contain its buttons,
+                // //        but it's sometimes zero (not always), even though its overflow:hidden and
+                // //        the button.full child has height.  (So does .unfull even though display none.)
+                // //        See https://stackoverflow.com/a/5369963/673991
+                // //        Working around it by reverting to the button height if the div height is zero.
+                // //        Clear-fix didn't work https://alistapart.com/article/css-floats-101/#section7
+                // //        Specifically, this code was in build_contribution_dom() below the buttons:
+                // //            $save_bar.append($('<div>', { style: 'clear: both;' }).html('&nbsp;'));
+                // //        Moving the .height() to before pop_down_all() didn't work.
+                // //        Adds to the impression I don't understand the problem.
+                // //        Along with the fact that $save_bar.height() is never zero from the console.
+                // //        Not even when the item is eclipsed by something else popped up.
+                // //        Both Chrome and Firefox have this problem,
+                // //        and both are fixed by the || .full work-around.
+                // //        Doesn't always happen.  I think it only happens when the bot is popping up
+                // //        item N+1 as it is about to pop down item N.  So never for item 1.
+                // //        Happens either for logged in users from their "my" category, and anon
+                // //        users from the "others" category.
+                // // TODO:  Try "Float Fix Float" http://complexspiral.com/publications/containing-floats/
+                // //        More tricks:  https://stackoverflow.com/a/5369963/673991
 
-            var max_live_width = usable_width();
-            var caption_height_px = cont.$caption_bar.outerHeight();
-            // NOTE:  Wrapped thumbnail captions may result in less tall popups,
-            //        because popped-up captions don't need to be wrapped.
-            var max_live_height = Math.round(
-                usable_height()
-                - caption_height_px
-                // - save_height   // Not this; we eliminated buttons below the pop-up.
-                - vertical_padding_in_css
-                - 30
-            );
-            // NOTE:  Extra 30-pixel reduction in height.
-            //        Tends to prevent scrollbars from spontaneously appearing.
-            //        Someday a less crude way would be good.
+                var max_live_width = usable_width();
+                var caption_height_px = popup_cont.$caption_bar.outerHeight();
+                // NOTE:  Wrapped thumbnail captions may result in less tall popups,
+                //        because popped-up captions don't need to be wrapped.
+                var max_live_height = Math.round(
+                    usable_height()
+                    - caption_height_px
+                    // - save_height   // Not this; we eliminated buttons below the pop-up.
+                    - vertical_padding_in_css
+                    - 30
+                );
+                // NOTE:  Extra 30-pixel reduction in height.
+                //        Tends to prevent scrollbars from spontaneously appearing.
+                //        Someday a less crude way would be good.
 
-            popup_cont.$sup.data('pop-stuff', {
-                render_width: render_width,
-                render_height: render_height,
-                cont_css_width: cont_css_width,
-                cont_css_height: cont_css_height,
-                caption_css_width: caption_css_width,
-                caption_css_height: caption_css_height,
-                caption_css_background: caption_css_background,
-                max_live_width: max_live_width,
-                max_live_height: max_live_height,
-                fixed_coordinates: cont.fixed_coordinates()
-            });
+                // popup_cont.$sup.data('pop-stuff',
+                popup_cont.pop_stuff = {
+                    thumb_render_width: thumb_render_width,
+                    thumb_render_height: thumb_render_height,
+                    cont_css_width: cont_css_width,
+                    cont_css_height: cont_css_height,
+                    caption_css_width: caption_css_width,
+                    caption_css_height: caption_css_height,
+                    caption_css_background: caption_css_background,
+                    max_live_width: max_live_width,
+                    max_live_height: max_live_height,
+                    fixed_coordinates: thumb_fixed_coordinates
+                };
 
-            popup_cont.$sup.css({
-                position: 'fixed',
-                'z-index': 1
-            });
-            popup_cont.$sup.css(cont.fixed_coordinates());
-            // NOTE:  Start the popup right where the original thumbnail was on the screen, but with
-            //        fixed coordinates.
+                if (popup_cont.is_media) {
 
-            if (popup_cont.is_media) {
-                var img_src = cont.$img_thumb.attr('src');
-                // NOTE:  popup_cont.$img_thumb is ajax-loaded, use cont.$img_thumb instead.
-                if (is_defined(img_src)) {
-                    popup_cont.$render_bar.css({
-                        'background-image': 'url(' + img_src + ')',
-                        'background-position': 'center center',
-                        'background-size': 'cover'
-                    });
-                    // NOTE:  This makes the thumbnail resemble the unplayed youtube video,
-                    //        while it's expanding to pop-up size,
-                    //        albeit with lower resolution,
-                    //        at least today it seems to.
-                    // THANKS:  Scale background to cover element, without distorting aspect ratio,
-                    //          https://stackoverflow.com/a/7372377/673991
-                }
-
-                popup_cont.live_media_iframe({
-                    idn: popup_cont.id_attribute,   // idn is a misnomer, it may include popup_prefix
-                    url: popup_cont.media_url,
-                    is_pop_up: true,
-                    auto_play: auto_play.toString(),
-                    width:  max_live_width,
-                    height: max_live_height
-                }, function media_iframe_loaded() {
-                    popup_cont.$render_bar.css({
-                        'background-image': '',
-                        'background-position': '',
-                        'background-size': ''
-                    });
-                    // NOTE:  This removes unsightly background echo for some vimeo and flickr embeds.
-                    // THANKS:  Remove CSS style, https://stackoverflow.com/a/4036868/673991
-                });
-                // NOTE:  This is what overwrites the original thumbnail image
-                //        and makes it live media (e.g. a video) in the pop-up.
-                //        When oembed doesn't provide a thumbnail (e.g. dropbox) this may
-                //        load the iframe twice.
-
-                popup_cont.$iframe.width(render_width);
-                popup_cont.$iframe.height(render_height);
-                // NOTE:  Until embed_content.js gets up and sets the size of the iframe through the
-                //        iFrameResizer, let it start off as the same size as the thumbnail.
-
-                popup_cont.resizer_init(function pop_media_init() {
-                    // NOTE:  Harmless warning:
-                    //        [iFrameSizer][Host page: iframe_popup_1990] Ignored iFrame, already setup.
-                    //        because the popup is CLONED from a contribution that already
-                    //        initialized its iFrameResizer.  Apparently it still needs to be
-                    //        initialized but it thinks it doesn't.
-
-                    popup_cont.$sup.trigger(popup_cont.Event.MEDIA_INIT);
-
-                    // NOTE:  Finally decided the best way to make the popup iframe big
-                    //        was to focus on the inner CONTENTS size,
-                    //        and let iFrameResizer handle the outer size.
-                    // SEE:  Tricky iframe height 100%, https://stackoverflow.com/a/5871861/673991
-
-                    // FALSE WARNING:  Argument type string is not assignable to parameter type {get: (function(): string)}
-                    // noinspection JSCheckFunctionSignatures
                     deanimate("popping up media", popup_cont.id_attribute);
 
-                    popup_cont.resizer_nudge();
-                    popup_cont.zero_iframe_recover();
-                    // NOTE:  A little extra help for pop-ups
-                    //        with either a zero-iframe bug in iFrameResizer,
-                    //        or a poor internet connection.
-
-                    pop_screen_fade_in();
-                });
-            } else {
-                popup_cont.full_ish_screen_text(function () {
-                    if (auto_play) {
-                        var pop_text = popup_cont.content;
-
-                        utter = new window.SpeechSynthesisUtterance(pop_text);
-                        js_for_contribution.utter = utter;
-                        // THANKS:  SpeechSynthesis bug workaround from 2016,
-                        //          https://stackoverflow.com/a/35935851/673991
-                        // NOTE:  Not sure if this is the same bug, but sometimes speech was
-                        //        not starting.
-
-                        utter.rate = 0.75;
-
-                        // Another attempt to fix text-not-speaking bug.
-
-                        utter.pitch = 1.0;    // otherwise it's -1, wtf that means
-                        // Another attempt to fix text-not-speaking bug.
-
-                        switch ($('#play_bot_speech').val()) {
-                        case PLAY_BOT_SPEECH_OUT_LOUD:
-                            utter.volume = 1.0;   // otherwise it's -1, wtf that means
-                            break;
-                        case PLAY_BOT_SPEECH_ANIMATED:
-                            utter.volume = 0.0;   // otherwise it's -1, wtf that means
-                            break;
-                        case PLAY_BOT_SPEECH_OFF:
-                            utter.volume = 0.0;   // otherwise it's -1, wtf that means
-                            break;
-                        }
-
-                        // utter.voice = chooseWeighted(voices, voice_weights);
-                        // console.log("Voice", utter.voice.name, utter.voice.lang);
-                        // NOTE:  (2019) Google voices don't report their word-boundary events.
-                        //               Microsoft voices do, and they sound better too.
-                        //        (2018) https://stackoverflow.com/a/48160824/673991
-                        //        (2016) https://bugs.chromium.org/p/chromium/issues/detail?id=521666
-                        //        Upshot is not to set voice at all.
-                        //        Microsoft Anna is default in Chrome, Firefox, Opera, Edge.
-                        //        Edge has many voices (9 English, 25 total).
-                        //        Could instead multiplicatively weight Google voices 0, Microsoft 1.
-                        //        Anyway, word boundaries are important because visual highlighting
-                        //        of words seems more potent.  Combination visual and auditory.
-
-                        var states_before = speech_states();
-
-                        window.speechSynthesis.cancel();   // Another attempt to fix text-not-speaking bug.
-                        // NOTE:  This cancel appears to be the trick that fixed it.
-
-                        var states_between = speech_states();
-                        window.speechSynthesis.speak(utter);
-                        // NOTE:  Play audio even if not auto_play -- because there's no way
-                        //        to start the speech otherwise.  (SpeechSynthesis has no
-                        //        native control UX.)
-                        // EXAMPLE:  Silent for UC Browser, Opera Mobile, IE11
-
-                        var states_after = speech_states();
-
-                        console.log(
-                            "Language",
-                            voice_default.name,
-                            voice_default.lang,
-                            utter.voice,   // null in Chrome
-                            typeof utter.lang, utter.lang,   // string '' in Chrome
-                            states_before,
-                            "->",
-                            states_between,
-                            "->",
-                            states_after
-                        );
-                        // NOTE:  Probe droid for occasional lack of speaking popup.
-                        // EXAMPLE:  Microsoft Anna - English (United States) en-US
-                        // EXAMPLE:  (unknown) (UC Browser -- onvoiceschanged never called)
-                        //           window.speechSynthesis.getVoices() returns []
-                        //           https://caniuse.com/#feat=speech-synthesis
-
-                        $(utter).on('start end boundary error mark pause resume', function (evt) {
-                            console.log(
-                                "Utter",
-                                evt.originalEvent.elapsedTime.toFixed(1),
-                                evt.type,
-                                evt.originalEvent.charIndex
-                            );
-                            // EXAMPLE:
-                            //     Utter start 0 39.220001220703125
-                            //     Utter boundary 0 158.97999572753906
-                            //     Utter boundary 0 161.0850067138672
-                            //     Utter boundary 5 359.07000732421875
-                            //     Utter boundary 8 449.2300109863281
-                            //     Utter boundary 13 759.3049926757812
-                            //     Utter boundary 15 799.1599731445312
-                            //     Utter end 0 1779.2449951171875
-                            // EXAMPLE:
-                            //                   Utter 21.7 start 0
-                            //     14:53:02.834  Utter 116.9 boundary 0
-                            //     14:53:02.837  Utter 119.9 boundary 0
-                            //     14:53:02.935  Utter 217.1 boundary 3
-                            //     14:53:03.185  Utter 467.1 boundary 7
-                            //     14:53:03.293 Bot SPEECH_PLAYING 0 The text is being spoken
-                            //     14:53:03.385  Utter 667.1 boundary 12
-                            //     14:53:03.387  Utter 669.7 boundary 14
-                            //     14:53:03.784  Utter 1067.0 boundary 25
-                            //     14:53:03.984  Utter 1267.0 boundary 28
-                            //     14:53:04.135  Utter 1417.0 boundary 32
-                            //     14:53:04.293 Bot SPEECH_PLAYING 1 The text is being spoken
-                            //     14:53:04.634  Utter 1917.0 boundary 41
-                            //     14:53:04.935  Utter 2217.1 boundary 49
-                            //     14:53:04.976 Pause player bot
-                            //     14:53:04.980  Utter 2262.8 pause 0         <-- .004 second feedback
-                            //     14:53:05.084  Utter 2366.9 boundary 52
-                            //     14:53:05.287  Utter 2569.7 boundary 55
-                            //     14:53:05.485  Utter 2767.1 boundary 61
-                            //     14:53:05.685  Utter 2967.1 boundary 64
-                            //     14:53:06.085  Utter 3367.3 boundary 70
-                            //     14:53:12.081 Resume player bot
-                            //     14:53:12.086  Utter 9368.3 resume 0
-                            //     14:53:12.294 Bot SPEECH_PLAYING 2 The text is being spoken
-                            //     14:53:13.162  Utter 10444.1 end 0
-                            //     14:53:13.162
+                    var img_src = popup_cont.$img_thumb.attr('src');
+                    // NOTE:  popup_cont.$img_thumb is ajax-loaded, use cont.$img_thumb instead.
+                    if (is_defined(img_src)) {
+                        popup_cont.$render_bar.css({
+                            'background-image': 'url(' + img_src + ')',
+                            'background-position': 'center center',
+                            'background-size': 'cover'
                         });
-                        var $svg = null;
-                        $(utter).on('start', function speech_boundary(evt) {
-                            popup_cont.$sup.trigger(popup_cont.Event.SPEECH_START);
-                            interact.START(cont_idn, evt.originalEvent.charIndex);
-                            speech_progress = 0;
-                        });
-                        $(utter).on('pause', function speech_pause() {
-                            interact.PAUSE(cont_idn, speech_progress);
-                        });
-                        $(utter).on('resume', function speech_resume() {
-                            interact.RESUME(cont_idn, speech_progress);
-                            // NOTE:  Resume can be 2-4 words later than pause!
-                            //        This is the "speechSynthesis pause delay" issue.
-                        });
-                        $(utter).on('boundary', function speech_boundary(evt) {
-                            // TODO:  Hold off HERE if pause is happening.
-                            //        This would avoid highlighting the NEXT word.
-                            //        Besides the wrong word, the animation appears unresponsive to
-                            //        the pause command, stubbornly pushing on ahead.
-                            //        (It already butts ahead 2 words anyway.)
-                            var start_word = evt.originalEvent.charIndex;
-                            // NOTE:  We don't seem to need to adjust start_word to the left
-                            //        to get to a word-boundary.  That's what's done in
-                            //        https://stackoverflow.com/a/50285928/673991
-                            //        If we did, it might look like this:
-                            //        left = str.slice(0, pos + 1).search(/\S+$/)
-                            var word_to_end = pop_text.slice(start_word);
-                            var len_word = word_to_end.search(/\s|$/);
-                            var end_word = start_word + len_word;
-                            var the_word = pop_text.slice(start_word, end_word+1);
-                            var range_word = window.document.createRange();
-                            popup_cont.$cont.text(pop_text);
-                            var text_node = popup_cont.$cont[0].childNodes[0];
-                            console.assert(text_node.nodeName === '#text', text_node, popup_cont);
-                            range_word.setStart(text_node, start_word);
-                            range_word.setEnd(text_node, end_word);
-                            // THANKS:  Range of text, https://stackoverflow.com/a/29903556/673991
-                            var speaking_node = $('<span>', { class:'speaking' })[0];
-                            range_word.surroundContents(speaking_node);
-                            // THANKS:  Range wrap, https://stackoverflow.com/a/6328906/673991
-                            speech_progress = end_word;
-                            scroll_into_view(speaking_node, {
-                                behavior: 'smooth',
-                                block: 'center',
-                                inline: 'center'
-                            });
-                            // SEE:  Highlight speech, https://stackoverflow.com/a/38122794/673991
-                            // SEE:  Select speech, https://stackoverflow.com/a/50285928/673991
+                        // NOTE:  This makes the thumbnail resemble the unplayed youtube video,
+                        //        while it's expanding to pop-up size,
+                        //        albeit with lower resolution,
+                        //        at least today it seems to.
+                        // THANKS:  Scale background to cover element, without distorting aspect ratio,
+                        //          https://stackoverflow.com/a/7372377/673991
 
-
-                            if (EXPERIMENTAL_RED_WORD_READING) {
-                                // NOTE:  The following experimental code would render the word being
-                                //        spoken, in red, on top of the same word in the paragraph.
-                                var r = range_word.getBoundingClientRect();
-                                console.log("Bound", the_word, r.x, r.y);
-                                if ($svg !== null) {
-                                    $svg.remove();
-                                }
-                                var svg_top = r.top - popup_cont.$sup.position().top;
-                                var svg_left = r.left - popup_cont.$sup.position().left;
-                                $svg = $('<svg>', {
-                                    height: r.height,
-                                    width: r.width,
-                                    style: (
-                                        'position:absolute;color:red;font: 16px Literata,serif;' +
-                                        'top:'+svg_top.toString()+'px;' +
-                                        'left:'+svg_left.toString()+'px;'
-                                    )
-                                }).append($('<text>', { fill:'red !important' }).append(the_word));
-                                popup_cont.$sup.append($svg);
-                                // TODO:  Needs to scroll word into view,
-                                //        and then also position the svg right onto the scrolled word.
-                            }
-                        });
-                        $(utter).on('end', function (evt) {
-                            popup_cont.$cont.text(pop_text);
-                            if (utter === null) {
-                                console.error(
-                                    "Utterance interruptus (vestigial end after aborted speech)",
-                                    (evt.originalEvent.elapsedTime/1000).toFixed(3), "sec"
-                                );
-                                // TODO:  Make a better scheme for detecting a stale utter event.
-                                //        Because a NEW bot play cycle might otherwise be
-                                //        transitioned prematurely.
-                                //        Did the $(utter).off() in pop_down_all() solve this issue?
-                                interact.QUIT(cont_idn, speech_progress);
-                            } else {
-                                console.log(
-                                    "Utterance",
-                                    (evt.originalEvent.elapsedTime/1000).toFixed(3), "sec,",
-                                    speech_progress, "of", pop_text.length, "chars"
-                                );
-                                popup_cont.$sup.trigger(popup_cont.Event.SPEECH_END);
-                                // NOTE:  A bit lame, this happens whether manually popped up or
-                                //        automatically played by the bot.  But it should have
-                                //        no consequence manually anyway.
-                                interact.END(cont_idn, pop_text.length);
-                            }
-                            speech_progress = null;
-                            // NOTE:  Setting speech_progress to null here
-                            //        prevents MONTY.INTERACTION.QUIT interaction after END
-                        });
-                        popup_cont.$sup.trigger(popup_cont.Event.SPEECH_PLAY);
-                        return;
-
-
-
-                        // NOTE:  The following code worked with the Talkify service.
-                        //        Which I recall was more legible than the Chrome browser speech,
-                        //        (though less so than the Edge browser speech), and is reasonably
-                        //        priced, but any metering of an uber free service is vexing.
-
-
-
-                        // noinspection UnreachableCodeJS
-                        if (is_specified(talkify)) {
-                            talkify.config.remoteService.host = 'https://talkify.net';
-                            talkify.config.remoteService.apiKey = '084ff0b0-89a3-4284-96a1-205b5a2072c0';
-                            talkify.config.ui.audioControls = {
-                                enabled: false, //<-- Disable to get the browser built in audio controls
-                                container: document.getElementById("player-bot")
-                            };
-                            talkify_player = new talkify.TtsPlayer();
-                            talkify_player.enableTextHighlighting();
-
-                            talkify_player.setRate(-1.0);   // a little slower than the default
-                            // SEE:  Rate codes, https://github.com/Hagsten/Talkify#user-content-talkify-hosted-only
-
-                            talkify_voice_name = random_element(TALKIFY_VOICES_ENGLISH);
-                            talkify_player.forceVoice({name: talkify_voice_name});
-                            // SEE:  Voice names,
-                            //       https://github.com/Hagsten/Talkify/issues/20#issuecomment-347837787-permalink
-                            //       https://jsfiddle.net/mknm62nx/1/
-                            //       https://talkify.net/api/speech/v1/voices?key= + talkify api key
-
-                            // noinspection JSUnusedAssignment
-                            var popup_cont_node_list = document.querySelectorAll(popup_cont_selector);
-                            // NOTE:  Although $(popup_cont_selector) appears to work, the doc calls for
-                            //        "DOM elements" and the example passes a NodeList object.
-                            //        https://github.com/Hagsten/Talkify#play-all-top-to-bottom
-
-                            talkify_playlist = new talkify.playlist()
-                                .begin()
-                                .usingPlayer(talkify_player)
-                                // .withTextInteraction()
-                                .withElements(popup_cont_node_list)
-                                .build();
-
-                            talkify_playlist.play();
-                            // NOTE:  Play now, if not auto_play pause later.
-
-                            // console.log("Talkie", talkify_player, talkify_playlist);
-                            // EXAMPLE talkify_player (type talkify.TtsPlayer) members:
-                            //     audioSource: {play: ƒ, pause: ƒ, isPlaying: ƒ, paused: ƒ, currentTime: ƒ, …}
-                            //     correlationId: "8e90fbe4-607f-4a82-97af-6802a18e430b"
-                            //     createItems: ƒ (text)
-                            //     currentContext: {item: {…}, positions: Array(86)}
-                            //     disableTextHighlighting: ƒ ()
-                            //     dispose: ƒ ()
-                            //     enableTextHighlighting: ƒ ()
-                            //     forceLanguage: ƒ (culture)
-                            //     forceVoice: ƒ (voice)
-                            //     forcedVoice: null
-                            //     isPlaying: ƒ ()
-                            //     isPlaying: ƒ ()
-                            //     pause: ƒ ()
-                            //     paused: ƒ ()
-                            //     play: ƒ ()
-                            //     playAudio: ƒ (item)
-                            //     playItem: ƒ (item)
-                            //     playText: ƒ (text)
-                            //     playbar: {instance: null}
-                            //     setRate: ƒ (r)
-                            //     settings: {useTextHighlight: true, referenceLanguage: {…}, lockedLanguage: null, rate: 1, useControls: false}
-                            //     subscribeTo: ƒ (subscriptions)
-                            //     withReferenceLanguage: ƒ (refLang)
-                            //     wordHighlighter: {start: ƒ, highlight: ƒ, dispose: ƒ}
-                            // EXAMPLE talkify_playlist (type Object, e.g. {}) members:
-                            //     disableTextInteraction: ƒ ()
-                            //     dispose: ƒ ()
-                            //     enableTextInteraction: ƒ ()
-                            //     getQueue: ƒ ()
-                            //     insert: ƒ insertElement(element)
-                            //     isPlaying: ƒ isPlaying()
-                            //     pause: ƒ pause()
-                            //     play: ƒ play(item)
-                            //     replayCurrent: ƒ replayCurrent()
-                            //     setPlayer: ƒ (p)
-                            //     startListeningToVoiceCommands: ƒ ()
-                            //     stopListeningToVoiceCommands: ƒ ()
-
-                            var duration_report = "unknown duration";
-
-                            var pause_once = ! auto_play;
-
-                            var this_player = talkify_player;
-                            // NOTE:  Local "copy" of player needed in case pop_down_all() happens
-                            //        before the callback below has fully popped up.
-
-                            talkify.messageHub.subscribe(BOT_CONTEXT, '*', function (message, topic) {
-                                // var members = message ? Object.keys(message).join() : "(no message)";
-                                console.log("talkify", topic/*, members*/);
-                                // EXAMPLE topics (context.type.action only, GUID context removed)
-                                //         and message members:
-                                //     player.*.prepareplay     \  text,preview,element,originalElement,
-                                //     player.tts.loading        > isPlaying,isLoading
-                                //     player.tts.loaded        /
-                                //     player.tts.play          item,positions,currentTime
-                                //     player.tts.timeupdated   currentTime,duration
-                                //     player.tts.pause         (no message)
-                                //     player.tts.ended         ((same members as loaded))
-                                if (/\.play$/.test(topic)) {
-                                    if (pause_once) {
-                                        pause_once = false;
-                                        this_player.pause();
-                                        // NOTE:  Crude, mfing way to support manual-only playing.
-                                        //        Without this, player is inoperative.
-                                    }
-                                }
-                            });
-                            talkify.messageHub.subscribe(
-                                BOT_CONTEXT,
-                                '*.player.tts.timeupdated',
-                                function (message) {
-                                    // NOTE:  This event happens roughly 20Hz, 50ms.
-                                    var $highlight = $('.talkify-word-highlight');
-                                    // $highlight.each(function () {
-                                    //     scroll_into_view(this, {
-                                    //         behavior: 'smooth',
-                                    //         block: 'center',
-                                    //         inline: 'center'
-                                    //     });
-                                    // });
-                                    // TODO:  Does this work without .each()?
-                                    scroll_into_view($highlight, {
-                                        behavior: 'smooth',
-                                        block: 'center',
-                                        inline: 'center'
-                                    });
-                                    // TODO:  Reduce frequency of this call by tagging element
-                                    //        with .already-scrolled-into-view?
-                                    //        Because this event happens 20Hz!
-                                    duration_report = message.duration.toFixed(1) + " seconds";
-                                }
-                            );
-                            talkify.messageHub.subscribe(
-                                BOT_CONTEXT,
-                                '*.player.tts.ended',
-                                function (/*message, topic*/) {
-                                    popup_cont.$sup.trigger(popup_cont.Event.SPEECH_END);
-                                    // console.log("talkify ended", popup_cont.id_attribute, message, topic);
-                                    // EXAMPLE:  topic
-                                    //     23b92641-e7dc-46af-9f9b-cbed4de70fe4.player.tts.ended
-                                    // EXAMPLE:  message object members:
-                                    //     element: div#popup_1024.contribution.talkify-highlight
-                                    //     isLoading: false
-                                    //     isPlaying: false
-                                    //     originalElement: div#popup_1024.contribution
-                                    //     preview: "this is just a test"
-                                    //     text: "this is just a te
-                                    //     st"
-                                }
-                            );
-                            talkify_done = function () {
-                                console.log(
-                                    "talkify", popup_cont.id_attribute,
-                                    "voice", talkify_voice_name,
-                                    duration_report
-                                );
-                            };
-                            // noinspection JSUnusedAssignment
-                            popup_cont.$sup.trigger(popup_cont.Event.SPEECH_PLAY);
-                        }
                     }
-                });
-            }
+                    popup_cont.live_media_iframe({
+                        idn: popup_cont.id_attribute,   // idn is a misnomer, it may include popup_prefix
+                        url: popup_cont.media_url,
+                        is_pop_up: true,
+                        auto_play: auto_play.toString(),
+                        width:  max_live_width,
+                        height: max_live_height
+                    }, function media_iframe_loaded() {
+                        popup_cont.$render_bar.css({
+                            'background-image': '',
+                            'background-position': '',
+                            'background-size': ''
+                        });
+                        // NOTE:  This removes unsightly background echo for some vimeo and flickr embeds.
+                        // THANKS:  Remove CSS style, https://stackoverflow.com/a/4036868/673991
+                    });
+
+                    // NOTE:  This is what overwrites the original thumbnail image
+                    //        and makes it live media (e.g. a video) in the pop-up.
+                    //        When oembed doesn't provide a thumbnail (e.g. dropbox) this may
+                    //        load the iframe twice.
+                    popup_cont.$iframe.width(thumb_render_width);
+                    popup_cont.$iframe.height(thumb_render_height);
+
+                    // NOTE:  Until embed_content.js gets up and sets the size of the iframe through
+                    //        the iFrameResizer, let it start off as the same size as the thumbnail.
+                    popup_cont.resizer_init(function pop_media_init() {
+
+                        // NOTE:  Harmless warning:
+                        //        [iFrameSizer][Host page: iframe_popup_1990] Ignored iFrame, already setup.
+                        //        because the popup is CLONED from a contribution that already
+                        //        initialized its iFrameResizer.  Apparently it still needs to be
+                        //        initialized but it thinks it doesn't.
+
+                        popup_cont.$sup.trigger(popup_cont.Event.MEDIA_INIT);
+                        // NOTE:  Finally decided the best way to make the popup iframe big
+                        //        was to focus on the inner CONTENTS size,
+                        //        and let iFrameResizer handle the outer size.
+                        // SEE:  Tricky iframe height 100%, https://stackoverflow.com/a/5871861/673991
+
+                        popup_cont.resizer_nudge();
+                        popup_cont.zero_iframe_recover();
+                        // NOTE:  A little extra help for pop-ups
+                        //        with either a zero-iframe bug in iFrameResizer,
+                        //        or a poor internet connection.
+
+                        pop_screen_fade_in();
+                    });
+                } else {
+                    popup_cont.full_ish_screen_text(function () {
+                        if (auto_play) {
+                            popup_cont.play_quote_web_speech_api();
+                            return;
+
+                            // noinspection UnreachableCodeJS
+                            popup_cont.play_quote_talkify(auto_play);
+                        }
+                    });
+                }
+            });
         });
-        console.log("Popup", cont_idn, cont.media_domain || "(quote)");
+        console.log("Popup", cont.idn, cont.media_domain || "(quote)");
         // return pop_cont;
     }
 
-    function speech_synthesis_init() {
+    function pop_speech_synthesis_init() {
         if (window.speechSynthesis !== null) {
             window.speechSynthesis.onvoiceschanged = function () {
                 // THANKS:  voices ready, https://stackoverflow.com/a/22978802/673991
@@ -3752,35 +3428,396 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         }
     }
 
-    /**
-     * Finish up all animations.
-     *
-     * @param {string} context - some string about what we're doing
-     * @param {{get: (function(): string)}} what - more info
-     */
-    function deanimate(context, what) {
-        $(':animated').each(function () {
-            var $element = $(this);
-            var deanimating_cont = Contribution_from_element($element);
-            if (deanimating_cont.does_exist()) {
-                console.warn(
-                    "Deanimating",
-                    context,
-                    what,
-                    deanimating_cont.id_attribute,
-                    $element.attr('class') || "(no classes)"
-                );
-            } else {
-                console.warn(
-                    "Deanimating",
-                    context,
-                    what,
-                    "SOME ELEMENT",
-                    $element
-                );
-            }
-            $element.finish();
+    Contribution.prototype.play_quote_web_speech_api = function Contribution_play_quote_web_speech_api() {
+        var that = this;
+
+        var pop_text = that.content;
+
+        utter = new window.SpeechSynthesisUtterance(pop_text);
+        js_for_contribution.utter = utter;
+        // THANKS:  SpeechSynthesis bug workaround from 2016,
+        //          https://stackoverflow.com/a/35935851/673991
+        // NOTE:  Not sure if this is the same bug, but sometimes speech was
+        //        not starting.
+
+        utter.rate = 0.75;
+
+        // Another attempt to fix text-not-speaking bug.
+
+        utter.pitch = 1.0;    // otherwise it's -1, wtf that means
+        // Another attempt to fix text-not-speaking bug.
+
+        switch ($('#play_bot_speech').val()) {
+        case PLAY_BOT_SPEECH_OUT_LOUD:
+            utter.volume = 1.0;   // otherwise it's -1, wtf that means
+            break;
+        case PLAY_BOT_SPEECH_ANIMATED:
+            utter.volume = 0.0;   // otherwise it's -1, wtf that means
+            break;
+        case PLAY_BOT_SPEECH_OFF:
+            utter.volume = 0.0;   // otherwise it's -1, wtf that means
+            break;
+        }
+
+        // utter.voice = chooseWeighted(voices, voice_weights);
+        // console.log("Voice", utter.voice.name, utter.voice.lang);
+        // NOTE:  (2019) Google voices don't report their word-boundary events.
+        //               Microsoft voices do, and they sound better too.
+        //        (2018) https://stackoverflow.com/a/48160824/673991
+        //        (2016) https://bugs.chromium.org/p/chromium/issues/detail?id=521666
+        //        Upshot is not to set voice at all.
+        //        Microsoft Anna is default in Chrome, Firefox, Opera, Edge.
+        //        Edge has many voices (9 English, 25 total).
+        //        Could instead multiplicatively weight Google voices 0, Microsoft 1.
+        //        Anyway, word boundaries are important because visual highlighting
+        //        of words seems more potent.  Combination visual and auditory.
+
+        var states_before = speech_states();
+
+        window.speechSynthesis.cancel();   // Another attempt to fix text-not-speaking bug.
+        // NOTE:  This cancel appears to be the trick that fixed it.
+
+        var states_between = speech_states();
+        window.speechSynthesis.speak(utter);
+        // NOTE:  Play audio even if not auto_play -- because there's no way
+        //        to start the speech otherwise.  (SpeechSynthesis has no
+        //        native control UX.)
+        // EXAMPLE:  Silent for UC Browser, Opera Mobile, IE11
+
+        var states_after = speech_states();
+
+        console.log(
+            "Language",
+            voice_default.name,
+            voice_default.lang,
+            utter.voice,   // null in Chrome
+            typeof utter.lang, utter.lang,   // string '' in Chrome
+            states_before,
+            "->",
+            states_between,
+            "->",
+            states_after
+        );
+        // NOTE:  Probe droid for occasional lack of speaking popup.
+        // EXAMPLE:  Microsoft Anna - English (United States) en-US
+        // EXAMPLE:  (unknown) (UC Browser -- onvoiceschanged never called)
+        //           window.speechSynthesis.getVoices() returns []
+        //           https://caniuse.com/#feat=speech-synthesis
+
+        $(utter).on('start end boundary error mark pause resume', function (evt) {
+            console.log(
+                "Utter",
+                evt.originalEvent.elapsedTime.toFixed(1),
+                evt.type,
+                evt.originalEvent.charIndex
+            );
+            // EXAMPLE:
+            //     Utter start 0 39.220001220703125
+            //     Utter boundary 0 158.97999572753906
+            //     Utter boundary 0 161.0850067138672
+            //     Utter boundary 5 359.07000732421875
+            //     Utter boundary 8 449.2300109863281
+            //     Utter boundary 13 759.3049926757812
+            //     Utter boundary 15 799.1599731445312
+            //     Utter end 0 1779.2449951171875
+            // EXAMPLE:
+            //                   Utter 21.7 start 0
+            //     14:53:02.834  Utter 116.9 boundary 0
+            //     14:53:02.837  Utter 119.9 boundary 0
+            //     14:53:02.935  Utter 217.1 boundary 3
+            //     14:53:03.185  Utter 467.1 boundary 7
+            //     14:53:03.293 Bot SPEECH_PLAYING 0 The text is being spoken
+            //     14:53:03.385  Utter 667.1 boundary 12
+            //     14:53:03.387  Utter 669.7 boundary 14
+            //     14:53:03.784  Utter 1067.0 boundary 25
+            //     14:53:03.984  Utter 1267.0 boundary 28
+            //     14:53:04.135  Utter 1417.0 boundary 32
+            //     14:53:04.293 Bot SPEECH_PLAYING 1 The text is being spoken
+            //     14:53:04.634  Utter 1917.0 boundary 41
+            //     14:53:04.935  Utter 2217.1 boundary 49
+            //     14:53:04.976 Pause player bot
+            //     14:53:04.980  Utter 2262.8 pause 0         <-- .004 second feedback
+            //     14:53:05.084  Utter 2366.9 boundary 52
+            //     14:53:05.287  Utter 2569.7 boundary 55
+            //     14:53:05.485  Utter 2767.1 boundary 61
+            //     14:53:05.685  Utter 2967.1 boundary 64
+            //     14:53:06.085  Utter 3367.3 boundary 70
+            //     14:53:12.081 Resume player bot
+            //     14:53:12.086  Utter 9368.3 resume 0
+            //     14:53:12.294 Bot SPEECH_PLAYING 2 The text is being spoken
+            //     14:53:13.162  Utter 10444.1 end 0
+            //     14:53:13.162
         });
+        var $svg = null;
+        $(utter).on('start', function speech_boundary(evt) {
+            that.$sup.trigger(that.Event.SPEECH_START);
+            interact.START(that.idn, evt.originalEvent.charIndex);
+            speech_progress = 0;
+        });
+        $(utter).on('pause', function speech_pause() {
+            interact.PAUSE(that.idn, speech_progress);
+        });
+        $(utter).on('resume', function speech_resume() {
+            interact.RESUME(that.idn, speech_progress);
+            // NOTE:  Resume can be 2-4 words later than pause!
+            //        This is the "speechSynthesis pause delay" issue.
+        });
+        $(utter).on('boundary', function speech_boundary(evt) {
+            // TODO:  Hold off HERE if pause is happening.
+            //        This would avoid highlighting the NEXT word.
+            //        Besides the wrong word, the animation appears unresponsive to
+            //        the pause command, stubbornly pushing on ahead.
+            //        (It already butts ahead 2 words anyway.)
+            var start_word = evt.originalEvent.charIndex;
+            // NOTE:  We don't seem to need to adjust start_word to the left
+            //        to get to a word-boundary.  That's what's done in
+            //        https://stackoverflow.com/a/50285928/673991
+            //        If we did, it might look like this:
+            //        left = str.slice(0, pos + 1).search(/\S+$/)
+            var word_to_end = pop_text.slice(start_word);
+            var len_word = word_to_end.search(/\s|$/);
+            var end_word = start_word + len_word;
+            var the_word = pop_text.slice(start_word, end_word+1);
+            var range_word = window.document.createRange();
+            that.$cont.text(pop_text);
+            var text_node = that.$cont[0].childNodes[0];
+            console.assert(text_node.nodeName === '#text', text_node, that);
+            range_word.setStart(text_node, start_word);
+            range_word.setEnd(text_node, end_word);
+            // THANKS:  Range of text, https://stackoverflow.com/a/29903556/673991
+            var speaking_node = $('<span>', { class:'speaking' })[0];
+            range_word.surroundContents(speaking_node);
+            // THANKS:  Range wrap, https://stackoverflow.com/a/6328906/673991
+            speech_progress = end_word;
+            scroll_into_view(speaking_node, {
+                behavior: 'smooth',
+                block: 'center',
+                inline: 'center'
+            });
+            // SEE:  Highlight speech, https://stackoverflow.com/a/38122794/673991
+            // SEE:  Select speech, https://stackoverflow.com/a/50285928/673991
+
+
+            if (EXPERIMENTAL_RED_WORD_READING) {
+                // NOTE:  The following experimental code would render the word being
+                //        spoken, in red, on top of the same word in the paragraph.
+                var r = range_word.getBoundingClientRect();
+                console.log("Bound", the_word, r.x, r.y);
+                if ($svg !== null) {
+                    $svg.remove();
+                }
+                var svg_top = r.top - that.$sup.position().top;
+                var svg_left = r.left - that.$sup.position().left;
+                $svg = $('<svg>', {
+                    height: r.height,
+                    width: r.width,
+                    style: (
+                        'position:absolute;color:red;font: 16px Literata,serif;' +
+                        'top:'+svg_top.toString()+'px;' +
+                        'left:'+svg_left.toString()+'px;'
+                    )
+                }).append($('<text>', { fill:'red !important' }).append(the_word));
+                that.$sup.append($svg);
+                // TODO:  Needs to scroll word into view,
+                //        and then also position the svg right onto the scrolled word.
+            }
+        });
+        $(utter).on('end', function (evt) {
+            that.$cont.text(pop_text);
+            if (utter === null) {
+                console.error(
+                    "Utterance interruptus (vestigial end after aborted speech)",
+                    (evt.originalEvent.elapsedTime/1000).toFixed(3), "sec"
+                );
+                // TODO:  Make a better scheme for detecting a stale utter event.
+                //        Because a NEW bot play cycle might otherwise be
+                //        transitioned prematurely.
+                //        Did the $(utter).off() in pop_down_all() solve this issue?
+                interact.QUIT(that.idn, speech_progress);
+            } else {
+                console.log(
+                    "Utterance",
+                    (evt.originalEvent.elapsedTime/1000).toFixed(3), "sec,",
+                    speech_progress, "of", pop_text.length, "chars"
+                );
+                that.$sup.trigger(that.Event.SPEECH_END);
+                // NOTE:  A bit lame, this happens whether manually popped up or
+                //        automatically played by the bot.  But it should have
+                //        no consequence manually anyway.
+                interact.END(that.idn, pop_text.length);
+            }
+            speech_progress = null;
+            // NOTE:  Setting speech_progress to null here
+            //        prevents MONTY.INTERACTION.QUIT interaction after END
+        });
+        that.$sup.trigger(that.Event.SPEECH_PLAY);
+    };
+
+    Contribution.prototype.play_quote_talkify = function Contribution_play_quote_talkify(is_auto_play) {
+        var that = this;
+
+        // NOTE:  The following code worked with the Talkify service.
+        //        Which I recall was more legible than the Chrome browser speech,
+        //        (though less so than the Edge browser speech), and is reasonably
+        //        priced, but any metering of an uber free service is vexing.
+
+        if (is_specified(talkify)) {
+            talkify.config.remoteService.host = 'https://talkify.net';
+            talkify.config.remoteService.apiKey = '084ff0b0-89a3-4284-96a1-205b5a2072c0';
+            talkify.config.ui.audioControls = {
+                enabled: false, //<-- Disable to get the browser built in audio controls
+                container: document.getElementById("player-bot")
+            };
+            talkify_player = new talkify.TtsPlayer();
+            talkify_player.enableTextHighlighting();
+
+            talkify_player.setRate(-1.0);   // a little slower than the default
+            // SEE:  Rate codes, https://github.com/Hagsten/Talkify#user-content-talkify-hosted-only
+
+            talkify_voice_name = random_element(TALKIFY_VOICES_ENGLISH);
+            talkify_player.forceVoice({name: talkify_voice_name});
+            // SEE:  Voice names,
+            //       https://github.com/Hagsten/Talkify/issues/20#issuecomment-347837787-permalink
+            //       https://jsfiddle.net/mknm62nx/1/
+            //       https://talkify.net/api/speech/v1/voices?key= + talkify api key
+
+            // noinspection JSUnusedAssignment
+            var popup_cont_node_list = document.querySelectorAll(selector_from_id(that.id_attribute));
+            // NOTE:  Although $(popup_cont_selector) i.e. that.$sup appears to work,
+            //        the doc calls for "DOM elements" and the example passes a NodeList object.
+            //        https://github.com/Hagsten/Talkify#play-all-top-to-bottom
+
+            talkify_playlist = new talkify.playlist()
+                .begin()
+                .usingPlayer(talkify_player)
+                // .withTextInteraction()
+                .withElements(popup_cont_node_list)
+                .build();
+
+            talkify_playlist.play();
+            // NOTE:  Play now, if not auto_play pause later.
+
+            // console.log("Talkie", talkify_player, talkify_playlist);
+            // EXAMPLE talkify_player (type talkify.TtsPlayer) members:
+            //     audioSource: {play: ƒ, pause: ƒ, isPlaying: ƒ, paused: ƒ, currentTime: ƒ, …}
+            //     correlationId: "8e90fbe4-607f-4a82-97af-6802a18e430b"
+            //     createItems: ƒ (text)
+            //     currentContext: {item: {…}, positions: Array(86)}
+            //     disableTextHighlighting: ƒ ()
+            //     dispose: ƒ ()
+            //     enableTextHighlighting: ƒ ()
+            //     forceLanguage: ƒ (culture)
+            //     forceVoice: ƒ (voice)
+            //     forcedVoice: null
+            //     isPlaying: ƒ ()
+            //     isPlaying: ƒ ()
+            //     pause: ƒ ()
+            //     paused: ƒ ()
+            //     play: ƒ ()
+            //     playAudio: ƒ (item)
+            //     playItem: ƒ (item)
+            //     playText: ƒ (text)
+            //     playbar: {instance: null}
+            //     setRate: ƒ (r)
+            //     settings: {useTextHighlight: true, referenceLanguage: {…}, lockedLanguage: null, rate: 1, useControls: false}
+            //     subscribeTo: ƒ (subscriptions)
+            //     withReferenceLanguage: ƒ (refLang)
+            //     wordHighlighter: {start: ƒ, highlight: ƒ, dispose: ƒ}
+            // EXAMPLE talkify_playlist (type Object, e.g. {}) members:
+            //     disableTextInteraction: ƒ ()
+            //     dispose: ƒ ()
+            //     enableTextInteraction: ƒ ()
+            //     getQueue: ƒ ()
+            //     insert: ƒ insertElement(element)
+            //     isPlaying: ƒ isPlaying()
+            //     pause: ƒ pause()
+            //     play: ƒ play(item)
+            //     replayCurrent: ƒ replayCurrent()
+            //     setPlayer: ƒ (p)
+            //     startListeningToVoiceCommands: ƒ ()
+            //     stopListeningToVoiceCommands: ƒ ()
+
+            var duration_report = "unknown duration";
+
+            var pause_once = ! is_auto_play;
+
+            var this_player = talkify_player;
+            // NOTE:  Local "copy" of player needed in case pop_down_all() happens
+            //        before the callback below has fully popped up.
+
+            talkify.messageHub.subscribe(BOT_CONTEXT, '*', function (message, topic) {
+                // var members = message ? Object.keys(message).join() : "(no message)";
+                console.log("talkify", topic/*, members*/);
+                // EXAMPLE topics (context.type.action only, GUID context removed)
+                //         and message members:
+                //     player.*.prepareplay     \  text,preview,element,originalElement,
+                //     player.tts.loading        > isPlaying,isLoading
+                //     player.tts.loaded        /
+                //     player.tts.play          item,positions,currentTime
+                //     player.tts.timeupdated   currentTime,duration
+                //     player.tts.pause         (no message)
+                //     player.tts.ended         ((same members as loaded))
+                if (/\.play$/.test(topic)) {
+                    if (pause_once) {
+                        pause_once = false;
+                        this_player.pause();
+                        // NOTE:  Crude, mfing way to support manual-only playing.
+                        //        Without this, player is inoperative.
+                    }
+                }
+            });
+            talkify.messageHub.subscribe(
+                BOT_CONTEXT,
+                '*.player.tts.timeupdated',
+                function (message) {
+                    // NOTE:  This event happens roughly 20Hz, 50ms.
+                    var $highlight = $('.talkify-word-highlight');
+                    // $highlight.each(function () {
+                    //     scroll_into_view(this, {
+                    //         behavior: 'smooth',
+                    //         block: 'center',
+                    //         inline: 'center'
+                    //     });
+                    // });
+                    // TODO:  Does this work without .each()?
+                    scroll_into_view($highlight, {
+                        behavior: 'smooth',
+                        block: 'center',
+                        inline: 'center'
+                    });
+                    // TODO:  Reduce frequency of this call by tagging element
+                    //        with .already-scrolled-into-view?
+                    //        Because this event happens 20Hz!
+                    duration_report = message.duration.toFixed(1) + " seconds";
+                }
+            );
+            talkify.messageHub.subscribe(
+                BOT_CONTEXT,
+                '*.player.tts.ended',
+                function (/*message, topic*/) {
+                    that.$sup.trigger(that.Event.SPEECH_END);
+                    // console.log("talkify ended", that.id_attribute, message, topic);
+                    // EXAMPLE:  topic
+                    //     23b92641-e7dc-46af-9f9b-cbed4de70fe4.player.tts.ended
+                    // EXAMPLE:  message object members:
+                    //     element: div#popup_1024.contribution.talkify-highlight
+                    //     isLoading: false
+                    //     isPlaying: false
+                    //     originalElement: div#popup_1024.contribution
+                    //     preview: "this is just a test"
+                    //     text: "this is just a te
+                    //     st"
+                }
+            );
+            talkify_done = function () {
+                console.log(
+                    "talkify", that.id_attribute,
+                    "voice", talkify_voice_name,
+                    duration_report
+                );
+            };
+            that.$sup.trigger(that.Event.SPEECH_PLAY);
+        }
     }
 
     /**
@@ -3912,7 +3949,6 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         if (expandable > 1.1) {
             // NOTE:  Don't fiddle with a middling expansion.
 
-            var MAX_FONT_EXPANSION = 3.0;
             expand_font = Math.min(expandable, MAX_FONT_EXPANSION);
 
             var sup_width_before = that.$sup.width();
@@ -3980,8 +4016,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
 
         deanimate("popping up quote", that.id_attribute);
 
-        // var cont = Contribution(that.idn_string);
-        var cont = contribution_lexi.get(that.idn_string);
+        var thumb_cont = Contribution_from_idn(that.idn);
 
         // NOTE:  Popup text elements are now are at their FINAL place and size.
         //        But nobody has seen that yet.
@@ -3992,7 +4027,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         var pop_cont_css_height = that.$cont.css('height');
         var pop_caption_css_width = that.$caption_bar.css('width');
         var pop_up_caption_background = that.$caption_bar.css('background-color');
-        var pop_down_caption_background = cont.$caption_bar.css('background-color');
+        var pop_down_caption_background = thumb_cont.$caption_bar.css('background-color');
 
         that.$cont.css('width', cont_css_width);
         that.$cont.css('height', cont_css_height);
@@ -4001,7 +4036,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
 
         that.fix_caption_width();
         that.$caption_bar.css('background-color', pop_down_caption_background);
-        that.$sup.css(cont.fixed_coordinates());
+        that.$sup.css(thumb_cont.fixed_coordinates());
         that.$cont.css('font-size', font_size_normal);
 
         var sup_promise = that.$sup.animate({
@@ -4052,25 +4087,59 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         });
     };
 
-    function pop_screen_fade_out() {
-        return pop_screen_fade('rgba(0,0,0,0.25)', 'rgba(0,0,0,0)')
+    function pop_screen_fade_out() {   // while popping down, fade to transparent
+        return pop_screen_fade('rgba(0,0,0,0.25)', 'rgba(0,0,0,0)', POP_DOWN_ANIMATE_MS, POP_DOWN_ANIMATE_EASING)
     }
 
-    function pop_screen_fade_in() {
-        return pop_screen_fade('rgba(0,0,0,0)', 'rgba(0,0,0,0.25)')
+    function pop_screen_fade_in() {   // while popping up, fade to 1/4 darkened background
+        return pop_screen_fade('rgba(0,0,0,0)', 'rgba(0,0,0,0.25)', POP_UP_ANIMATE_MS, POP_UP_ANIMATE_EASING)
     }
 
-    function pop_screen_fade(from_color, to_color) {
+    function pop_screen_fade(from_color, to_color, duration, easing) {
         var $pop_screen = $('#popup-screen');
         $pop_screen.css({'background-color': from_color});
         $pop_screen.animate({
             'background-color': to_color
         }, {
-            duration: POP_UP_ANIMATE_MS,
-            easing: POP_UP_ANIMATE_EASING,
+            duration: duration,
+            easing: easing,
             queue: false
         });
         return $pop_screen;
+    }
+
+    /**
+     * Finish up all animations.
+     *
+     * @param {string} context - some string about what we're doing
+     * @param {string} what - more info
+     */
+    function deanimate(context, what) {
+        $(':animated').each(function () {
+            var $element = $(this);
+            $element.finish();
+            // NOTE:  Don't use mfing jQuery .finish(), callbacks are NOT "immediately called".
+            $element.stop(true, true);
+            var deanimating_cont = Contribution_from_element($element);
+            if (is_specified(deanimating_cont)/* && deanimating_cont.is_dom_rendered()*/) {
+                console.warn(
+                    "Deanimating",
+                    context,
+                    what,
+                    deanimating_cont.id_attribute,
+                    $element.attr('class') || "(no class)"
+                );
+            } else {
+                console.warn(
+                    "Deanimating",
+                    context,
+                    what,
+                    "SOME ELEMENT",
+                    $element.attr('id') || "(no id)",
+                    $element.attr('class') || "(no class)"
+                );
+            }
+        });
     }
 
     function usable_width() {
@@ -4168,7 +4237,8 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         return {x:x, y:y};
     }
 
-    // TODO:  Contribution method
+    // TODO:  Contribution method -- or maybe not, since editing applies to one instance at a time.
+    //        Though it does belong with the $sup and $cont etc. fields because it's all about DOM.
     function contribution_edit_begin($cont) {
         if ( ! check_contribution_edit_dirty(true, true)) {
             // NOTE:  The above call may never have any side effects (and this branch is always
@@ -4183,6 +4253,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         }
     }
 
+    // TODO:  Contribution method
     function contribution_edit_end() {   // save, cancel, discard
         if (is_editing_some_contribution) {
             is_editing_some_contribution = false;
@@ -4203,6 +4274,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         }
     }
 
+    // TODO:  Contribution method
     function contribution_edit_show($cont) {
         var $sup_cont = $cont.closest('.sup-contribution');
         var $caption_span = $sup_cont.find('.caption-span');
@@ -4213,6 +4285,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         cont.fix_caption_width();
     }
 
+    // TODO:  Contribution method
     function contribution_edit_hide($cont) {
         var $sup_cont = $cont.closest('.sup-contribution');
         var $caption_span = $sup_cont.find('.caption-span');
@@ -4225,6 +4298,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         cont.fix_caption_width();
     }
 
+    // TODO:  Will become obsolete because callers can use .$save_bar property.
     function $save_bar_from_cont($cont) {
         return $cont.closest('.sup-contribution').find('.save-bar');
     }
@@ -4624,6 +4698,11 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         initialize_contribution_sizes();
     }
 
+    function new_rendering_of_a_contribution() {
+        initialize_contribution_sizes();
+    }
+
+    // TODO:  Contribution method
     function initialize_contribution_sizes() {
         $('.size-adjust-once:visible').each(function () {
             var $element = $(this);
@@ -4633,6 +4712,8 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             cont.fix_caption_width('quote size adjust');
         });
     }
+
+    // TODO:  Contribution method
     function resizer_nudge_all() {
         $('.sup-contribution').each(function () {
             var cont = Contribution_from_element(this);
@@ -4642,6 +4723,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             //        apparent bug in iFrameResizer.  Or just bad internet.
         });
     }
+
     function size_adjust($element, width_max_em, height_max_em) {
         var width_em = size_adjust_each($element, 'width', width_max_em);
         // NOTE:  Width before height so paragraphs can wrap.
@@ -4651,16 +4733,10 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             height_em: height_em
         };
     }
+
     function size_adjust_each($element, dimension, max_em) {
         $element[dimension]('auto');
-        // var scroll_dimension = {
-        //     // width: 'scrollWidth',   // NOTE:  This number is HUGE for unwrapped paragraphs.
-        //     width: 'width',
-        //     height: 'scrollHeight'
-        // }[dimension];
         var natural_px = $element[dimension]();
-        // if (dimension === 'height') natural_px = $element.get(0).scrollHeight;
-        // console.log("Size", $element.attr('id'), dimension, natural_px);
         var natural_em = em_from_px(natural_px, $element);
         var adjusted_em;
         if (natural_em <= max_em.hard) {
@@ -4683,8 +4759,6 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             );
         }
         if (adjusted_em !== null) {
-            // var adjusted_px = px_from_em(adjusted_em, $element);
-            // $element[dimension](adjusted_px);
             set_em($element, dimension, adjusted_em);
         }
         return adjusted_em || natural_em;
@@ -4874,38 +4948,25 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             // var $sup_cont = build_contribution_dom(cont_word, capt_word);
             contribution_lexi.word_pass(cont_word);
             contribution_lexi.word_pass(capt_word);
-            var cont = contribution_lexi.get(cont_word.idn);
+            var cont = Contribution_from_idn(cont_word.idn);
+
             cont.build_dom(cont_word.txt);
 
-
-
             var $cat_my = $categories[MONTY.IDN.CAT_MY];
-
-            // NOTE:  Old way:
-            //     var $first_old_sup = $cat.find('.sup-contribution').first();
-            //     if ($first_old_sup.length === 0) {
-            //         $cat.append($sup_cont);   // first ever contribution for this user
-            //     } else {
-            //         $first_old_sup.before($sup_cont);
-            //     }
-
-            // NOTE:  A simpler way?
-            //     $('.container-entry').after($sup_cont);
-
-            // NOTE:  The best D.R.Y. way:
             locate_contribution_at_category_left_edge($cat_my, cont.$sup);
 
             // NOTE:  From this point on, the new contribution is in the DOM.
-            // var cont = Contribution_from_element($sup_cont);
 
             $text.val("");
             $caption_input.val("");
             post_it_button_appearance();
-            cont.rebuild_bars();
-            settle_down();
-            setTimeout(function () {   // Give rendering some airtime.
-                new_contribution_just_created();
-                contribution_lexi.assert_consistent();
+
+            cont.rebuild_bars(function () {
+                settle_down();
+                setTimeout(function () {   // Give rendering some airtime.
+                    new_contribution_just_created();
+                    contribution_lexi.assert_consistent();
+                });
             });
         }
     }
@@ -5459,20 +5520,26 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         contribution_lexi.assert_consistent();
 
         contribution_lexi.category_lexi.loop(function (idn_category, category) {
-            category.cont_sequence.loop(function (idn_contribution) {
-                var cont = contribution_lexi.get(idn_contribution);
-                if (cont.superseded_by_idn === null) {
-                    // NOTE:  A superseded contribution (by editing)
-                    //        never enters the DOM, nor uses its txt part.
-                    // cont.build_dom(function (idn) { return cont.fetch_txt(idn); }, '');
-                    cont.build_dom(monty_txt_from_idn(cont.idn));
-                    $categories[cont.cat.idn].append(cont.$sup);
-                    // NOTE:  This is where contribution renderings actually enter the DOM.
+            category.cont_sequence.loop(function (index, idn_contribution) {
+                var cont = Contribution_from_idn(idn_contribution);
+                if (cont.is_unsuperseded) {
+                    if (index < MAX_BIG_CONT_PER_CAT) {
+                        cont.build_dom(cont.fetch_txt());
+                        category.$cat.append(cont.$sup);
+                        // NOTE:  This is where contribution renderings actually enter the DOM.
+                    // } else {
+                    //     return false;
+                    }
                 }
             });
+            var total_conts = category.cont_sequence.len();
+            var missing_conts = Math.max(0, total_conts - MAX_BIG_CONT_PER_CAT);
+            if (missing_conts > 0) {
+                var $unshown = $('<div>', {class: 'unshown'});
+                $unshown.text(f("{n} more", {n: missing_conts}));
+                category.$cat.append($unshown);
+            }
         });
-
-        contribution_lexi.assert_consistent();
 
         console.log("contribution_lexi", contribution_lexi);
 
@@ -5639,9 +5706,16 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     }
 
     function rebuild_all_bars() {
-        $('.sup-contribution').each(function () {
-            var cont = Contribution_from_element(this);
-            cont.rebuild_bars();
+        // $('.sup-contribution').each(function () {
+        //     var cont = Contribution_from_element(this);
+        //     cont.rebuild_bars();
+        // });
+        contribution_lexi.loop(function (idn, cont) {
+            if (cont.is_dom_rendered()) {
+                console.assert(cont.is_dom_rendered(), cont.idn, cont);
+                // TODO:  We won't always assume all unsuperseded contributions are rendered!
+                cont.rebuild_bars();
+            }
         });
     }
 
@@ -5851,6 +5925,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
      * @param do_valve - should it have an open/close triangle?
      * @param is_valve_open - initially open?
      */
+    // TODO:  Category method
     function build_category_dom(title, cat_idn, do_valve, is_valve_open) {
         var name = MONTY.cat.txt[cat_idn];
         var $sup_category = $('<div>', {class: 'sup-category'});
@@ -5876,8 +5951,18 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     }
 
     function monty_txt_from_idn(idn) {
+
         console.assert(typeof idn === 'number', idn);
         // TODO:  parameter_type(idn, 'number');
+        //        declare_type(idn, 'number');
+        //        declare(idn, 'number');
+        //        type_of(idn, 'number');
+        //        type(idn, 'number');
+        //        type_is(idn, 'number');
+        //        type_declare(idn, 'number');
+        //        type_declaration(idn, 'number');
+        //        console.assert(typeof idn === 'number', idn);
+
         var return_txt = null;
         looper(MONTY.w, function (_, word) {
             if (word.idn === idn) {
@@ -5887,6 +5972,11 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
 
         });
         return return_txt;
+    }
+
+    Contribution.prototype.fetch_txt = function fetch_txt() {
+        var that = this;
+        return monty_txt_from_idn(that.idn);
     }
 
     Contribution.prototype.build_dom = function Contribution_build_dom(txt) {
@@ -5925,11 +6015,10 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     // //        Merge with .build_dom() method!
     // function build_contribution_dom(contribution_word, caption_word) {
         that.$sup = $('<div>', {class: 'sup-contribution word'});
-        that.$cont = $('<div>', {
-            id: that.id_attribute,
-            class: 'contribution size-adjust-once'
-        });
-        that.$sup.append(that.$cont);
+        that.$sup.data('contribution-object', that);
+        var $cont = $('<div>', {class: 'contribution size-adjust-once', id: that.id_attribute});
+        that.$sup.append($cont);
+        console.assert(that.$cont.is($cont));
         that.$cont.text(leading_spaces_indent(txt));
         var $render_bar = $('<div>', {class: 'render-bar'});
         var $caption_bar = $('<div>', {class: 'caption-bar'});

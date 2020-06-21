@@ -180,12 +180,16 @@ function embed_content_js(window, $, MONTY) {
                                 // NOTE:  enablejsapi query parameter works.
                                 //        It enables JavaScript to animate the video.
 
-                                rel: '0'
+                                rel: '0',
                                 // THANKS:  rel=0 prevents (some) related videos at the end.
                                 //          https://www.youtube.com/watch?v=ZUTzJG212Vo
                                 // TODO:  Further eliminate pesky related video billboards
                                 //        https://stackoverflow.com/q/48386252/673991
 
+                                autoplay: '0'
+                                // THANKS:  disable "UP NEXT" auto play after video done
+
+                                // NOTE:  I couldn't get the `origin` option to work:
                                 // , origin: 'http://example.com'
                                 // , origin: 'locavore.unslumping.org'
                                 // , origin: 'http://localhost'
@@ -198,7 +202,7 @@ function embed_content_js(window, $, MONTY) {
                                 // , origin: 'http://locavore.unslumping.org:5000/meta/oembed/?idn=popup_1990&is_pop_up=true&auto_play=false&width=1710&height=719&url=https%3A%2F%2Fwww.youtube.com%2Fwatch%3Fv%3D3SwNXQMoNps%26rel%3D0'
                                 // , origin: 'http://locavore.unslumping.org:5000/meta/oembed/?idn=popup_1990&is_pop_up=true&auto_play=true&width=1349&height=544&url=https%3A%2F%2Fwww.youtube.com%2Fwatch%3Fv%3D3SwNXQMoNps%26rel%3D0'
                                 // , origin: window.location.href
-                                // FIXME:  Why do none of the above work??
+                                // FIXME:  Why do none of the above `origin` values work??
                                 //         Symptom, Bot play pops up but the video doesn't start.
                                 //         Possible cause, domains resolve to 127.0.0.1?
                                 //         Possible cause, not https??

@@ -1643,6 +1643,7 @@ def contribution_home(home_page_title):
                         cat=auth.monty_cat(),
                         WHAT_IS_THIS_THING=secure.credentials.Options.what_is_this_thing,
                         OEMBED_CLIENT_PREFIX=secure.credentials.Options.oembed_client_prefix,
+                        OEMBED_OTHER_ORIGIN=secure.credentials.Options.oembed_other_origin,
                         THUMB_MAX_WIDTH=THUMB_MAX_WIDTH,
                         THUMB_MAX_HEIGHT=THUMB_MAX_HEIGHT,
                         MEDIA_HANDLERS=[

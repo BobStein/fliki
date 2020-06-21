@@ -146,5 +146,5 @@ class Options(object):
     ]
     oembed_server_prefix = '/meta/oembed/'   # should start and end with slash
     oembed_client_prefix = 'https://my.other.example.com/meta/oembed/'   # should end with slash
-    oembed_other_origin  = 'https://my.other.example.com/'
-    oembed_target_origin = 'https://my.example.com/'
+    oembed_other_origin  = 'https://my.other.example.com'   # should NOT end with a slash
+    oembed_target_origin = 'https://my.example.com'
