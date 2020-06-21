@@ -343,7 +343,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     var MAX_BIG_CONT_PER_CAT = 150;   // How many contributions to show in a category + "N more"
 
     var MIN_OPEN_CATEGORY_VIEW = 200;   // When opening a category, if fewer pixels than this
-                                        // are in view, scroll to the top, or close as can get.
+                                        // are in view, scroll up.
 
     /////////////////////////////////////////////////////////////////////////////////////////
     ////// Rogues Gallery - a compendium errors and warnings on the JavaScript console.
@@ -5982,8 +5982,19 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                     var cat_pixels_in_view = doc_bottom - cat_top;
                     console.debug("Cat pixels in view", cat_pixels_in_view);
                     if (cat_pixels_in_view < MIN_OPEN_CATEGORY_VIEW) {
-                        $sup_category.get(0).scrollIntoView();
-                        window.scrollBy(0, - TOP_SPACER_PX);
+                        // NOTE:  Category is scrolled down too far, not enough content is visible.
+                        $sup_category.get(0).scrollIntoView({
+                            block: 'nearest',
+                            inline: 'nearest'
+                        });
+                        doc_top = $(window).scrollTop();
+                        var sup_top = $sup_category.offset().top;
+                        var cat_pixels_above_browser_top = doc_top - sup_top;
+                        var cat_pixels_above_up_top = cat_pixels_above_browser_top + TOP_SPACER_PX;
+                        if (cat_pixels_above_up_top > 0) {
+                            // NOTE:  Category is scrolled up too far, underneath #up-top
+                            window.scrollBy(0, - TOP_SPACER_PX);
+                        }
                     }
                 }
             });
