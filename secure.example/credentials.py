@@ -118,6 +118,14 @@ class Options(object):
                               the consumer domain."
                           In that paragraph "consumer" is fliki.
                           The provider is YouTube, flickr, etc.
+                          Consequences if other origin is wrong:
+
+                              Unexpected message received from: http://... for iframe_NNNN.
+                              Message was: [iFrameSizer]iframe_NNNN:128:220:mutationObserver.
+                              This error can be disabled by setting the checkOrigin: false option
+                              or by providing of array of trusted domains.
+
+                              This URL is probably the correct value for the other origin setting.
 
     oembed_target_origin - Who should the EMBEDDED code expect to communicate with?
                            This setting controls behavior of EMBEDDED code, from embed_content.js.
@@ -127,7 +135,8 @@ class Options(object):
                            This setting lets the contents inside an iframe know where its parent
                            came from.  So messages to that parent only work for that parent.
                            '*' for unrestricted.
-                           Consequences if target origin does not match scheme-domain-port:
+                           Consequences if target origin is wrong:
+
                            1. This warning in the console in Chrome DevTools on localhost:
                                [iFrameSizer][Host page: iframe_9999]
                                IFrame has not responded within 5 seconds.
@@ -136,12 +145,16 @@ class Options(object):
                                or you can set the warningTimeout option to a higher value
                                or zero to suppress this warning.
                                (Though this message may appear anyway, or for other reasons.)
+
                            2. This error in Firefox or Chrome on a live https server:
+
                                Failed to execute 'postMessage' on 'DOMWindow': The target origin provided
                                ('https://...') does not match the recipient window's origin
                                ('https://...').
+
                                The FIRST URL in this message will be the same as this setting.
                                The SECOND URL is probably what this setting should be instead.
+
                            3. iframes won't resize to fit their contents.
                               (Though they might resize anyway, sheesh,
                               apparently postMessage isn't needed for everything.)
