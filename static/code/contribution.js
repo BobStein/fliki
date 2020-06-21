@@ -324,7 +324,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     var MAX_FONT_EXPANSION = 3.0;
 
 
-    var MAX_BIG_CONT_PER_CAT = 50;
+    var MAX_BIG_CONT_PER_CAT = 150;
 
     /////////////////////////////////////////////////////////////////////////////////////////
     ////// Rogues Gallery - a compendium errors and warnings on the JavaScript console.
