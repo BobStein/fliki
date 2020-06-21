@@ -101,9 +101,15 @@ class Options(object):
     oembed_client_prefix - the absolute URL for contribution render-bar iframe src attribute.
                            contribution.js sends this out with a url=x query string on it.
 
-    oembed_other_origin - may be the same as oembed_target_origin.
-                          Make it a different domain to be a little safer with embedded media,
-                          as suggested at https://oembed.com/#section3:
+    oembed_other_origin - Who should the PARENT code expect to communicate with?
+                          May be the same as oembed_target_origin.  Tricky.  Easy to get wrong. (!)
+                          What's tricky:  This setting and the next apply to this fliki web SERVER.
+                          Not for a web SITE.  A web site may use different servers, one for
+                          parent code (contribution.js) at / (root), another for
+                          embedded code (embed_content.js) at /meta/oembed/.
+                          Setting up a web SITE in this way may be slightly safer, or less ad
+                          infested, by taking advantage of browser cross-origin restrictions.
+                          This is suggested at https://oembed.com/#section3:
                               "When a consumer displays HTML (as with video embeds),
                               there's a vector for XSS attacks from the provider.
                               To avoid this, it is recommended that consumers display
@@ -113,13 +119,16 @@ class Options(object):
                           In that paragraph "consumer" is fliki.
                           The provider is YouTube, flickr, etc.
 
-    oembed_target_origin - the URL (scheme, domain, port) that will be using this oembed server.
-                           This is your fliki server.
-                           This tells the oembed server (contents of the iframe)
-                           who should be their client (has an iframe).
+    oembed_target_origin - Who should the EMBEDDED code expect to communicate with?
+                           This setting controls behavior of EMBEDDED code, from embed_content.js.
+                           The value is some URL (scheme-domain-port) that will serve parent code
+                           from / (root) hits.  (Those hits may from from this same server, or they
+                           may not.)
+                           This setting lets the contents inside an iframe know where its parent
+                           came from.  So messages to that parent only work for that parent.
                            '*' for unrestricted.
-                           Consequences if target origin does not match scheme, domain, and port:
-                           1. This warning in the console:
+                           Consequences if target origin does not match scheme-domain-port:
+                           1. This warning in the console in Chrome DevTools on localhost:
                                [iFrameSizer][Host page: iframe_9999]
                                IFrame has not responded within 5 seconds.
                                Check iFrameResizer.contentWindow.js has been loaded in iFrame.
@@ -127,9 +136,16 @@ class Options(object):
                                or you can set the warningTimeout option to a higher value
                                or zero to suppress this warning.
                                (Though this message may appear anyway, or for other reasons.)
-                           2. iframes won't resize to fit their contents.
+                           2. This error in Firefox or Chrome on a live https server:
+                               Failed to execute 'postMessage' on 'DOMWindow': The target origin provided
+                               ('https://...') does not match the recipient window's origin
+                               ('https://...').
+                               The FIRST URL in this message will be the same as this setting.
+                               The SECOND URL is probably what this setting should be instead.
+                           3. iframes won't resize to fit their contents.
                               (Though they might resize anyway, sheesh,
                               apparently postMessage isn't needed for everything.)
+
     SEE:  targetOrigin, https://developer.mozilla.org/Web/API/Window/postMessage
     """
     home_page_title = "my title"
@@ -145,6 +161,8 @@ class Options(object):
         MY_GOOGLE_IDN,
     ]
     oembed_server_prefix = '/meta/oembed/'   # should start and end with slash
-    oembed_client_prefix = 'https://my.other.example.com/meta/oembed/'   # should end with slash
+
+    oembed_client_prefix = 'https://my.other.example.com' + oembed_server_prefix   # should end with slash
     oembed_other_origin  = 'https://my.other.example.com'   # should NOT end with a slash
+
     oembed_target_origin = 'https://my.example.com'
