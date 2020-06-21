@@ -5959,13 +5959,16 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     function build_category_dom(title, cat_idn, do_valve, is_initially_open) {
         var name = MONTY.cat.txt[cat_idn];
         var $sup_category = $('<div>', {class: 'sup-category'});
+
         var $title = $('<h2>', {class: 'frou-category'});
         // NOTE:  "frou" refers to the decorative stuff associated with a category.
         //        In this case, that's just the <h2> heading,
         //        which contains the category valve (the open-close triangles).
         //        In a closed category, this frou is all we see,
         //        so we have to deal with dropping there.
-        $title.append(title);
+
+        // $title.append(title);
+
         $sup_category.append($title);
         var $category = $('<div>', {id: cat_idn, class: 'category'});
         var category_code_name = MONTY.cat.txt[cat_idn];   // e.g. my, about
@@ -5999,8 +6002,15 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                 }
             });
             $title.prepend($valve);   // triangles go BEFORE the heading text
+
+            $valve.append(title);
+            // NOTE:  Include title inside valve element, so clicking the word opens and closes,
+            //        along with the triangle symbols.
+
             var $how_many = $('<span>', {class:'how-many'});
-            $title.append($how_many);   // (n) anti-valve goes AFTER the heading text
+            $valve.append($how_many);   // (n) anti-valve goes AFTER the heading text
+            // NOTE:  Number is clickable to expand also.
+
             valve_control($valve, $category, $how_many);
         }
         $sup_categories[cat_idn] = $sup_category;
