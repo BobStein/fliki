@@ -238,11 +238,11 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         extreme: 30       // above extreme-max, display at soft-max.
     };
     var HEIGHT_MAX_EM_ABOUT = {
-        soft: 15,          // below the hard-max, display as is.
-        hard: 18,          // between hard and extreme-max, limit to hard-max.
+        soft: 15,         // below the hard-max, display as is.
+        hard: 24,         // between hard and extreme-max, limit to hard-max.
                           // (no good reason to have a gap here: it's just
                           // annoying to show a tiny bit scrolled out of view)
-        extreme: 24        // above extreme-max, display at soft-max.
+        extreme: 24       // above extreme-max, display at soft-max.
     };
 
     var MIN_CAPTION_WIDTH = 100;
