@@ -32,6 +32,7 @@
  * @param window.MutationObserver
  * @param window.qiki
  * @param window.qiki.media_register
+ * @param window.scrollBy
  * @param window.speechSynthesis
  * @param window.SpeechSynthesisUtterance
  * @param window.utter
@@ -322,24 +323,27 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     var isFullScreen;
 
     var TOP_SPACER_REM = 1.5;
-    var TOP_SPACER_PX = px_from_em(TOP_SPACER_REM);
+    var TOP_SPACER_PX = px_from_rem(TOP_SPACER_REM);
     // NOTE:  Presumed to be the practical height of #up-top which is position:fixed,
     //        this is the amount the position:static elements are scooted down.
     // SEE:  contribution.css where TOP_SPACER_PX is mentioned.
     // TODO:  Refactor those occurrences in contribution.css to applying those properties
     //        here in contribution.js, e.g.
-    //        $('#up-top').css('height', TOP_SPACER_EM.toString() + 'em');
+    //        $('#up-top').css('height', TOP_SPACER_REM.toString() + 'em');
 
     var POP_UP_ANIMATE_MS = 500;
     var POP_UP_ANIMATE_EASING = 'linear';   // swing or linear
     var POP_DOWN_ANIMATE_MS = 250;
     var POP_DOWN_ANIMATE_EASING = 'swing';   // swing or linear
 
-    var MAX_IFRAME_RECOVERY_TRIES = 10;
-    var MAX_FONT_EXPANSION = 3.0;
+    var MAX_IFRAME_RECOVERY_TRIES = 10;   // Reload a 0 x 0 iframe this many times max.
 
+    var MAX_FONT_EXPANSION = 3.0;   // Popping up a quote, magnify font size up to this factor.
 
-    var MAX_BIG_CONT_PER_CAT = 150;
+    var MAX_BIG_CONT_PER_CAT = 150;   // How many contributions to show in a category + "N more"
+
+    var MIN_OPEN_CATEGORY_VIEW = 200;   // When opening a category, if fewer pixels than this
+                                        // are in view, scroll to the top, or close as can get.
 
     /////////////////////////////////////////////////////////////////////////////////////////
     ////// Rogues Gallery - a compendium errors and warnings on the JavaScript console.
@@ -779,8 +783,8 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                 that.finite_state_machine();
             } catch (e) {
                 that.crash("FSM:", e.message, e.stack);
-                // console.trace();
-                // console.log(e.stack);
+                // NOTE:  e.stack shows the stack-trace of the exception where it first happened.
+                //        console.trace() on the other hand just shows the stack-trace HERE.
             }
             var did_fsm_change_state = this.state !== this.last_tick_state
         } while (did_fsm_change_state);
@@ -3145,7 +3149,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                     promises.push(popup_cont.$cont.animate({
                         width: popup_cont.pop_stuff.cont_css_width,
                         height: popup_cont.pop_stuff.cont_css_height,
-                        'font-size': px_from_em(1)
+                        'font-size': px_from_rem(1)
                     }, {
                         duration: POP_DOWN_ANIMATE_MS,
                         easing: POP_DOWN_ANIMATE_EASING,
@@ -3270,7 +3274,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                 var caption_css_height = popup_cont.$caption_bar.css('height');
                 var caption_css_background = popup_cont.$caption_bar.css('background-color');
 
-                var vertical_padding_in_css = px_from_em(0.3 + 0.3);
+                var vertical_padding_in_css = px_from_rem(0.3 + 0.3);
 
                 // var save_height = popup_cont.$save_bar.height() || popup_cont.$save_bar.find('.edit').height();
                 // console.assert(
@@ -3871,7 +3875,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         //// Horizontal - determine left and width properties
 
         var sup_chrome_h = that.$sup.innerWidth() - that.$cont.width();
-        var SUP_PAD_LEFT = px_from_em(0.5);   // SEE:  contribution.css
+        var SUP_PAD_LEFT = px_from_rem(0.5);   // SEE:  contribution.css
         var ROOM_FOR_WORD_ANIMATION_SO_IT_DOESNT_WRAP = 10;
         var cont_width_value = Math.min(
             cont_natural_width + ROOM_FOR_WORD_ANIMATION_SO_IT_DOESNT_WRAP,
@@ -3909,8 +3913,8 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                 //        but only a fraction of the height of the window, e.g. half.
 
                 var cont_width_value_new = cont_width_value / excess_width;
-                if (cont_width_value_new < px_from_em(WIDTH_MAX_EM.soft)) {
-                    cont_width_value_new = px_from_em(WIDTH_MAX_EM.soft);   // not too skinny
+                if (cont_width_value_new < px_from_rem(WIDTH_MAX_EM.soft)) {
+                    cont_width_value_new = px_from_rem(WIDTH_MAX_EM.soft);   // not too skinny
                 }
                 if (cont_width_value_new < cont_width_value) {
 
@@ -3959,7 +3963,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         var expand_font = null;
 
         var font_size_setting;
-        var font_size_normal = px_from_em(1);
+        var font_size_normal = px_from_rem(1);
         // NOTE:  Animating to or from 'inherit' doesn't seem to work.
 
         if (expandable > 1.1) {
@@ -4790,10 +4794,15 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         $element.css(property);
     }
 
-    function px_from_em(em, $element) {
-        $element = $element || $(window.document.body);
-        return em * parseFloat($element.css('font-size'));
+    function px_from_rem(em) {
+        return px_from_em(em, window.document.body);
     }
+
+    function px_from_em(em, element) {
+        console.assert(is_specified(element));
+        return em * parseFloat($(element).css('font-size'));
+    }
+
     function em_from_px(px, $element) {
         $element = $element || $(window.document.body);
         return px / parseFloat($element.css('font-size'));
@@ -5055,7 +5064,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
 
         $(window.document.body).addClass('dirty-nowhere');
 
-        // var $up_top_spacer = $('<div>', { id: 'up-top-spacer' });
+        // var $up_top_spacer = $('<div>', { id: 'up-top-TOP_SPACER_REM' });
         // // NOTE:  #up-top-spacer is a position:static element that takes one for the "team" of other
         // //        position:static elements (which begin with .sup-category-first).
         // //        It is hidden under the position:fixed #up-top element, so the "team" is not.
@@ -5944,10 +5953,10 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
      * @param title text - for the <h2>
      * @param cat_idn of the category
      * @param do_valve - should it have an open/close triangle?
-     * @param is_valve_open - initially open?
+     * @param is_initially_open
      */
     // TODO:  Category method
-    function build_category_dom(title, cat_idn, do_valve, is_valve_open) {
+    function build_category_dom(title, cat_idn, do_valve, is_initially_open) {
         var name = MONTY.cat.txt[cat_idn];
         var $sup_category = $('<div>', {class: 'sup-category'});
         var $title = $('<h2>', {class: 'frou-category'});
@@ -5963,7 +5972,21 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         $category.addClass('category-' + category_code_name);
         $sup_category.append($category);
         if (do_valve) {
-            var $valve = valve(name, is_valve_open);
+            var $valve = valve({
+                name: name,
+                is_initially_open: is_initially_open,
+                on_open: function() {
+                    var doc_top = $(window).scrollTop();
+                    var doc_bottom = doc_top + $(window).height();
+                    var cat_top = $category.offset().top;
+                    var cat_pixels_in_view = doc_bottom - cat_top;
+                    console.debug("Cat pixels in view", cat_pixels_in_view);
+                    if (cat_pixels_in_view < MIN_OPEN_CATEGORY_VIEW) {
+                        $sup_category.get(0).scrollIntoView();
+                        window.scrollBy(0, - TOP_SPACER_PX);
+                    }
+                }
+            });
             $title.prepend($valve);   // triangles go BEFORE the heading text
             var $how_many = $('<span>', {class:'how-many'});
             $title.append($how_many);   // (n) anti-valve goes AFTER the heading text
@@ -6261,6 +6284,8 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         }
     }
 
+
+
     ///////////////////////////////////////////////
     ////// valve() - click to open / click to close
     ///////////////////////////////////////////////
@@ -6273,19 +6298,22 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
      * valve_control() identifies what the valve should show or hide
      * when the user clicks the triangles.
      *
-     * @param name {string}
-     * @param is_initially_open {boolean}
+     * @param opt
      * @return {jQuery}
      */
-    function valve(name, is_initially_open) {
-        // TODO:  valve(options) instead, e.g. valve({name: x, is_initially_open: x});
-        var $valve = $('<span>', {id: id_valve(name), class: 'valve'});
-        $valve.data('name', name);
+    // TODO:  Valve() object.
+    function valve(opt) {
+        console.assert(typeof opt.name === 'string');
+        opt.is_initially_open = opt.is_initially_open || false;
+        opt.on_open = opt.on_open || function () {};
+
+        var $valve = $('<span>', {id: id_valve(opt.name), class: 'valve'});
+        $valve.data('opt', opt);
         var $closer = $('<span>', {class: 'closer'}).text(UNICODE.BLACK_DOWN_POINTING_TRIANGLE);
         var $opener = $('<span>', {class: 'opener'}).text(UNICODE.BLACK_RIGHT_POINTING_TRIANGLE);
         $valve.append($closer, $opener);
 
-        set_valve($valve, is_initially_open);
+        set_valve($valve, opt.is_initially_open);
         // NOTE:  Cannot toggle valve-hidden on "-valved" objects here,
         //        because they can't have been "controlled" yet.
 
@@ -6294,6 +6322,8 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             var new_open = ! old_open;
             set_valve($valve, new_open);
             if (new_open) {
+                var opt = $valve.data('opt');
+                opt.on_open();
                 setTimeout(function () {
                     contributions_becoming_visible_for_the_first_time_maybe();
                 });
@@ -6319,9 +6349,9 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         //        But maybe the solution to all this is to create an empty element and
         //        pass that TO valve() who then fills it in with triangles.
         //        Maybe the "name" (and its derivatives) can be inferred from that element's id.
-        var name = $valve.data('name');
-        $elements.addClass(name + '-valved');
-        $anti_elements.addClass(name + '-anti-valved');
+        var opt = $valve.data('opt');
+        $elements.addClass(opt.name + '-valved');
+        $anti_elements.addClass(opt.name + '-anti-valved');
         var is_open = get_valve($valve);
         $elements.toggleClass('valve-hidden', ! is_open);
         $anti_elements.toggleClass('valve-hidden', is_open);
@@ -6333,12 +6363,14 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         return ! $valve.hasClass('valve-closed');
     }
     function set_valve($valve, should_be_open) {
-        var name = $valve.data('name');
+        var opt = $valve.data('opt');
         $valve.toggleClass('valve-opened',   should_be_open);
         $valve.toggleClass('valve-closed', ! should_be_open);
-        $_from_class(name +      '-valved').toggleClass('valve-hidden', ! should_be_open);
-        $_from_class(name + '-anti-valved').toggleClass('valve-hidden',   should_be_open);
+        $_from_class(opt.name +      '-valved').toggleClass('valve-hidden', ! should_be_open);
+        $_from_class(opt.name + '-anti-valved').toggleClass('valve-hidden',   should_be_open);
     }
+
+
 
     ////////////////////////////
     ////// Generic stuff follows

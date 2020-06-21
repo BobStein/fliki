@@ -1,11 +1,7 @@
 /* css for the contribution.js. */
 
-/*#up-top-spacer {*/
-/*    width: 100%;*/
-/*    height: 1.5rem;*/
-/*}*/
 #up-top {
-    height: 1.5rem;   /* SEE:  TOP_SPACER_EM in contribution.js */
+    height: 1.5rem;   /* SEE:  TOP_SPACER_REM in contribution.js */
     overflow: hidden;
     /* THANKS:  Outer div tall as inner divs, https://stackoverflow.com/a/804936/673991 */
     margin-bottom: 0.1em;
@@ -97,7 +93,7 @@ select#thumb-res option { direction: rtl; }
     background-color: rgb(216,216,216);
 }
 .sup-category-first {
-    margin-top: 1.5rem;   /* TOP_SPACER_EM */
+    margin-top: 1.5rem;   /* TOP_SPACER_REM */
 }
 
 .sup-category h2 {
@@ -428,8 +424,8 @@ body.playing-somewhere                           .save-bar   .expand { display: 
 
 #top-right-blurb #introductory-blurb img {
     vertical-align: middle;
-    width: 1.5rem;   /* TOP_SPACER_EM */
-    height: 1.5rem;   /* TOP_SPACER_EM */
+    width: 1.5rem;
+    height: 1.5rem;   /* TOP_SPACER_REM */
 }
 
 .sup-category #introductory-blurb img {
@@ -511,7 +507,7 @@ iframe { display:block; }
 #popup-screen {
     position: fixed;
     z-index: 1;
-    top: 1.5rem;   /* TOP_SPACER_EM */
+    top: 1.5rem;   /* TOP_SPACER_REM */
     right: 0;
     bottom: 0;
     left: 0;
