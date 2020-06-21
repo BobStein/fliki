@@ -230,6 +230,21 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         extreme: 8        // above extreme-max, display at soft-max.
     };
 
+    // Config options for size_adjust()
+    var WIDTH_MAX_EM_ABOUT = {
+        soft: 24,         // below the hard-max, display as is.
+        hard: 30,         // between hard and extreme-max, limit to hard-max.
+                          // (good reason to have a gap here: minimize wrapping)
+        extreme: 30       // above extreme-max, display at soft-max.
+    };
+    var HEIGHT_MAX_EM_ABOUT = {
+        soft: 15,          // below the hard-max, display as is.
+        hard: 18,          // between hard and extreme-max, limit to hard-max.
+                          // (no good reason to have a gap here: it's just
+                          // annoying to show a tiny bit scrolled out of view)
+        extreme: 24        // above extreme-max, display at soft-max.
+    };
+
     var MIN_CAPTION_WIDTH = 100;
     // NOTE:  Prevent zero-width iframe or other crazy situation from scrunching caption too narrow.
 
@@ -1992,6 +2007,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         $cat:             { get: function () {return this.$sup.closest('.category');}},
         category_id:      { get: function () {return this.$cat.attr('id');}},
         is_my_category:   { get: function () {return this.category_id === MONTY.IDN.CAT_MY.toString();}},
+        is_about_category:   { get: function () {return this.category_id === MONTY.IDN.CAT_ABOUT.toString();}},
         media_url:        { get: function () {return this.is_media ? this.content : null;}},
 
         /**
@@ -4707,8 +4723,12 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         $('.size-adjust-once:visible').each(function () {
             var $element = $(this);
             $element.removeClass('size-adjust-once');
-            size_adjust($element, WIDTH_MAX_EM, HEIGHT_MAX_EM);
             var cont = Contribution_from_element($element);
+            if (cont.is_about_category) {
+                size_adjust($element, WIDTH_MAX_EM_ABOUT, HEIGHT_MAX_EM_ABOUT);
+            } else {
+                size_adjust($element, WIDTH_MAX_EM, HEIGHT_MAX_EM);
+            }
             cont.fix_caption_width('quote size adjust');
         });
     }
@@ -4847,6 +4867,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         return $(element).closest('.pop-up').length > 0;
     }
 
+    // TODO:  Replace with Contribution.is_about_category
     function is_in_about(element) {
         return $cat_of(element).attr('id') === MONTY.IDN.CAT_ABOUT.toString();
     }
@@ -5938,6 +5959,8 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         $title.append(title);
         $sup_category.append($title);
         var $category = $('<div>', {id: cat_idn, class: 'category'});
+        var category_code_name = MONTY.cat.txt[cat_idn];   // e.g. my, about
+        $category.addClass('category-' + category_code_name);
         $sup_category.append($category);
         if (do_valve) {
             var $valve = valve(name, is_valve_open);
