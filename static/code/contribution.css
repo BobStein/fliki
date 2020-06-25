@@ -210,9 +210,11 @@ select#thumb-res option { direction: rtl; }
     /* SEE:  More Chrome contenteditable issues, https://stackoverflow.com/q/6023307/673991 */
 
 .sup-contribution                                .render-bar { display:none; }
-.sup-contribution.render-media                   .render-bar { display:block; }
+.sup-contribution.render-media                   .render-bar { display:inline-block; }
 .sup-contribution.contribution-edit              .render-bar { display:none; }
 .sup-contribution.contribution-edit.render-media .render-bar { display:none; }
+/* NOTE:  .render-media is inline-block, so its width is natural,
+          and a too-wide save-bar can be detected. */
 
 .render-bar img.thumb {
     vertical-align: top;
@@ -496,6 +498,15 @@ iframe { display:block; }
 }
 .noembed-error .render-bar {
     border-color: #AAAAAA;
+}
+
+.unshown {
+    background-color: rgba(0,0,0,0.08);
+    -webkit-border-radius: 0.7em;
+       -moz-border-radius: 0.7em;
+            border-radius: 0.7em;
+    padding: 0.5em;
+    cursor: pointer;
 }
 
 .talkify-sentence-highlight {

@@ -57,7 +57,7 @@ function embed_content_js(window, $, MONTY) {
     //        itself into whatever elements it's going to become.
     //        So the "fix_embedded_content" may be incomplete.
 
-    var POP_UP_ANIMATION_MS = 500;
+    // var POP_UP_ANIMATION_MS = 500;
     // var POP_UP_ANIMATION_TIMEOUT_MS = 1500;   // Fix for the ASS-OS bug.
 
     // TODO:  Why does twitter + IE11 + fit_height() go on changing height in EVERY repetition?
@@ -91,6 +91,8 @@ function embed_content_js(window, $, MONTY) {
     var is_pop_up = query_get('is_pop_up', 'false') === 'true';
     var oppressed_width = query_get('width', 'auto');
     var oppressed_height = query_get('height', 'auto');
+    var oppressed_duration = parseInt(query_get('duration', '500'));
+    var oppressed_easing = query_get('easing', 'swing');   // swing or linear
 
     var domain_simple = simplified_domain_from_url(url_outer_iframe);
     window.document.title = domain_simple + " - " + window.document.title;
@@ -161,7 +163,7 @@ function embed_content_js(window, $, MONTY) {
                     //     },
                     //     https://www.youtube.com/watch?time_continue=206&v=ubTJI_UphPk&feature=emb_logo&ab_channel=DoctorWho
                     fix_embedded_content();
-                    console.debug("Noembed error on", contribution_idn, url_outer_iframe);
+                    console.warn("Noembed error on", contribution_idn, url_outer_iframe);
                     parent_message('noembed-error-notify', {
                         contribution_idn: contribution_idn,
                         error_message: "noembed error " + MONTY.oembed.error
@@ -242,9 +244,9 @@ function embed_content_js(window, $, MONTY) {
                             complete: function () {
                                 dynamic_player();
                             },
-                            duration: POP_UP_ANIMATION_MS,
-                            easing: 'linear'
-                        })
+                            duration: oppressed_duration,
+                            easing: oppressed_easing
+                        });
                     });
                 } else if (is_youtube && SHOW_YOUTUBE_THUMBS) {
                     var src = MONTY.oembed.thumbnail_url;
@@ -277,11 +279,11 @@ function embed_content_js(window, $, MONTY) {
                         // noinspection SpellCheckingInspection
                         if (num_cycles >= POLL_REPETITIONS) {
                             // if (num_changes === 0) {
-                            //     console.debug(
+                            //     console.log(
                             //         domain_simple, "- no changes"
                             //     );
                             // } else {
-                            //     console.debug(
+                            //     console.log(
                             //         query_get('id_attribute') + ".",
                             //         domain_simple, "-",
                             //         num_changes, "changes,",
@@ -349,7 +351,7 @@ function embed_content_js(window, $, MONTY) {
                 if (is_dynamic) {
                     if (yt_player !== null && typeof yt_player.getPlayerState === 'function') {
                         var youtube_state = yt_player.getPlayerState();
-                        console.debug("UN POP UP", youtube_state);
+                        console.log("UN POP UP, youtube state", youtube_state);
                         if (quitable_state(youtube_state)) {
                             parent_message('auto-play-quit', {
                                 contribution_idn: contribution_idn,
@@ -385,6 +387,9 @@ function embed_content_js(window, $, MONTY) {
                 $('#youtube_iframe').animate({
                     width: message.width,
                     height: message.height
+                }, {
+                    duration: message.duration,
+                    easing: message.easing
                 });
                 break;
             case 'pause':

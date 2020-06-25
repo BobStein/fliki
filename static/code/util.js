@@ -3,6 +3,9 @@
 // THANKS:  Remove "var" warnings, EcmaScript 6 to 5, https://stackoverflow.com/q/54551923/673991
 
 function sanitized_domain_from_url(url) {
+    if (url === null) {
+        return null;
+    }
     var domain_simple = simplified_domain_from_url(url);
     var ALL_GROUPS_OF_NON_ALPHANUMERICS = /[^0-9A-Za-z]+/g;
     var domain_sanitized = domain_simple.replace(ALL_GROUPS_OF_NON_ALPHANUMERICS, '_');
@@ -10,6 +13,8 @@ function sanitized_domain_from_url(url) {
 }
 console.assert('foo_exam_ple' === sanitized_domain_from_url('https://www.Foo.Exam---ple.com/'));
 console.assert('no_domain' === sanitized_domain_from_url('https://www.e%ample.com/'));
+console.assert('no_domain' === sanitized_domain_from_url('ordinary string'));
+console.assert(null === sanitized_domain_from_url(null));
 
 function simplified_domain_from_url(url) {
     var domain = domain_from_url(url);
@@ -99,27 +104,25 @@ console.assert(42 === random_element([42, 42, 42]));
 /**
  * Loop through object or array.  Call back on each key-value pair.
  *
- * A drop-in replacement for jQuery.each() except:
- *      `this` is the object -- UNLIKE JQUERY.EACH WHERE IT IS EACH VALUE!
- *      SEE jQuery .call():  https://github.com/jquery/jquery/blob/438b1a3e8/src/core.js#L247
- *      Reason for this incompatibility:  the one-line test #3 below
- *                                        that modifies in-place.
- *
- * Callback parameters are (key, value) where key is always a string, even for array indices.
- * SEE:  object property keys are strings, https://stackoverflow.com/a/3633390/673991
- *
- * SEE:  $.each() bug for objects, https://stackoverflow.com/a/49652688/673991
+ * A drop-in replacement for jQuery.each().
  *
  * @param object - e.g. {a:1, b:2} or [1,2,3]
- * @param callback - function called on each element of the array/object
- *                   `this` is the object (not each value, as it is in jQuery.each())
- *                   key, value are the parameters
+ * @param callback - function called on each element of the array / object
+ *                   `this` is each value, as it is in $.each())
+ *                   key, value are the parameters to the callback function
  *                       key is the name of the property for { objects }
- *                       key is the index of the array for [ arrays ]
+ *                       key is the index of the array for [ arrays ] -- and it's always a string
  *                   return false (not just falsy) to prematurely terminate the looping
- * @return {*} - returns the object, a convenience for chaining I guess, maybe $.each is like that.
+ * @return {*} - return the object, a convenience for chaining I guess.
+ *               Seems as if $.each does this.
+ *
+ * SEE:  jQuery .call():  https://github.com/jquery/jquery/blob/438b1a3e8/src/core.js#L247
+ *       where `this` is the same as the 2nd parameter, both for arrays and for objects.
+ *
+ * SEE:  object property keys are always strings, https://stackoverflow.com/a/3633390/673991
+ *
+ * SEE:  $.each() bug for objects, https://stackoverflow.com/a/49652688/673991
  */
-// TODO:  Undo incompatibility with $.each() -- could be accomplished with closure.
 // TODO:  async_interval, async_chunk, async_done optional parameters!
 //        Unifying setTimeout() and $.each(), as it were.
 //        async={interval: milliseconds, chunk:iterations_per_interval, done:callback}
@@ -140,11 +143,15 @@ function looper(object, callback) {
     return object;
 }
 var looper_test = [];
-looper({foo:1, length:0, bar:2}, function (k,v) { looper_test.push(k+"="+v); });
+looper({foo:1, length:0, bar:2}, function (k,v) {
+    looper_test.push(k+"="+v);
+});
 console.assert("foo=1,length=0,bar=2" === looper_test.join(","));
 
 looper_test = [];
-looper([1,2,42,8,9], function (i,v) {looper_test.push(i+"="+v); return v !== 42;});
+looper([1,2,42,8,9], function (i,v) {
+    looper_test.push(i+"="+v); return v !== 42;
+});
 console.assert("0=1,1=2,2=42" === looper_test.join(","));
 
 function equal_ish(value1, value2, tolerance) {
@@ -733,6 +740,7 @@ function to_string(z) {
  */
 function animate_surely(element, properties, options) {
     var duration = options.duration || 1000;
+    console.assert(typeof duration === 'number', duration);
     var timeout = duration * 2;
     var complete = options.complete || function () {};
     var $element = $(element);
@@ -765,4 +773,10 @@ function animate_surely(element, properties, options) {
         }
     });
     $element.animate(properties, modified_options);
+    console.debug("Shoil", modified_options);
+}
+
+function dom_from_$($jquery_object) {
+    var dom_object = $jquery_object.get(0);
+    return dom_object;
 }

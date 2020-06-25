@@ -34,6 +34,7 @@
  * @param window.qiki.media_register
  * @param window.scrollBy
  * @param window.speechSynthesis
+ * @param window.ResizeObserver
  * @param window.SpeechSynthesisUtterance
  * @param window.utter
  * @param $
@@ -106,12 +107,12 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
 
     var DOES_DOCUMENT_CLICK_END_CLEAN_EDIT = false;
     // NOTE:  Clicking on the document background ends a non-dirty edit.
-    //        Makes more sense with DO_LONG_PRESS_EDIT.  Less so without it.
+    //        Makes more sense with the long-press-edit feature.  Less so without it.
 
     var DEBUG_SIZE_ADJUST = false;
     var DEBUG_BOT_STATES = true;
 
-    var MS_IFRAME_RESIZER_INIT = 100;
+    var MS_IFRAME_RESIZER_INIT = 0.1 * 1000;
     // NOTE:  Increase to 2000 milliseconds to avoid the following Chrome error:
     //            Failed to execute 'postMessage' on 'DOMWindow':
     //            The target origin provided ('<URL>')
@@ -137,10 +138,18 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     //            The target origin provided (‘http://xxx’)
     //            does not match the recipient window’s origin (‘http://yyy’).
 
-    var MS_IFRAME_RECOVERY_CHECK = 5000;
+    var MS_IFRAME_RECOVERY_CHECK = 5 * 1000;
     // TODO:  3 seconds seemed to brief, lots of churn.
 
-    var MEDIA_HANDLER_LOAD_SECONDS = 10.0;
+    var MS_MEDIA_HANDLER_LOAD_CHECK = 10 * 1000;
+
+    var MS_LONG_PRESS_DEFAULT = 1 * 1000;
+
+    var MS_INITIAL_RESIZING_NUDGE = 3 * 1000;   // Ask iFrameResizer to resize after some settling.
+
+    // var MS_THUMB_TO_POP_UP = 1;   // ms to freeze thumbnail clone before popping it up
+
+    var MS_FINITE_STATE_MACHINE_INTERVAL = 1 * 1000;
 
     var EXPERIMENTAL_RED_WORD_READING = false;
 
@@ -331,16 +340,22 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     //        here in contribution.js, e.g.
     //        $('#up-top').css('height', TOP_SPACER_REM.toString() + 'em');
 
-    var POP_UP_ANIMATE_MS = 500;
-    var POP_UP_ANIMATE_EASING = 'linear';   // swing or linear
-    var POP_DOWN_ANIMATE_MS = 250;
-    var POP_DOWN_ANIMATE_EASING = 'swing';   // swing or linear
+    var POP_UP_ANIMATE_MS = 0.5 * 1000;
+    var POP_UP_ANIMATE_EASING = 'swing';   // swing or linear
+    var POP_DOWN_ANIMATE_MS = 0.25 * 1000;
+    var POP_DOWN_ANIMATE_EASING = 'linear';   // swing or linear
 
     var MAX_IFRAME_RECOVERY_TRIES = 10;   // Reload a 0 x 0 iframe this many times max.
 
     var MAX_FONT_EXPANSION = 3.0;   // Popping up a quote, magnify font size up to this factor.
 
-    var MAX_BIG_CONT_PER_CAT = 150;   // How many contributions to show in a category + "N more"
+    var MAX_CAT_CONT = 50;   // How many contributions to show in a category, before "N-MAX more"
+    var INCREMENT_CAT_CONT = 20;   // Clicking more renders this many contributions
+    var INCREMENT_CAT_CONT_SHIFT = 100;  // Shift-click renders this many
+    var DO_WHOLE_UNSHOWN_PIECES = true;  // Show a few more than MAX_CAT_CONT initially,
+                                         // to make unshown count an even multiple of
+                                         // INCREMENT_CAT_CONT.  This way in the "N more" label,
+                                         // N is always a multiple of INCREMENT_CAT_CONT.
 
     var MIN_OPEN_CATEGORY_VIEW = 200;   // When opening a category, if fewer pixels than this
                                         // are in view, scroll up.
@@ -457,6 +472,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             .on('click', '.save-bar .save',    contribution_save)
             .on('click', '.save-bar .play',    function () { bigger(this, true); })
             .on('click', '.save-bar .expand',  function () { bigger(this, false); })
+            .on('click', '.unshown', unshown_click)
             // TODO:  Should play or expand end non-dirty edits?  That could be more consistent:
             //        Closing the popup with Escape does this already.
             //        Closing with the close button, or clicking on the popup-screen does not.
@@ -535,7 +551,16 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
 
         entry_caption_same_width_as_textarea();
         post_it_button_appearance();
-        initialize_contribution_sizes();
+
+        initial_thumb_size_adjustment();
+        // TODO:  How does this work so early (we've just called build_body_dom()),
+        //        when some contribution thumbnails have not been rendered yet,
+        //        by Contribution.rebuild_bars()?
+        //        Specifically, those handled by media_noembed.js.
+        //        Aren't twitter contributions greatly delayed in their renderings,
+        //        and therefore adjustments?
+        //        Maybe the size is just limited regardless of its contents, and that's kinda okay.
+
         settle_down();
 
         bot = Bot();
@@ -592,7 +617,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                 //     resizer_nudge_all();
                 // }, 10000);
 
-            }, 3000);
+            }, MS_INITIAL_RESIZING_NUDGE);
             // NOTE:  If this delay is not enough, I don't think anything too bad happens.
             //        You might see briefly a wafer-thin iframe before it gives its children
             //        the data-iframe-width attribute that taggedElement needs.
@@ -687,7 +712,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         that.last_tick_state = null;
         that.ticks_this_state = 0;    // N means state is [N to N+1) seconds old, if no pauses.
         that._interval_timer = null;
-        that.ticker_interval_ms(1000);
+        that.ticker_interval_ms(MS_FINITE_STATE_MACHINE_INTERVAL);
         that.breather_seconds = null;
         that.cont = null;       // e.g. id_attribute '1821' a thumbnail
         that.pop_cont = null;   // e.g. id_attribute 'popup_1821' an almost full screen pop-up
@@ -711,6 +736,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         DONE_CONTRIBUTION: "Natural ending of a contribution in playlist",
         BREATHER: "Take a breather between popups.",
         POP_DOWN_ONE: "Pop down the current popped-up contribution.",
+        POP_DOWN_PATIENCE: "Being patient for pop-down animations to complete",
         BEGIN_ANOTHER: "Begin the next contribution.",
         PLAYING_CONTRIBUTION: "Quiescently automatically playing",
         END_AUTO: "Play ends",
@@ -1029,9 +1055,12 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             break;
         case that.State.POP_DOWN_ONE:
             that.pop_end();
+            that.transit([that.State.POP_DOWN_ONE], that.State.POP_DOWN_PATIENCE);
             pop_down_all(that.did_bot_transition, function bot_pop_down_then() {
-                that.transit([that.State.POP_DOWN_ONE], that.State.BEGIN_ANOTHER);
+                that.transit([that.State.POP_DOWN_PATIENCE], that.State.BEGIN_ANOTHER);
             });
+            break;
+        case that.State.POP_DOWN_PATIENCE:
             break;
         case that.State.BEGIN_ANOTHER:
             index_play_bot++;
@@ -1333,6 +1362,10 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
      * @param idn - e.g. MONTY.IDN.CAT_MY
      * @return {Category}
      * @constructor
+     *
+     * Properties not set by the constructor, but maybe added to an instance later:
+     *     observer
+     *     (must be others)
      */
     function Category(idn) {
         if ( ! (this instanceof Category)) {
@@ -1343,10 +1376,119 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         this.cont_sequence = IdnSequence(MONTY.IDN.FENCE_POST_RIGHT);
     }
 
+    // TODO:  Category.build_dom() method, instead of building dom, then objects.
+
     Object.defineProperties(Category.prototype, {
+        $sup:     { get: function () {return $sup_categories[this.idn];}},
         $cat:     { get: function () {return $categories[this.idn];}},
         $unshown: { get: function () {return this.$cat.find('.unshown');}}
     });
+
+    // NOTE:  Not sure if we'd ever need to destroy a category object, but if we do,
+    //        here go the issues to keep track of.
+    // noinspection JSUnusedGlobalSymbols
+    Category.prototype.destructor = function Category_destructor() {
+        var that = this;
+        // if (is_defined(that.observer)) {
+        //     that.observer.disconnect();
+        // }
+        if (is_defined(that.resize_observer)) {
+            that.resize_observer.disconnect();
+        }
+    };
+
+    // var ok_to_observe = true;
+
+    Category.prototype.render_some_conts = function Category_render_some_conts(n_show) {
+        var that = this;
+        var num_newly_rendered = 0;
+        var $unshown = that.$unshown;
+        that.cont_sequence.loop(function (_, cont_idn) {
+            var cont = Contribution_from_idn(cont_idn);
+            console.assert(cont.is_unsuperseded, cont);
+            if (cont.is_dom_rendered()) {
+                // skip the rendered contributions
+            } else {
+                num_newly_rendered++;
+                cont.build_dom(cont.fetch_txt());
+                cont.rebuild_bars(function () {
+
+                    // cont.observer = new MutationObserver(function mutated_cont_handler() {
+                    //     if (ok_to_observe) {
+                    //         ok_to_observe = false;
+                    //         thumb_size_adjust(cont.$sup);
+                    //         console.log("Mutation", cont.id_attribute, cont.cat.txt, cont.caption_text, cont.$sup.width(), cont.$sup.height());
+                    //         ok_to_observe = true;
+                    //     } else {
+                    //         console.warn("Mutation recursion averted!", cont.id_attribute, cont.cat.txt, cont.caption_text);
+                    //     }
+                    // });
+                    // cont.observer.observe(dom_from_$(cont.$sup), {
+                    //     attributes: true,
+                    //     characterData: true,
+                    //     childList: true
+                    // });
+                    // cont.$sup.on('resize', function () {
+                    //     console.debug("Resize $sup", cont.id_attribute, cont.cat.txt, cont.caption_text);
+                    // });
+                    // cont.$cont.on('resize', function () {
+                    //     console.debug("Resize $cont", cont.id_attribute, cont.cat.txt, cont.caption_text);
+                    // });
+                    // NOTE:  Disabled this because it kept "adjusting" sizes when editing a quote,
+                    //        instead of maintaining the manually resized dimensions.
+
+                    if (is_defined(window.ResizeObserver)) {
+                        // SEE:  ResizeObserver support, https://caniuse.com/#feat=resizeobserver
+
+                        // noinspection JSUnresolvedFunction
+                        cont.resize_observer = new ResizeObserver(function resized_cont_handler(/*e*/) {
+                            cont.fix_caption_width();
+                            // looper(e, function (k, v) {
+                            //     // noinspection JSUnresolvedVariable
+                            //     console.debug("Resize observed", cont.id_attribute, string_from_$(v.target), v.contentRect.width.toFixed(0), v.contentRect.height.toFixed(0));
+                            // });
+                        });
+                        cont.resize_observer.observe(dom_from_$(cont.$cont));
+                    }
+                });
+                if ($unshown.length === 0) {
+                    that.$cat.append(cont.$sup);
+                } else {
+                    $unshown.before(cont.$sup);
+                }
+                if (num_newly_rendered >= n_show) {
+                    return false;
+                }
+            }
+        });
+    };
+
+    Category.prototype.show_unshown_count = function Category_show_unshown_count() {
+        var that = this;
+        var total_conts = that.cont_sequence.len();
+        var number_renderings = that.$cat.find('.contribution').length;
+        var number_popup_conts = that.$cat.find('#popup-screen').find('.contribution').length;
+        var number_thumbnail_renderings = number_renderings - number_popup_conts;
+        var number_of_unshown_conts = total_conts - number_thumbnail_renderings;
+
+        var $vestigial_unshown = that.$cat.find('.unshown');
+        $vestigial_unshown.remove();
+
+        if (number_of_unshown_conts > 0) {
+            var $unshown = $('<div>', {class: 'unshown'});
+            $unshown.text(f("{n} more", {n: number_of_unshown_conts}));
+            $unshown.data('category-object', that);
+            that.$cat.append($unshown);
+            // TODO:  Title tool-tip should say, e.g.:
+            //            Click to show 10 more.  Shift-click to show 100 more.
+            //        Numbers should change depending on INCREMENT_CAT_CONT.
+            //        And also depending on how many contributions are ACTUALLY unshown.
+            // TODO:  The shift key should change e.g. "234 more" to
+            //        "234 more (shift-click to see 100 of them)"
+            // TODO:  Show icons resembling how many more?  Numerous little squares.
+            // TODO:  Think of other ways to visually represent the mental models user should have.
+        }
+    };
 
     /**
      * Know about all Categories
@@ -1376,6 +1518,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             var cat = that.add(cat_idn);
             cat.txt = txt_from_idn[cat_idn];
         });
+
         return that;
     }
 
@@ -1417,7 +1560,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
      *     .owner
      *     .capt
      *     .capt.idn
-     *     .capt.txt
+     *     .caption_text
      *     .capt.owner
      *     .superseded_by_idn
      *
@@ -1811,7 +1954,21 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
 
     function alternative_build_contributions(/*conts_in_cat*/) {
         // TODO:  This code should be in build_body_dom()
+
         var category_lexi = CategoryLexi().from_monty(MONTY.cat.order, MONTY.cat.txt);
+        category_lexi.loop(function (_, cat) {
+            cat.$sup.data('category-object', cat);
+            // TODO:  This should happen in Category.build_dom()
+            cat.thumb_specs = {
+                for_width: WIDTH_MAX_EM,
+                for_height: HEIGHT_MAX_EM
+            };
+        });
+        category_lexi.get(MONTY.IDN.CAT_ABOUT).thumb_specs = {
+            for_width: WIDTH_MAX_EM_ABOUT,
+            for_height: HEIGHT_MAX_EM_ABOUT
+        };
+
         contribution_lexi = ContributionLexi(category_lexi);
 
         contribution_lexi.notify = function alt_notifier(message) {
@@ -1860,6 +2017,9 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
      * @param {number} idn - the idn of the contribution word in the lex, e.g. 1821
      * @return {Contribution}
      * @constructor
+     *
+     * Properties not set by the constructor, but maybe added to an instance later:
+     *     (must be some)
      */
     function Contribution(idn) {
         if ( ! (this instanceof Contribution)) {
@@ -1918,6 +2078,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         var $sup = $(element_or_selector).closest('.sup-contribution');
         if ($sup.length === 1) {
             var cont = $sup.data('contribution-object');
+            console.assert(cont.$sup.is($sup), cont.$sup, $sup);
             return cont;   // which could be undefined
         } else {
             return null;
@@ -1982,16 +2143,15 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         $caption_span:    { get: function () {return this.$sup.find('.caption-span');}},
         $external_link:   { get: function () {return this.$sup.find('.external-link');}},
         content:          { get: function () {
-            // return this.$cont.text();
-            if (this.is_dom_rendered()) {
-                return this.$cont.text();
-            } else {
-                return this.fetch_txt();
-            }
-        }},
+                              if (this.is_dom_rendered()) {
+                                  return this.$cont.text();
+                              } else {
+                                  return this.fetch_txt();
+                              }
+                          }},
+        caption_text:     { get: function () {return is_specified(this.capt) ? this.capt.txt : ""}},
         is_media:         { get: function () {return could_be_url(this.content);}},
-        caption_text:     { get: function () {return this.$caption_span.text();}},
-        // is_noembed_error: { get: function () {return this.$sup.hasClass('noembed-error');}},
+        is_noembed_error: { get: function () {return this.$sup.hasClass('noembed-error');}},
 
         /**
          * .media_domain - Compact domain for a media link (e.g. "youtube")
@@ -2003,22 +2163,31 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         media_domain:     { get: function () {
             // return this.$sup.attr('data-domain') || null;
             return sanitized_domain_from_url(this.media_url);
+            // return this.is_media ? sanitized_domain_from_url(this.media_url) : null;
         }},
 
         $iframe:          { get: function () {return this.$render_bar.find('iframe');}},
         $img_thumb:       { get: function () {return this.$render_bar.find('img.thumb');}},
-        iframe:           { get: function () {return this.$iframe.get(0) || null;}},
+        iframe:           { get: function () {return dom_from_$(this.$iframe) || null;}},
         $cat:             { get: function () {return this.$sup.closest('.category');}},
         category_id:      { get: function () {return this.$cat.attr('id');}},
         is_my_category:   { get: function () {return this.category_id === MONTY.IDN.CAT_MY.toString();}},
-        is_about_category:   { get: function () {return this.category_id === MONTY.IDN.CAT_ABOUT.toString();}},
+        is_about_category:{ get: function () {return this.category_id === MONTY.IDN.CAT_ABOUT.toString();}},
         media_url:        { get: function () {return this.is_media ? this.content : null;}},
 
         /**
-         * .is_superseded - Should we show this?  Not if an edit supersedes it.
+         * .is_unsuperseded - Should we show this?  Not if an edit supersedes it.
          */
         is_unsuperseded:  { get: function () {return this.superseded_by_idn === null;}}
     });
+
+    // NOTE:  Not sure if we'd ever need to destroy a Contribution object, but if we do,
+    //        here go the issues to keep track of.
+    // noinspection JSUnusedGlobalSymbols
+    Contribution.prototype.destructor = function Contribution_destructor() {
+        // noinspection JSUnusedLocalSymbols
+        var that = this;
+    };
 
     Contribution.prototype.is_idn_specified = function Contribution_is_idn_specified() {
         var that = this;
@@ -2043,7 +2212,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         var that = this;
         console.assert(typeof on_init === 'function', "Expecting on_init function, not", on_init);
         var is_an_iframe = that.$iframe.length >= 1;
-        var was_iframe_initialized = typeof that.$iframe[0].iFrameResizer === 'object';
+        var was_iframe_initialized = typeof dom_from_$(that.$iframe).iFrameResizer === 'object';
         // NOTE:  This typeof apparently does not prevent a warning on twice initializing
         //        an iframe in a pop-up, cloned from a thumbnail contribution.
         if (is_an_iframe && ! was_iframe_initialized) {
@@ -2345,13 +2514,15 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
 
     Contribution.prototype.fix_caption_width = function Contribution_fix_caption_width() {
         // TODO:  Call this function more places where $caption_bar.width(is set to something)
-        // noinspection JSUnusedAssignment
+        // TODO:  Why can't this simply copy $sup.width() to $caption_bar.outerWidth()?
         var that = this;
 
 
-        var media_width = that.$iframe   .outerWidth() || 0;
-        var thumb_width = that.$img_thumb.outerWidth() || 0;
-        var wordy_width = that.$cont     .outerWidth() || 0;
+        var media_width  = that.$iframe    .is(':visible') ? that.$iframe    .outerWidth() || 0 : 0;
+        var thumb_width  = that.$img_thumb .is(':visible') ? that.$img_thumb .outerWidth() || 0 : 0;
+        var wordy_width  = that.$cont      .is(':visible') ? that.$cont      .outerWidth() || 0 : 0;
+        var render_width = that.$render_bar.is(':visible') ? that.$render_bar.outerWidth() || 0 : 0;
+
 
         function adjust_to(width) {
             if (equal_ish(width, that.$caption_bar.outerWidth(), 1.0)) {
@@ -2367,12 +2538,16 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             adjust_to(media_width);
         } else if (thumb_width > MIN_CAPTION_WIDTH) {
             adjust_to(thumb_width);
-            // NOTE:  thumb_width === 2 (or some width) is common, but temporary
+            // NOTE:  thumb_width being 2 (or some nonzero value) is common, but temporary
+        } else if (render_width > MIN_CAPTION_WIDTH) {
+            adjust_to(render_width);
+            // NOTE:  render_width is the only nonzero value when a noembed error is shown.
         } else if (wordy_width > MIN_CAPTION_WIDTH) {
             adjust_to(wordy_width);
+            // NOTE:  wordy_width is the last resort, in case of quote contributions
+            //        But it has width even when invisible, which we don't want.
+            //        In that case choose media or thumb.
         }
-        // NOTE:  wordy_width is the last resort, in case of quote contributions
-        //        But it has width even when invisible.  In that case choose media or thumb.
     };
 
     Contribution.prototype.resizer_nudge = function Contribution_resizer_nudge() {
@@ -2426,65 +2601,6 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         $(iframe).attr('src', $(iframe).attr('src'));
     }
 
-    /**
-     * (Re)build the render bar element contents, using the media URL in the contribution text.
-     *
-     * Use the registered media handler, if the pattern matches.
-     *
-     * Happens on page load, on entering a new contribution, or editing an old one.
-     */
-    Contribution.prototype.render_media = function Contribution_render_media(then) {
-        // NOTE:  that.$iframe may not exist yet, e.g. on page reload, or entering a new cont.
-        //        If it did exist it gets displaced here, e.g. after an edit.
-        var that = this;
-        // that.$sup.attr('data-domain', sanitized_domain_from_url(that.content));
-
-        if (that.handler_scan()) {
-            // console.log(
-            //     "Sophisticated Media", that.id_attribute,
-            //     "handler", that.handler.handler_index,
-            //     that.handler.media.description_short,
-            //     that.handler.match_object.slice(1).join(" "),
-            //     that.caption_text.slice(0, 10) + "..."
-            // );
-            // EXAMPLE:  Sophisticated Media 3459 handler 0 youtube _SKdN1xQBjk
-            // EXAMPLE:  Sophisticated Media 994 handler 1 instagram BNCeThsAhVT
-            // EXAMPLE:  Sophisticated Media 1857 handler 2 noembed  Switched a...
-            // EXAMPLE:  Sophisticated Media 1792 handler 3 any url  Mr Bean's ...
-            var can_play = that.handler.media.can_play();
-            that.$sup.toggleClass('can-play', can_play);
-            that.$sup.toggleClass('cant-play', ! can_play);
-            that.handler.media.render_thumb(that, then);
-        } else {
-            that.$sup.removeClass('can-play');
-            that.$sup.removeClass('cant-play');
-            console.error(
-                "No fallback media handler for",
-                that.id_attribute,
-                that.content.slice(0,40)
-            );
-        }
-    };
-
-    Contribution.prototype.render_error = function Contribution_render_error(error_message) {
-        var that = this;
-        var $p = $('<p>', { class: 'error-message' });
-        $p.text(error_message);
-        console.warn(f("Render error on #{id_attribute}\n{error_message}\n{media_url}", {
-            id_attribute: that.id_attribute,
-            media_url: that.media_url,
-            error_message: error_message
-        }));
-        that.$render_bar.empty().append($p);
-        that.$sup.addClass('noembed-error');
-        that.is_noembed_error = true;
-        // NOTE:  How non-live thumbnails skip the bot.
-        //        Also how the text gets its peachy background color.
-        that.$render_bar.outerWidth(that.$cont.outerWidth());
-        // TODO:  Less clumsy way to constrain error message width.
-        //        Why the heck does that.$cont have an element style width at this point?!
-    };
-
     Contribution.prototype.thumb_image = function Contribution_thumb_image(
         thumb_url,
         thumb_title,
@@ -2506,12 +2622,12 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         });
         that.$render_bar.empty().append($a);
         $a.append($img);
-        that.fix_caption_width('thumb loading');
+        that.fix_caption_width();
         $img.one('load.thumb1', function render_img_load() {
             $img.off('.thumb1');
             $img.removeClass('thumb-loading');
             $img.addClass('thumb-loaded');
-            that.fix_caption_width('thumb loaded');
+            that.fix_caption_width();
             load_callback();
         });
         $img.one('error.thumb1', function render_img_error() {
@@ -2593,33 +2709,148 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     };
 
     /**
-     * Refresh the parts of a contribution's bars that might change due to content.
+     * Generate the parts of a contribution's bars that might change due to content.
+     *
+     * Mainly this is the render-bar.  But the save-bar external-link is also affected.
+     * And the .sup-contribution gets a .render-media or not, which has ripple effects.
      */
+    // TODO:  Is the callback `then` only needed for media_noembed.js to wait for ajax response?
+    //        So can this complification go away after we get free of noembed??
     Contribution.prototype.rebuild_bars = function Contribution_rebuild_bars(then) {
+
         var that = this;
         then = then || function () {};
         if (that.is_media) {
-            that.$sup.addClass('render-media');
-            that.$external_link.attr('href', that.media_url);
-            that.$external_link.attr('target', '_blank');
-            that.$external_link.attr('title', that.media_domain + " - new tab");
-            that.render_media(then);
+            that.render_media(before_then);
         } else {
-            that.$sup.removeClass('render-media');
-            that.$sup.addClass('can-play');   // (can bey "played" as text to speech audio)
-            that.$external_link.removeAttr('href');
-            that.$external_link.removeAttr('target');
-            that.$external_link.removeAttr('title');
-            that.render_text(then);
+            that.render_text(before_then);
+        }
+
+        function before_then() {
+            setTimeout(function () {
+                // NOTE:  This little bit of breathing space really seems to make the difference
+                //        when adjusting the sizes of what's newly rendered.
+                //        Especially some quotes and yellow-background error messages, which
+                //        otherwise are too wide.
+                initial_thumb_size_adjustment();
+                then();
+            });
         }
     }
+
+    /**
+     * (Re)build the render bar element contents, using the media URL in the contribution text.
+     *
+     * Use the registered media handler, if the pattern matches.
+     *
+     * Happens on page load, on entering a new contribution, or editing an old one.
+     */
+    Contribution.prototype.render_media = function Contribution_render_media(then) {
+        // NOTE:  that.$iframe may not exist yet, e.g. on page reload, or entering a new cont.
+        //        If it did exist it gets displaced here, e.g. after an edit.
+        var that = this;
+        // that.$sup.attr('data-domain', sanitized_domain_from_url(that.content));
+
+        that.$sup.addClass('render-media');
+        that.$external_link.attr('href', that.media_url);
+        that.$external_link.attr('target', '_blank');
+        that.$external_link.attr('title', that.media_domain + " - new tab");
+
+        if (that.handler_scan()) {
+            // console.log(
+            //     "Sophisticated Media", that.id_attribute,
+            //     "handler", that.handler.handler_index,
+            //     that.handler.media.description_short,
+            //     that.handler.match_object.slice(1).join(" "),
+            //     that.caption_text.slice(0, 10) + "..."
+            // );
+            // EXAMPLE:  Sophisticated Media 3459 handler 0 youtube _SKdN1xQBjk
+            // EXAMPLE:  Sophisticated Media 994 handler 1 instagram BNCeThsAhVT
+            // EXAMPLE:  Sophisticated Media 1857 handler 2 noembed  Switched a...
+            // EXAMPLE:  Sophisticated Media 1792 handler 3 any url  Mr Bean's ...
+            that.can_play(that.handler.media.can_play());
+
+            that.$cont.outerWidth(px_from_rem(WIDTH_MAX_EM.soft));
+            // NOTE:  Set width for editing the contribution URL text.
+
+            that.handler.media.render_thumb(that, then);
+        } else {
+            // Virtually impossible to get here, because could_be_url() does the same test as
+            // media_any_url.js media.url_patterns.  So nothing passes could_be_url() and fails
+            // media_any_url.js.
+
+            // that.can_play(false);
+            // // that.$sup.removeClass('can-play');
+            // // that.$sup.removeClass('cant-play');
+            // // TODO:  Remember why I used to remove BOTH these classes?
+            //
+            // console.error(
+            //     "No media handler for",
+            //     that.id_attribute,
+            //     that.content.slice(0,40),
+            //     "in",
+            //     media_handlers.length,
+            //     "handlers"
+            // );
+
+            var error_message = [
+                "No media handler for",
+                that.id_attribute,
+                that.content.slice(0,40),
+                "in",
+                media_handlers.length,
+                "handlers"
+            ].join(" ");
+            console.error(error_message);
+            that.render_error(error_message);
+            then();
+        }
+    };
 
     Contribution.prototype.render_text = function Contribution_render_text(then) {
         var that = this;
         // that.$sup.removeAttr('data-domain');
+        that.$sup.removeClass('render-media');
+        that.can_play(true);   // (can be "played" as text to speech audio)
+        that.$external_link.removeAttr('href');
+        that.$external_link.removeAttr('target');
+        that.$external_link.removeAttr('title');
         that.$render_bar.empty();
         then();
     }
+
+    Contribution.prototype.render_error = function Contribution_render_error(error_message) {
+        var that = this;
+        var $p = $('<p>', { class: 'error-message' });
+        $p.text(error_message);
+        that.$render_bar.empty().append($p);
+
+        console.warn(f("Render error on #{id_attribute}\n{error_message}\n{media_url}", {
+            id_attribute: that.id_attribute,
+            media_url: that.media_url,
+            error_message: error_message
+        }));
+
+        that.$sup.addClass('noembed-error');
+        that.can_play(false);
+        that.is_noembed_error = true;
+        // NOTE:  How non-live thumbnails skip the bot.
+        //        Also how the text gets its peachy background color.
+
+        that.$render_bar.outerWidth(px_from_rem(WIDTH_MAX_EM.soft));
+        // NOTE:  Might be better to set this in CSS, but that would need box-sizing:border-box
+
+        that.$cont.outerWidth(px_from_rem(WIDTH_MAX_EM.soft));
+        // NOTE:  Set width for editing the contribution URL text.
+
+        that.fix_caption_width();
+    };
+
+    Contribution.prototype.can_play = function Contribution_can_play(can) {
+        var that = this;
+        that.$sup.toggleClass('can-play', can);
+        that.$sup.toggleClass('cant-play', ! can);
+    };
 
     /**
      * Compute coordinates for position:fixed clone that would appear in the same place.
@@ -2844,7 +3075,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
 
     function scroll_into_view(element, options) {
         ignore_exception(function () {
-            $(element)[0].scrollIntoView(options);
+            dom_from_$($(element)).scrollIntoView(options);
             // SEE:  Browser scrollIntoView, https://caniuse.com/#search=scrollIntoView
         });
     }
@@ -2854,7 +3085,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         console.assert(cont.is_dom_rendered(), this);
         var $clicked_on = $(evt.target);
         // SEE:  this vs evt.target, https://stackoverflow.com/a/21667010/673991
-        if ($clicked_on.is('.contribution') && is_click_on_the_resizer(evt, $clicked_on[0])) {
+        if ($clicked_on.is('.contribution') && is_click_on_the_resizer(evt, $clicked_on.get(0))) {
             console.log("contribution_click nope, just resizing");
             return;
         }
@@ -2920,6 +3151,14 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         } else {
             console.error("Save but we weren't editing?", $cont_editing);
         }
+    }
+
+    function unshown_click(evt) {
+        var $unshown = $(this);
+        var $sup_cat = $unshown.closest('.sup-category');
+        var cat = $sup_cat.data('category-object');
+        cat.render_some_conts(evt.shiftKey ? INCREMENT_CAT_CONT_SHIFT : INCREMENT_CAT_CONT);
+        cat.show_unshown_count();
     }
 
     /**
@@ -3003,9 +3242,10 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         var that = this;
 
         function bad(message) {
-            console.error(message);
             if (is_specified(callback_bad)) {
                 callback_bad(message);
+            } else {
+                console.error(message);
             }
         }
 
@@ -3048,9 +3288,10 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         }
     };
 
-    // function string_from_$($element) {
-    //     return $($element).attr('id') || $($element).attr('class') || JSON.stringify($element);
-    // }
+    // noinspection JSUnusedLocalSymbols
+    function string_from_$($element) {
+        return $($element).attr('id') || $($element).attr('class') || JSON.stringify($element);
+    }
 
     /**
      * End pop-up.
@@ -3118,6 +3359,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
 
             deanimate("popping down", popup_cont.id_attribute);
             // NOTE:  popup_cont could now be null if this pop-down interrupted another pop-down.
+            //        which would have caused all its animations to immediately complete.
 
             if (popup_cont !== null) {
 
@@ -3132,47 +3374,49 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                 $(window.document.body).removeClass('pop-up-manual');
                 $(window.document.body).removeClass('pop-up-auto');
 
-                // var pop_stuff = popup_cont.$sup.data('pop-stuff');
-                console.assert(is_specified(popup_cont.pop_stuff));
-                // TODO:  Instead, just remember the pop-down DOM object ($sup_cont in pop_up()),
-                //        and recalculate HERE AND NOW its current "fixed" coordinates from that object.
-
                 var promises = [];
-                if (popup_cont.is_media) {
-                    popup_cont.embed_message({
-                        action: 'un-pop-up',
-                        width: popup_cont.pop_stuff.thumb_render_width,
-                        height: popup_cont.pop_stuff.thumb_render_height,
-                        did_bot_transition: did_bot_transition
-                    });
-                } else {
-                    promises.push(popup_cont.$cont.animate({
-                        width: popup_cont.pop_stuff.cont_css_width,
-                        height: popup_cont.pop_stuff.cont_css_height,
-                        'font-size': px_from_rem(1)
-                    }, {
-                        duration: POP_DOWN_ANIMATE_MS,
-                        easing: POP_DOWN_ANIMATE_EASING,
-                        queue: false
-                    }).promise());
-                    promises.push(popup_cont.$caption_bar.animate({
-                        width: popup_cont.pop_stuff.caption_css_width,
-                        height: popup_cont.pop_stuff.caption_css_height,
-                        'background-color': popup_cont.pop_stuff.caption_css_background
-                    }, {
-                        duration: POP_DOWN_ANIMATE_MS,
-                        easing: POP_DOWN_ANIMATE_EASING,
-                        queue: false
-                    }).promise());
-                    promises.push(pop_screen_fade_out().promise());
-                    // NOTE:  Rely on the $sup animation to remove the popup-screen element,
-                    //        at about the same time as this animation finishes fading.
-                    //        Has to be that way because that animation completion function
-                    //        also removes the popup $sup from the DOM.
 
-                    // TODO:  Velocity.js animation?  https://github.com/julianshapiro/velocity
+                // var pop_stuff = popup_cont.$sup.data('pop-stuff');
+                if (is_specified(popup_cont.pop_stuff)) {
+                    // NOTE:  Now we know the bars were rendered, time to un-render them.
+
+                    console.assert(is_specified(popup_cont.pop_stuff));
+                    // TODO:  Instead, just remember the pop-down DOM object ($sup_cont in pop_up()),
+                    //        and recalculate HERE AND NOW its current "fixed" coordinates from that object.
+
+                    if (popup_cont.is_media) {
+                        popup_cont.embed_message({
+                            action: 'un-pop-up',
+                            width: popup_cont.pop_stuff.thumb_render_width,
+                            height: popup_cont.pop_stuff.thumb_render_height,
+                            did_bot_transition: did_bot_transition,
+                            duration: POP_DOWN_ANIMATE_MS,
+                            easing: POP_DOWN_ANIMATE_EASING
+                        });
+                    } else {
+                        promises.push(popup_cont.$cont.animate({
+                            width: popup_cont.pop_stuff.cont_css_width,
+                            height: popup_cont.pop_stuff.cont_css_height,
+                            'font-size': px_from_rem(1)
+                        }, {
+                            duration: POP_DOWN_ANIMATE_MS,
+                            easing: POP_DOWN_ANIMATE_EASING,
+                            queue: false
+                        }).promise());
+                        promises.push(popup_cont.$caption_bar.animate({
+                            width: popup_cont.pop_stuff.caption_css_width,
+                            height: popup_cont.pop_stuff.caption_css_height,
+                            'background-color': popup_cont.pop_stuff.caption_css_background
+                        }, {
+                            duration: POP_DOWN_ANIMATE_MS,
+                            easing: POP_DOWN_ANIMATE_EASING,
+                            queue: false
+                        }).promise());
+
+                        // TODO:  Velocity.js animation?  https://github.com/julianshapiro/velocity
+                    }
                 }
-
+                promises.push(pop_screen_fade_out().promise());
                 promises.push(popup_cont.$sup.animate(thumb_cont.fixed_coordinates(), {
                     duration: POP_DOWN_ANIMATE_MS,
                     easing: POP_DOWN_ANIMATE_EASING,
@@ -3189,10 +3433,13 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                             //            [iFrameSizer][Host page: popup_iframe_1834]
                             //            [Window resize] IFrame(popup_iframe_1834) not found
                             //        And probably maybe leaks memory.
+                        }, function pop_down_scoot_fail() {
                         });
 
-                        thumb_cont.$sup.removeClass('pop-down');
-                        // NOTE:  Unhide the original un-popped contribution
+                        if (thumb_cont.is_dom_rendered()) {
+                            thumb_cont.$sup.removeClass('pop-down');
+                            // NOTE:  Unhide the original un-popped contribution
+                        }
                     }
                 }).promise());
 
@@ -3220,7 +3467,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         pop_down_all(false);
 
         if (was_already_popped_up) {
-            console.warn("Contribution", cont.idn, "is popping itself down by 2nd click.");
+            console.error("Contribution", cont.idn, "is popping itself down by 2nd click.");
             // NOTE:  Avoid double-pop-up.  Just pop down, don't pop-up again.
             //        This may no longer be possible, with the popup-screen,
             //        and the save-bar buttons all disabled on the popup.
@@ -3230,10 +3477,15 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         var thumb_fixed_coordinates = cont.fixed_coordinates();
 
         popup_cont = Contribution(cont.idn);
-        js_for_contribution.popup_cont = popup_cont;
+        js_for_contribution.popup_cont = popup_cont;   // for console access
         popup_cont.id_prefix = MONTY.POPUP_ID_PREFIX;
+        popup_cont.cat = cont.cat;
         popup_cont.capt = cont.capt;
         popup_cont.build_dom(cont.content);
+
+        // NOTE:  This Contribution object never passes through render_some_conts(), so no
+        //        mutation or resize observations take place.
+        //        That only happens for contribution objects in contribution_lexi.
 
         popup_cont.$sup.find('.grip').removeClass('grip').addClass('grip-inoperative');
         // NOTE:  No dragging popped-up stuff.
@@ -3242,15 +3494,17 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         //        seemed the lesser UX crime.
 
         popup_cont.$sup.addClass('pop-up');
-        popup_cont.$sup.data('popped-down', cont.$sup);
+        // popup_cont.$sup.data('popped-down', cont.$sup);
 
         var $popup_screen = $('<div>', { id: 'popup-screen' });
         $popup_screen.append(popup_cont.$sup);
         if (cont.is_dom_rendered()) {
             cont.$sup.before($popup_screen);
             cont.$sup.addClass('pop-down');
+            // NOTE:  Zoom up from thumbnail.
         } else {
-            $('.unshown').before($popup_screen);
+            cont.cat.$unshown.before($popup_screen);
+            // NOTE:  Zoom up from the .unshown section
         }
 
         popup_cont.$sup.css(thumb_fixed_coordinates);
@@ -3261,9 +3515,11 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         // NOTE:  Start the popup right where the original thumbnail was on the screen, but with
         //        fixed coordinates.
 
-        popup_cont.rebuild_bars(function popup_thumbnail_rendered() {
-            setTimeout(function () {   // Give rendering some airtime.
-                new_rendering_of_a_contribution();
+        popup_cont.rebuild_bars(function popup_clone_rendered() {
+            // setTimeout(function () {   // Give rendering some airtime.
+            //     initial_thumb_size_adjustment();
+
+                // NOTE:  Now the contribution to be popped up is cloned and thumbnail size.
 
                 // var top_air = $('.sup-category-first').offset().top;
                 var thumb_render_width = popup_cont.$render_bar.width();
@@ -3366,7 +3622,9 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                         is_pop_up: true,
                         auto_play: auto_play.toString(),
                         width:  max_live_width,
-                        height: max_live_height
+                        height: max_live_height,
+                        duration: POP_UP_ANIMATE_MS,
+                        easing: POP_UP_ANIMATE_EASING
                     }, function media_iframe_loaded() {
                         popup_cont.$render_bar.css({
                             'background-image': '',
@@ -3411,7 +3669,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                 } else {
                     popup_cont.full_ish_screen_text(function () {
                         if (auto_play) {
-                            popup_cont.play_quote_web_speech_api();
+                            popup_cont.play_quote_synthesis();
                             return;
 
                             // noinspection UnreachableCodeJS
@@ -3419,9 +3677,15 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                         }
                     });
                 }
-            });
+            // }, MS_THUMB_TO_POP_UP);
         });
-        console.log("Popup", cont.idn, cont.media_domain || "(quote)");
+        console.log(
+            "Popup",
+            popup_cont.id_attribute,
+            popup_cont.media_domain || "(quote)",
+            "-",
+            popup_cont.caption_text
+        );
         // return pop_cont;
     }
 
@@ -3448,7 +3712,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         }
     }
 
-    Contribution.prototype.play_quote_web_speech_api = function Contribution_play_quote_web_speech_api() {
+    Contribution.prototype.play_quote_synthesis = function Contribution_play_quote_synthesis() {
         var that = this;
 
         var pop_text = that.content;
@@ -3600,12 +3864,12 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             var the_word = pop_text.slice(start_word, end_word+1);
             var range_word = window.document.createRange();
             that.$cont.text(pop_text);
-            var text_node = that.$cont[0].childNodes[0];
+            var text_node = dom_from_$(that.$cont).childNodes[0];
             console.assert(text_node.nodeName === '#text', text_node, that);
             range_word.setStart(text_node, start_word);
             range_word.setEnd(text_node, end_word);
             // THANKS:  Range of text, https://stackoverflow.com/a/29903556/673991
-            var speaking_node = $('<span>', { class:'speaking' })[0];
+            var speaking_node = dom_from_$($('<span>', { class:'speaking' }));
             range_word.surroundContents(speaking_node);
             // THANKS:  Range wrap, https://stackoverflow.com/a/6328906/673991
             speech_progress = end_word;
@@ -3703,7 +3967,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
 
             // noinspection JSUnusedAssignment
             var popup_cont_node_list = document.querySelectorAll(selector_from_id(that.id_attribute));
-            // NOTE:  Although $(popup_cont_selector) i.e. that.$sup appears to work,
+            // NOTE:  Although that.$sup appears to work,
             //        the doc calls for "DOM elements" and the example passes a NodeList object.
             //        https://github.com/Hagsten/Talkify#play-all-top-to-bottom
 
@@ -4047,7 +4311,13 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         var pop_cont_css_height = that.$cont.css('height');
         var pop_caption_css_width = that.$caption_bar.css('width');
         var pop_up_caption_background = that.$caption_bar.css('background-color');
-        var pop_down_caption_background = thumb_cont.$caption_bar.css('background-color');
+        var pop_down_caption_background;
+        if (thumb_cont.is_dom_rendered()) {
+            pop_down_caption_background = thumb_cont.$caption_bar.css('background-color');
+        } else {
+            pop_down_caption_background = 'rgba(0,0,0,0)';
+            // TODO:  replace transparent final ''color'' with background of .unshown?
+        }
 
         that.$cont.css('width', cont_css_width);
         that.$cont.css('height', cont_css_height);
@@ -4108,11 +4378,21 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     };
 
     function pop_screen_fade_out() {   // while popping down, fade to transparent
-        return pop_screen_fade('rgba(0,0,0,0.25)', 'rgba(0,0,0,0)', POP_DOWN_ANIMATE_MS, POP_DOWN_ANIMATE_EASING)
+        return pop_screen_fade(
+            'rgba(0,0,0,0.25)',
+            'rgba(0,0,0,0)',
+            POP_DOWN_ANIMATE_MS,
+            POP_DOWN_ANIMATE_EASING
+        )
     }
 
     function pop_screen_fade_in() {   // while popping up, fade to 1/4 darkened background
-        return pop_screen_fade('rgba(0,0,0,0)', 'rgba(0,0,0,0.25)', POP_UP_ANIMATE_MS, POP_UP_ANIMATE_EASING)
+        return pop_screen_fade(
+            'rgba(0,0,0,0)',
+            'rgba(0,0,0,0.25)',
+            POP_UP_ANIMATE_MS,
+            POP_UP_ANIMATE_EASING
+        )
     }
 
     function pop_screen_fade(from_color, to_color, duration, easing) {
@@ -4620,6 +4900,8 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                 if (is_in_anon(evt.related)) {
                     // TODO:  Instead of this clumsiness, don't make the anon category
                     //        into a functional .category.  Just make it look like one with info.
+                    //        Or go ahead and make it a Category object, but instantiate it
+                    //        "with anon characteristics".
                     if (MONTY.is_anonymous) {
                         // NOTE:  Anonymous users can't interact with other anonymous content.
                         return MOVE_CANCEL;
@@ -4653,7 +4935,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                 if (is_in_frou(evt.to)) {   // drop into a closed category
                     console.log(
                         "Frou drop", to_cat_txt,
-                        "where cont", $movee[0].id,
+                        "where cont", dom_from_$($movee).id,
                         "goes into cat", to_cat_idn
                     );
                     locate_contribution_at_category_left_edge($cat_of(evt.to), $movee);
@@ -4708,34 +4990,85 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         };
     }
 
-    function contributions_becoming_visible_for_the_first_time_maybe() {
-        initialize_contribution_sizes();
-        // resizer_nudge('.render-bar iframe');
-        resizer_nudge_all();
-    }
+    // function contributions_becoming_visible_for_the_first_time_maybe() {
+    //     initial_thumb_size_adjustment();
+    //     // resizer_nudge('.render-bar iframe');
+    //     resizer_nudge_all();
+    // }
+    //
+    // function new_contribution_just_created() {
+    //     initial_thumb_size_adjustment();
+    // }
+    //
+    // function new_rendering_of_a_contribution() {
+    //     initial_thumb_size_adjustment();
+    // }
 
-    function new_contribution_just_created() {
-        initialize_contribution_sizes();
-    }
-
-    function new_rendering_of_a_contribution() {
-        initialize_contribution_sizes();
-    }
-
-    // TODO:  Contribution method
-    function initialize_contribution_sizes() {
+    function initial_thumb_size_adjustment() {
         $('.size-adjust-once:visible').each(function () {
+            // NOTE:  Only visible, rendered contributions should be size-adjusted.
+
             var $element = $(this);
             $element.removeClass('size-adjust-once');
+            thumb_size_adjust($element);
+            // console.debug("Init", Contribution_from_element($element).id_attribute);
             var cont = Contribution_from_element($element);
-            if (cont.is_about_category) {
-                size_adjust($element, WIDTH_MAX_EM_ABOUT, HEIGHT_MAX_EM_ABOUT);
-            } else {
-                size_adjust($element, WIDTH_MAX_EM, HEIGHT_MAX_EM);
+            console.assert(is_specified(cont) && cont.is_dom_rendered(), "Visible but not rendered??", cont);
+            if (cont.is_media && ! cont.is_noembed_error) {
+                var width_cont = cont.$render_bar.outerWidth();
+                width_cont = Math.max(width_cont, px_from_rem(WIDTH_MAX_EM.hard));
+                cont.$cont.outerWidth(width_cont);
+                // console.debug("Fudge", cont.id_attribute, width_cont);
+                // NOTE:  So editing a media contribution shows the URL in the same width
+                //        as the thumbnail.  Just do this once.
+
+                // function is_save_bar_too_wide() {
+                //     return cont.$save_bar.outerWidth() > cont.$render_bar.outerWidth();
+                // }
+                // if (is_save_bar_too_wide()) {
+                //     console.debug("Too wide", cont.id_attribute, cont.caption_text);
+                //     cont.$save_bar.find('.expand .wordy-label').hide();
+                //     // NOTE:  Try hiding "expand" first.  If still not enough hide "play" too.
+                //     if (is_save_bar_too_wide()) {
+                //         console.debug("Too too wide");
+                //         cont.$save_bar.find('.play .wordy-label').hide();
+                //     }
+                // }
+                // NOTE:  The above was a nice idea, hiding "expand" then "play" if needed for space.
+                //        But it will have to wait until we get desperate enough
+                //        to defer this function call until the render bar is fully loaded.
+                //        Which would probably be a good idea someday anyway.
             }
-            cont.fix_caption_width('quote size adjust');
         });
     }
+
+    // TODO:  Make Contribution method?
+    function thumb_size_adjust(element_or_selector) {
+        var cont = Contribution_from_element(element_or_selector);
+        if (cont.is_media) {
+            // if (cont.is_noembed_error) {
+            //     size_adjust(cont.$render_bar, cont.cat.thumb_specs.for_width, cont.cat.thumb_specs.for_height);
+            //     console.debug("Adjust noembed error", cont.$render_bar.width(), cont.$render_bar.height());
+            // } else {
+            //     // cont.$cont.outerWidth(cont.$render_bar.outerWidth());
+            // }
+        } else {
+            size_adjust(cont.$cont, cont.cat.thumb_specs.for_width, cont.cat.thumb_specs.for_height);
+            // console.debug("Adjust quote", cont.$cont.width(), cont.$cont.height());
+        }
+        cont.fix_caption_width();
+
+        // var $target = cont.is_media ?  : cont.$cont;
+        // if (cont.is_about_category) {
+        //     // DONE:  Make this distinction when the categories are instantiated.
+        //     //        Then here defer to something in the cont.cat object.
+        //     size_adjust($target, WIDTH_MAX_EM_ABOUT, HEIGHT_MAX_EM_ABOUT);
+        // } else {
+        //     size_adjust($target, WIDTH_MAX_EM, HEIGHT_MAX_EM);
+        // }
+    }
+
+    js_for_contribution.thumb_size_adjust = thumb_size_adjust;   // for console use
 
     // TODO:  Contribution method
     function resizer_nudge_all() {
@@ -4876,7 +5209,9 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         return $(element).closest('.pop-up').length > 0;
     }
 
-    // TODO:  Replace with Contribution.is_about_category
+    // TODO:  Replace these functions with Contribution.is_about_category etc.
+    //        Better yet, make the uses of is_in_about() and is_in_anon() (and maybe is_in_popup)
+    //        defer to the era of category instantiation instead.
     function is_in_about(element) {
         return $cat_of(element).attr('id') === MONTY.IDN.CAT_ABOUT.toString();
     }
@@ -4993,10 +5328,12 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
 
             cont.rebuild_bars(function () {
                 settle_down();
-                setTimeout(function () {   // Give rendering some airtime.
-                    new_contribution_just_created();
+                // setTimeout(function () {
+                //     // TODO:  Is this teeny delay still necessary, to give rendering some airtime?
+                //     //        May be redundant after rebuild_bars() callback.  (Nope!)
+                //     initial_thumb_size_adjustment();
                     contribution_lexi.assert_consistent();
-                });
+                // });
             });
         }
     }
@@ -5197,7 +5534,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         //         case MONTY.IDN.UNSLUMP_OBSOLETE:
         //             if (query_string_filter(word, cont_only)) {
         //                 $sup = build_contribution_dom(word, null)
-        //                 $sup = $();   // HACK
+        //                 $sup = $();
         //                 $cont = $sup.find('.contribution');
         //                 $caption_span = $sup.find('.caption-span');
         //                 $cont.attr('data-owner', word.sbj);
@@ -5544,32 +5881,11 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         //     4215. Yes Bob Stein may edit 1450, work of Bob Stein
         //     4222. Yes Bob Stein may drag to my.right, 1432, work of Bob Stein
 
+        // NOTE:  All categories have DOM objects.
 
         alternative_build_contributions(/*conts_in_cat*/);
 
         contribution_lexi.assert_consistent();
-
-        contribution_lexi.category_lexi.loop(function (idn_category, category) {
-            category.cont_sequence.loop(function (index, idn_contribution) {
-                var cont = Contribution_from_idn(idn_contribution);
-                if (cont.is_unsuperseded) {
-                    if (index < MAX_BIG_CONT_PER_CAT) {
-                        cont.build_dom(cont.fetch_txt());
-                        category.$cat.append(cont.$sup);
-                        // NOTE:  This is where contribution renderings actually enter the DOM.
-                    // } else {
-                    //     return false;
-                    }
-                }
-            });
-            var total_conts = category.cont_sequence.len();
-            var missing_conts = Math.max(0, total_conts - MAX_BIG_CONT_PER_CAT);
-            if (missing_conts > 0) {
-                var $unshown = $('<div>', {class: 'unshown'});
-                $unshown.text(f("{n} more", {n: missing_conts}));
-                category.$cat.append($unshown);
-            }
-        });
 
         console.log("contribution_lexi", contribution_lexi);
 
@@ -5643,7 +5959,24 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                     //        We assume so here.
                     //        https://stackoverflow.com/q/14565365/673991
                 }
-                are_we_done_loading_handlers();
+                when_we_are_done_loading_handlers(function () {
+                    contribution_lexi.category_lexi.loop(function (idn_category, category) {
+                        var number_of_conts_to_show_initially;
+                        if (DO_WHOLE_UNSHOWN_PIECES) {
+                            var total_num = category.cont_sequence.len();
+                            var unwhole_unshown_num = total_num - MAX_CAT_CONT;
+                            var whole_unshown_num = (
+                                Math.floor(unwhole_unshown_num / INCREMENT_CAT_CONT) *
+                                INCREMENT_CAT_CONT
+                            );
+                            number_of_conts_to_show_initially = total_num - whole_unshown_num;
+                        } else {
+                            number_of_conts_to_show_initially = MAX_CAT_CONT;
+                        }
+                        category.render_some_conts(number_of_conts_to_show_initially);
+                        category.show_unshown_count();
+                    });
+                });
             });
             handler.$script.one('error.script2', function (evt) {
                 handler.$script.off('.script2');
@@ -5694,7 +6027,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                 num_failed, "failed,",
                 num_registered, "registered"
             );
-        }, MEDIA_HANDLER_LOAD_SECONDS * 1000);
+        }, MS_MEDIA_HANDLER_LOAD_CHECK);
     }
 
     window.qiki = window.qiki || {};
@@ -5714,7 +6047,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         }
     };
 
-    function are_we_done_loading_handlers() {
+    function when_we_are_done_loading_handlers(then) {
         var all_loaded = true;
         looper(media_handlers, function (_, handler) {
             if ( ! handler.did_load) {
@@ -5730,24 +6063,24 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         //        But is that harder to follow?  And if I have to ask the answer is yes?
         // TODO:  all_done = Object.entries(media_handlers).all(handler => ! handler.need_load);
         if (all_loaded) {
-            rebuild_all_bars();
             console.log("Media handlers", media_handlers);
+            then();
         }
     }
 
-    function rebuild_all_bars() {
-        // $('.sup-contribution').each(function () {
-        //     var cont = Contribution_from_element(this);
-        //     cont.rebuild_bars();
-        // });
-        contribution_lexi.loop(function (idn, cont) {
-            if (cont.is_dom_rendered()) {
-                console.assert(cont.is_dom_rendered(), cont.idn, cont);
-                // TODO:  We won't always assume all unsuperseded contributions are rendered!
-                cont.rebuild_bars();
-            }
-        });
-    }
+    // function rebuild_all_bars() {
+    //     // $('.sup-contribution').each(function () {
+    //     //     var cont = Contribution_from_element(this);
+    //     //     cont.rebuild_bars();
+    //     // });
+    //     contribution_lexi.loop(function (idn, cont) {
+    //         if (cont.is_dom_rendered()) {
+    //             console.assert(cont.is_dom_rendered(), cont.idn, cont);
+    //             // TODO:  We won't always assume all unsuperseded contributions are rendered!
+    //             cont.rebuild_bars();
+    //         }
+    //     });
+    // }
 
     function cont_list_from_query_string() {
         var cont_filter = query_get('cont', null);
@@ -5983,10 +6316,9 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                     var doc_bottom = doc_top + $(window).height();
                     var cat_top = $category.offset().top;
                     var cat_pixels_in_view = doc_bottom - cat_top;
-                    console.debug("Cat pixels in view", cat_pixels_in_view);
                     if (cat_pixels_in_view < MIN_OPEN_CATEGORY_VIEW) {
                         // NOTE:  Category is scrolled down too far, not enough content is visible.
-                        $sup_category.get(0).scrollIntoView({
+                        dom_from_$($sup_category).scrollIntoView({
                             block: 'nearest',
                             inline: 'nearest'
                         });
@@ -6048,42 +6380,10 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
 
     Contribution.prototype.build_dom = function Contribution_build_dom(txt) {
         var that = this;
-        // var contribution_word = {
-        //     idn: that.idn,
-        //     txt: txt,
-        //     was_submitted_anonymous: that.was_submitted_anonymous
-        // };
-        // var caption_word;
-        // if (that.capt === null) {
-        //     caption_word = null;
-        // } else {
-        //     caption_word = {
-        //         idn: that.capt.idn,
-        //         txt: that.capt.txt
-        //     };
-        // }
-        // var $sup = build_contribution_dom(contribution_word, caption_word);
-    // };
-    // /**
-    //  * Build the div.sup-contribution for a contribution,
-    //  * containing its div.contribution and div.caption-bar and div.save-bar.
-    //  *
-    //  * It's returned free-range, not inserted in the DOM.
-    //  *
-    //  * @param {object} contribution_word
-    //  * @param {object=} caption_word (optional)
-    //  * @return {jQuery}
-    //  */
-    // // DONE:  Contribution method - somehow sorta?
-    // //        Could this be the method that transforms a contribution from small to big?
-    // //        The difference between referring to and rendering.
-    // //        Maybe it could also augment the object
-    // //        :
-    // //        Merge with .build_dom() method!
-    // function build_contribution_dom(contribution_word, caption_word) {
-        that.$sup = $('<div>', {class: 'sup-contribution word'});
+
+        that.$sup = $('<div>', {class: 'sup-contribution word size-adjust-once'});
         that.$sup.data('contribution-object', that);
-        var $cont = $('<div>', {class: 'contribution size-adjust-once', id: that.id_attribute});
+        var $cont = $('<div>', {class: 'contribution', id: that.id_attribute});
         that.$sup.append($cont);
         console.assert(that.$cont.is($cont));
         that.$cont.text(leading_spaces_indent(txt));
@@ -6100,14 +6400,12 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                 title: "expand"
             })
                 .append($icon('fullscreen'))
-                .append(
-                    $('<span>').text(" bigger")
-                )
+                .append($('<span>', {class: 'wordy-label'}).text(" bigger"))
         );
         $save_bar.append(
             $('<button>', {class: 'play'})
                 .append($icon('play_arrow'))
-                .append(" play")
+                .append($('<span>', {class: 'wordy-label'}).text(" play"))
         );
         var $external_link = $('<a>', {class: 'external-link among-buttons'});
         $external_link.append($icon('launch'))
@@ -6121,10 +6419,9 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         $grip.text(GRIP_SYMBOL);
         var $caption_span = $('<span>', {class: 'caption-span'});
         $caption_bar.append($caption_span);
-        if (is_specified(that.capt)) {
-            $caption_span.append(that.capt.txt);
-            // TODO:  Why .append() here and .text() when looping through CAPTION words?
-        }
+        $caption_span.append(that.caption_text);
+        // TODO:  Why .append() here and .text() when looping through CAPTION words?
+
         // var caption_txt = latest_txt(contribution_word.jbo, MONTY.IDN.CAPTION);
         // if (caption_txt !== undefined) {
         //     $caption_span.append(caption_txt);
@@ -6295,7 +6592,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                 $enter_a_caption.width($enter_some_text.width());
             }
             new MutationObserver(caption_tracks_text).observe(
-                $enter_some_text[0],
+                dom_from_$($enter_some_text),
                 {
                     attributes: true,
                     attributeFilter: ['style']
@@ -6346,8 +6643,12 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                 var opt = $valve.data('opt');
                 opt.on_open();
                 setTimeout(function () {
-                    contributions_becoming_visible_for_the_first_time_maybe();
-                });
+                    // NOTE:  Give contributions a chance to render.
+                    initial_thumb_size_adjustment();
+                    resizer_nudge_all();
+                    // NOTE:  This may be the first time some contribution renderings become
+                    //        visible.  Can't size-adjust until they're visible.
+                }, 1);
             }
         });
         return $valve;
@@ -6435,7 +6736,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
 
     var long_press_timer = null;
     function long_press(selector, handler, enough_milliseconds) {
-        enough_milliseconds = enough_milliseconds || 1000;
+        enough_milliseconds = enough_milliseconds || MS_LONG_PRESS_DEFAULT;
         $(window.document)
             .on('mousedown touchstart', selector, function (evt) {
                 var element = this;

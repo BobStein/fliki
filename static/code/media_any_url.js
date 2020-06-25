@@ -1,4 +1,4 @@
-// NoEmbed media handler - fallback for all URLs not matched by other handlers.
+// NoEmbed media handler - fallback alarmist catch-all, for URLs not matched by other handlers.
 
 // noinspection JSUnusedLocalSymbols
 (function (window, $) {
@@ -8,7 +8,7 @@
         url_patterns: [
             RegExp("^https?://")
         ],
-        render_thumb: function noembed_render_thumb(cont, _) {
+        render_thumb: function noembed_render_thumb(cont, then) {
             var that = this;
             console.assert(that.description_short === "any url");
             console.assert(that === cont.handler.media);   // Hint object organization could improve
@@ -56,6 +56,7 @@
                     }
                 }
             });
+            then();
         },
         can_play: function (_) { return false; }
     };
