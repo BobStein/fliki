@@ -315,8 +315,10 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     // var SECONDS_BREATHER_AT_TALKIFY_END          = 4.0;
     // var SECONDS_BREATHER_AT_OTHER_MEDIA_END      = 0.0;   // it was ALREADY a delay showing it
     var SECONDS_BREATHER_AFTER_ZERO_TIME         = 0.0;
-    var SECONDS_BREATHER_AT_NOEMBED_ERROR        = 0.0;
+    // var SECONDS_BREATHER_AT_NOEMBED_ERROR
     var SECONDS_BREATHER_AT_SKIP                 = 0.0;
+    var SECONDS_UNFULL_PATIENCE                  = 5.0;
+    var SECONDS_ERROR_MESSAGE                    = 5.0;
     var breather_timer = null;
     // var work_in_a_pause = false;
 
@@ -341,27 +343,29 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     //        $('#up-top').css('height', TOP_SPACER_REM.toString() + 'em');
 
     var POP_UP_ANIMATE_MS = 0.5 * 1000;
-    var POP_UP_ANIMATE_EASING = 'swing';   // swing or linear
     var POP_DOWN_ANIMATE_MS = 0.25 * 1000;
+    var POP_UP_ANIMATE_EASING = 'swing';   // swing or linear
     var POP_DOWN_ANIMATE_EASING = 'linear';   // swing or linear
 
     var MAX_IFRAME_RECOVERY_TRIES = 10;   // Reload a 0 x 0 iframe this many times max.
 
     var MAX_FONT_EXPANSION = 3.0;   // Popping up a quote, magnify font size up to this factor.
 
-    var MAX_CAT_CONT = 50;   // How many contributions to show in a category, before "N-MAX more"
-    var INCREMENT_CAT_CONT = 20;   // Clicking more renders this many contributions
+    var MAX_CAT_CONT = 2;   // How many contributions to show in a category, before "N-MAX more"
+    // HACK
+    var INCREMENT_CAT_CONT = 7;   // Clicking more renders this many contributions
+    // HACK
     var INCREMENT_CAT_CONT_SHIFT = 100;  // Shift-click renders this many
-    var DO_WHOLE_UNSHOWN_PIECES = true;  // Show a few more than MAX_CAT_CONT initially,
-                                         // to make unshown count an even multiple of
-                                         // INCREMENT_CAT_CONT.  This way in the "N more" label,
-                                         // N is always a multiple of INCREMENT_CAT_CONT.
+    var DO_WHOLE_UNRENDERED_PIECES = true;  // Show a few more than MAX_CAT_CONT initially,
+                                            // to make unrendered count an even multiple of
+                                            // INCREMENT_CAT_CONT.  This way in the "N more" label,
+                                            // N is always a multiple of INCREMENT_CAT_CONT.
 
     var MIN_OPEN_CATEGORY_VIEW = 200;   // When opening a category, if fewer pixels than this
                                         // are in view, scroll up.
 
     /////////////////////////////////////////////////////////////////////////////////////////
-    ////// Rogues Gallery - a compendium errors and warnings on the JavaScript console.
+    ////// Rogues Gallery - a compendium of errors and warnings, e.g. on the JavaScript console.
     /////////////////////////////////////////////////////////////////////////////////////////
 
     // runtime.lastError
@@ -425,6 +429,8 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     // THANKS:  Fix Firefox text/plain warning for static media .js files in Windows registry,
     //          https://github.com/pallets/flask/issues/1045#issuecomment-42202749-permalink
 
+    // THANKS:  "var" warnings, EcmaScript 6 to 5, https://stackoverflow.com/q/54551923/673991
+
 
     $(function document_ready() {
         pop_speech_synthesis_init();
@@ -472,7 +478,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             .on('click', '.save-bar .save',    contribution_save)
             .on('click', '.save-bar .play',    function () { bigger(this, true); })
             .on('click', '.save-bar .expand',  function () { bigger(this, false); })
-            .on('click', '.unshown', unshown_click)
+            .on('click', '.unrendered', unrendered_click)
             // TODO:  Should play or expand end non-dirty edits?  That could be more consistent:
             //        Closing the popup with Escape does this already.
             //        Closing with the close button, or clicking on the popup-screen does not.
@@ -564,6 +570,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         settle_down();
 
         bot = Bot();
+        js_for_contribution.bot = bot;
         // NOTE:  Must happen after Bot.prototype.ticker_interval_ms has been set.
         //        I.e. it must be immune to the issue that function declarations are hoisted
         //        but function expressions are not.  So the constructor is hoisted
@@ -717,7 +724,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         that.cont = null;       // e.g. id_attribute '1821' a thumbnail
         that.pop_cont = null;   // e.g. id_attribute 'popup_1821' an almost full screen pop-up
         that.is_paused = false;
-        that.cont_idn = null;
+        // that.cont_idn = null;
         that.did_bot_transition = false;  // Did the bot initiate transition to the next contribution?
     }
 
@@ -731,6 +738,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         MEDIA_STARTED: "The iframe is doing stuff, we'll know when it ends",   // dynamic media
         MEDIA_TIMING: "The iframe is static",                                  // static media
         MEDIA_PAUSE_IN_FORCE: "Both main page and iframe agree we're paused",  // (no need to pause_media() again - dynamic media only)
+        MEDIA_ERROR_MESSAGE: "Displaying an error message",
         SPEECH_SHOULD_PLAY: "The text was told to speak",
         SPEECH_STARTED: "The speaking has started",
         DONE_CONTRIBUTION: "Natural ending of a contribution in playlist",
@@ -762,6 +770,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     // TODO:  Which looks better?
     //        that.transit([that.State.OLD_STATE], that.State.NEW_STATE);
     //        that.transit(['OLD_STATE'], 'NEW_STATE');
+    //        that.transit([S.OLD_STATE], S.NEW_STATE);
     Bot.prototype.transit = function Bot_transit(old_states, new_state) {
         var that = this;
         console.assert(Array.isArray(old_states), old_states);
@@ -784,6 +793,20 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         }
     };
 
+    Bot.prototype.assert_state = function Bot_assert_state(states) {
+        var that = this;
+        console.assert(is_array(states));
+        if ( ! has(states, that.state)) {
+            console.error(
+                "Expecting state",
+                states.join(" or "),
+                "-",
+                "instead of",
+                that.state.name
+            );
+        }
+    };
+
     Bot.prototype.ticker = function Bot_ticker() {
         var that = this;
         if (that.is_paused) {
@@ -796,13 +819,17 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         } else {
             that.ticks_this_state++;
         }
-        do { // TODO:  Loop instead with setInterval and clearInterval?
-            var LESS_INTERESTING_STATES = [
+        do {
+            // TODO:  Loop instead with setInterval and clearInterval?
+            //        So as not to pile up too much rendering.
+            var BORING_STATES = [
                 that.State.MANUAL,
                 that.State.PLAYING_CONTRIBUTION
             ];
-            if ( ! has(LESS_INTERESTING_STATES, that.state)) {
-                if (DEBUG_BOT_STATES) console.log("Bot", that.state.name, that.ticks_this_state, that.state.description);
+            var is_interesting_state = ! has(BORING_STATES, that.state);
+            var is_interesting_time = that.ticks_this_state === 0;
+            if (is_interesting_state || is_interesting_time) {
+                if (DEBUG_BOT_STATES) console.log("Bot", that.state.name, that.ticks_this_state);
             }
             that.last_tick_state = that.state;
             try {
@@ -819,12 +846,22 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     Bot.prototype.on_exit_full_screen = function Bot_on_exit_full_screen() {
         var that = this;
         if (that.state === that.State.UNFULL_CONTRIBUTION) {
-            console.log("Moving on after exiting full screen.");
             that.state = that.State.NEXT_CONTRIBUTION;
+            console.log("Moving on after exiting full screen.");
             // TODO:  Hasten to finite_state_machine() for this step?
             //        Instead of waiting (for 0-1 seconds)?
         }
     };
+
+    Bot.prototype.time_out = function (seconds, to_state) {
+        var that = this;
+        if (that.ticks_this_state >= seconds) {
+            that.transit([that.state], to_state);
+            return true;
+        }
+        return false;
+    };
+
 
     /**
      * Bot plays on.  Perform the extended consequences of the global play button.
@@ -837,22 +874,23 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
      */
     Bot.prototype.finite_state_machine = function Bot_finite_state_machine() {
         var that = this;
+        var S = that.State;
 
         switch (that.state) {
-        case that.State.MANUAL:
+        case S.MANUAL:
             break;
-        case that.State.START_AUTO:
+        case S.START_AUTO:
             list_play_bot = playlist_generate();
             console.log("playlist", list_play_bot.join(","));
             index_play_bot = 0;
             that.media_beginning();
-            that.state = that.State.PREP_CONTRIBUTION;
-            interact.BOT(cat_idn_for_playlist(), 1, list_play_bot.join(","));
+            that.state = S.PREP_CONTRIBUTION;
+            interact.BOT(cat_idn_for_playlist().toString(), 1, list_play_bot.join(","));
             // NOTE:  When there is a feature for the Bot to play from a more diverse set than
             //        merely categories MY and THEIR, then the obj should be a word representing
             //        that set.
             break;
-        case that.State.PREP_CONTRIBUTION:
+        case S.PREP_CONTRIBUTION:
             if (isFullScreen) {
                 console.log("Full screen.  Ending that first, before next contribution.");
                 // NOTE:  Otherwise, the next eager-beaver pop_up() used to get full-screen values
@@ -869,69 +907,73 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                 //        way.  I.e. now we SHOULD be arranging for pop_up() call below to somehow
                 //        make a full-screen iframe.)
                 exit_full_screen();
-                that.state = that.State.UNFULL_CONTRIBUTION;
+                that.state = S.UNFULL_CONTRIBUTION;
             } else {
-                that.state = that.State.NEXT_CONTRIBUTION;
+                that.state = S.NEXT_CONTRIBUTION;
             }
             break;
-        case that.State.UNFULL_CONTRIBUTION:
-            if (that.ticks_this_state >= 5) {
+        case S.UNFULL_CONTRIBUTION:
+            if (that.time_out(SECONDS_UNFULL_PATIENCE, S.NEXT_CONTRIBUTION)) {
                 console.warn("Unable to exit full screen, moving on anyway.");
-                that.state = that.State.NEXT_CONTRIBUTION;
             }
             break;
-        case that.State.NEXT_CONTRIBUTION:
+        case S.NEXT_CONTRIBUTION:
             if (index_play_bot >= list_play_bot.length) {
-                that.state = that.State.END_AUTO;
+                that.state = S.END_AUTO;
                 // NOTE:  Natural automatic Bot ending - at the end of all contributions.
                 //        May never happen!
                 break;
             }
-            that.cont_idn = list_play_bot[index_play_bot];
-            // that.cont = Contribution(that.cont_idn);
-            that.cont = contribution_lexi.get(that.cont_idn);
+            var idn_string = list_play_bot[index_play_bot];
+            that.cont = contribution_lexi.get(idn_string);
             if ( ! that.cont.is_dom_rendered()) {
-                // that.crash("Missing contribution", that.cont_idn, index_play_bot);
-                // break;
-                console.log("Collapsed contribution", that.cont.idn);
+                console.log("unrendered contribution", that.cont.idn);
             }
-            // FALSE WARNING:  The following dumb noinspection prevents the following warning:
-            //            Condition is always false since types
-            //            '{get: (function(): jQuery | null)} | {get: function(): *}'
-            //            and 'string' have no overlap
-            // noinspection JSIncompatibleTypesComparison
             if (that.cont.media_domain === 'no_domain') {
                 // NOTE:  A badly formatted URL should not be popped up at all.
                 console.log("Zero time for", that.cont.id_attribute);
                 that.end_one_begin_another(SECONDS_BREATHER_AFTER_ZERO_TIME, true);
-            } else if (that.cont.is_noembed_error) {
-                console.log("Noembed is no help with", that.cont.id_attribute);
-                that.end_one_begin_another(SECONDS_BREATHER_AT_NOEMBED_ERROR, true);
+            // } else if (that.cont.is_noembed_error) {
+            //     // NOTE:  This may miss errors, if they are in unrendered conts.
+            //     console.log(
+            //         "Noembed is no help with",
+            //         that.cont.id_attribute,
+            //         that.cont.caption_text,
+            //         "so skipping it"
+            //     );
+            //     that.end_one_begin_another(SECONDS_BREATHER_AT_NOEMBED_ERROR, true);
             } else {
                 $(window.document.body).addClass('pop-up-auto');
                 pop_up(that.cont, true);
                 that.pop_begin(popup_cont);
-                that.state = that.State.PLAYING_CONTRIBUTION;
+                that.state = S.PLAYING_CONTRIBUTION;
                 that.pop_cont.$sup.on(that.pop_cont.Event.MEDIA_INIT, function () {
-                    that.transit([that.State.PLAYING_CONTRIBUTION], that.State.MEDIA_READY);
+                    that.transit([S.PLAYING_CONTRIBUTION], S.MEDIA_READY);
                 });
                 that.pop_cont.$sup.on(that.pop_cont.Event.MEDIA_BEGUN, function () {
-                    that.transit([that.State.MEDIA_READY], that.State.MEDIA_STARTED);
+                    that.transit([S.MEDIA_READY], S.MEDIA_STARTED);
+                });
+                that.pop_cont.$sup.on(that.pop_cont.Event.MEDIA_ERROR, function () {
+                    that.assert_state([
+                        S.PLAYING_CONTRIBUTION,   // e.g. facebook videos
+                        S.MEDIA_STARTED           // e.g. youtube videos deleted or restricted
+                    ]);
+                    that.end_one_begin_another(SECONDS_ERROR_MESSAGE, true);
                 });
                 that.pop_cont.$sup.on(that.pop_cont.Event.MEDIA_STATIC, function (_, data) {
-                    if (that.transit([that.State.MEDIA_READY], that.State.MEDIA_TIMING)) {
+                    if (that.transit([S.MEDIA_READY], S.MEDIA_TIMING)) {
                         // NOTE:  This if-check prevents the double START interaction of 13-Apr-20.
                         //        Because Contribution.zero_iframe_recover() reloaded the iframe.
-                        interact.START(data.cont_idn, data.current_time);
+                        interact.START(data.idn_string, data.current_time);
                     }
                 });
                 that.pop_cont.$sup.on(that.pop_cont.Event.MEDIA_ENDED, function () {
                     that.transit(
                         [
-                            that.State.MEDIA_STARTED,
-                            that.State.MEDIA_PAUSE_IN_FORCE   // paused, then immediately ended
+                            S.MEDIA_STARTED,
+                            S.MEDIA_PAUSE_IN_FORCE   // paused, then immediately ended
                         ],
-                        that.State.DONE_CONTRIBUTION
+                        S.DONE_CONTRIBUTION
                     );
                     that.pop_end();
                 });
@@ -941,12 +983,12 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                     //        the way it was with static media.
                     //        We got here from an auto-play-playing message from the embed
                     //        and that could not hardly have come from a zero-size iframe.
-                    console.log("Media playing", data.cont_idn);
+                    console.log("Media playing", data.idn_string);
                     if (that.is_paused) {
-                        interact.RESUME(data.cont_idn, data.current_time);
+                        interact.RESUME(data.idn_string, data.current_time);
                         that._pause_ends();
                     } else {
-                        interact.START(data.cont_idn, data.current_time);
+                        interact.START(data.idn_string, data.current_time);
                     }
                 });
                 that.pop_cont.$sup.on(that.pop_cont.Event.MEDIA_PAUSED, function () {
@@ -961,10 +1003,11 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                         //        main page <-- iframe
                         that._pause_begins();
                     }
-                    if (that.state === that.State.MEDIA_STARTED) {
-                        that.transit([that.State.MEDIA_STARTED], that.State.MEDIA_PAUSE_IN_FORCE);
-                        // NOTE:  This transition stops the barrage of pause_media().
-                        //        Static TIMING state won't come here.
+                    if (that.state === S.MEDIA_STARTED) {
+                        that.state = S.MEDIA_PAUSE_IN_FORCE;
+                        // NOTE:  This transition stops the repetition of pause_media().
+                        //        (Static MEDIA_TIMING state doesn't need this transition,
+                        //        or repetition.)
                     }
                 });
                 that.pop_cont.$sup.on(that.pop_cont.Event.MEDIA_RESUME, function () {
@@ -982,38 +1025,38 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                     }
                 });
                 that.pop_cont.$sup.on(that.pop_cont.Event.SPEECH_PLAY, function () {
-                    that.transit([that.State.PLAYING_CONTRIBUTION], that.State.SPEECH_SHOULD_PLAY);
+                    that.transit([S.PLAYING_CONTRIBUTION], S.SPEECH_SHOULD_PLAY);
                 });
                 that.pop_cont.$sup.on(that.pop_cont.Event.SPEECH_START, function () {
-                    that.transit([that.State.SPEECH_SHOULD_PLAY], that.State.SPEECH_STARTED);
+                    that.transit([S.SPEECH_SHOULD_PLAY], S.SPEECH_STARTED);
                 });
                 that.pop_cont.$sup.on(that.pop_cont.Event.SPEECH_END, function () {
                     that.transit([
-                    that.State.SPEECH_STARTED,
-                    that.State.SPEECH_SHOULD_PLAY   // ended early, or never started
-                ], that.State.DONE_CONTRIBUTION);
+                    S.SPEECH_STARTED,
+                    S.SPEECH_SHOULD_PLAY   // ended early, or never started
+                ], S.DONE_CONTRIBUTION);
                     that.pop_end();
                 });
             }
             break;
-        case that.State.PLAYING_CONTRIBUTION:
+        case S.PLAYING_CONTRIBUTION:
             break;
-        case that.State.MEDIA_READY:
+        case S.MEDIA_READY:
             // NOTE:  Awaiting MEDIA_BEGUN event (for dynamic media) leads to MEDIA_STARTED state
             //             or MEDIA_STATIC event (for static media) leads to MEDIA_TIMING state
+            //             or MEDIA_ERROR (e.g. noembed error) leads to breather then next cont
             break;
-        case that.State.MEDIA_TIMING:
+        case S.MEDIA_TIMING:
             // Static media, e.g. jpg on flickr, show it for a while.
-            if (that.ticks_this_state >= MEDIA_STATIC_SECONDS) {
+            if (that.time_out(MEDIA_STATIC_SECONDS, S.POP_DOWN_ONE)) {
                 that.did_bot_transition = true;
-                that.state = that.State.POP_DOWN_ONE;
             }
             break;
-        case that.State.MEDIA_STARTED:
+        case S.MEDIA_STARTED:
             break;
-        case that.State.MEDIA_PAUSE_IN_FORCE:
+        case S.MEDIA_PAUSE_IN_FORCE:
             break;
-        case that.State.SPEECH_SHOULD_PLAY:
+        case S.SPEECH_SHOULD_PLAY:
             // NOTE:  Wait at least 1 second to retry.
             //        Actual delays from speak-method to start-event in ms:
             //            27, 131, 11 - Chrome
@@ -1031,14 +1074,16 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                     " failed to start " + that.ticks_this_state.toString()
                 );
                 notable_occurrence(message);
-                window.speechSynthesis.cancel();   // Another attempt to fix text-not-speaking bug.
-                window.speechSynthesis.speak(utter);   // Attempt to fix text-not-speaking bug.
+
+                window.speechSynthesis.cancel();
                 // NOTE:  This is a workaround for the text-not-speaking bug.
+
+                window.speechSynthesis.speak(utter);
             }
             break;
-        case that.State.SPEECH_STARTED:
+        case S.SPEECH_STARTED:
             break;
-        case that.State.DONE_CONTRIBUTION:
+        case S.DONE_CONTRIBUTION:
             that.did_bot_transition = true;
             if (that.cont.is_media) {
                 that.end_one_begin_another(SECONDS_BREATHER_AT_MEDIA_END, true);
@@ -1046,36 +1091,31 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                 that.end_one_begin_another(SECONDS_BREATHER_AT_SPEECH_SYNTHESIS_END, true);
             }
             break;
-        case that.State.BREATHER:
-            if (that.ticks_this_state < that.breather_seconds) {
-                // time at the end of media or text
-            } else {
-                that.state = that.State.POP_DOWN_ONE;
-            }
+        case S.BREATHER:
+            that.time_out(that.breather_seconds, S.POP_DOWN_ONE);
             break;
-        case that.State.POP_DOWN_ONE:
+        case S.POP_DOWN_ONE:
             that.pop_end();
-            that.transit([that.State.POP_DOWN_ONE], that.State.POP_DOWN_PATIENCE);
+            that.transit([S.POP_DOWN_ONE], S.POP_DOWN_PATIENCE);
             pop_down_all(that.did_bot_transition, function bot_pop_down_then() {
-                that.transit([that.State.POP_DOWN_PATIENCE], that.State.BEGIN_ANOTHER);
+                that.transit([S.POP_DOWN_PATIENCE], S.BEGIN_ANOTHER);
             });
             break;
-        case that.State.POP_DOWN_PATIENCE:
+        case S.POP_DOWN_PATIENCE:
             break;
-        case that.State.BEGIN_ANOTHER:
+        case S.BEGIN_ANOTHER:
             index_play_bot++;
-            that.state = that.State.PREP_CONTRIBUTION;
+            that.state = S.PREP_CONTRIBUTION;
             break;
-        case that.State.CRASHED:
+        case S.CRASHED:
             // NOTE:  Leaving things messy, for study.  May regret this.
-            that.state = that.State.MANUAL;
+            that.state = S.MANUAL;
             // NOTE: Abrupt catastrophic Bot ending.  Something went wrong.
             break;
-        case that.State.END_AUTO:
+        case S.END_AUTO:
             that.media_ending();
-            console.log("End player bot");
-            interact.UNBOT(that.cont_idn, 1);
-            that.state = that.State.MANUAL;
+            interact.UNBOT(that.cont.idn_string, 1);
+            that.state = S.MANUAL;
             break;
         default:
             that.crash("Unknown state", that.state);
@@ -1088,6 +1128,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
      */
     Bot.prototype.finite_state_machine_paused = function Bot_finite_state_machine_paused() {
         var that = this;
+        var S = that.State;
 
         // NOTE:  This crude peppering of the media or speech with pause directives
         //        once a second during the ENTIRE time they should be paused, catches
@@ -1105,12 +1146,16 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         // TODO:  Write more or fewer TODO comments.  Somewhere or other.
 
         switch (that.state) {
-        case that.State.MEDIA_STARTED:
+        case S.MEDIA_STARTED:
             that.pause_media();
-            // TODO:  This might come too early.  Do only after Event.MEDIA_WOKE?
+            // NOTE:  Be persistent trying to get the media to pause.
+            //        But stop on fedback auto-play-paused.
+            // TODO:  This might come too early.  Do only after Event.MEDIA_WOKE?  Who cares?
             break;
-        case that.State.SPEECH_SHOULD_PLAY:
+        case S.SPEECH_SHOULD_PLAY:
             that.pause_speech();
+            // NOTE:  Persistent trying to get speech to stop.
+            //        Don't stop.
             break;
         }
     };
@@ -1214,24 +1259,6 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         return true;
     };
 
-    Bot.prototype.pause_speech = function Bot_pause_speech() {
-        window.speechSynthesis.pause();
-        // TODO:  Why is this delayed 4 words later?
-    };
-
-    Bot.prototype.pause_media = function Bot_pause_media() {
-        popup_cont.embed_message({ action: 'pause' });
-    };
-
-    /**
-     * Pause initiated by either the main page or the embedded iframe.
-     */
-    Bot.prototype._pause_begins = function Bot_pause_begins() {
-        var that = this;
-        that.is_paused = true;
-        $(window.document.body).addClass('pausing-somewhere');
-    };
-
     /**
      * Pause initiated by the main page.
      */
@@ -1243,7 +1270,16 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         that.pause_speech();  // TODO:  Only from state SPEECH_STARTED or SPEECH_SHOULD_PLAY?
     };
 
-    Bot.prototype._pause_ends = function Bot_pause_ends(/*unusual_reason*/) {
+    /**
+     * Pause initiated by either the main page or the embedded iframe.
+     */
+    Bot.prototype._pause_begins = function Bot_pause_begins() {
+        var that = this;
+        that.is_paused = true;
+        $(window.document.body).addClass('pausing-somewhere');
+    };
+
+    Bot.prototype._pause_ends = function Bot_pause_ends() {
         var that = this;
         that.is_paused = false;
         $(window.document.body).removeClass('pausing-somewhere');
@@ -1252,14 +1288,30 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         }
     };
 
+    Bot.prototype.pause_media = function Bot_pause_media() {
+        popup_cont.embed_message({ action: 'pause' });
+    };
+
+    Bot.prototype.pause_speech = function Bot_pause_speech() {
+        window.speechSynthesis.pause();
+        // NOTE:  Is this the source of the non-starter speech synthesis bug, the workaround
+        //        for which was .cancel() before .speak()?
+        // TODO:  Why is this delayed 4 words later?
+    };
+
     Bot.prototype.resume = function Bot_resume() {
         var that = this;
         console.log("Resume initiated by main page");
-        if (utter === null) {
+        // if (utter === null) {
+        if (popup_cont !== null && popup_cont.has_iframe && popup_cont.is_able_to_play) {
             popup_cont.embed_message({ action: 'resume' });
             // NOTE:  _pause_ends() after embed messages back auto-play-playing.
-        } else {
+        } else if (utter !== null) {
             window.speechSynthesis.resume();
+            // NOTE:  utter events will trigger interact.RESUME()
+            that._pause_ends();
+        } else {
+            // NOTE:  We get here with a static photo or a noembed error
             that._pause_ends();
         }
     };
@@ -1379,9 +1431,9 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     // TODO:  Category.build_dom() method, instead of building dom, then objects.
 
     Object.defineProperties(Category.prototype, {
-        $sup:     { get: function () {return $sup_categories[this.idn];}},
-        $cat:     { get: function () {return $categories[this.idn];}},
-        $unshown: { get: function () {return this.$cat.find('.unshown');}}
+        $sup:        { get: function () {return $sup_categories[this.idn];}},
+        $cat:        { get: function () {return $categories[this.idn];}},
+        $unrendered: { get: function () {return this.$cat.find('.unrendered');}}
     });
 
     // NOTE:  Not sure if we'd ever need to destroy a category object, but if we do,
@@ -1402,7 +1454,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     Category.prototype.render_some_conts = function Category_render_some_conts(n_show) {
         var that = this;
         var num_newly_rendered = 0;
-        var $unshown = that.$unshown;
+        var $unrendered = that.$unrendered;
         that.cont_sequence.loop(function (_, cont_idn) {
             var cont = Contribution_from_idn(cont_idn);
             console.assert(cont.is_unsuperseded, cont);
@@ -1443,18 +1495,15 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                         // noinspection JSUnresolvedFunction
                         cont.resize_observer = new ResizeObserver(function resized_cont_handler(/*e*/) {
                             cont.fix_caption_width();
-                            // looper(e, function (k, v) {
-                            //     // noinspection JSUnresolvedVariable
-                            //     console.debug("Resize observed", cont.id_attribute, string_from_$(v.target), v.contentRect.width.toFixed(0), v.contentRect.height.toFixed(0));
-                            // });
+                            console.debug("HACK Resize observed", cont.id_attribute);
                         });
                         cont.resize_observer.observe(dom_from_$(cont.$cont));
                     }
                 });
-                if ($unshown.length === 0) {
+                if ($unrendered.length === 0) {
                     that.$cat.append(cont.$sup);
                 } else {
-                    $unshown.before(cont.$sup);
+                    $unrendered.before(cont.$sup);
                 }
                 if (num_newly_rendered >= n_show) {
                     return false;
@@ -1463,26 +1512,26 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         });
     };
 
-    Category.prototype.show_unshown_count = function Category_show_unshown_count() {
+    Category.prototype.show_unrendered_count = function Category_show_unrendered_count() {
         var that = this;
         var total_conts = that.cont_sequence.len();
         var number_renderings = that.$cat.find('.contribution').length;
         var number_popup_conts = that.$cat.find('#popup-screen').find('.contribution').length;
         var number_thumbnail_renderings = number_renderings - number_popup_conts;
-        var number_of_unshown_conts = total_conts - number_thumbnail_renderings;
+        var number_of_unrendered_conts = total_conts - number_thumbnail_renderings;
 
-        var $vestigial_unshown = that.$cat.find('.unshown');
-        $vestigial_unshown.remove();
+        var $vestigial_unrendered = that.$cat.find('.unrendered');
+        $vestigial_unrendered.remove();
 
-        if (number_of_unshown_conts > 0) {
-            var $unshown = $('<div>', {class: 'unshown'});
-            $unshown.text(f("{n} more", {n: number_of_unshown_conts}));
-            $unshown.data('category-object', that);
-            that.$cat.append($unshown);
+        if (number_of_unrendered_conts > 0) {
+            var $unrendered = $('<div>', {class: 'unrendered'});
+            $unrendered.text(f("{n} more", {n: number_of_unrendered_conts}));
+            $unrendered.data('category-object', that);
+            that.$cat.append($unrendered);
             // TODO:  Title tool-tip should say, e.g.:
             //            Click to show 10 more.  Shift-click to show 100 more.
             //        Numbers should change depending on INCREMENT_CAT_CONT.
-            //        And also depending on how many contributions are ACTUALLY unshown.
+            //        And also depending on how many contributions are ACTUALLY unrendered.
             // TODO:  The shift key should change e.g. "234 more" to
             //        "234 more (shift-click to see 100 of them)"
             // TODO:  Show icons resembling how many more?  Numerous little squares.
@@ -2094,6 +2143,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         SPEECH_START: 'SPEECH_START',   // SpeechSynthesisUtterance 'start' event
         SPEECH_END: 'SPEECH_END',       // SpeechSynthesisUtterance 'end' event
         MEDIA_INIT: 'MEDIA_INIT',       // e.g. youtube started playing
+        MEDIA_ERROR: 'MEDIA_ERROR',     // e.g. noembed error
         MEDIA_BEGUN: 'MEDIA_BEGUN',     // e.g. youtube auto-play started
         MEDIA_WOKE: 'MEDIA_WOKE',       // e.g. youtube auto-play first state-change TODO:  Use this?
         MEDIA_PAUSED: 'MEDIA_PAUSED',   // e.g. youtube auto-play paused
@@ -2151,23 +2201,25 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                           }},
         caption_text:     { get: function () {return is_specified(this.capt) ? this.capt.txt : ""}},
         is_media:         { get: function () {return could_be_url(this.content);}},
-        is_noembed_error: { get: function () {return this.$sup.hasClass('noembed-error');}},
-
-        /**
-         * .media_domain - Compact domain for a media link (e.g. "youtube")
-         *
-         * @return {string|null} or null if not a link, or "no_domain" if bad link.
-         */
-        // TODO:  This JSDoc header STILL doesn't obviate the need for a
-        //        noinspection JSIncompatibleTypesComparison
+        // is_noembed_error: { get: function () {return this.$sup.hasClass('noembed-error');}},
+        // NOTE:  is_noembed_error is an ad hoc flag instead.
         media_domain:     { get: function () {
             // return this.$sup.attr('data-domain') || null;
             return sanitized_domain_from_url(this.media_url);
             // return this.is_media ? sanitized_domain_from_url(this.media_url) : null;
         }},
 
-        $iframe:          { get: function () {return this.$render_bar.find('iframe');}},
         $img_thumb:       { get: function () {return this.$render_bar.find('img.thumb');}},
+        has_iframe:       { get: function () {return this.is_dom_rendered() && this.$iframe.length === 1;}},
+        $iframe:          { get: function () {return this.$render_bar.find('iframe');}},
+
+        /**
+         * .iframe - DOM object for the iframe, or null
+         *
+         * @return {{HTMLElement}|null} DOM object, or null if no iframe
+         */
+        // TODO:  This JSDoc header STILL doesn't obviate the need for a
+        //        noinspection JSIncompatibleTypesComparison
         iframe:           { get: function () {return dom_from_$(this.$iframe) || null;}},
         $cat:             { get: function () {return this.$sup.closest('.category');}},
         category_id:      { get: function () {return this.$cat.attr('id');}},
@@ -2211,11 +2263,19 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     Contribution.prototype.resizer_init = function Contribution_resizer_init(on_init) {
         var that = this;
         console.assert(typeof on_init === 'function', "Expecting on_init function, not", on_init);
-        var is_an_iframe = that.$iframe.length >= 1;
+        var is_an_iframe = that.$iframe.length === 1;
+
+        // FALSE WARNING:  Argument type {get: (function(): any)} is not assignable to parameter
+        //                 type jQuery | string
+        // noinspection JSCheckFunctionSignatures
         var was_iframe_initialized = typeof dom_from_$(that.$iframe).iFrameResizer === 'object';
-        // NOTE:  This typeof apparently does not prevent a warning on twice initializing
-        //        an iframe in a pop-up, cloned from a thumbnail contribution.
-        if (is_an_iframe && ! was_iframe_initialized) {
+
+        if (!is_an_iframe) {
+            console.error("Missing iframe", that.id_attribute, is_an_iframe, was_iframe_initialized, that);
+        } else if (was_iframe_initialized) {
+            console.log("Already initialized iframe", that.id_attribute);
+            on_init();
+        } else {
             setTimeout(function () {
                 // noinspection JSUnusedGlobalSymbols
                 that.$iframe.iFrameResize({
@@ -2228,7 +2288,6 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                     },
                     onResized: function iframe_resized_itself(stuff) {
                         console.assert(stuff.iframe === that.iframe, stuff.iframe, that);
-                        // var msg_cont = Contribution_from_element(stuff.iframe);
                         console.assert(
                             that.is_dom_rendered(),
                             stuff.iframe,
@@ -2238,7 +2297,16 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                         var siz_width = parseFloat(stuff.width);
                         var siz_height = parseFloat(stuff.height);
                         // var pop_stuff = that.$sup.data('pop-stuff');
-                        if (is_specified(popup_cont) && is_specified(popup_cont.pop_stuff)) {
+                        if (
+                            is_specified(popup_cont) &&
+                            ! popup_cont.is_noembed_error &&
+                            is_specified(popup_cont.pop_stuff)
+                        ) {
+
+                            // NOTE:  Popup animation is a collaboration, parent with embed:
+                            //        The embed is animating the size of the popup.
+                            //        The parent will now adjust the position accordingly.
+
                             var progress_width = linear_transform(
                                 siz_width,
                                 popup_cont.pop_stuff.thumb_render_width,
@@ -2268,6 +2336,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                                 //        a 401 error message.  Although that should now not be
                                 //        oversized.  (Multiple fixes.)
 
+                                // NOTE:  Linear conversion, size to position.
                                 // console.log(
                                 //     "iframe resized",
                                 //     that.id_attribute,
@@ -2303,6 +2372,8 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                                     popup_cont.pop_stuff.fixed_coordinates.top, pop_top
                                 )
                                 that.$sup.css({left: sliding_left, top: sliding_top});
+
+                                // NOTE:  Routine collaborative resize / reposition.
                                 // console.log(
                                 //     "Resize in",
                                 //     that.id_attribute,
@@ -2314,6 +2385,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                                 //     Resize in popup_1990 278.671875 x 194 17.4% 238,70
                                 //     Resize in popup_1990 312.296875 x 213 20.6% 229,68
                                 //     Resize in popup_1990 345.921875 x 231 23.7% 220,66
+
                             } else {
                                 if (siz_width === 0 && siz_height === 0) {
                                     // Harmlessly start out zero-size iframe.
@@ -2350,66 +2422,81 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                 //        window's origin ('http://...').
                 on_init();
             }, MS_IFRAME_RESIZER_INIT);
-        } else {
-            console.error("Missing iframe or resizer", that);
         }
+    };
+
+    Contribution.prototype.media_error_clarion = function Contribution_media_error_clarion(what, message) {
+        var that = this;
+        that.is_noembed_error = true;
+        that.$sup.addClass('noembed-error');
+        that.$sup.trigger(that.Event.MEDIA_ERROR);
+        console.warn("Media error", what, "#" + that.id_attribute, message);
     };
 
     Contribution.prototype.iframe_incoming = function Contribution_iframe_incoming(twofer) {
         var that = this;
         var message = twofer.message;
-        var cont_idn = strip_prefix(message.contribution_idn, MONTY.POPUP_ID_PREFIX);
-        console.assert(cont_idn === that.idn_string, cont_idn, that.idn_string);
+        var idn_string = strip_prefix(message.id_attribute, MONTY.POPUP_ID_PREFIX);
+        console.assert(idn_string === that.idn_string, idn_string, that.idn_string);
         // noinspection JSRedundantSwitchStatement
         switch (message.action) {
         case 'auto-play-presaged':
-            console.log("Media presaged", that.id_attribute, message.contribution_idn);
+            console.log("Media presaged", that.id_attribute, message.id_attribute);
             that.$sup.trigger(that.Event.MEDIA_BEGUN);
             break;
         case 'auto-play-static':
-            console.log("Media static", that.id_attribute, message.contribution_idn);
+            console.log("Media static", that.id_attribute, message.id_attribute);
             that.$sup.trigger(that.Event.MEDIA_STATIC, [{
-                cont_idn: cont_idn,
+                idn_string: that.idn_string,
                 current_time: message.current_time
             }]);
-            // interact.START(cont_idn, message.current_time);
+            // interact.START(idn_string, message.current_time);
             // DONE:  Avoid double START interaction.  Interaction is now lexed in event handler.
             //        Can happen if Contribution.zero_iframe_recover()
             break;
         case 'auto-play-begun':
-            console.log("Media begun", that.id_attribute, message.contribution_idn);
+            console.log("Media begun", that.id_attribute, message.id_attribute);
             // NOTE:  Okay to pause.
             break;
         case 'auto-play-woke':
-            console.log("Media woke", that.id_attribute, message.contribution_idn);
+            console.log("Media woke", that.id_attribute, message.id_attribute);
             that.$sup.trigger(that.Event.MEDIA_WOKE);
             // NOTE:  State changes, first sign of life from youtube player.
             break;
         case 'auto-play-end-dynamic':
-            console.log("Dynamic media ended", that.id_attribute, message.contribution_idn);
+            console.log("Dynamic media ended", that.id_attribute, message.id_attribute);
             that.$sup.trigger(that.Event.MEDIA_ENDED);
             // NOTE:  MEDIA_ENDED event means e.g. a video ended,
             //        so next it's time for a breather.
-            interact.END(cont_idn, message.current_time);
+            interact.END(idn_string, message.current_time);
             break;
         case 'auto-play-end-static':
-            console.log("Static media ended", that.id_attribute, message.contribution_idn);
+            console.log("Static media ended", that.id_attribute, message.id_attribute);
             // NOTE:  Static media timed-out, no breather necessary.
-            interact.END(cont_idn, message.current_time);
+            interact.END(idn_string, message.current_time);
             break;
         case 'auto-play-error':
-            console.log("Embedded player error", that.id_attribute, message.error_message);
-            interact.ERROR(cont_idn, 1, message.error_message);
+            that.media_error_clarion("auto-play", message.error_message);
+            // that.$sup.addClass('noembed-error');
+            // that.is_noembed_error = true;
+            // that.$sup.trigger(that.Event.MEDIA_ERROR);
+            // console.log("Embedded player error", that.id_attribute, message.error_message);
+            interact.ERROR(idn_string, 1, message.error_message);
+            // EXAMPLE:  YouTube Player error 150
+            //           Video unavailable
+            //           This video contains content from Home Box Office Inc.,
+            //           who has blocked it on copyright grounds.
+            //           https://www.youtube.com/watch?v=axVxgCT3YD0
             break;
         case 'auto-play-paused':
             console.log(
                 "Media paused",
                 that.id_attribute,
-                message.contribution_idn,
+                message.id_attribute,
                 message.current_time
             );
             that.$sup.trigger(that.Event.MEDIA_PAUSED);
-            interact.PAUSE(cont_idn, message.current_time);
+            interact.PAUSE(idn_string, message.current_time);
             // NOTE:  This could happen a while after the pause button is clicked,
             //        after a cascade of consequences.  But it should accurately
             //        record the actual position of the pause in the video.
@@ -2426,29 +2513,29 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             console.log(
                 "Media quit",
                 that.id_attribute,
-                message.contribution_idn
+                message.id_attribute
             );
-            interact.QUIT(cont_idn, message.current_time);
+            interact.QUIT(idn_string, message.current_time);
             break;
         case 'auto-play-playing':
             console.log(
                 "Media playing",
                 that.id_attribute,
-                message.contribution_idn,
+                message.id_attribute,
                 message.current_time.toFixed(3),
                 bot.is_paused
             );
             // if (bot.is_paused) {
             //     // NOTE:  This may be the sole place a Contribution knows of a Bot.
             //     //        Necessary?  Wise?
-            //     interact.RESUME(cont_idn, message.current_time);
+            //     interact.RESUME(idn_string, message.current_time);
             // } else {
-            //     interact.START(cont_idn, message.current_time);
+            //     interact.START(idn_string, message.current_time);
             // }
 
             that.$sup.trigger(that.Event.MEDIA_PLAYING, [{
                 // is_paused: bot.is_paused,
-                cont_idn: cont_idn,
+                idn_string: idn_string,
                 current_time: message.current_time
             }]);
 
@@ -2458,10 +2545,10 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             console.log(
                 "Media resume",
                 that.id_attribute,
-                message.contribution_idn,
+                message.id_attribute,
                 message.current_time.toFixed(3)
             );
-            interact.RESUME(cont_idn, message.current_time);
+            interact.RESUME(idn_string, message.current_time);
             that.$sup.trigger(that.Event.MEDIA_RESUME, [{
                 current_time: message.current_time
             }]);
@@ -2470,12 +2557,14 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         case 'noembed-error-notify':
             // NOTE:  This happens when youtube oembed says "401 Unauthorized"
             //        E.g. https://www.youtube.com/watch?v=bAD2_MVMUlE
-            // var media_cont = Contribution(message.contribution_idn);
-            // TODO:  We don't need message.contribution_idn,
+            // var media_cont = Contribution(message.id_attribute);
+            // TODO:  We don't need message.id_attribute,
             //        because we know it from scope!  Right??
-            that.$sup.addClass('noembed-error');
-            that.is_noembed_error = true;
-            interact.ERROR(cont_idn, 1, message.error_message);
+            that.media_error_clarion("noembed-error", message.error_message);
+            // that.$sup.addClass('noembed-error');
+            // that.is_noembed_error = true;
+            // that.$sup.trigger(that.Event.MEDIA_ERROR);
+            interact.ERROR(idn_string, 1, message.error_message);
             break;
         default:
             console.error(
@@ -2488,11 +2577,14 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     }
     function interact(interaction_name, obj, num, txt) {
         if ( ! is_specified(txt))   txt = "";
+        console.assert(typeof interaction_name === 'string', interaction_name);
+        console.assert(typeof obj === 'string', obj);   // e.g. '1435'
         console.assert(typeof num === 'number', num);
         console.assert(typeof txt === 'string', txt);
         var num_with_one_qigit_resolution = one_qigit(num);
         // NOTE:  current_time doesn't need to store more than one qigit below decimal.
         //        So it gets rounded to the nearest 1/256.
+        //        Does this throw away 2 useful bits?  Dubious how useful.
        qoolbar.post('interact', {
             name: interaction_name,
             obj: obj,
@@ -2552,11 +2644,13 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
 
     Contribution.prototype.resizer_nudge = function Contribution_resizer_nudge() {
         var that = this;
-        var iframe = that.iframe;
-        // FALSE WARNING:  Condition is always true since types '{get: (function(): any | null)}' and 'null' have no overlap
-        // noinspection JSIncompatibleTypesComparison
-        if (iframe !== null && is_defined(iframe.iFrameResizer)) {
-            iframe.iFrameResizer.resize();
+        if (that.has_iframe) {
+            var iframe = that.iframe;
+            // FALSE WARNING:  Condition is always true since types '{get: (function(): any | null)}' and 'null' have no overlap
+            // noinspection JSIncompatibleTypesComparison
+            if (iframe !== null && is_defined(iframe.iFrameResizer)) {
+                iframe.iFrameResizer.resize();
+            }
         }
     };
 
@@ -2717,16 +2811,15 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     // TODO:  Is the callback `then` only needed for media_noembed.js to wait for ajax response?
     //        So can this complification go away after we get free of noembed??
     Contribution.prototype.rebuild_bars = function Contribution_rebuild_bars(then) {
-
         var that = this;
         then = then || function () {};
         if (that.is_media) {
-            that.render_media(before_then);
+            that.render_media(intermediate_step);
         } else {
-            that.render_text(before_then);
+            that.render_text(intermediate_step);
         }
 
-        function before_then() {
+        function intermediate_step() {
             setTimeout(function () {
                 // NOTE:  This little bit of breathing space really seems to make the difference
                 //        when adjusting the sizes of what's newly rendered.
@@ -2768,7 +2861,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             // EXAMPLE:  Sophisticated Media 994 handler 1 instagram BNCeThsAhVT
             // EXAMPLE:  Sophisticated Media 1857 handler 2 noembed  Switched a...
             // EXAMPLE:  Sophisticated Media 1792 handler 3 any url  Mr Bean's ...
-            that.can_play(that.handler.media.can_play());
+            that.set_can_play(that.handler.media.can_play());
 
             that.$cont.outerWidth(px_from_rem(WIDTH_MAX_EM.soft));
             // NOTE:  Set width for editing the contribution URL text.
@@ -2779,7 +2872,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             // media_any_url.js media.url_patterns.  So nothing passes could_be_url() and fails
             // media_any_url.js.
 
-            // that.can_play(false);
+            // that.set_can_play(false);
             // // that.$sup.removeClass('can-play');
             // // that.$sup.removeClass('cant-play');
             // // TODO:  Remember why I used to remove BOTH these classes?
@@ -2811,7 +2904,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         var that = this;
         // that.$sup.removeAttr('data-domain');
         that.$sup.removeClass('render-media');
-        that.can_play(true);   // (can be "played" as text to speech audio)
+        that.set_can_play(true);   // (can be "played" as text to speech audio)
         that.$external_link.removeAttr('href');
         that.$external_link.removeAttr('target');
         that.$external_link.removeAttr('title');
@@ -2825,15 +2918,16 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         $p.text(error_message);
         that.$render_bar.empty().append($p);
 
-        console.warn(f("Render error on #{id_attribute}\n{error_message}\n{media_url}", {
-            id_attribute: that.id_attribute,
-            media_url: that.media_url,
-            error_message: error_message
-        }));
-
-        that.$sup.addClass('noembed-error');
-        that.can_play(false);
-        that.is_noembed_error = true;
+        // console.warn(f("Render error on #{id_attribute}\n{error_message}\n{media_url}", {
+        //     id_attribute: that.id_attribute,
+        //     media_url: that.media_url,
+        //     error_message: error_message
+        // }));
+        that.media_error_clarion("handler-rendering", error_message);
+        // that.$sup.addClass('noembed-error');
+        // that.is_noembed_error = true;
+        // that.$sup.trigger(that.Event.MEDIA_ERROR);
+        that.set_can_play(false);
         // NOTE:  How non-live thumbnails skip the bot.
         //        Also how the text gets its peachy background color.
 
@@ -2846,8 +2940,9 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         that.fix_caption_width();
     };
 
-    Contribution.prototype.can_play = function Contribution_can_play(can) {
+    Contribution.prototype.set_can_play = function Contribution_set_can_play(can) {
         var that = this;
+        that.is_able_to_play = can;
         that.$sup.toggleClass('can-play', can);
         that.$sup.toggleClass('cant-play', ! can);
     };
@@ -2863,7 +2958,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         if (that.is_dom_rendered()) {
             offset = that.$sup.offset();
         } else {
-            offset = that.cat.$unshown.offset();
+            offset = that.cat.$unrendered.offset();
         }
         return {
             top: offset.top - $(window).scrollTop(),
@@ -3153,12 +3248,12 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         }
     }
 
-    function unshown_click(evt) {
-        var $unshown = $(this);
-        var $sup_cat = $unshown.closest('.sup-category');
+    function unrendered_click(evt) {
+        var $unrendered = $(this);
+        var $sup_cat = $unrendered.closest('.sup-category');
         var cat = $sup_cat.data('category-object');
         cat.render_some_conts(evt.shiftKey ? INCREMENT_CAT_CONT_SHIFT : INCREMENT_CAT_CONT);
-        cat.show_unshown_count();
+        cat.show_unrendered_count();
     }
 
     /**
@@ -3234,57 +3329,52 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
      * @param {function} callback_good - pass it the iFrameResizer object, if up and running
      * @param {function=} callback_bad - pass it an explanation if not
      */
-    // TODO:  Contribution method
     Contribution.prototype.iframe_resizer = function Contribution_iframe_resizer(
         callback_good,
         callback_bad
     ) {
         var that = this;
-
-        function bad(message) {
-            if (is_specified(callback_bad)) {
-                callback_bad(message);
-            } else {
-                console.error(message);
-            }
-        }
+        callback_bad = callback_bad || function (message) { console.error(message); };
 
         if (that.is_dom_rendered()) {
             if (that.is_media) {
-                var iframe = that.iframe;
-                // FALSE WARNING:  Condition is always false since types '{get: (function():
-                //                 any | null)}' and 'null' have no overlap
-                // noinspection JSIncompatibleTypesComparison
-                if (iframe === null) {
-                    bad("No iframe element in " + that.id_attribute);
-                } else {
+                if (that.has_iframe) {
+                // var iframe = that.iframe;
+                // // FALSE WARNING:  Condition is always false since types '{get: (function():
+                // //                 any | null)}' and 'null' have no overlap
+                // // noinspection JSIncompatibleTypesComparison
+                // if (iframe === null) {
+                //     bad("No iframe element in " + that.id_attribute);
+                // } else {
                     var resizer;
                     try {
-                        resizer = iframe.iFrameResizer;
+                        resizer = that.iframe.iFrameResizer;
                     } catch (e) {
-                        bad(
+                        callback_bad(
                             "No resizer " +
                             that.id_attribute + " " +
                             e.message + " - " +
-                            iframe.id
+                            that.iframe.id
                         );
                         return
                     }
                     if ( ! is_specified(resizer)) {
-                        bad("Null resizer " + that.id_attribute);
+                        callback_bad("Null resizer " + that.id_attribute);
                     } else if (typeof resizer.sendMessage !== 'function') {
-                        bad("No resizer sendMessage " + that.id_attribute);
+                        callback_bad("No resizer sendMessage " + that.id_attribute);
                     } else if (typeof resizer.close !== 'function') {
-                        bad("No resizer close " + that.id_attribute);
+                        callback_bad("No resizer close " + that.id_attribute);
                     } else {
                         callback_good(resizer);
                     }
+                } else {
+                    callback_bad("No iframe element in " + that.id_attribute);
                 }
             } else {
                 // NOTE:  E.g. harmlessly trying to use a cont with no render-bar iframe.
             }
         } else {
-            bad("No element " + that.idn);
+            callback_bad("No element " + that.idn);
         }
     };
 
@@ -3503,8 +3593,8 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             cont.$sup.addClass('pop-down');
             // NOTE:  Zoom up from thumbnail.
         } else {
-            cont.cat.$unshown.before($popup_screen);
-            // NOTE:  Zoom up from the .unshown section
+            cont.cat.$unrendered.before($popup_screen);
+            // NOTE:  Zoom up from the .unrendered section
         }
 
         popup_cont.$sup.css(thumb_fixed_coordinates);
@@ -3516,134 +3606,156 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         //        fixed coordinates.
 
         popup_cont.rebuild_bars(function popup_clone_rendered() {
-            // setTimeout(function () {   // Give rendering some airtime.
-            //     initial_thumb_size_adjustment();
 
-                // NOTE:  Now the contribution to be popped up is cloned and thumbnail size.
+            // NOTE:  Now the contribution to be popped up is cloned and thumbnail size.
 
-                // var top_air = $('.sup-category-first').offset().top;
-                var thumb_render_width = popup_cont.$render_bar.width();
-                var thumb_render_height = popup_cont.$render_bar.height();
-                var cont_css_width = popup_cont.$cont.css('width');
-                var cont_css_height = popup_cont.$cont.css('height');
-                var caption_css_width = popup_cont.$caption_bar.css('width');
-                var caption_css_height = popup_cont.$caption_bar.css('height');
-                var caption_css_background = popup_cont.$caption_bar.css('background-color');
+            var thumb_render_width = popup_cont.$render_bar.width();
+            var thumb_render_height = popup_cont.$render_bar.height();
+            var cont_css_width = popup_cont.$cont.css('width');
+            var cont_css_height = popup_cont.$cont.css('height');
+            var caption_css_width = popup_cont.$caption_bar.css('width');
+            var caption_css_height = popup_cont.$caption_bar.css('height');
+            var caption_css_background = popup_cont.$caption_bar.css('background-color');
 
-                var vertical_padding_in_css = px_from_rem(0.3 + 0.3);
+            var vertical_padding_in_css = px_from_rem(0.3 + 0.3);
 
-                // var save_height = popup_cont.$save_bar.height() || popup_cont.$save_bar.find('.edit').height();
-                // console.assert(
-                //     save_height > 0.0,
-                //     cont.idn,
-                //     save_height,
-                //     cont.$save_bar.height(),
-                //     cont.$save_bar.width(),
-                //     cont.$save_bar.find('.edit').height(),
-                //     cont.$save_bar.find('.expand').height(),
-                //     cont.$save_bar.css('overflow')
-                // );
-                // // EXAMPLE:  Assertion failed: 1929 0 ... 16 16 hidden
-                // // EXAMPLE:  Assertion failed: 1851 0 0 202 16 16 hidden
-                // // NOTE:  Sometimes $save_bar.height() is zero.
-                // //        $save_bar is supposed to have enough .height() to contain its buttons,
-                // //        but it's sometimes zero (not always), even though its overflow:hidden and
-                // //        the button.full child has height.  (So does .unfull even though display none.)
-                // //        See https://stackoverflow.com/a/5369963/673991
-                // //        Working around it by reverting to the button height if the div height is zero.
-                // //        Clear-fix didn't work https://alistapart.com/article/css-floats-101/#section7
-                // //        Specifically, this code was in build_contribution_dom() below the buttons:
-                // //            $save_bar.append($('<div>', { style: 'clear: both;' }).html('&nbsp;'));
-                // //        Moving the .height() to before pop_down_all() didn't work.
-                // //        Adds to the impression I don't understand the problem.
-                // //        Along with the fact that $save_bar.height() is never zero from the console.
-                // //        Not even when the item is eclipsed by something else popped up.
-                // //        Both Chrome and Firefox have this problem,
-                // //        and both are fixed by the || .full work-around.
-                // //        Doesn't always happen.  I think it only happens when the bot is popping up
-                // //        item N+1 as it is about to pop down item N.  So never for item 1.
-                // //        Happens either for logged in users from their "my" category, and anon
-                // //        users from the "others" category.
-                // // TODO:  Try "Float Fix Float" http://complexspiral.com/publications/containing-floats/
-                // //        More tricks:  https://stackoverflow.com/a/5369963/673991
+            // var save_height = popup_cont.$save_bar.height() || popup_cont.$save_bar.find('.edit').height();
+            // console.assert(
+            //     save_height > 0.0,
+            //     cont.idn,
+            //     save_height,
+            //     cont.$save_bar.height(),
+            //     cont.$save_bar.width(),
+            //     cont.$save_bar.find('.edit').height(),
+            //     cont.$save_bar.find('.expand').height(),
+            //     cont.$save_bar.css('overflow')
+            // );
+            // // EXAMPLE:  Assertion failed: 1929 0 ... 16 16 hidden
+            // // EXAMPLE:  Assertion failed: 1851 0 0 202 16 16 hidden
+            // // NOTE:  Sometimes $save_bar.height() is zero.
+            // //        $save_bar is supposed to have enough .height() to contain its buttons,
+            // //        but it's sometimes zero (not always), even though its overflow:hidden and
+            // //        the button.full child has height.  (So does .unfull even though display none.)
+            // //        See https://stackoverflow.com/a/5369963/673991
+            // //        Working around it by reverting to the button height if the div height is zero.
+            // //        Clear-fix didn't work https://alistapart.com/article/css-floats-101/#section7
+            // //        Specifically, this code was in build_contribution_dom() below the buttons:
+            // //            $save_bar.append($('<div>', { style: 'clear: both;' }).html('&nbsp;'));
+            // //        Moving the .height() to before pop_down_all() didn't work.
+            // //        Adds to the impression I don't understand the problem.
+            // //        Along with the fact that $save_bar.height() is never zero from the console.
+            // //        Not even when the item is eclipsed by something else popped up.
+            // //        Both Chrome and Firefox have this problem,
+            // //        and both are fixed by the || .full work-around.
+            // //        Doesn't always happen.  I think it only happens when the bot is popping up
+            // //        item N+1 as it is about to pop down item N.  So never for item 1.
+            // //        Happens either for logged in users from their "my" category, and anon
+            // //        users from the "others" category.
+            // // TODO:  Try "Float Fix Float" http://complexspiral.com/publications/containing-floats/
+            // //        More tricks:  https://stackoverflow.com/a/5369963/673991
 
-                var max_live_width = usable_width();
-                var caption_height_px = popup_cont.$caption_bar.outerHeight();
-                // NOTE:  Wrapped thumbnail captions may result in less tall popups,
-                //        because popped-up captions don't need to be wrapped.
-                var max_live_height = Math.round(
-                    usable_height()
-                    - caption_height_px
-                    // - save_height   // Not this; we eliminated buttons below the pop-up.
-                    - vertical_padding_in_css
-                    - 30
-                );
-                // NOTE:  Extra 30-pixel reduction in height.
-                //        Tends to prevent scrollbars from spontaneously appearing.
-                //        Someday a less crude way would be good.
+            var max_live_width = usable_width();
 
-                // popup_cont.$sup.data('pop-stuff',
-                popup_cont.pop_stuff = {
-                    thumb_render_width: thumb_render_width,
-                    thumb_render_height: thumb_render_height,
-                    cont_css_width: cont_css_width,
-                    cont_css_height: cont_css_height,
-                    caption_css_width: caption_css_width,
-                    caption_css_height: caption_css_height,
-                    caption_css_background: caption_css_background,
-                    max_live_width: max_live_width,
-                    max_live_height: max_live_height,
-                    fixed_coordinates: thumb_fixed_coordinates
-                };
+            var caption_height_px = popup_cont.$caption_bar.outerHeight();
+            // NOTE:  Wrapped thumbnail captions may result in less tall popups,
+            //        because popped-up captions don't need to be wrapped.
 
-                if (popup_cont.is_media) {
+            var max_live_height = Math.round(
+                usable_height()
+                - caption_height_px
+                // - save_height   // Not this; we eliminated buttons below the pop-up.
+                - vertical_padding_in_css
+                - 30
+            );
+            // NOTE:  Extra 30-pixel reduction in height.
+            //        Tends to prevent scrollbars from spontaneously appearing.
+            //        Someday a less crude way would be good.
 
-                    deanimate("popping up media", popup_cont.id_attribute);
+            // popup_cont.$sup.data('pop-stuff',
+            popup_cont.pop_stuff = {
+                thumb_render_width: thumb_render_width,
+                thumb_render_height: thumb_render_height,
+                cont_css_width: cont_css_width,
+                cont_css_height: cont_css_height,
+                caption_css_width: caption_css_width,
+                caption_css_height: caption_css_height,
+                caption_css_background: caption_css_background,
+                max_live_width: max_live_width,
+                max_live_height: max_live_height,
+                fixed_coordinates: thumb_fixed_coordinates
+            };
 
-                    var img_src = popup_cont.$img_thumb.attr('src');
-                    // NOTE:  popup_cont.$img_thumb is ajax-loaded, use cont.$img_thumb instead.
-                    if (is_defined(img_src)) {
-                        popup_cont.$render_bar.css({
-                            'background-image': 'url(' + img_src + ')',
-                            'background-position': 'center center',
-                            'background-size': 'cover'
-                        });
-                        // NOTE:  This makes the thumbnail resemble the unplayed youtube video,
-                        //        while it's expanding to pop-up size,
-                        //        albeit with lower resolution,
-                        //        at least today it seems to.
-                        // THANKS:  Scale background to cover element, without distorting aspect ratio,
-                        //          https://stackoverflow.com/a/7372377/673991
+            if (popup_cont.is_media) {
 
-                    }
-                    popup_cont.live_media_iframe({
-                        idn: popup_cont.id_attribute,   // idn is a misnomer, it may include popup_prefix
-                        url: popup_cont.media_url,
-                        is_pop_up: true,
-                        auto_play: auto_play.toString(),
-                        width:  max_live_width,
-                        height: max_live_height,
-                        duration: POP_UP_ANIMATE_MS,
-                        easing: POP_UP_ANIMATE_EASING
-                    }, function media_iframe_loaded() {
-                        popup_cont.$render_bar.css({
-                            'background-image': '',
-                            'background-position': '',
-                            'background-size': ''
-                        });
-                        // NOTE:  This removes unsightly background echo for some vimeo and flickr embeds.
-                        // THANKS:  Remove CSS style, https://stackoverflow.com/a/4036868/673991
+                deanimate("popping up media", popup_cont.id_attribute);
+
+                var img_src = popup_cont.$img_thumb.attr('src');
+                // NOTE:  popup_cont.$img_thumb is ajax-loaded, use cont.$img_thumb instead.
+                if (is_defined(img_src)) {
+                    popup_cont.$render_bar.css({
+                        'background-image': 'url(' + img_src + ')',
+                        'background-position': 'center center',
+                        'background-size': 'cover'
                     });
+                    // NOTE:  This makes the thumbnail resemble the unplayed youtube video,
+                    //        while it's expanding to pop-up size,
+                    //        albeit with lower resolution,
+                    //        at least today it seems to.
+                    // THANKS:  Scale background to cover element, without distorting aspect ratio,
+                    //          https://stackoverflow.com/a/7372377/673991
 
-                    // NOTE:  This is what overwrites the original thumbnail image
-                    //        and makes it live media (e.g. a video) in the pop-up.
+                }
+                popup_cont.live_media_iframe({
+                    id_attribute: popup_cont.id_attribute,   // idn is a misnomer, it may include popup_prefix
+                    url: popup_cont.media_url,
+                    is_pop_up: true,
+                    auto_play: auto_play.toString(),
+                    width:  max_live_width,
+                    height: max_live_height,
+                    duration: POP_UP_ANIMATE_MS,
+                    easing: POP_UP_ANIMATE_EASING
+                }, function media_iframe_loaded() {
+                    // NOTE:  This is what makes it live media (e.g. a video) in the pop-up.
                     //        When oembed doesn't provide a thumbnail (e.g. dropbox) this may
                     //        load the iframe twice.
-                    popup_cont.$iframe.width(thumb_render_width);
-                    popup_cont.$iframe.height(thumb_render_height);
 
-                    // NOTE:  Until embed_content.js gets up and sets the size of the iframe through
-                    //        the iFrameResizer, let it start off as the same size as the thumbnail.
+                    popup_cont.$render_bar.width('');
+                    // NOTE:  Undo render-bar width-setting from render_error();
+
+                    popup_cont.$render_bar.css({
+                        'background-image': '',
+                        'background-position': '',
+                        'background-size': ''
+                    });
+                    // NOTE:  This removes unsightly background echo for some vimeo and flickr embeds.
+                    // THANKS:  Remove CSS style, https://stackoverflow.com/a/4036868/673991
+                });
+
+                popup_cont.$iframe.width(thumb_render_width);
+                popup_cont.$iframe.height(thumb_render_height);
+                // NOTE:  Early in the popup, as soon as the iframe is in the DOM,
+                //        until embed_content.js gets up and sets the size of the iframe through
+                //        the iFrameResizer, let it start off as the same size as the thumbnail.
+
+                pop_screen_fade_in();
+
+                if (popup_cont.is_noembed_error) {
+                    // NOTE:  This error may come from an embed_content.js iframe, as opposed to
+                    //        media_noembed.js render_error().  So it may be worded different
+                    //        and have different dimensions.
+
+                    popup_cont.$sup.animate({
+                        top: TOP_SPACER_PX,
+                        left: 0
+                    }, {
+                        duration: POP_UP_ANIMATE_MS,
+                        easing: POP_UP_ANIMATE_EASING,
+                        queue: false
+                    });
+                    // NOTE:  We can't rely on an iframe and its resizing to animate this popup,
+                    //        we'll do it ourselves here, but half-assed.  Just move the error
+                    //        message to the upper left corner, under the bot buttons.
+                } else {
                     popup_cont.resizer_init(function pop_media_init() {
 
                         // NOTE:  Harmless warning:
@@ -3664,20 +3776,19 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                         //        with either a zero-iframe bug in iFrameResizer,
                         //        or a poor internet connection.
 
-                        pop_screen_fade_in();
-                    });
-                } else {
-                    popup_cont.full_ish_screen_text(function () {
-                        if (auto_play) {
-                            popup_cont.play_quote_synthesis();
-                            return;
-
-                            // noinspection UnreachableCodeJS
-                            popup_cont.play_quote_talkify(auto_play);
-                        }
                     });
                 }
-            // }, MS_THUMB_TO_POP_UP);
+            } else {
+                popup_cont.full_ish_screen_text(function () {
+                    if (auto_play) {
+                        popup_cont.play_quote_synthesis();
+                        return;
+
+                        // noinspection UnreachableCodeJS
+                        popup_cont.play_quote_talkify(auto_play);
+                    }
+                });
+            }
         });
         console.log(
             "Popup",
@@ -3726,10 +3837,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
 
         utter.rate = 0.75;
 
-        // Another attempt to fix text-not-speaking bug.
-
         utter.pitch = 1.0;    // otherwise it's -1, wtf that means
-        // Another attempt to fix text-not-speaking bug.
 
         switch ($('#play_bot_speech').val()) {
         case PLAY_BOT_SPEECH_OUT_LOUD:
@@ -3835,14 +3943,14 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         var $svg = null;
         $(utter).on('start', function speech_boundary(evt) {
             that.$sup.trigger(that.Event.SPEECH_START);
-            interact.START(that.idn, evt.originalEvent.charIndex);
+            interact.START(that.idn_string, evt.originalEvent.charIndex);
             speech_progress = 0;
         });
         $(utter).on('pause', function speech_pause() {
-            interact.PAUSE(that.idn, speech_progress);
+            interact.PAUSE(that.idn_string, speech_progress);
         });
         $(utter).on('resume', function speech_resume() {
-            interact.RESUME(that.idn, speech_progress);
+            interact.RESUME(that.idn_string, speech_progress);
             // NOTE:  Resume can be 2-4 words later than pause!
             //        This is the "speechSynthesis pause delay" issue.
         });
@@ -3864,7 +3972,12 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             var the_word = pop_text.slice(start_word, end_word+1);
             var range_word = window.document.createRange();
             that.$cont.text(pop_text);
+
+            // FALSE WARNING:  Argument type {get: (function(): jQuery | [])} is not assignable to
+            //                 parameter type jQuery | string
+            // noinspection JSCheckFunctionSignatures
             var text_node = dom_from_$(that.$cont).childNodes[0];
+
             console.assert(text_node.nodeName === '#text', text_node, that);
             range_word.setStart(text_node, start_word);
             range_word.setEnd(text_node, end_word);
@@ -3917,7 +4030,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                 //        Because a NEW bot play cycle might otherwise be
                 //        transitioned prematurely.
                 //        Did the $(utter).off() in pop_down_all() solve this issue?
-                interact.QUIT(that.idn, speech_progress);
+                interact.QUIT(that.idn_string, speech_progress);
             } else {
                 console.log(
                     "Utterance",
@@ -3928,7 +4041,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                 // NOTE:  A bit lame, this happens whether manually popped up or
                 //        automatically played by the bot.  But it should have
                 //        no consequence manually anyway.
-                interact.END(that.idn, pop_text.length);
+                interact.END(that.idn_string, pop_text.length);
             }
             speech_progress = null;
             // NOTE:  Setting speech_progress to null here
@@ -4316,7 +4429,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             pop_down_caption_background = thumb_cont.$caption_bar.css('background-color');
         } else {
             pop_down_caption_background = 'rgba(0,0,0,0)';
-            // TODO:  replace transparent final ''color'' with background of .unshown?
+            // TODO:  replace transparent final ''color'' with background of .unrendered?
         }
 
         that.$cont.css('width', cont_css_width);
@@ -4842,7 +4955,8 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
      *
      * Or call with no arguments to empty the feedback span.
      *
-     * @return {string|jQuery|HTMLElement}
+     * parameters ... any number of string, jQuery, HTMLElement
+     * @return {jQuery}
      */
     function entry_feedback(/* element, element, ... */) {
         var $feedback = $('#entry_feedback');
@@ -5010,35 +5124,48 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
 
             var $element = $(this);
             $element.removeClass('size-adjust-once');
-            thumb_size_adjust($element);
-            // console.debug("Init", Contribution_from_element($element).id_attribute);
-            var cont = Contribution_from_element($element);
-            console.assert(is_specified(cont) && cont.is_dom_rendered(), "Visible but not rendered??", cont);
-            if (cont.is_media && ! cont.is_noembed_error) {
-                var width_cont = cont.$render_bar.outerWidth();
-                width_cont = Math.max(width_cont, px_from_rem(WIDTH_MAX_EM.hard));
-                cont.$cont.outerWidth(width_cont);
-                // console.debug("Fudge", cont.id_attribute, width_cont);
-                // NOTE:  So editing a media contribution shows the URL in the same width
-                //        as the thumbnail.  Just do this once.
 
-                // function is_save_bar_too_wide() {
-                //     return cont.$save_bar.outerWidth() > cont.$render_bar.outerWidth();
-                // }
-                // if (is_save_bar_too_wide()) {
-                //     console.debug("Too wide", cont.id_attribute, cont.caption_text);
-                //     cont.$save_bar.find('.expand .wordy-label').hide();
-                //     // NOTE:  Try hiding "expand" first.  If still not enough hide "play" too.
-                //     if (is_save_bar_too_wide()) {
-                //         console.debug("Too too wide");
-                //         cont.$save_bar.find('.play .wordy-label').hide();
-                //     }
-                // }
-                // NOTE:  The above was a nice idea, hiding "expand" then "play" if needed for space.
-                //        But it will have to wait until we get desperate enough
-                //        to defer this function call until the render bar is fully loaded.
-                //        Which would probably be a good idea someday anyway.
-            }
+            thumb_size_adjust($element);
+            // TODO:  Omg, is this only adjusting quote sizes?  Guess that has value in valve()
+            //        Also caption needs fixing after valve() expands a category for the first time.
+            //        But this is the only place where this code calls thumb_size_adjust(), so
+            //        surely simplification is possible...
+
+            // console.debug("Init", Contribution_from_element($element).id_attribute);
+            // var cont = Contribution_from_element($element);
+            // if (cont === null) {
+            //     console.error("Visible but not in DOM??", cont);
+            // } else if ( ! cont.is_dom_rendered()) {
+            //     console.error("Visible but not rendered??", cont);
+            // } else {
+            //     if (cont.is_media && ! cont.is_noembed_error) {
+            //         var width_cont = cont.$render_bar.outerWidth();
+            //         width_cont = Math.max(width_cont, px_from_rem(WIDTH_MAX_EM.hard));
+            //         cont.$cont.outerWidth(width_cont);
+            //         // console.debug("Fudge", cont.id_attribute, width_cont);
+            //         // NOTE:  So editing a media contribution shows the URL in the same width
+            //         //        as the thumbnail.  Just do this once.
+            //
+            //         // function is_save_bar_too_wide() {
+            //         //     return cont.$save_bar.outerWidth() > cont.$render_bar.outerWidth();
+            //         // }
+            //         // if (is_save_bar_too_wide()) {
+            //         //     console.debug("Too wide", cont.id_attribute, cont.caption_text);
+            //         //     cont.$save_bar.find('.expand .wordy-label').hide();
+            //         //     // NOTE:  Try hiding "expand" first.  If still not enough hide "play" too.
+            //         //     if (is_save_bar_too_wide()) {
+            //         //         console.debug("Too too wide");
+            //         //         cont.$save_bar.find('.play .wordy-label').hide();
+            //         //     }
+            //         // }
+            //         // NOTE:  The above was a nice idea, hiding "expand" then "play" if needed for space.
+            //         //        But it will have to wait until we get desperate enough
+            //         //        to defer this function call until the render bar is fully loaded.
+            //         //        Which would probably be a good idea someday anyway.
+            //     }
+            // }
+            // NOTE:  This was overwrought.  Just make the URL editing MAX.soft wide.
+            //        And that was done in render_media() before we got here.  (Or render_error().)
         });
     }
 
@@ -5074,10 +5201,12 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     function resizer_nudge_all() {
         $('.sup-contribution').each(function () {
             var cont = Contribution_from_element(this);
-            cont.resizer_nudge();
-            cont.zero_iframe_recover();
-            // NOTE:  Reload any zero-width or zero-height iframe, a workaround for an
-            //        apparent bug in iFrameResizer.  Or just bad internet.
+            if (cont.is_dom_rendered() && cont.is_media) {
+                cont.resizer_nudge();
+                cont.zero_iframe_recover();
+                // NOTE:  Reload any zero-width or zero-height iframe, a workaround for an
+                //        apparent bug in iFrameResizer.  Or just bad internet.
+            }
         });
     }
 
@@ -5962,19 +6091,19 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                 when_we_are_done_loading_handlers(function () {
                     contribution_lexi.category_lexi.loop(function (idn_category, category) {
                         var number_of_conts_to_show_initially;
-                        if (DO_WHOLE_UNSHOWN_PIECES) {
+                        if (DO_WHOLE_UNRENDERED_PIECES) {
                             var total_num = category.cont_sequence.len();
-                            var unwhole_unshown_num = total_num - MAX_CAT_CONT;
-                            var whole_unshown_num = (
-                                Math.floor(unwhole_unshown_num / INCREMENT_CAT_CONT) *
+                            var unwhole_unrendered_num = total_num - MAX_CAT_CONT;
+                            var whole_unrendered_num = (
+                                Math.floor(unwhole_unrendered_num / INCREMENT_CAT_CONT) *
                                 INCREMENT_CAT_CONT
                             );
-                            number_of_conts_to_show_initially = total_num - whole_unshown_num;
+                            number_of_conts_to_show_initially = total_num - whole_unrendered_num;
                         } else {
                             number_of_conts_to_show_initially = MAX_CAT_CONT;
                         }
                         category.render_some_conts(number_of_conts_to_show_initially);
-                        category.show_unshown_count();
+                        category.show_unrendered_count();
                     });
                 });
             });
@@ -6582,6 +6711,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     /**
      * Try to keep the caption input and textarea same width.  If not, no sweat.
      */
+
     function entry_caption_same_width_as_textarea() {
         if (typeof window.MutationObserver === 'function') {
             var $enter_some_text = $('#enter_some_text');
@@ -6589,7 +6719,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             console.assert($enter_some_text.length === 1, $enter_some_text.length);
             console.assert($enter_a_caption.length === 1, $enter_a_caption);
             function caption_tracks_text() {
-                $enter_a_caption.width($enter_some_text.width());
+                $enter_a_caption.outerWidth($enter_some_text.outerWidth());
             }
             new MutationObserver(caption_tracks_text).observe(
                 dom_from_$($enter_some_text),
@@ -6599,6 +6729,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                 }
             );
             caption_tracks_text();
+            // THANKS:  div events, MutationObserver, https://stackoverflow.com/a/42805882/673991
         }
     }
 
@@ -6817,3 +6948,4 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
 //        window.speechSynthesis to speak quotes
 //        window.SpeechSynthesisUtterance is where it actually crashes
 //        $('iframe').on('load') event never happens.
+//        window.ResizeObserver has cosmetic advantage only, not a factor

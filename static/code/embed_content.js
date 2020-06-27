@@ -72,21 +72,25 @@ function embed_content_js(window, $, MONTY) {
     var $body;
 
     var url_outer_iframe = query_get('url');
-    var contribution_idn = query_get('idn');
+    var id_attribute = query_get('id_attribute');
 
     var is_auto_play = query_get('auto_play', 'false') === 'true';
-    // NOTE:  is_auto_play is not whether the Bot is running a sequence of contributions,
-    //        nor is it whether the media is dynamic (video) versus static (photo)
-    //        nor is it whether the media is popped up versus a thumbnail
-    //        It's whether the object should start playing, or just sit there.
+    // NOTE:  is_auto_play is not whether the Bot is running a sequence of contributions, vs manual.
+    //        Nor is it whether the media is dynamic (video) versus static (photo).
+    //        Nor is it whether the media is popped up versus a thumbnail.
+    //        It's whether the object has some automated lifetime,
+    //             versus sitting there forever waiting for the user to do something.
     //        It's true when:   (These are recorded as an interaction work in the lex.)
-    //            the "play" button is clicked on individual contributions
+    //            the "play" button is clicked on individual media contributions, youtube only
     //            the Bot pops up media, a youtube video or instagram photo
     //        It's false when:   (These do not merit recording a lex interaction word.)
     //            the "bigger" button is clicked on an individual contribution, video or photo
     //            this is a thumbnail for a noembed contribution, but there's no thumbnail image,
     //                or the image is broken
     //                so the thumbnail is live media, e.g. twitter or dropbox
+    // TODO:  Should the timing of Bot-driven static media happen in THIS file embed_content.js
+    //        instead of in the FSM of contribution.js?  This would make "auto_play" youtube behave
+    //        slightly more like "auto_play" instagram, e.g.
 
     var is_pop_up = query_get('is_pop_up', 'false') === 'true';
     var oppressed_width = query_get('width', 'auto');
@@ -123,12 +127,13 @@ function embed_content_js(window, $, MONTY) {
                     //        Let the parent know this is dynamic, playable media
                     //        versus a static photo.
                     parent_message('auto-play-presaged', {
-                        contribution_idn: contribution_idn
+                        id_attribute: id_attribute
                     });
                 } else {
-                    // NOTE:  Not going to play.  Let the parent know this is static media.
+                    // NOTE:  Not something that plays like a video.
+                    //        Let the parent know this is static media.
                     parent_message('auto-play-static', {
-                        contribution_idn: contribution_idn,
+                        id_attribute: id_attribute,
                         current_time: seconds_since_load()
                     });
                 }
@@ -163,9 +168,9 @@ function embed_content_js(window, $, MONTY) {
                     //     },
                     //     https://www.youtube.com/watch?time_continue=206&v=ubTJI_UphPk&feature=emb_logo&ab_channel=DoctorWho
                     fix_embedded_content();
-                    console.warn("Noembed error on", contribution_idn, url_outer_iframe);
+                    console.warn("Noembed error on", id_attribute, url_outer_iframe);
                     parent_message('noembed-error-notify', {
-                        contribution_idn: contribution_idn,
+                        id_attribute: id_attribute,
                         error_message: "noembed error " + MONTY.oembed.error
                     });
                 } else if (is_pop_youtube) {
@@ -354,7 +359,7 @@ function embed_content_js(window, $, MONTY) {
                         console.log("UN POP UP, youtube state", youtube_state);
                         if (quitable_state(youtube_state)) {
                             parent_message('auto-play-quit', {
-                                contribution_idn: contribution_idn,
+                                id_attribute: id_attribute,
                                 current_time: yt_player.getCurrentTime()
                             });
                             // NOTE:  This is an unnatural, manual end of a YouTube video.
@@ -363,9 +368,13 @@ function embed_content_js(window, $, MONTY) {
                             //        The Bot will take credit for it there.
                         }
                     } else if (is_laden(MONTY.oembed.error)) {
-                        console.log("Harmlessly popping down video with an error", contribution_idn);
+                        console.log("Harmlessly popping down video with an error", id_attribute);
                     } else {
-                        console.error("Unhandled dynamic pop-down.", window.location.search, yt_player);
+                        // Reasons for getting here:
+                        //     - YouTube API might be loading
+                        //     - popup animation in progress (yt_player is set when that's done)
+                        // console.error("Unhandled dynamic pop-down.", window.location.search, yt_player);
+                        console.warn("Unhandled dynamic pop-down.", MONTY.oembed);
                     }
                 } else {   // NOTE:  Static media pop down, e.g. instagram photo
                     if (is_auto_play) {   // NOTE:  Static media was kinda "playing".
@@ -378,7 +387,7 @@ function embed_content_js(window, $, MONTY) {
                             // NOTE:  The user prematurely quit this static contribution.
                         }
                         parent_message(action, {
-                            contribution_idn: contribution_idn,
+                            id_attribute: id_attribute,
                             current_time: seconds_since_load()
                         });
                     }
@@ -399,20 +408,23 @@ function embed_content_js(window, $, MONTY) {
                     } else {
                         console.warn(
                             "Unable to pause",
-                            contribution_idn,
+                            id_attribute,
                             "with a",
                             typeof yt_player.pauseVideo
                         );
+                        // NOTE:  What gets here?  Is it possible yt_player is not ready yet,
+                        //        And we just need to wait for persistent 'pause' messages
+                        //        from finite_state_machine_paused()?
                     }
                 } else if (is_auto_play) {
                     // TODO:  Why if is_auto_play?  Is that to prevent double-reporting of a pause?
                     //        Not sure that's possible in this non-youtube case.
                     parent_message('auto-play-paused', {
-                        contribution_idn: contribution_idn,
+                        id_attribute: id_attribute,
                         current_time: seconds_since_load()
                     });
                 } else {
-                    console.warn("Not ready to pause", contribution_idn, url_outer_iframe);
+                    console.warn("Not ready to pause", id_attribute, url_outer_iframe);
                 }
                 break;
             case 'resume':
@@ -421,11 +433,11 @@ function embed_content_js(window, $, MONTY) {
                 } else if (is_auto_play) {
                     // TODO:  Why if is_auto_play?
                     parent_message('auto-play-resume', {
-                        contribution_idn: contribution_idn,
+                        id_attribute: id_attribute,
                         current_time: seconds_since_load()
                     });
                 } else {
-                    console.warn("Don't know how to resume", contribution_idn, url_outer_iframe);
+                    console.warn("Don't know how to resume", id_attribute, url_outer_iframe);
                 }
                 break;
             default:
@@ -494,7 +506,7 @@ function embed_content_js(window, $, MONTY) {
                         yt_player.playVideo();
 
                         parent_message('auto-play-begun', {
-                            contribution_idn: contribution_idn
+                            id_attribute: id_attribute
                         });
                         // NOTE:  Let contribution.js know that it's now
                         //        okay to send a 'pause' message,
@@ -507,7 +519,7 @@ function embed_content_js(window, $, MONTY) {
                     ) {
                         console.warn(
                             "Unstarted",
-                            contribution_idn,
+                            id_attribute,
                             "-- Chrome blocked?"
                         );
                     }
@@ -516,12 +528,12 @@ function embed_content_js(window, $, MONTY) {
                     if (first_state_change) {
                         first_state_change = false;
                         parent_message('auto-play-woke', {
-                            contribution_idn: contribution_idn
+                            id_attribute: id_attribute
                         });
                         t.moment("yt-state");
 
                         console.log(
-                            MONTY.POPUP_ID_PREFIX + contribution_idn,
+                            id_attribute,
                             domain_simple + ",",
                             "lag", t.report()
                         );
@@ -537,13 +549,13 @@ function embed_content_js(window, $, MONTY) {
                     switch (yt_event.data) {
                     case window.YT.PlayerState.ENDED:
                         parent_message('auto-play-end-dynamic', {
-                            contribution_idn: contribution_idn,
+                            id_attribute: id_attribute,
                             current_time: yt_player.getCurrentTime()
                         });
                         break;
                     case window.YT.PlayerState.PAUSED:
                         parent_message('auto-play-paused', {
-                            contribution_idn: contribution_idn,
+                            id_attribute: id_attribute,
                             current_time: yt_player.getCurrentTime()
                         });
                         // TODO:  getCurrentTime() is wrong when changing the play point on
@@ -563,13 +575,13 @@ function embed_content_js(window, $, MONTY) {
                         //     //        come after pause before play?
                         //     console.log("EMBED RESUME", yt_player.getCurrentTime());
                         //     parent_message('auto-play-resume', {
-                        //         contribution_idn: contribution_idn,
+                        //         id_attribute: id_attribute,
                         //         current_time: yt_player.getCurrentTime()
                         //     });
                         // } else {
                             console.log("EMBED PLAYING", yt_player.getCurrentTime());
                             parent_message('auto-play-playing', {
-                                contribution_idn: contribution_idn,
+                                id_attribute: id_attribute,
                                 current_time: yt_player.getCurrentTime()
                             });
                         // }
@@ -577,7 +589,7 @@ function embed_content_js(window, $, MONTY) {
                     default:
                         break;
                     }
-                    console.log("YT API", contribution_idn, yt_event.data);
+                    console.log("YT API", id_attribute, yt_event.data);
                     previous_state = yt_event.data;
                 },
                 onError: function (yt_event) {
@@ -586,7 +598,7 @@ function embed_content_js(window, $, MONTY) {
                         yt_event.data
                     );
                     parent_message('auto-play-error', {
-                        contribution_idn: contribution_idn,
+                        id_attribute: id_attribute,
                         error_message: "YouTube Player error " + yt_event.data.toString()
                     });
                 }
@@ -725,7 +737,7 @@ function embed_content_js(window, $, MONTY) {
         cycle_of_last_change = num_cycles;
         description_of_last_change = description;
         num_changes++;
-        // console.log(contribution_idn + ". CHANGE", description);
+        // console.log(id_attribute + ". CHANGE", description);
         // EXAMPLE:
         //    CHANGE IFRAME.fit_height(300x400-225x300)
         //    CHANGE TWITTER-WIDGET.fit_height(220x421.063-156.7461401262994x300)

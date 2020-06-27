@@ -22,9 +22,9 @@
              * @param oembed_response.oembed.title
              * @param oembed_response.oembed.url
              */
-           qoolbar.post('noembed_meta', {
+            qoolbar.post('noembed_meta', {
                 url: cont.content
-            }, function (oembed_response) {
+            }, function any_noembed_done(oembed_response) {
                 var oembed = oembed_response.oembed;
                 if (is_laden(oembed.error)) {
                     if (cont.media_domain === 'no_domain') {
@@ -39,7 +39,7 @@
                     if (typeof oembed.thumbnail_url === 'string') {
                         cont.render_error(
                             cont.media_domain +
-                            " is not yet supported, though noembed may support it. " +
+                            " is not supported, though noembed may support it. " +
                             "Provider: " +
                             provider_name
                         );
@@ -55,8 +55,10 @@
                         //           Provider: Facebook
                     }
                 }
+                then();
+            }, function any_noembed_fail() {
+                then();
             });
-            then();
         },
         can_play: function (_) { return false; }
     };

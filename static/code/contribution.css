@@ -210,11 +210,12 @@ select#thumb-res option { direction: rtl; }
     /* SEE:  More Chrome contenteditable issues, https://stackoverflow.com/q/6023307/673991 */
 
 .sup-contribution                                .render-bar { display:none; }
-.sup-contribution.render-media                   .render-bar { display:inline-block; }
+.sup-contribution.render-media                   .render-bar { display:block; }
 .sup-contribution.contribution-edit              .render-bar { display:none; }
 .sup-contribution.contribution-edit.render-media .render-bar { display:none; }
-/* NOTE:  .render-media is inline-block, so its width is natural,
-          and a too-wide save-bar can be detected. */
+/* NOTE:  .render-media was display:inline-block, so that its width would be natural,
+          and a too-wide save-bar could be detected.  But then twitter render-bars have
+          an unsightly gap below them, above the caption-bar.  So back to display:block.*/
 
 .render-bar img.thumb {
     vertical-align: top;
@@ -500,7 +501,7 @@ iframe { display:block; }
     border-color: #AAAAAA;
 }
 
-.unshown {
+.unrendered {
     background-color: rgba(0,0,0,0.08);
     -webkit-border-radius: 0.7em;
        -moz-border-radius: 0.7em;

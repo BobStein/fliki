@@ -1,6 +1,8 @@
-/* util.js */
-
-// THANKS:  Remove "var" warnings, EcmaScript 6 to 5, https://stackoverflow.com/q/54551923/673991
+/**
+ * util.js
+ *
+ * Requires jQuery as $.
+ */
 
 function sanitized_domain_from_url(url) {
     if (url === null) {
@@ -154,6 +156,14 @@ looper([1,2,42,8,9], function (i,v) {
 });
 console.assert("0=1,1=2,2=42" === looper_test.join(","));
 
+/**
+ * Compare non-integer numbers, avoiding floating point pitfalls.
+ *
+ * @param value1
+ * @param value2
+ * @param tolerance
+ * @return {boolean|boolean}
+ */
 function equal_ish(value1, value2, tolerance) {
     return (value1 - tolerance < value2 && value2 < value1 + tolerance);
 }
@@ -641,7 +651,10 @@ function array_async(array, process, delay_ms, n_chunk, then) {
  *
  * @param enumeration - e.g. {NAME1: {description: "one"}, NAME2: "two"}
  * @return {object} - returns the enumeration object of objects,
- *                    each one of which has name, description, and value members.
+ *                    each one of which has
+ *                        name,
+ *                        description, and
+ *                        value members.
  *                    e.g. {
  *                        NAME1: {name: 'NAME1', description: "one", value: 0},
  *                        NAME2: {name: 'NAME2', description: "two", value: 1},
@@ -650,6 +663,7 @@ function array_async(array, process, delay_ms, n_chunk, then) {
  */
 // SEE:  Debate on value order, https://stackoverflow.com/q/5525795/673991
 // TODO:  Method to test whether some random object is a member of an Enumeration?
+// TODO:  Make this a proper JavaScript class (ES5 that is).
 function Enumerate(enumeration) {
     var value_zero_based = 0;
     looper(enumeration, function (name, object) {
@@ -773,10 +787,21 @@ function animate_surely(element, properties, options) {
         }
     });
     $element.animate(properties, modified_options);
-    console.debug("Shoil", modified_options);
 }
 
-function dom_from_$($jquery_object) {
+/**
+ * Convert jQuery object to DOM object.  Or a selector such as dom_from_$('.css-class')
+ *
+ * @param {jQuery|string} jquery_object_or_selector
+ * @return {HTMLElement|undefined}
+ */
+function dom_from_$(jquery_object_or_selector) {
+    var $jquery_object = $(jquery_object_or_selector);
+    console.assert(
+        $jquery_object.length === 1,
+        "Expecting exactly one element",
+        jquery_object_or_selector
+    );
     var dom_object = $jquery_object.get(0);
     return dom_object;
 }

@@ -23,7 +23,7 @@
             console.assert(that === cont.handler.media);   // Hint object organization could improve
             qoolbar.post('noembed_meta', {
                 url: cont.content
-            }, function (oembed_response) {
+            }, function media_noembed_done(oembed_response) {
                 var oembed = oembed_response.oembed;
 
                 var is_title_a_copy_of_url = oembed.title === oembed.url;
@@ -60,7 +60,9 @@
                         cont.thumb_image(
                             oembed.thumbnail_url,
                             caption_for_media,
-                            then,
+                            function thumb_url_load() {
+                                then();
+                            },
                             function thumb_url_error() {
                                 console.warn(
                                     cont.media_domain,
@@ -86,6 +88,8 @@
                     // EXAMPLE:  no matching providers found for 'pinterest'
                     then();
                 }
+            }, function media_noembed_fail() {
+                then();
             });
         },
         can_play: function (_) { return false; }   // Noembed is no help animating an embed.
