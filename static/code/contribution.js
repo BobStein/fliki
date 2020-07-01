@@ -355,10 +355,8 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
 
     var MAX_FONT_EXPANSION = 3.0;   // Popping up a quote, magnify font size up to this factor.
 
-    var MAX_CAT_CONT = 2;   // How many contributions to show in a category, before "N-MAX more"
-    // HACK
-    var INCREMENT_CAT_CONT = 7;   // Clicking more renders this many contributions
-    // HACK
+    var MAX_CAT_CONT = 50;   // How many contributions to show in a category, before "N-MAX more"
+    var INCREMENT_CAT_CONT = 20;   // Clicking more renders this many contributions
     var INCREMENT_CAT_CONT_SHIFT = 100;  // Shift-click renders this many
     var DO_WHOLE_UNRENDERED_PIECES = true;  // Show a few more than MAX_CAT_CONT initially,
                                             // to make unrendered count an even multiple of
