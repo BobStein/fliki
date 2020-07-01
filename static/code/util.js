@@ -266,45 +266,6 @@ Timing.prototype.moment = function Timing_moment(what) {
 })(window);
 
 /**
- * Make sure an element isn't too big.  Shrink width & height so both fit, preserving aspect ratio.
- *
- * @param $element
- * @param max_width
- * @param max_height
- * @param callback_shrinkage - optional callback, with text report on shrinkage, if any happened.
- */
-
-function fit_element($element, max_width, max_height, callback_shrinkage) {
-    if ($element.length === 1) {
-        var old_width = $element.width();
-        var old_height = $element.height();
-        $element.css('max-width', max_width);
-        $element.css('max-height', max_height);
-        var actual_width = $element.width();
-        var actual_height = $element.height();
-        var did_change_width = actual_width !== old_width;
-        var did_change_height = actual_height !== old_height;
-        var reports = [];
-        if (actual_width > max_width + 1.0 && ! $element.data('bust-width-notified')) {
-            $element.data('bust-width-notified', true);
-            reports.push("BUST-WIDTH " + (actual_width - max_width).toFixed(0) + "px too wide");
-        }
-        if (actual_height > max_height + 1.0) {
-            reports.push("BUST-HEIGHT " + (actual_height - max_height).toFixed(0) + "px too high");
-        }
-        if (did_change_width) {
-            reports.push("w " + old_width.toFixed(0) + " -> " + actual_width.toFixed(0));
-        }
-        if (did_change_height) {
-            reports.push("h " + old_height.toFixed(0) + " -> " + actual_height.toFixed(0));
-        }
-        if (reports.length > 0) {
-            callback_shrinkage(reports.join(", "));
-        }
-    }
-}
-
-/**
  * Are there any single newlines in this string?  They indicate "poetry" formatting.
  *
  * Double newlines don't count.  They're paragraph boundaries.
@@ -512,6 +473,8 @@ console.assert('Object'    === official_type_name(new function Legacy_Class(){})
  * @param z
  * @return {string|*}
  */
+// CAUTION:  Minified code loses some constructor names,
+//           https://stackoverflow.com/q/10314338/673991#comment17433297_10314492
 function type_name(z) {
     var the_official_name = official_type_name(z);
     if (the_official_name === 'Object') {
@@ -523,6 +486,22 @@ function type_name(z) {
 console.assert('Object'       === type_name({a:1, b:2}));
 console.assert('Legacy_Class' === type_name(new function Legacy_Class(){}));
 // console.assert('ES2015_Class' === type_name(new class ES2015_Class{}));
+
+function type_should_be(parameter, expected_type) {
+    // TODO:  expected_type_or_array_of_types
+    var is_correct_type = type_name(parameter) === expected_type;
+    console.assert(
+        is_correct_type,
+        "Expecting", expected_type,
+        "but got", type_name(parameter),
+        "-", parameter
+    );
+    return is_correct_type;
+}
+type_should_be(42, 'Number');
+type_should_be("X", 'String');
+type_should_be(null, 'Null');
+type_should_be(undefined, 'Undefined');
 
 function default_to(parameter, default_value) {
     if (is_defined(parameter)) {
@@ -612,7 +591,7 @@ function iterate(opt) {
  * @return {object} setInterval object, caller could pass to clearInterval() to abort.
  */
 function array_async(array, process, delay_ms, n_chunk, then) {
-    console.assert(typeof array.length === 'number', "Cannot async " + typeof array);
+    type_should_be(array, 'Array') && type_should_be(array.length, 'Number');
     if (typeof n_chunk !== 'number' || n_chunk < 1) {
         n_chunk = 1;
     }
@@ -672,7 +651,7 @@ function Enumerate(enumeration) {
         }
         object.name = name;
         object.value = value_zero_based;
-        enumeration[name] = object;   // replaces the member if it was a string (description)
+        enumeration[name] = object;   // displaces the member if value was a string (description)
         value_zero_based++;
     });
     enumeration.number_of_values = value_zero_based;
@@ -754,7 +733,7 @@ function to_string(z) {
  */
 function animate_surely(element, properties, options) {
     var duration = options.duration || 1000;
-    console.assert(typeof duration === 'number', duration);
+    type_should_be(duration, 'Number');
     var timeout = duration * 2;
     var complete = options.complete || function () {};
     var $element = $(element);

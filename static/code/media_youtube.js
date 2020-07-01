@@ -18,22 +18,24 @@
             var pattern_match_object = cont.handler.match_object;
             console.assert(pattern_match_object.length === 2, cont.content, pattern_match_object);
             var media_id = pattern_match_object[1];
-            console.assert(typeof media_id === 'string' && media_id.length === 11);
-            var thumbnail_url = 'https://img.youtube.com/vi/' + media_id + '/mqdefault.jpg';
+            type_should_be(media_id, 'String') && console.assert(media_id.length === 11);
+            var thumbnail_1 = 'https://img.youtube.com/vi/' + media_id + '/mqdefault.jpg';
+            var thumbnail_2 = 'https://img.youtube.com/vi/' + media_id + '/2.jpg';
             // THANKS:  Thumbnail options, https://stackoverflow.com/a/20542029/673991
             var caption = cont.caption_text + " (" + that.description_short + ")";
             cont.thumb_image(
-                thumbnail_url,
+                thumbnail_1,
                 caption,
                 then,
                 function youtube_render_thumb_take_2() {
-                    thumbnail_url = 'https://img.youtube.com/vi/' + media_id + '/2.jpg';
                     cont.thumb_image(
-                        thumbnail_url,
+                        thumbnail_2,
                         caption,
                         then,
                         function youtube_render_thumb_give_up() {
-                            console.error("No youtube images", cont.content);
+                            cont.render_error("YouTube video not found");
+                            // NOTE:  Never actually gets here
+                            // SEE:  https://img.youtube.com/vi/BOGUS_BOGUS/mqdefault.jpg
                         }
                     );
                 }

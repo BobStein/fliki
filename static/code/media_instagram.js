@@ -33,7 +33,7 @@
                                 caption,
                                 then,
                                 function instagram_render_thumb_give_up() {
-                                    console.error("No instagram images", cont.content);
+                                    cont.render_error("Instagram image not found");
                                 }
                             );
                         }

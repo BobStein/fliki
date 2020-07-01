@@ -1617,6 +1617,9 @@ def contribution_home(home_page_title):
 
                 # foot.js('https://use.fontawesome.com/49adfe8390.js')   # req by talkify
                 # foot.js('https://cdn.jsdelivr.net/npm/talkify-tts@2.6.0/dist/talkify.min.js')
+                # NOTE:  Commenting the above lines out is how talkify is disabled.
+                #        Might want to revive it someday,
+                #        because talkify voices seemed better than the standard browser voices.
 
                 foot.js_stamped(static_code_url('util.js'))
                 foot.js_stamped(static_code_url('contribution.js'))

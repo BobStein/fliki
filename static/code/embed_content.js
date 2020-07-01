@@ -44,9 +44,10 @@
  * @property {function} yt_player.stopVideo
  */
 function embed_content_js(window, $, MONTY) {
-    console.assert(typeof window === 'object');
-    console.assert(typeof $ === 'function');
-    console.assert(typeof MONTY === 'object');
+    type_should_be(window, 'Window');
+    type_should_be($, 'Function');
+    type_should_be($(), 'jQuery');
+    type_should_be(MONTY, 'Object');
     // TODO:  Assert window and MONTY are not null without generating mfing
     //        PyCharm warnings from the eager beaver type nazi.
 
@@ -62,9 +63,6 @@ function embed_content_js(window, $, MONTY) {
 
     // TODO:  Why does twitter + IE11 + fit_height() go on changing height in EVERY repetition?
 
-    var SHOW_YOUTUBE_THUMBS = false;  // true=thumbnails, false=live tiny videos
-    // TODO:  Get EweBoob thumbnails to work sanely.
-
     var num_cycles = 0;
     var num_changes = 0;
     var cycle_of_last_change = 0;
@@ -75,19 +73,21 @@ function embed_content_js(window, $, MONTY) {
     var id_attribute = query_get('id_attribute');
 
     var is_auto_play = query_get('auto_play', 'false') === 'true';
-    // NOTE:  is_auto_play is not whether the Bot is running a sequence of contributions, vs manual.
+    // NOTE:  is_auto_play is not:
+    //        whether the Bot is running a sequence of contributions, vs manual.
     //        Nor is it whether the media is dynamic (video) versus static (photo).
     //        Nor is it whether the media is popped up versus a thumbnail.
     //        It's whether the object has some automated lifetime,
     //             versus sitting there forever waiting for the user to do something.
-    //        It's true when:   (These are recorded as an interaction work in the lex.)
+    //        TRUE:   (These events are recorded as an interaction work in the lex.)
     //            the "play" button is clicked on individual media contributions, youtube only
     //            the Bot pops up media, a youtube video or instagram photo
-    //        It's false when:   (These do not merit recording a lex interaction word.)
+    //        FALSE:   (These do not merit recording a lex interaction word.)
     //            the "bigger" button is clicked on an individual contribution, video or photo
     //            this is a thumbnail for a noembed contribution, but there's no thumbnail image,
     //                or the image is broken
     //                so the thumbnail is live media, e.g. twitter or dropbox
+    //        is_auto_play is a subset of is_pop_up.  (I.e. we never automate thumbnails.)
     // TODO:  Should the timing of Bot-driven static media happen in THIS file embed_content.js
     //        instead of in the FSM of contribution.js?  This would make "auto_play" youtube behave
     //        slightly more like "auto_play" instagram, e.g.
@@ -102,12 +102,13 @@ function embed_content_js(window, $, MONTY) {
     window.document.title = domain_simple + " - " + window.document.title;
     var is_youtube = (domain_simple === 'youtube' || domain_simple === 'youtu.be');
     var is_pop_youtube = is_pop_up && is_youtube;
-    var is_dynamic = is_youtube;
+    var is_dynamic = is_youtube;   // future dynamic media suppliers go here...
 
     var YOUTUBE_EMBED_PREFIX = 'https://www.youtube.com/embed/';
     // THANKS:  URL, https://developers.google.com/youtube/player_parameters#Manual_IFrame_Embeds
 
     var yt_player = null;
+    var is_yt_player_ready = false;
     var t = Timing();
     var ms_load = new Date().getTime();
 
@@ -118,7 +119,7 @@ function embed_content_js(window, $, MONTY) {
 
     window.iFrameResizer = {
         targetOrigin: MONTY.target_origin,
-        onReady: function iframe_resizer_content_ready() {
+        onReady: function resizer_ready() {
             t.moment("resizer");
             if (is_auto_play) {
                 if (is_pop_youtube) {
@@ -132,6 +133,8 @@ function embed_content_js(window, $, MONTY) {
                 } else {
                     // NOTE:  Not something that plays like a video.
                     //        Let the parent know this is static media.
+                    // NOTE:  YouTube thumbnails (i.e. not popped up) don't get to embed_content.js,
+                    //        but if they did they'd be static, and they'd come here.
                     parent_message('auto-play-static', {
                         id_attribute: id_attribute,
                         current_time: seconds_since_load()
@@ -174,75 +177,14 @@ function embed_content_js(window, $, MONTY) {
                         error_message: "noembed error " + MONTY.oembed.error
                     });
                 } else if (is_pop_youtube) {
-                    youtube_iframe_api(function () {
+                    youtube_iframe_api(function youtube_api_ready() {
                         t.moment("yt-code");
-
-                        var $you_frame = $('<iframe>', {
-                            id: 'youtube_iframe',
-                            width: MONTY.oembed.width,
-                            height: MONTY.oembed.height,
-                            type: 'text/html',
-                            src: youtube_embed_url({
-                                enablejsapi: '1',
-                                // NOTE:  enablejsapi query parameter works.
-                                //        It enables JavaScript to animate the video.
-
-                                rel: '0',
-                                // THANKS:  rel=0 prevents (some) related videos at the end.
-                                //          https://www.youtube.com/watch?v=ZUTzJG212Vo
-                                // TODO:  Further eliminate pesky related video billboards
-                                //        https://stackoverflow.com/q/48386252/673991
-
-                                autoplay: '0'
-                                // THANKS:  disable "UP NEXT" auto play after video done
-
-                                // NOTE:  I couldn't get the `origin` option to work:
-                                // , origin: 'http://example.com'
-                                // , origin: 'locavore.unslumping.org'
-                                // , origin: 'http://localhost'
-                                // , origin: 'http://localhost/'
-                                // , origin: 'http://localhost:5000/'
-                                // , origin: 'http://locavore.unslumping.org'
-                                // , origin: 'http://locavore.unslumping.org/'
-                                // , origin: 'http://locavore.unslumping.org:5000/'
-                                // , origin: 'http://locavore.unslumping.org:5000/meta/oembed/'
-                                // , origin: 'http://locavore.unslumping.org:5000/meta/oembed/?idn=popup_1990&is_pop_up=true&auto_play=false&width=1710&height=719&url=https%3A%2F%2Fwww.youtube.com%2Fwatch%3Fv%3D3SwNXQMoNps%26rel%3D0'
-                                // , origin: 'http://locavore.unslumping.org:5000/meta/oembed/?idn=popup_1990&is_pop_up=true&auto_play=true&width=1349&height=544&url=https%3A%2F%2Fwww.youtube.com%2Fwatch%3Fv%3D3SwNXQMoNps%26rel%3D0'
-                                // , origin: window.location.href
-                                // FIXME:  Why do none of the above `origin` values work??
-                                //         Symptom, Bot play pops up but the video doesn't start.
-                                //         Possible cause, domains resolve to 127.0.0.1?
-                                //         Possible cause, not https??
-                                // https://developers.google.com/youtube/player_parameters#origin
-                            }),
-                            frameborder: '0',
-                                  allowFullScreen : 'true',
-                               mozallowFullScreen : 'true',
-                            webkitallowFullScreen : 'true',
-                            allow: 'autoplay; fullscreen'
-                            // enablejsapi: '1'
-                        });
-                        // NOTE:  enablejsapi attribute on iframe element does not work.
-                        // SEE:  enablejsapi attribute on iframe element,
-                        //       https://developers.google.com/youtube/iframe_api_reference#Examples
-                        // THANKS:  Doesn't work as iframe element attribute,
-                        //          https://stackoverflow.com/q/51109436/673991
-                        //          Required instead in src query string,
-                        //          otherwise onReady is never called.
-                        // THANKS:  inner full screen, https://stackoverflow.com/a/25308193/673991
-                        //          Firefox requires both inner and outer iframes to have
-                        //          allowFullScreen attribute(s) set.  (This iframe is inner.)
-                        //          The allow attribute is not enough.
-                        //          This was true 2019.0113 in Firefox 72, despite:
-                        //          https://developer.mozilla.org/Web/HTML/Element/iframe
-                        //              allowfullscreen ...  is considered a legacy attribute
-                        //              and redefined as allow="fullscreen".
-
-                        tag_width($you_frame);
-                        $you_frame.width(MONTY.THUMB_MAX_WIDTH);
-                        $you_frame.height(MONTY.THUMB_MAX_HEIGHT);
-                        $body.prepend($you_frame);
-                        animate_surely($you_frame, {
+                        var $youtube_iframe = $youtube_build_dom();
+                        tag_width($youtube_iframe);
+                        $youtube_iframe.width(MONTY.THUMB_MAX_WIDTH);
+                        $youtube_iframe.height(MONTY.THUMB_MAX_HEIGHT);
+                        $body.prepend($youtube_iframe);
+                        animate_surely($youtube_iframe, {
                             width: oppressed_width,
                             height: oppressed_height
                         }, {
@@ -253,32 +195,11 @@ function embed_content_js(window, $, MONTY) {
                             easing: oppressed_easing
                         });
                     });
-                } else if (is_youtube && SHOW_YOUTUBE_THUMBS) {
-                    var src = MONTY.oembed.thumbnail_url;
-
-                    src = src.replace(/hqdefault/, 'default');
-                    // THANKS:  No black bars, https://stackoverflow.com/a/18978874/673991
-                    // SEE:  More on stupid mother effing over-effed-with ew-tube thumbnails
-                    //       https://stackoverflow.com/a/20542029/673991
-
-                    var $a = $('<a>', {
-                        href: url_outer_iframe,
-                        target: '_blank'
-                    });
-                    // noinspection HtmlRequiredAltAttribute,RequiredAttributes
-                    var $img = $('<img>', {
-                        'class': 'oembed-thumb',
-                        'data-iframe-width': 'x',
-                        src: src
-                    });
-                    $a.append($img);
-                    $body.prepend($a);
-                    // NOTE:  prepend() instead of append() or iFrameResizer could get a
-                    //        phantom div in BEFORE this element, because it is being an eager
-                    //        beaver and inserting a data-iframe-width=x attribute.
-                    fix_embedded_content();
                 } else {
                     $body.html(MONTY.oembed.html);
+                    $body.on('load', function () {
+                        console.debug("BodyLoaded", id_attribute, "-", $body.html().length, "bytes");
+                    });
                     fix_embedded_content();
                     var interval = setInterval(function () {
                         // noinspection SpellCheckingInspection
@@ -289,7 +210,7 @@ function embed_content_js(window, $, MONTY) {
                             //     );
                             // } else {
                             //     console.log(
-                            //         query_get('id_attribute') + ".",
+                            //         id_attribute + ".",
                             //         domain_simple, "-",
                             //         num_changes, "changes,",
                             //         "last", description_of_last_change,
@@ -349,12 +270,13 @@ function embed_content_js(window, $, MONTY) {
                 }
             });
         },
-        onMessage: function iframe_resizer_content_message(message) {
+        onMessage: function resizer_message(message) {
             // noinspection JSRedundantSwitchStatement
             switch (message.action) {
             case 'un-pop-up':
                 if (is_dynamic) {
-                    if (yt_player !== null && typeof yt_player.getPlayerState === 'function') {
+                    if (is_yt_player_ready) {
+                        type_should_be(yt_player.pauseVideo, 'Function');
                         var youtube_state = yt_player.getPlayerState();
                         console.log("UN POP UP, youtube state", youtube_state);
                         if (quitable_state(youtube_state)) {
@@ -402,24 +324,14 @@ function embed_content_js(window, $, MONTY) {
                 });
                 break;
             case 'pause':
-                if (yt_player !== null) {
-                    if (typeof yt_player.pauseVideo === 'function') {
-                        yt_player.pauseVideo();
-                    } else {
-                        console.warn(
-                            "Unable to pause",
-                            id_attribute,
-                            "with a",
-                            typeof yt_player.pauseVideo
-                        );
-                        // NOTE:  What gets here?  Is it possible yt_player is not ready yet,
-                        //        And we just need to wait for persistent 'pause' messages
-                        //        from finite_state_machine_paused()?
-                    }
+                if (is_yt_player_ready) {
+                    type_should_be(yt_player.pauseVideo, 'Function');
+                    yt_player.pauseVideo();
                 } else if (is_auto_play) {
+                    // NOTE:  Static media popup, or YouTube iFrame API failure
                     // TODO:  Why if is_auto_play?  Is that to prevent double-reporting of a pause?
                     //        Not sure that's possible in this non-youtube case.
-                    parent_message('auto-play-paused', {
+                    parent_message("auto-play-paused", {
                         id_attribute: id_attribute,
                         current_time: seconds_since_load()
                     });
@@ -428,16 +340,18 @@ function embed_content_js(window, $, MONTY) {
                 }
                 break;
             case 'resume':
-                if (yt_player !== null) {
+                if (is_yt_player_ready) {
+                    type_should_be(yt_player.pauseVideo, 'Function');
                     yt_player.playVideo();
                 } else if (is_auto_play) {
                     // TODO:  Why if is_auto_play?
-                    parent_message('auto-play-resume', {
-                        id_attribute: id_attribute,
-                        current_time: seconds_since_load()
-                    });
+                    console.error('Resume message on failed dynamic media', id_attribute);
+                    // parent_message('auto-play-resume', {
+                    //     id_attribute: id_attribute,
+                    //     current_time: seconds_since_load()
+                    // });
                 } else {
-                    console.warn("Don't know how to resume", id_attribute, url_outer_iframe);
+                    console.error("Resume message on thumbnail", id_attribute);   // manual play?
                 }
                 break;
             default:
@@ -463,8 +377,28 @@ function embed_content_js(window, $, MONTY) {
         //        https://unslumping.org/meta/oembed/?url=https://www.youtu.be/3SwNXQMoNps
     }
 
+    var NO_YOUTUBE_STATE = -999;
+
+    function name_from_code(state_code) {
+        type_should_be(state_code, 'Number');
+        switch (state_code) {
+        case window.YT.PlayerState.UNSTARTED: return "UNSTARTED";
+        case window.YT.PlayerState.ENDED:     return "ENDED";
+        case window.YT.PlayerState.PLAYING:   return "PLAYING";
+        case window.YT.PlayerState.PAUSED:    return "PAUSED";
+        case window.YT.PlayerState.BUFFERING: return "BUFFERING";
+        case window.YT.PlayerState.CUED:      return "CUED";
+        case NO_YOUTUBE_STATE:                return "(none)";
+        default:                              return f("(unknown state {n})", {n:state_code});
+        }
+    }
+
     /**
-     * Begin auto-play if we're doing that.  Otherwise get all events ready to respond to playing.
+     * Begin dynamic-media auto-play if we're doing that.  Get event handlers ready.
+     *
+     * Expect #youtube_iframe to already be in the DOM.
+     * Expect resizer is ready, document is loaded, YouTube API has been loaded.
+     * Expect we are popping up.
      *
      * NOTE:  PlayerState sequences:
      *        cued=>unstarted=>buffering=>playing=>ended
@@ -472,7 +406,7 @@ function embed_content_js(window, $, MONTY) {
      *        5=>-1=>3=>-1=>1=>0  --  once
      *        2=>3=>1  --  clicking the timeline
      *
-     *        State codes:
+     *        YouTube API state codes:
      *        -1 – unstarted
      *         0 – ended
      *         1 – playing
@@ -484,22 +418,18 @@ function embed_content_js(window, $, MONTY) {
         t.moment("pop");
         console.assert($('#youtube_iframe').length === 1);
         var first_state_change = true;
-        var previous_state = null;
-
+        var previous_state = NO_YOUTUBE_STATE;
+        type_should_be(window.YT.Player, 'Function');
+        // FALSE WARNING:  Unused property onStateChange
         // noinspection JSUnusedGlobalSymbols
         yt_player = new window.YT.Player('youtube_iframe', {
             events: {
                 onReady: function (/*yt_event*/) {
+                    is_yt_player_ready = true;
                     if (is_auto_play) {
                         t.moment("yt-play");
-
-                        console.assert(
-                            typeof yt_player.playVideo === 'function',
-                            "Won't come out to play",
-                            typeof yt_player.playVideo,
-                            yt_player
-                        );
-                        // NOTE:  This assert checks for a problem that was possibly caused by
+                        type_should_be(yt_player.playVideo, 'Function');
+                        // NOTE:  This checks for a problem that was possibly caused by
                         //        calling dynamic_player() twice.
                         //        (From a botched fix for the ASS-OS bug.)
 
@@ -513,30 +443,26 @@ function embed_content_js(window, $, MONTY) {
                         //        which will cause yt_player.pauseVideo()
 
                     }
-                    if (
-                        yt_player.getPlayerState() ===
-                        window.YT.PlayerState.UNSTARTED
-                    ) {
-                        console.warn(
-                            "Unstarted",
-                            id_attribute,
-                            "-- Chrome blocked?"
-                        );
+                    if (yt_player.getPlayerState() === window.YT.PlayerState.UNSTARTED) {
+                        console.warn("Unstarted", id_attribute, "-- Chrome blocked?");
                     }
                 },
                 onStateChange: function (yt_event) {
+                    console.log(
+                        "YT API",
+                        id_attribute,
+                        name_from_code(previous_state),
+                        "->",
+                        name_from_code(yt_event.data)
+                    );
                     if (first_state_change) {
                         first_state_change = false;
-                        parent_message('auto-play-woke', {
+                        parent_message('auto-play-woke', {   // TODO:  Use or lose?
                             id_attribute: id_attribute
                         });
                         t.moment("yt-state");
 
-                        console.log(
-                            id_attribute,
-                            domain_simple + ",",
-                            "lag", t.report()
-                        );
+                        console.log(id_attribute, domain_simple + ",", "lag", t.report());
                         // EXAMPLE (busy):  popup_1990 youtube, lag 11.025:
                         //     resizer 1.137, jquery 0.233, yt-code 0.834,
                         //     pop 0.414, yt-play 7.017, yt-state 1.390
@@ -589,18 +515,16 @@ function embed_content_js(window, $, MONTY) {
                     default:
                         break;
                     }
-                    console.log("YT API", id_attribute, yt_event.data);
                     previous_state = yt_event.data;
                 },
                 onError: function (yt_event) {
-                    console.warn(
-                        "Player error",
-                        yt_event.data
-                    );
+                    console.warn("Player error", yt_event.data);
                     parent_message('auto-play-error', {
                         id_attribute: id_attribute,
                         error_message: "YouTube Player error " + yt_event.data.toString()
                     });
+                    // EXAMPLE:  "error 150" on Six Feet Under finale video axVxgCT3YD0
+                    // SEE:  error 150 causes, https://stackoverflow.com/a/5189003/673991
                 }
             }
         });
@@ -682,8 +606,6 @@ function embed_content_js(window, $, MONTY) {
             $body.outerHeight(oppressed_height);
             $child.outerWidth(oppressed_width);
             $child.outerHeight(oppressed_height);
-            // $body.css({width: oppressed_width, height: oppressed_height});
-            // $child.css({width: oppressed_width, height: oppressed_height});
             // NOTE:  An exception, this appears not to need a light touch, and setting these
             //        over and over does not churn visually.
         } else {
@@ -733,6 +655,45 @@ function embed_content_js(window, $, MONTY) {
         }
     }
 
+    /**
+     * Make sure an element isn't too big.  Shrink width & height so both fit, preserving aspect ratio.
+     *
+     * @param $element
+     * @param max_width
+     * @param max_height
+     * @param callback_shrinkage - optional callback, with text report on shrinkage, if any happened.
+     */
+
+    function fit_element($element, max_width, max_height, callback_shrinkage) {
+        if ($element.length === 1) {
+            var old_width = $element.width();
+            var old_height = $element.height();
+            $element.css('max-width', max_width);
+            $element.css('max-height', max_height);
+            var actual_width = $element.width();
+            var actual_height = $element.height();
+            var did_change_width = actual_width !== old_width;
+            var did_change_height = actual_height !== old_height;
+            var reports = [];
+            if (actual_width > max_width + 1.0 && ! $element.data('bust-width-notified')) {
+                $element.data('bust-width-notified', true);
+                reports.push("BUST-WIDTH " + (actual_width - max_width).toFixed(0) + "px too wide");
+            }
+            if (actual_height > max_height + 1.0) {
+                reports.push("BUST-HEIGHT " + (actual_height - max_height).toFixed(0) + "px too high");
+            }
+            if (did_change_width) {
+                reports.push("w " + old_width.toFixed(0) + " -> " + actual_width.toFixed(0));
+            }
+            if (did_change_height) {
+                reports.push("h " + old_height.toFixed(0) + " -> " + actual_height.toFixed(0));
+            }
+            if (reports.length > 0) {
+                callback_shrinkage(reports.join(", "));
+            }
+        }
+    }
+
     function count_a_change(description) {
         cycle_of_last_change = num_cycles;
         description_of_last_change = description;
@@ -769,6 +730,71 @@ function embed_content_js(window, $, MONTY) {
         }
     }
 
+    function $youtube_build_dom() {
+        var $youtube_iframe = $('<iframe>', {
+            id: 'youtube_iframe',
+            width: MONTY.oembed.width,
+            height: MONTY.oembed.height,
+            type: 'text/html',
+            src: youtube_embed_url({
+                enablejsapi: '1',
+                // NOTE:  enablejsapi query parameter works.
+                //        It enables JavaScript to animate the video.
+
+                rel: '0',
+                // THANKS:  rel=0 prevents (some) related videos at the end.
+                //          https://www.youtube.com/watch?v=ZUTzJG212Vo
+                // TODO:  Further eliminate pesky related video billboards
+                //        https://stackoverflow.com/q/48386252/673991
+
+                autoplay: '0'
+                // THANKS:  disable "UP NEXT" auto play after video done
+
+                // NOTE:  I couldn't get the `origin` option to work:
+                // , origin: 'http://example.com'
+                // , origin: 'locavore.unslumping.org'
+                // , origin: 'http://localhost'
+                // , origin: 'http://localhost/'
+                // , origin: 'http://localhost:5000/'
+                // , origin: 'http://locavore.unslumping.org'
+                // , origin: 'http://locavore.unslumping.org/'
+                // , origin: 'http://locavore.unslumping.org:5000/'
+                // , origin: 'http://locavore.unslumping.org:5000/meta/oembed/'
+                // , origin: 'http://locavore.unslumping.org:5000/meta/oembed/?idn=popup_1990&is_pop_up=true&auto_play=false&width=1710&height=719&url=https%3A%2F%2Fwww.youtube.com%2Fwatch%3Fv%3D3SwNXQMoNps%26rel%3D0'
+                // , origin: 'http://locavore.unslumping.org:5000/meta/oembed/?idn=popup_1990&is_pop_up=true&auto_play=true&width=1349&height=544&url=https%3A%2F%2Fwww.youtube.com%2Fwatch%3Fv%3D3SwNXQMoNps%26rel%3D0'
+                // , origin: window.location.href
+                // FIXME:  Why do none of the above `origin` values work??
+                //         Symptom, Bot play pops up but the video doesn't start.
+                //         Possible cause, domains resolve to 127.0.0.1?
+                //         Possible cause, not https??
+                // https://developers.google.com/youtube/player_parameters#origin
+            }),
+            frameborder: '0',
+                  allowFullScreen : 'true',
+               mozallowFullScreen : 'true',
+            webkitallowFullScreen : 'true',
+            allow: 'autoplay; fullscreen'
+            // enablejsapi: '1'
+        });
+        // NOTE:  enablejsapi attribute on iframe element does not work.
+        // SEE:  enablejsapi attribute on iframe element,
+        //       https://developers.google.com/youtube/iframe_api_reference#Examples
+        // THANKS:  Doesn't work as iframe element attribute,
+        //          https://stackoverflow.com/q/51109436/673991
+        //          Required instead in src query string,
+        //          otherwise onReady is never called.
+        // THANKS:  inner full screen, https://stackoverflow.com/a/25308193/673991
+        //          Firefox requires both inner and outer iframes to have
+        //          allowFullScreen attribute(s) set.  (This iframe is inner.)
+        //          The allow attribute is not enough.
+        //          This was true 2019.0113 in Firefox 72, despite:
+        //          https://developer.mozilla.org/Web/HTML/Element/iframe
+        //              allowfullscreen ...  is considered a legacy attribute
+        //              and redefined as allow="fullscreen".
+
+        return $youtube_iframe;
+    }
+
     function youtube_embed_url(additional_parameters) {
         additional_parameters = additional_parameters || {};
         console.assert(MONTY.matched_groups.length === 1);
@@ -797,8 +823,8 @@ function embed_content_js(window, $, MONTY) {
     }
 
     embed_content_js.youtube_iframe_api_ready = function () {
-        console.assert(typeof _youtube_iframe_api_when_ready === 'function');
-        console.assert(typeof window.YT.Player === 'function');
+        type_should_be(_youtube_iframe_api_when_ready, 'Function');
+        type_should_be(window.YT.Player, 'Function');
         _youtube_iframe_api_when_ready();
     };
 }
@@ -809,6 +835,7 @@ function embed_content_js(window, $, MONTY) {
  * @property YT.Player
  */
 function onYouTubeIframeAPIReady() {
+    // SEE:  https://developers.google.com/youtube/iframe_api_reference#Requirements
     console.log("Outer YouTube api ready");
     embed_content_js.youtube_iframe_api_ready();
 }
