@@ -3512,6 +3512,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             }
             contribution_edit_end();
         }
+        cont.save_alarm(false);
     }
 
     /**
@@ -3530,9 +3531,14 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
 
     // TODO:  Contribution method
     function contribution_save() {
-        var old_cont = Contribution_from_element($cont_editing);
-        console.assert(old_cont.$cont.is($cont_editing));
         if (is_editing_some_contribution) {
+            var old_cont = Contribution_from_element($cont_editing);
+            console.assert(old_cont.$cont.is($cont_editing));
+
+            old_cont.save_alarm(false);
+            // NOTE:  Both acknowledge clicking the save button, and clear any error
+            //        indication, in case it works this time.
+
             edit_submit(
                 old_cont.$cont,
                 "contribution",
@@ -3610,7 +3616,6 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                                 //            new_superseding_cont
                                 //        )?
 
-                                new_cont.$save_bar.find('.save').removeClass('failed-post');
                                 new_cont.rebuild_bars();
                             }
                             contribution_edit_end();
@@ -3624,17 +3629,23 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
 
             function save_fail(message) {
                 console.error(message);
-                old_cont.$save_bar.find('.save').addClass('failed-post');
+                old_cont.save_alarm(true);
+                // TODO:  Test both changed, contribution saved, caption save failed (rare)
+
                 contribution_lexi.assert_consistent();
-                // TODO:  Test the various failure modes
-                //        Only caption changed, saving it failed
-                //        Only contribution changed. saving it failed
-                //        Both changed, saving contribution failed
-                //        Both changed, contribution saved, caption save failed (but this is rare)
+                // NOTE:  May fail, e.g. caption dom != caption object, until properly saved.
             }
         } else {
             console.error("Save but we weren't editing?", $cont_editing);
         }
+    }
+
+    Contribution.prototype.save_alarm = function Contribution_save_alarm(is_bad) {
+        var that = this;
+        var $save_button = that.$save_bar.find('.save');
+        $save_button.toggleClass('failed-post', is_bad);
+        var title_text = is_bad ? "Failed to save. Try again?" : null;
+        $save_button.attr('title', title_text);
     }
 
     Contribution.prototype.superseded_by = function Contribution_superseded_by(newer_cont) {
@@ -5077,7 +5088,6 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             var $sup = $cont.closest('.sup-contribution');
             var $caption_span = $sup.find('.caption-span');
             $caption_span.data('original_text', $caption_span.text());
-            $sup.find('.save-bar .save').removeClass('failed-post');
             $cont_editing = $cont;
         }
     }
@@ -6015,420 +6025,14 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             // Anonymous users see a faded anonymous category with explanation.
         }
 
-        // var $sup_contributions = {};   // table of super-contribution DOM objects, by idn qstring
-        // var cat_of_cont = {};   // maps contribution idn to category idn
-        // var conts_in_cat = {};   // for each category idn, an ordered array of contribution idns
-        // looper(MONTY.cat.order, function (_, cat) {
-        //     conts_in_cat[cat] = [];   // each array defines contribution order within category
-        // });
-        //
-        // /**
-        //  * Assert consistency of cat_of_cont{} and conts_in_cat{}[].
-        //  *
-        //  * They are roughly inverses of each other.
-        //  * A bit like "a place for everything, and everything in its place."
-        //  */
-        // function consistent_cat_cont() {
-        //     looper(cat_of_cont, function (cont, cat) {
-        //         cont = parseInt(cont);
-        //         if (conts_in_cat[cat].indexOf(cont) === -1) {
-        //             console.error(
-        //                 "inconsistency: contribution",
-        //                 cont,
-        //                 "should be in category",
-        //                 cat,
-        //                 JSON.stringify(cat_of_cont),
-        //                 JSON.stringify(conts_in_cat)
-        //             );
-        //             // NOTE:  cat_of_cont[] says this contribution is in a category, but
-        //             //        conts_in_cat[] doesn't have it.
-        //             return false;
-        //         }
-        //     });
-        //     looper(conts_in_cat, function (cat, conts) {
-        //         cat = parseInt(cat);
-        //         looper(conts, function (_, cont) {
-        //             console.assert(
-        //                 cat_of_cont[cont] === cat,
-        //                 "inconsistency: contribution",
-        //                 cont,
-        //                 "could be in category",
-        //                 cat,
-        //                 "or",
-        //                 cat_of_cont[cont]
-        //             );
-        //             // NOTE:  conts_in_cat says this category contains a cont, but
-        //             //        cat_of_conts[] does not indicate the same category.
-        //         });
-        //     });
-        // }
-        // consistent_cat_cont();   // empty is consistent with empty
-        //
-        // auth_log = [];
-        // var auth_log_push = auth_log.push.bind(auth_log);
-        //
-        // if (0) looper(MONTY.w, function (_, word) {
-        //     var $sup;
-        //     var $cont;
-        //     var $caption_span;
-        //     if (word !== null) {
-        //         switch (word.vrb) {
-        //         case MONTY.IDN.CONTRIBUTE:
-        //         case MONTY.IDN.UNSLUMP_OBSOLETE:
-        //             if (query_string_filter(word, cont_only)) {
-        //                 $sup = build_contribution_dom(word, null)
-        //                 $sup = $();
-        //                 $cont = $sup.find('.contribution');
-        //                 $caption_span = $sup.find('.caption-span');
-        //                 $cont.attr('data-owner', word.sbj);
-        //                 $caption_span.attr('data-owner', word.sbj);
-        //                 $sup_contributions[word.idn] = $sup;
-        //                 var cat = original_cat(word);
-        //                 conts_in_cat[cat].unshift(word.idn);
-        //                 cat_of_cont[word.idn] = cat;
-        //             }
-        //             break;
-        //         case MONTY.IDN.CAPTION:
-        //             if (has($sup_contributions, word.obj)) {
-        //                 $sup = $sup_contributions[word.obj];
-        //                 $caption_span = $sup.find('.caption-span');
-        //                 if (is_authorized(
-        //                     word,
-        //                     $caption_span.attr('data-owner'),
-        //                     "caption",
-        //                     auth_log_push
-        //                 )) {
-        //                     $caption_span.attr('id', word.idn);
-        //                     $caption_span.attr('data-owner', word.sbj);
-        //                     $caption_span.text(word.txt);
-        //                 }
-        //             } else {
-        //                 console.log("(Can't caption " + word.obj + ")");
-        //             }
-        //             break;
-        //         case MONTY.IDN.EDIT:
-        //             if (has($sup_contributions, word.obj)) {
-        //                 $sup = $sup_contributions[word.obj];
-        //                 $cont = $sup.find('.contribution');
-        //                 if (is_authorized(word, $cont.attr('data-owner'), "edit", auth_log_push)) {
-        //                     var old_idn = word.obj;
-        //                     var new_idn = word.idn;
-        //                     $cont.attr('id', new_idn);
-        //                     $cont.attr('data-owner', word.sbj);
-        //                     $cont.text(word.txt);
-        //                     delete $sup_contributions[old_idn];
-        //                     // TODO:  Instead of deleting, just flag it as overrode or something?
-        //                     //        That would prevent SOME vacuous "unknown word" situations.
-        //                     $sup_contributions[new_idn] = $sup;
-        //                     renumber_cont(old_idn, new_idn);
-        //                     consistent_cat_cont();
-        //                 }
-        //                 // NOTE:  This does reorder the edited contribution
-        //                 //        But maybe that's good, it does get a new id_attribute,
-        //                 //        and likewise moves to the more recent end.
-        //             } else {
-        //                 // TODO:  Editable captions.
-        //                 //        (Currently, an edited caption is submitted as a new caption.)
-        //                 console.log("(" + word.idn + ". Unable to edit " + word.obj + ")", Object.keys($sup_contributions).join(" "));
-        //                 // NOTE:  Edit for an unknown contribution.  One harmless way we get here:
-        //                 //        A logged-in user could edit an anonymous user's contribution.
-        //                 //        Other anon user would get this edit-word, but not the original word.
-        //                 //        TODO:  They should see this edit.   Now they won't.
-        //                 //               Or not.  Maybe the contribution should be explicitly
-        //                 //               APPROVED before other anonymous users could see it.
-        //                 //
-        //                 //        Another is if user A then B edits contribution x (by a third user).
-        //                 //        B won't enforce A's edit, so although B's edit is later,
-        //                 //        it will refer back to the original contribution.
-        //                 //        A will get this message when it see's B's edit word,
-        //                 //        because that edit word will refer to the original x's id_attribute,
-        //                 //        but by then x will have been displaced by A's edit word.
-        //             }
-        //             break;
-        //         default:
-        //             if (has(MONTY.cat.order, word.vrb)) {   // Is this a categorization verb?
-        //                 if (has($sup_contributions, word.obj)) {   // Are we rendering what it categorizes?
-        //                     var new_cat = word.vrb;
-        //                     var cont_idn = word.obj;
-        //                     var idn_position = word.num;
-        //                     // CAUTION:  Don't $_from_id(cont_idn) because it's not in the DOM yet.
-        //                     $sup = $sup_contributions[cont_idn];
-        //                     $cont = $sup.find('.contribution');
-        //                     var is_right = idn_position === MONTY.IDN.FENCE_POST_RIGHT;
-        //                     var where = is_right ? "right" : idn_position.toString();
-        //                     var action = "drag to " + MONTY.cat.txt[new_cat] + "." + where + ",";
-        //                     if (is_authorized(word, $cont.attr('data-owner'), action, auth_log_push)) {
-        //                         var old_cat = cat_of_cont[cont_idn];
-        //                         if (is_defined(old_cat)) {
-        //                             var i_cont_within_cat = conts_in_cat[old_cat].indexOf(cont_idn);
-        //                             if (i_cont_within_cat === -1) {
-        //                                 console.error(
-        //                                     "Can't find cont",
-        //                                     cont_idn,
-        //                                     "within conts_in_cat[" + old_cat + "]",
-        //                                     conts_in_cat
-        //                                 );
-        //                             } else {
-        //                                 conts_in_cat[old_cat].splice(i_cont_within_cat, 1);
-        //                                 insert_cont(new_cat, cont_idn, idn_position);
-        //                                 cat_of_cont[cont_idn] = new_cat;
-        //                                 $cont.attr('data-owner', word.sbj);
-        //                                 consistent_cat_cont();
-        //                             }
-        //                         } else {
-        //                             console.error(
-        //                                 "Lost track of cat for",
-        //                                 cont_idn,
-        //                                 cat_of_cont
-        //                             );
-        //                         }
-        //                     }
-        //                 } else {
-        //                     console.log("(" + word.idn + ". Unable to drag " + word.obj + ")");
-        //                     // NOTE:  Because we're not rendering word.obj anywhere.
-        //                     //        Possible harmless reasons:
-        //                     //        - URL suffix cont=NNN restricts the contributions displayed
-        //                     //        - This action refers to another action we rejected already,
-        //                     //          because it was for another user.
-        //                     //          E.g. Baker edited Able's quote, then dragged it,
-        //                     //               resulting in two words,
-        //                     //               an edit word and a categorization word.
-        //                     //               The edit word refers to the Able's original
-        //                     //               contribution, and the categorization word
-        //                     //               refers to the edit word.
-        //                     //               So when Able is the browsing user,
-        //                     //               first the edit word gets rejected by is_authorized()
-        //                     //               (because Baker is not the boss of Able).
-        //                     //               Then the categorization word winds up here.
-        //                     //               That's because it uses the idn of Baker's edit word,
-        //                     //               when Able's rendering kept no record of that edit.
-        //                 }
-        //             } else {
-        //                 console.warn(
-        //                     "Not dealing with idn",
-        //                     word.idn,
-        //                     "verb",
-        //                     txt_from_idn[word.vrb] || "(idn )" + word.vrb.toString()
-        //                 );
-        //             }
-        //             break;
-        //         }
-        //     }
-        // });
-        // NOTE:  MONTY.w loop is done.
-        // consistent_cat_cont();   // One final check for good measure.
-
-        // /**
-        //  * Give a contribution a new idn, in cat_of_cont{} and conts_in_cat{}[].
-        //  *
-        //  * So an edit word takes the place of a contribution word (or an older edit word).
-        //  *
-        //  * @param old_idn - idn of the original contribution word (or an older edit word).
-        //  * @param new_idn - idn of a new edit word.
-        //  */
-        // function renumber_cont(old_idn, new_idn) {
-        //     var cat = cat_of_cont[old_idn];
-        //     console.assert(is_defined(cat), old_idn);
-        //     var i = conts_in_cat[cat].indexOf(old_idn);
-        //     console.assert(i !== -1, old_idn);
-        //     conts_in_cat[cat][i] = new_idn;
-        //     cat_of_cont[new_idn] = cat;
-        //     delete cat_of_cont[old_idn];
-        // }
-        //
-        // function insert_cont(cat, cont_idn, i_position) {
-        //     if (i_position === MONTY.IDN.FENCE_POST_RIGHT) {
-        //         conts_in_cat[cat].push(cont_idn);   // Stick it on the right end.
-        //     } else {
-        //         var i = conts_in_cat[cat].indexOf(i_position);
-        //         if (i === -1) {
-        //             // console.error("insert_cont", cat, cont_idn, i_position, JSON.stringify(conts_in_cat));
-        //             console.log(
-        //                 "(Can't insert", cont_idn,
-        //                 "before", i_position,
-        //                 "so it's going on the LEFT end of", MONTY.cat.txt[cat],
-        //                 "instead.)"
-        //             );
-        //             // NOTE:  Whatever was in there to anchor the rearranging is gone now.
-        //             //        Oh well, stick it in with the "latest" stuff (probably on the left).
-        //             //        This was happening when I wasn't processing obsolete unslump verbs.
-        //             //        It could also happen for anonymous users because the following
-        //             //        cont was from ANOTHER anonymous user so they don't see it.
-        //             //        Consequence is it's just out of order, no biggie.
-        //             conts_in_cat[cat].unshift(cont_idn);   // Stick it on the left end.
-        //         } else {
-        //             conts_in_cat[cat].splice(i, 0, cont_idn);
-        //         }
-        //     }
-        // }
-        //
-        // console.log("cat_of_cont", JSON.stringify(cat_of_cont, null, 2));
-        // EXAMPLE:  cat_of_cont {
-        //   "882": 1438,   (Order of contributions does not matter in this associative array.)
-        //   "953": 1438,
-        //   "1024": 1438,
-        //   "1430": 1438,
-        //   "1432": 1435,
-        //   "1450": 1435,
-        //   "1458": 1438,
-        //   "1462": 1438,
-        //   "1473": 1438,
-        //   "1475": 1438,
-        //   "1551": 1435,
-        //   "1654": 1436,
-        //   "1678": 1435,
-        //   "1679": 1438,
-        //   "1689": 1438,
-        //   "1691": 1688,
-        //   "1695": 1688,
-        //   "1729": 1688,
-        //   "1733": 1435,
-        //   "1739": 1435,
-        //   "1741": 1435,
-        //   "1746": 1435,
-        //   "1748": 1435,
-        //   "1754": 1435,
-        //   "1759": 1435,
-        //   "1792": 1437,
-        //   "1795": 1435,
-        //   "1796": 1435,
-        //   "1809": 1435,
-        //   "1813": 1435,
-        //   "1822": 1435,
-        //   "1823": 1435,
-        //   "1825": 1435,
-        //   "1831": 1435,
-        //   "1834": 1435,
-        //   "1849": 1436,
-        //   "1851": 1436,
-        //   "1857": 1438,
-        //   "1871": 1435,
-        //   "1874": 1435,
-        //   "1896": 1435,
-        //   "1909": 1435,
-        //   "1911": 1435,
-        //   "1917": 1438,
-        //   "1924": 1435,
-        //   "1931": 1435,
-        //   "1936": 1436,
-        //   "1938": 1436,
-        //   "1970": 1435,
-        //   "1990": 1435,
-        //   "1996": 1435,
-        //   "2001": 1435,
-        //   "2025": 1435,
-        //   "2036": 1436,
-        //   "2048": 1435,
-        //   "2055": 1435,
-        //   "2061": 1435,
-        //   "2995": 1435,
-        //   "3373": 1435,
-        //   "3470": 1435,
-        //   "3486": 1435
-        // }
-        // console.log("conts_in_cat", JSON.stringify(conts_in_cat, null, 2));
-        // EXAMPLE:  conts_in_cat {
-        //   "1435": [   (Order of categories does not matter in the outer associative array.)
-        //     3486,     (Order of contributions DOES matter, and is defined by, each inner array.)
-        //     3470,     (By the way, category order is defined by MONTY.cat.order[].)
-        //     1809,
-        //     1990,
-        //     2001,
-        //     1924,
-        //     1823,
-        //     1931,
-        //     2061,
-        //     2025,
-        //     1911,
-        //     1874,
-        //     2048,
-        //     2055,
-        //     1970,
-        //     1759,
-        //     3373,
-        //     1871,
-        //     1834,
-        //     1831,
-        //     2995,
-        //     1822,
-        //     1813,
-        //     1825,
-        //     1748,
-        //     1754,
-        //     1896,
-        //     1795,
-        //     1796,
-        //     1746,
-        //     1741,
-        //     1739,
-        //     1733,
-        //     1678,
-        //     1450,
-        //     1909,
-        //     1996,
-        //     1432,
-        //     1551
-        //   ],
-        //   "1436": [
-        //     1938,
-        //     1936,
-        //     1851,
-        //     1849,
-        //     1654,
-        //     2036
-        //   ],
-        //   "1437": [
-        //     1792
-        //   ],
-        //   "1438": [
-        //     1857,
-        //     1689,
-        //     1430,
-        //     1458,
-        //     1462,
-        //     882,
-        //     1475,
-        //     1917,
-        //     1679,
-        //     1473,
-        //     953,
-        //     1024
-        //   ],
-        //   "1688": [
-        //     1695,
-        //     1691,
-        //     1729
-        //   ]
-        // }
-        // $(window.document.body).append(
-        //     $('<div>', {title: 'Authorization History Comment'}).append(
-        //         $('<!-- \n' + auth_log.join("\n") + '\n-->')
-        //     )
-        // );
-        // NOTE:  Slightly less intrusive stowing of the auth_log than console.log(auth_log).
-        //        See it in F12 | Elements.
-        //        (Look for <div title="Authorization History Comment">)
-        //
-        // EXAMPLE:
-        //     1433. Yes Bob Stein may caption 1432, work of Bob Stein
-        //     1441. Yes Bob Stein may drag to trash.right, 1430, work of Bob Stein
-        //     1442. Yes Bob Stein may drag to trash.right, 1024, work of Bob Stein
-        //     :
-        //     1457. Nope anon#1267 won't drag to my.1432, 956, work of Bob Stein
-        //     1459. Yes anon#1267 may caption 1458, work of anon#1267
-        //     1461. Yes anon#1267 may caption 1460, work of anon#1267
-        //     1463. Yes anon#1267 may caption 1462, work of anon#1267
-        //     1465. Yes Bob Stein may drag to trash.right, 1462, work of anon#1267
-        //     :
-        //     4144. Yes Bob Stein may caption 4143, work of Bob Stein
-        //     4215. Yes Bob Stein may edit 1450, work of Bob Stein
-        //     4222. Yes Bob Stein may drag to my.right, 1432, work of Bob Stein
-
-        // NOTE:  All categories have DOM objects.
+        // NOTE:  Now all categories have DOM objects.
 
         alternative_build_contributions(/*conts_in_cat*/);
 
         contribution_lexi.assert_consistent();
+        // NOTE:  Early consistency check makes sure the .word_pass(MONTY.w) worked well.
+        //        It requires special exception because nothing is rendered yet,
+        //        and there are no .unrendered sections to count them.
 
         console.log("contribution_lexi", contribution_lexi);
 

@@ -2999,7 +2999,7 @@ def ajax():
     t_start = time.time()
     auth = None
     action = None
-    qc_start = None
+    qc_start = 0
     ok_to_print = (
         SHOW_LOG_AJAX_NOEMBED_META or
         flask.request.form.get('action', '_') != 'noembed_meta'
@@ -3179,7 +3179,7 @@ def ajax():
 
     finally:
         t_end = time.time()
-        if auth is None:
+        if auth is None or not auth.is_online:
             print("AJAX CRASH, {t:.3f} sec".format(t=t_end - t_start))
         else:
             qc_end = auth.lex.query_count
