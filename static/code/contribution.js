@@ -1,4 +1,5 @@
 // noinspection JSUnusedGlobalSymbols
+
 /**
  * JavaScript for qiki contributions, an attempt at generalizing the features of unslumping.org
  *
@@ -266,6 +267,17 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     // TODO:  $(window.document.body).hasClass('edit-somewhere')
     var $cont_editing = null;
     // TODO:  $('.contribution-edit').find('.contribution')
+    //        Or maybe cont_editing refers to the Contribution object being edited.
+    //        Then cont_editing.$cont serves for $cont_editing
+    //        Or maybe make an Editor object (singleton) and its methods do all this?
+    //        Or fold that into Contribution
+    //        Or ContributionLexi members (maybe some Contribution members):
+    //           .cont_being_edited
+    //           .is_editing
+    //           .check_dirty()
+    //           .edit_start()
+    //           .edit_end()
+    //           .edit_cancel()
 
     var cont_only = cont_list_from_query_string();
 
@@ -449,6 +461,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                 //        This follows tons of convention,
                 //        e.g. tapping on the margin of a popped-up facebook image.
             })
+            .on('wheel', '.sup-category', mouse_wheel_handler)
         ;
 
         persist_select_element('#play_bot_sequence', SETTING_PLAY_BOT_SEQUENCE);
@@ -641,7 +654,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
 
 
     /**
-     * Bot - automate the playing of media and text.  "Play" button in the upper left, and friends.
+     * //// Bot //// Automate the playing of media and text.  "Play" button etc.
      *
      * @return {Bot}
      * @constructor
@@ -855,7 +868,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             break;
         case S.START_AUTO:
             list_play_bot = playlist_generate();
-            console.log("playlist", list_play_bot.join(","));
+            console.log("playlist", list_play_bot.join(" "));
             index_play_bot = 0;
             that.media_beginning();
             that.state = S.PREP_CONTRIBUTION;
@@ -899,7 +912,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                 break;
             }
             var idn_string = list_play_bot[index_play_bot];
-            that.cont = contribution_lexi.get(idn_string);
+            that.cont = Contribution_from_idn(idn_string);
             if ( ! that.cont.is_dom_rendered()) {
                 console.log("unrendered contribution", that.cont.idn);
             }
@@ -1396,7 +1409,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
 
 
     /**
-     /* Lexi - Freakish name for a thing that stores idn-referenced stuff.
+     /* //// Lexi //// Freakish name for a thing that stores idn-referenced stuff.
      *
      * It's almost sorta maybe like the Python Lex class.
      * An idn is an integer number here.
@@ -1428,22 +1441,6 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         }
     }
 
-    /**
-     * Iterate through all idns and words.
-     *
-     * @param callback - passed (idn, word)
-     *                   return false (not just falsy) to terminate loop early
-     */
-    Lexi.prototype.loop = function Lexi_loop(callback) {
-        var that = this;
-        looper(that._word_from_idn, function (idn_string, word) {
-            var idn_number = parseInt(idn_string);
-            // THANKS:  Because numeric Object() property "names" are turned into strings,
-            //          https://stackoverflow.com/a/3633390/673991
-            callback(idn_number, word);
-        });
-    }
-
     Lexi.prototype.add = function Lexi_add(idn) {
         var that = this;
         if (that.has(idn)) {
@@ -1456,7 +1453,23 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     }
 
     /**
-     * What we need to know about each category.
+     * Iterate through all idns and words.
+     *
+     * @param callback - passed (idn, word)
+     *                   return false (not just falsy) to terminate loop early
+     */
+    Lexi.prototype.loop = function Lexi_loop(callback) {
+        var that = this;
+        looper(that._word_from_idn, function (idn_string, word) {
+            var idn = parseInt(idn_string);
+            // THANKS:  Because numeric Object() property "names" are turned into strings,
+            //          https://stackoverflow.com/a/3633390/673991
+            return callback(idn, word);
+        });
+    }
+
+    /**
+     *  //// Category //// What we need to know about each category.
      *
      * @param idn - e.g. MONTY.IDN.CAT_MY
      * @return {Category}
@@ -1471,7 +1484,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             return new Category(idn);
         }
         this.idn = idn;
-        this.txt = null;
+        // this.txt = null;
         this.cont_sequence = IdnSequence(MONTY.IDN.FENCE_POST_RIGHT);
     }
 
@@ -1483,17 +1496,13 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         $unrendered: { get: function () {return this.$cat.find('.unrendered');}}
     });
 
-    // NOTE:  Not sure if we'd ever need to destroy a category object, but if we do,
-    //        here go the issues to keep track of.
     // noinspection JSUnusedGlobalSymbols
     Category.prototype.destructor = function Category_destructor() {
+        // NOTE:  Not sure if we'd ever need to destroy a category object, but if we do,
+        //        here go the issues to keep track of.
+
+        // noinspection JSUnusedLocalSymbols
         var that = this;
-        // if (is_defined(that.observer)) {
-        //     that.observer.disconnect();
-        // }
-        if (is_defined(that.resize_observer)) {
-            that.resize_observer.disconnect();
-        }
     };
 
     // var ok_to_observe = true;
@@ -1504,7 +1513,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         var $unrendered = that.$unrendered;
         that.cont_sequence.loop(function (_, cont_idn) {
             var cont = Contribution_from_idn(cont_idn);
-            console.assert(cont.is_unsuperseded, cont);
+            console.assert( ! cont.is_superseded, cont);
             if (cont.is_dom_rendered()) {
                 // skip the rendered contributions
             } else {
@@ -1534,12 +1543,11 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                     //     console.debug("Resize $cont", cont.id_attribute, cont.cat.txt, cont.caption_text);
                     // });
                     // NOTE:  Disabled this because it kept "adjusting" sizes when editing a quote,
-                    //        instead of maintaining the manually resized dimensions.
+                    //        instead of maintaining the manually resized dimensions.  Grr.
 
                     if (is_defined(window.ResizeObserver)) {
                         // SEE:  ResizeObserver support, https://caniuse.com/#feat=resizeobserver
 
-                        // noinspection JSUnresolvedFunction
                         cont.resize_observer = new ResizeObserver(function resized_cont_handler(/*e*/) {
                             cont.fix_caption_width();
                         });
@@ -1572,7 +1580,8 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         if (number_of_unrendered_conts > 0) {
             var $unrendered = $('<div>', {class: 'unrendered'});
             $unrendered.text(f("{n} more", {n: number_of_unrendered_conts}));
-            $unrendered.data('category-object', that);
+            // $unrendered.data('category-object', that);
+            $unrendered.data('count', number_of_unrendered_conts);
             that.$cat.append($unrendered);
             // TODO:  Title tool-tip should say, e.g.:
             //            Click to show 10 more.  Shift-click to show 100 more.
@@ -1586,7 +1595,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     };
 
     /**
-     * Know about all Categories
+     * //// CategoryLexi //// Know about all Categories.  A container of Category objects.
      *
      * @return {CategoryLexi}
      * @constructor
@@ -1618,7 +1627,10 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     }
 
     /**
-     * ContributionLexi - Know about contributions.
+     * //// ContributionLexi //// Know about contributions.
+     *
+     * A container of Contribution objects.
+     * (But not all of them -- popup Contribution objects are not stored in any Lexi.)
      *
      * @return {ContributionLexi}
      * @constructor
@@ -1655,11 +1667,14 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
      *     .owner
      *     .capt
      *     .capt.idn
-     *     .caption_text
+     *     .capt.txt
      *     .capt.owner
      *     .superseded_by_idn
      *
      * Notably ignored, the .txt or .content of the contribution.  Though the .capt.txt is set.
+     *
+     * CAUTION:  This does not manage the rendered parts of the Contributions,
+     *           i.e. the .$sup property!  So the caller must deal with that.
      *
      * @param word - properties idn, sbj, vrb, obj, num, txt
      */
@@ -1686,10 +1701,14 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
 
         function contribute_word(word) {
             if (query_string_filter(word, cont_only)) {
+                // TODO:  Maybe the filtering should happen at the *rendering*,
+                //        not here at instantiating.
                 var new_cont_idn = word.idn;
                 var new_cont_owner = word.sbj;
 
                 var cont = that.add(new_cont_idn);
+                // Contribution objects are all instantiated here.
+
                 if (word.was_submitted_anonymous) {
                     cont.was_submitted_anonymous = true;
                     // NOTE:  Captioning or moving a contribution retains its .was_submitted_anonymous
@@ -1764,13 +1783,12 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                     //        What does it mean to "own" a contribution or caption??
                     //        It's certainly not equivalent to being permitted to edit it.
                     new_cont.cat.cont_sequence.renumber(old_cont_idn, new_cont_idn);
-                    var fork_cont_idn = old_cont.superseded_by_idn;
-                    if (fork_cont_idn !== null) {
+                    if (old_cont.is_superseded) {
                         console.warn(
                             "Edit fork",
                             old_cont_idn,
                             "superseded by",
-                            fork_cont_idn,
+                            old_cont.superseded_by_idn,
                             "and",
                             new_cont_idn
                         );
@@ -1781,7 +1799,11 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                         //        that.get( new_cont_idn).owner === new_cont_owner
                         // NOTE:  This is probably not the only fork.
                     }
-                    old_cont.superseded_by_idn = new_cont_idn;
+                    // old_cont.superseded_by_idn = new_cont_idn;
+                    old_cont.superseded_by(new_cont);
+
+                    // TODO:  Maybe superseded contributions can be destroyed:
+                    //        del that.
                 }
             } else {
                 that.notify(f("{new_cont_idn}. (Can't edit {old_cont_idn})", {
@@ -1843,7 +1865,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     ContributionLexi.prototype.assert_consistent = function ContributionLexi_assert_consistent() {
         var that = this;
 
-        // NOTE:  1. Within each category, go through each of its contributions.
+        // NOTE:  1. For each category, for each contribution within it...
         //           Each contribution should know what category it's in.
         that.category_lexi.loop(function (idn_category, category) {
             category.cont_sequence.loop(function (index, idn_contribution) {
@@ -1860,23 +1882,16 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             });
         });
 
-        // NOTE:  2. Go through all contributions.
+        // NOTE:  2. For each contribution...
         //           Unsuperseded contributions should be in their category's sequence.
         //           Superseded contributions should not.
+        var num_current = 0;
+        var num_superseded = 0;
+        var num_with_sups = 0;
         that.loop(function (idn_contribution, contribution) {
             var does_cat_have_cont = contribution.cat.cont_sequence.has(idn_contribution);
-            if (contribution.is_unsuperseded) {   // Contribution is current, no edit supersedes.
-                 console.assert(
-                    does_cat_have_cont,
-                    "INCONSISTENT CONTRIBUTION",
-                    idn_contribution,
-                    "thinks it's in cat",
-                    contribution.cat.idn,
-                    "- but that cat has no record among its",
-                    contribution.cat.cont_sequence.len(),
-                    "conts"
-                );
-           } else {  // Contribution is obsolete, some edit superseded it.
+            if (contribution.is_superseded) {  // Contribution is obsolete, some edit superseded it.
+                num_superseded++;
                 console.assert(
                     ! does_cat_have_cont,
                     "SUPERSEDED CONTRIBUTION",
@@ -1888,8 +1903,139 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                     "conts of cat",
                     contribution.cat.idn
                 );
+                console.assert(
+                    ! is_defined(contribution.$sup),
+                    "Superseded should not be rendered",
+                    contribution.id_attribute,
+                    contribution.$sup
+                );
+            } else {   // Contribution is current, no edit supersedes.
+                num_current++;
+                console.assert(
+                    does_cat_have_cont,
+                    "INCONSISTENT CONTRIBUTION",
+                    idn_contribution,
+                    "thinks it's in cat",
+                    contribution.cat.idn,
+                    "- but that cat has no record among its",
+                    contribution.cat.cont_sequence.len(),
+                    "conts"
+                );
+            }
+            if (contribution.is_dom_rendered()) {
+                num_with_sups++;
+
+                var caption_from_dom = contribution.$caption_span.text();
+                var caption_from_object = contribution.caption_text;
+                assert_equal(caption_from_dom, caption_from_object);
             }
         });
+
+        // NOTE:  3. Go through rendered contributions in each category.
+        var num_rendered = 0;
+        var num_unrendered = 0;
+        that.category_lexi.loop(function (idn_category, category) {
+            var rendered_idn_strings = [];
+            if (category.$cat.length === 0) {
+                console.warn("Unrendered", category.txt);
+            } else {
+                category.$cat.find('.sup-contribution').each(function (_, sup) {
+                    num_rendered++;
+                    var $sup = $(sup);
+                    var $cont = $sup.find('.contribution');
+                    var rendered_idn_string = $cont.attr('id');
+                    var rendered_idn = parseInt(rendered_idn_string);
+                    rendered_idn_strings.push(rendered_idn_string);
+                    var cont_by_data = $sup.data('contribution-object');
+                    var cont_by_idn = Contribution_from_idn(rendered_idn);
+                    var cont_by_element = Contribution_from_element($sup);
+
+                    assert_equal(cont_by_data, cont_by_idn) &&
+                    assert_equal(cont_by_data, cont_by_element) &&
+                    assert_equal(cont_by_data.idn_string, rendered_idn_string);
+                });
+                var idns_match = true;
+                var lexi_idns = category.cont_sequence.idn_array();
+                if (rendered_idn_strings.length !== 0) {
+                    looper(rendered_idn_strings, function (index, rendered_idn_string) {
+                        var lexi_idn = lexi_idns[index];
+                        var lexi_idn_string = lexi_idn.toString();
+                        if (lexi_idn_string !== rendered_idn_string) {
+                            idns_match = false;
+                        }
+                    });
+                    var total_conts = category.cont_sequence.len();
+                    var unrendered_count;
+                    var plus_n_more;
+                    if (category.$unrendered.length === 0) {
+                        unrendered_count = 0;
+                        plus_n_more = "";
+                    } else {
+                        unrendered_count = category.$unrendered.data('count');
+                        plus_n_more = f(" + {n} more", {n: unrendered_count});
+                    }
+                    num_unrendered += unrendered_count;
+                    if (idns_match) {
+                        console.log(f(
+                            "Rendered {cat}: {rendered_idns}{plus_n_more} = {total}",
+                            {
+                                cat: category.txt,
+                                rendered_idns: rendered_idn_strings.join(" "),
+                                plus_n_more: plus_n_more,
+                                total: total_conts
+                            }
+                        ));
+                    } else {
+                        console.error(f(
+                            "RENDERING MISMATCH {cat}:\n" +
+                            "{rendered_idns}{plus_n_more} = {total}\n" +
+                            "{lexi_idns}",
+                            {
+                                cat: category.txt,
+                                rendered_idns: rendered_idn_strings.join(" "),
+                                plus_n_more: plus_n_more,
+                                total: category.cont_sequence.len(),
+                                lexi_idns: stringify_array(lexi_idns).join(" ")
+                            }
+                        ));
+                    }
+                    assert_equal(total_conts, rendered_idn_strings.length + unrendered_count);
+                    // NOTE:  If no rendered contributions in this category, we never get here,
+                    //        which prevents false alarms at the beginning when NO contributions
+                    //        are rendered, and no .unrendered sections count the rest.
+                }
+            }
+        });
+
+        console.debug(f(
+            "{num_passed} contributions = " +
+            "{num_superseded} superseded + " +
+            "{num_current} current = " +
+            "{num_rendered} rendered + " +
+            "{num_unrendered} unrendered", {
+                num_passed: num_superseded + num_current,
+                num_superseded: num_superseded,
+                num_current: num_current,
+                num_rendered: num_rendered,
+                num_unrendered: num_unrendered
+
+            }
+        ));
+
+        assert_equal(num_rendered, num_with_sups);
+        // NOTE:  The number of Contribution instances that think they're rendered,
+        //        should match the number of DOM elements representing contributions.
+
+        if (num_rendered !== 0) {
+            assert_equal(num_current, num_rendered + num_unrendered);
+            // NOTE:  Forgive initial conditions before .unrendered sections are created.
+        }
+    }
+
+    function mouse_wheel_handler(evt) {
+        console.log("Mouse wheel", evt.originalEvent.ctrlKey, evt.originalEvent.deltaY);
+        // -100 for up (zoom in)
+        // +100 for down (zoom out)
     }
 
     ContributionLexi.prototype.is_authorized = function ContributionLexi_is_authorized(
@@ -1904,7 +2050,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     };
 
     /**
-     * What we need to know about each caption.
+     * //// Caption //// What we need to know about each caption.
      *
      * @param idn
      * @return {Caption}
@@ -1920,7 +2066,14 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     }
 
     /**
-     * IdnSequence - A sequence of idns, representing e.g. the contributions within a category.
+     * //// IdnSequence //// A sequence of idns, e.g. for the contributions in a category.
+     *
+     * Differences between a Lexi and an IdnSequence:
+     * - A Lexi contains words, each word is indexed by an idn.
+     * - An IdnSequence is an ordered sequence of idns.
+     *   Each idn probably refers to a word in some Lexi,
+     *   but the word is not contained by the IdnSequence.
+     * - An IdnSequence is ordered.  A Lexi is not.
      *
      * @param fence_post_right - special idn value to represent right-most edge.
      *                           (To represent any crack BETWEEN a sequence of idns,
@@ -1939,7 +2092,6 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         this.fence_post_right = fence_post_right;
     }
 
-    // noinspection JSUnusedGlobalSymbols
     /**
      * Get an array of the idns, a shallow copy of the internal idn array.
      *
@@ -1951,6 +2103,12 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         // THANKS:  Array shallow copy, https://stackoverflow.com/a/21514254/673991
     }
 
+    /**
+     * Delete an idn from the sequence
+     *
+     * @param {number} idn - by value, not by index
+     * @param {function} error_callback - in case it was never there
+     */
     IdnSequence.prototype.delete = function IdnSequence_delete(idn, error_callback) {
         error_callback = error_callback || function () {};
         var that = this;
@@ -2101,7 +2259,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     }
 
     /**
-     * Contribution - A quote or video.  Rendered as a little box on the screen.  Or the popup.
+     * //// Contribution //// Quote or video.  May be rendered as a thumbnail or popup.
      *
      * Example instance:
      *    cont.idn              1821
@@ -2125,28 +2283,30 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         this.idn = idn;
         if (is_specified(idn)) {
             type_should_be(idn, 'Number');
-            // FALSE WARNING:  Unused definition id_prefix
-            // noinspection JSUnusedGlobalSymbols
-            this._id_prefix = '';
-            // NOTE:  If you're going to change the prefix (e.g. to MONTY.POPUP_ID_PREFIX),
-            //        do it after this constructor, but before .build_dom() or .render_media()
-            //        are called.
 
-            this.$sup = null;
-            this.handler = null;
+            // // FALSE WARNING:  Unused definition id_prefix
+            // // noinspection JSUnusedGlobalSymbols
+            // this._id_prefix = '';
+            // // NOTE:  If you're going to change the prefix (e.g. to MONTY.POPUP_ID_PREFIX),
+            // //        do it after this constructor, but before .build_dom() or .render_media()
+            // //        are called.
+
+            // this.$sup = null;
+            // this.handler = null;
 
             // Fields set by ContributionLexi.word_pass():
 
-            this.owner = null;
-            this.capt = null;
+            // this.owner = null;
+            // this.capt = null;
 
-            this.cat = null;
-            // NOTE:  cont.cat is a Category object, and the new way of a contribution knowing
-            //        its category.
-            //        cont.category_id is the old way and relies on the DOM
-            //        both to get the id and to use it.
+            // this.cat = null;
 
-            this.superseded_by_idn = null;   // this old cont points to latest that superseded it
+            // // NOTE:  cont.cat is a Category object, and the new way of a contribution knowing
+            // //        its category.
+            // //        cont.category_id is the old way and relies on the DOM
+            // //        both to get the id and to use it.
+            //
+            // this.superseded_by_idn = null;   // this old cont points to latest that superseded it
         } else {
             console.error("Why do we need id-null contribution objects??");
         }
@@ -2162,7 +2322,6 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
      *
      * @param element_or_selector - e.g. '#1821' or $('.pop-up')
      * @return {Contribution}
-     * @constructor
      */
     // idn (always a decimal integer
     //        string in JavaScript, akin to the qiki.Number idn of a qiki.Word in Python)
@@ -2283,16 +2442,22 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         //        noinspection JSIncompatibleTypesComparison
         iframe:           { get: function () {return dom_from_$(this.$iframe) || null;}},
         $cat:             { get: function () {return this.$sup.closest('.category');}},
-        category_id:      { get: function () {return this.$cat.attr('id');}},
-        is_my_category:   { get: function () {return this.category_id === MONTY.IDN.CAT_MY.toString();}},
-        is_about_category:{ get: function () {return this.category_id === MONTY.IDN.CAT_ABOUT.toString();}},
+        // category_id:      { get: function () {return this.$cat.attr('id');}},
+        // is_my_category:   { get: function () {return this.category_id === MONTY.IDN.CAT_MY.toString();}},
+        // is_about_category:{ get: function () {return this.category_id === MONTY.IDN.CAT_ABOUT.toString();}},
         media_url:        { get: function () {return this.is_media ? this.content : null;}},
 
         /**
-         * .is_unsuperseded - Should we show this?  Not if an edit supersedes it.
+         * .is_superseded - Should we hide this Contribution?  True if an edit supersedes it.
          */
-        is_unsuperseded:  { get: function () {return this.superseded_by_idn === null;}}
+        is_superseded:  { get: function () {return is_defined(this.superseded_by_idn);}}
     });
+
+    // Contribution.prototype.is_cat = function Contribution_is_category(cat_idn) {
+    //     // FALSE WARNING:  Unresolved variable cat
+    //     // noinspection JSUnresolvedVariable
+    //     return is_defined(this.cat) && this.cat.idn === cat_idn;
+    // };
 
     // NOTE:  Not sure if we'd ever need to destroy a Contribution object, but if we do,
     //        here go the issues to keep track of.
@@ -2300,6 +2465,22 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     Contribution.prototype.destructor = function Contribution_destructor() {
         // noinspection JSUnusedLocalSymbols
         var that = this;
+        that.un_render();
+    };
+
+    Contribution.prototype.un_render = function Contribution_un_render() {
+        var that = this;
+        // if (is_defined(that.observer)) {
+        //     that.observer.disconnect();
+        //     delete that.observer;
+        // }
+        if (is_defined(that.resize_observer)) {
+            that.resize_observer.disconnect();
+            delete that.resize_observer;
+        }
+        if (is_defined(that.$sup)) {
+            delete that.$sup;
+        }
     };
 
     Contribution.prototype.is_idn_specified = function Contribution_is_idn_specified() {
@@ -2307,6 +2488,13 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         return is_specified(that.idn);
     };
 
+    /**
+     * Do we have a DOM element for this contribution?
+     *
+     * Make sure this is true before accessing any property that relies on the .$sup property.
+     *
+     * @return {boolean}
+     */
     Contribution.prototype.is_dom_rendered = function Contribution_is_dom_rendered() {
         var that = this;
         return that.is_idn_specified() && is_specified(that.$sup) && that.$sup.length === 1;
@@ -3340,23 +3528,122 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         }
     }
 
+    // TODO:  Contribution method
     function contribution_save() {
-        var cont_editing = Contribution_from_element($cont_editing)
+        var old_cont = Contribution_from_element($cont_editing);
+        console.assert(old_cont.$cont.is($cont_editing));
         if (is_editing_some_contribution) {
-            var cont_idn_old = cont_editing.$cont.attr('id');
-            edit_submit($cont_editing, "contribution", MONTY.IDN.EDIT, cont_idn_old, function () {
-                var $sup_cont = $cont_editing.closest('.sup-contribution');
-                var $caption_span = $sup_cont.find('.caption-span');
-                var cont_idn_new = cont_editing.$cont.attr('id');
-                // CAUTION:  Not the same as cont_editing.id_attribute - edit_submit() changed id.
-                edit_submit($caption_span, "caption", MONTY.IDN.CAPTION, cont_idn_new, function () {
-                    cont_editing.rebuild_bars();
-                    contribution_edit_end();
-                });
-            });
+            edit_submit(
+                old_cont.$cont,
+                "contribution",
+                MONTY.IDN.EDIT,
+                old_cont.idn,
+                function contribution_saved(new_cont_word) {
+                    // var $sup_cont = $cont_editing.closest('.sup-contribution');
+                    // var $caption_span = $sup_cont.find('.caption-span');
+
+                    var was_new_cont_submitted = new_cont_word !== null;
+
+                    var live_cont_idn;   // idn of the live contribution from onw on, new or old
+                    if (was_new_cont_submitted) {
+                        live_cont_idn = new_cont_word.idn;
+                    } else {
+                        live_cont_idn = old_cont.idn;
+                    }
+
+                    // NOTE:  Unique among the three interactive changes (post, edit, drag)
+                    //        saving an edit needs more work after the .word_pass()
+                    //        A new Contribution instance must be forcibly associated
+                    //        with an existing DOM object.
+                    //        These two entities always link to each other.
+                    //        Call them cont and $dom.
+                    //        Each $dom links to a cont.  But not every cont links to a $dom.
+                    //            (A cont may be superseded or unrendered.)
+                    //        So far, that relationship was maintained from birth:
+                    //            .build_dom() pointed cont.$sup to $dom
+                    //            .build_dom() pointed $dom.data('contribution-object') to cont
+                    //        So here are the current cast of characters:
+                    //            old_cont          - old cont
+                    //            old_cont.$sup     - new $dom
+                    //            new_cont          - new cont
+                    //            new_cont.$sup     - (undefined)
+                    //        Good parts:
+                    //            $cont_editing is part-way to becoming the new $dom
+                    //            The existing DOM element -- thanks to the magic of
+                    //                HTML content editing -- was edited in place,
+                    //                So it already has the new text,
+                    //                in both .contribution and .caption-span elements.
+                    //                This is why we say old_cont.$sup is (almost) the new $dom
+                    //            there is no old $dom, we don't need to worry about it
+                    //            old_cont.$cont.attr('id') was already updated by edit_submit()
+                    //            old_cont.$caption_span.attr('id') will set by the next edit_submit()
+                    //        Bad parts:
+                    //            old_cont.idn
+                    //            old_cont.idn_string     (nope, it is computed from .idn)
+                    //            old_cont.id_attribute   (nope, it is computed from .idn)
+                    //            $cont_editing points to the old cont
+                    //                it should point to the new cont
+                    //            the old cont points to $cont_editing
+                    //                the new cont should point to it
+                    //            new cont doesn't point to any $dom, .is_dom_rendered() is false
+                    //            old cont needs a superseded_by_idn property
+                    //
+
+                    // DONE:  Wrest the DOM away from old_cont, and give it to new_cont
+
+                    edit_submit(
+                        old_cont.$caption_span,
+                        "caption",
+                        MONTY.IDN.CAPTION,
+                        live_cont_idn,
+                        function caption_saved(_capt_word_not_used_here_) {
+                            if (was_new_cont_submitted) {
+                                var new_cont = Contribution_from_idn(live_cont_idn);
+
+                                var $new_dom_almost = old_cont.$sup;
+                                new_cont.dom_link($new_dom_almost);   // new cont becomes rendered
+                                old_cont.superseded_by(new_cont);     // old cont becomes superseded
+                                old_cont.un_render();                 // old cont becomes unrendered
+                                // TODO:  Encapsulate this code into some kind of new method
+                                //        ContributionLexi.cont_supersede(
+                                //            old_rendered_cont_with_updated_dom,
+                                //            new_superseding_cont
+                                //        )?
+
+                                new_cont.$save_bar.find('.save').removeClass('failed-post');
+                                new_cont.rebuild_bars();
+                            }
+                            contribution_edit_end();
+                            contribution_lexi.assert_consistent();
+                        },
+                        save_fail
+                    );
+                },
+                save_fail
+            );
+
+            function save_fail(message) {
+                console.error(message);
+                old_cont.$save_bar.find('.save').addClass('failed-post');
+                contribution_lexi.assert_consistent();
+                // TODO:  Test the various failure modes
+                //        Only caption changed, saving it failed
+                //        Only contribution changed. saving it failed
+                //        Both changed, saving contribution failed
+                //        Both changed, contribution saved, caption save failed (but this is rare)
+            }
         } else {
             console.error("Save but we weren't editing?", $cont_editing);
         }
+    }
+
+    Contribution.prototype.superseded_by = function Contribution_superseded_by(newer_cont) {
+        var that = this;
+        that.superseded_by_idn = newer_cont.idn;
+        // TODO:  Remove the obsolete object??
+        //        contribution_lexi.delete(that.idn) ??
+        //        That is, deliberately forget about superseded contributions,
+        //        only store the current ones.
     }
 
     function unrendered_click(evt) {
@@ -3365,6 +3652,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         var cat = $sup_cat.data('category-object');
         cat.render_some_conts(evt.shiftKey ? INCREMENT_CAT_CONT_SHIFT : INCREMENT_CAT_CONT);
         cat.show_unrendered_count();
+        contribution_lexi.assert_consistent();
     }
 
     /**
@@ -4703,10 +4991,11 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
      * @param vrb
      * @param obj
      * @param then
+     * @param fail
      *
      * Aux output is $div.attr('id'), the idn of the new word.
      */
-    function edit_submit($div, what, vrb, obj, then) {
+    function edit_submit($div, what, vrb, obj, then, fail) {
         var new_text = $div.text();
         if ($div.data('original_text') === new_text) {
             console.log("(skipping", what, "save,", new_text.length, "characters unchanged)");
@@ -4719,8 +5008,12 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             }, function sentence_created(edit_word) {
                 console.log("Saved", what, edit_word.idn);
                 $div.attr('id', edit_word.idn);
+
+                contribution_lexi.word_pass(edit_word);
+                // NOTE:  This may let through a cont edit without a capt edit.
+
                 then(edit_word);
-            });
+            }, fail);
         }
     }
 
@@ -4781,8 +5074,10 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             contribution_edit_show($cont);
             is_editing_some_contribution = true;
             $cont.data('original_text', $cont.text());
-            var $caption_span = $cont.closest('.sup-contribution').find('.caption-span');
+            var $sup = $cont.closest('.sup-contribution');
+            var $caption_span = $sup.find('.caption-span');
             $caption_span.data('original_text', $caption_span.text());
+            $sup.find('.save-bar .save').removeClass('failed-post');
             $cont_editing = $cont;
         }
     }
@@ -4961,10 +5256,11 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     function duplicate_check(contribution_text) {
         if (can_i_get_meta_about_it(contribution_text)) {
             var duplicate_id = null;
-            // Contribution_loop(function (cont) {
             contribution_lexi.loop(function (_, cont) {
                 // TODO:  Instead, pass a category filter to Contribution_loop() for my-category.
-                if (cont.content === contribution_text && cont.is_my_category) {
+                // if (cont.content === contribution_text && cont.is_my_category) {
+                // if (cont.content === contribution_text && cont.is_cat(MONTY.IDN.CAT_MY)) {
+                if (cont.content === contribution_text && cont.cat.idn === MONTY.IDN.CAT_MY) {
                     duplicate_id = cont.id_attribute;
                     return false;
                 }
@@ -5203,10 +5499,13 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                         obj_idn: movee_idn,
                         num: buttee_idn,
                         txt: ""
-                    }, function sortable_done() {
+                    }, function sortable_done(order_word) {
+                        contribution_lexi.word_pass(order_word);
                         settle_down();
+                        contribution_lexi.assert_consistent();
                     }, function sortable_fail() {
                         revert_drag();
+                        contribution_lexi.assert_consistent();
                     });
                 }
 
@@ -5563,10 +5862,9 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
             // var $sup_cont = build_contribution_dom(cont_word, capt_word);
             contribution_lexi.word_pass(cont_word);
             contribution_lexi.word_pass(capt_word);
+
             var cont = Contribution_from_idn(cont_word.idn);
-
             cont.build_dom(cont_word.txt);
-
             var $cat_my = $categories[MONTY.IDN.CAT_MY];
             locate_contribution_at_category_left_edge($cat_my, cont.$sup);
 
@@ -5578,12 +5876,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
 
             cont.rebuild_bars(function () {
                 settle_down();
-                // setTimeout(function () {
-                //     // TODO:  Is this teeny delay still necessary, to give rendering some airtime?
-                //     //        May be redundant after rebuild_bars() callback.  (Nope!)
-                //     initial_thumb_size_adjustment();
-                    contribution_lexi.assert_consistent();
-                // });
+                contribution_lexi.assert_consistent();
             });
         }
     }
@@ -6226,6 +6519,7 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
                         category.render_some_conts(number_of_conts_to_show_initially);
                         category.show_unrendered_count();
                     });
+                    contribution_lexi.assert_consistent();
                 });
             });
             handler.$script.one('error.script2', function (evt) {
@@ -6612,19 +6906,18 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         return return_txt;
     }
 
-    Contribution.prototype.fetch_txt = function fetch_txt() {
-        var that = this;
-        return monty_txt_from_idn(that.idn);
-    }
-
     Contribution.prototype.build_dom = function Contribution_build_dom(txt) {
         var that = this;
 
-        that.$sup = $('<div>', {class: 'sup-contribution word size-adjust-once'});
-        that.$sup.data('contribution-object', that);
+        var $brand_spanking_new_dom_element_for_this_contribution = $('<div>', {
+            class: 'sup-contribution word size-adjust-once'
+        });
+        that.dom_link($brand_spanking_new_dom_element_for_this_contribution);
+
         var $cont = $('<div>', {class: 'contribution', id: that.id_attribute});
         that.$sup.append($cont);
         console.assert(that.$cont.is($cont));
+
         that.$cont.text(leading_spaces_indent(txt));
         var $render_bar = $('<div>', {class: 'render-bar'});
         var $caption_bar = $('<div>', {class: 'caption-bar'});
@@ -6653,24 +6946,41 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         that.$sup.append($render_bar);
         that.$sup.append($caption_bar);
         that.$sup.append($save_bar);
+
         var $grip = $('<span>', {class: 'grip'});
         $caption_bar.append($grip);
         $grip.text(GRIP_SYMBOL);
         var $caption_span = $('<span>', {class: 'caption-span'});
         $caption_bar.append($caption_span);
-        $caption_span.append(that.caption_text);
-        // TODO:  Why .append() here and .text() when looping through CAPTION words?
 
-        // var caption_txt = latest_txt(contribution_word.jbo, MONTY.IDN.CAPTION);
-        // if (caption_txt !== undefined) {
-        //     $caption_span.append(caption_txt);
-        // }
+        $caption_span.append(that.caption_text);
+        // TODO:  Why .append() here, versus .text() when looping through CAPTION words?
 
         if (that.was_submitted_anonymous) {
             that.$sup.addClass('was-submitted-anonymous');
         }
-        // return $sup_contribution;
-        // that.$sup = $sup_contribution;
+    }
+
+    Contribution.prototype.fetch_txt = function fetch_txt() {
+        var that = this;
+        return monty_txt_from_idn(that.idn);
+    }
+
+    /**
+     * Make the primal connection between a Contribution object instance and a DOM element.
+     *
+     * @param $sup - DOM element rendering of the Contribution
+     */
+    Contribution.prototype.dom_link = function Contribution_dom_link($sup) {
+        var that = this;
+
+        that.$sup = $sup;
+        // NOTE:  primal connection from object instance to DOM element
+        //        `$sup` - DOM element was created in Contribution.build_dom()
+
+        that.$sup.data('contribution-object', that);
+        // NOTE:  primal connection from DOM element to object instance
+        //        `that` - object was instantiated in ContributionLexi.word_pass()
     }
 
     function could_be_url(text) {

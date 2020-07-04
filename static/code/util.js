@@ -708,14 +708,6 @@ function f(message, parameters) {
 }
 console.assert("life + everything = 42" === f("life + {a} = {b}", {a:'everything', b:42}));
 
-function to_string(z) {
-    if (is_specified(z)) {
-        return z.toString();
-    } else {
-        return official_type_name(z).toLowerCase();
-    }
-}
-
 /**
  * Drop-in replacement for jQuery $element.animate(props, opts), but works around the ASS-OS bug.
  *
@@ -784,3 +776,38 @@ function dom_from_$(jquery_object_or_selector) {
     var dom_object = $jquery_object.get(0);
     return dom_object;
 }
+
+function assert_equal(expected, actual) {
+    console.assert(expected === actual, "Expected:", expected, "but got:", actual);
+    return expected === actual;
+}
+assert_equal(4, 2+2);
+
+function to_string(z) {
+    if (is_specified(z)) {
+        return z.toString();
+    } else {
+        return official_type_name(z).toLowerCase();
+    }
+}
+assert_equal("42", to_string(42));
+assert_equal("sic", to_string('sic'));
+assert_equal("null", to_string(null));
+assert_equal("false", to_string(false));
+assert_equal("undefined", to_string(undefined));
+
+/**
+ * Convert an array of things to an array of strings.
+ *
+ * Each "thing" must have a .toString() method.  So no nulls should be in the input array.
+ *
+ * @param {Array} things
+ * @return {Array.<string>}
+ */
+function stringify_array(things) {
+    return things.map(function (thing) { return to_string(thing); });
+}
+assert_equal(
+                      "string, 0, 1, 2, 3, null, undefined, false, NaN",
+    stringify_array(['string', 0, 1, 2, 3, null, undefined, false, 0/0]).join(", ")
+);
