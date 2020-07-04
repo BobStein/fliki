@@ -577,7 +577,7 @@ function embed_content_js(window, $, MONTY) {
         // THANKS:  url parts, https://stackoverflow.com/a/28772794/673991
         return query_string;
     }
-    console.assert('?foo=bar' === query_string_from_url('https://example.com/?foo=bar'));
+    assert_equal('?foo=bar', query_string_from_url('https://example.com/?foo=bar'));
 
     /**
      * Adjust the size of this embedded iframe.

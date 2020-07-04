@@ -13,10 +13,10 @@ function sanitized_domain_from_url(url) {
     var domain_sanitized = domain_simple.replace(ALL_GROUPS_OF_NON_ALPHANUMERICS, '_');
     return domain_sanitized;
 }
-console.assert('foo_exam_ple' === sanitized_domain_from_url('https://www.Foo.Exam---ple.com/'));
-console.assert('no_domain' === sanitized_domain_from_url('https://www.e%ample.com/'));
-console.assert('no_domain' === sanitized_domain_from_url('ordinary string'));
-console.assert(null === sanitized_domain_from_url(null));
+assert_equal('foo_exam_ple', sanitized_domain_from_url('https://www.Foo.Exam---ple.com/'));
+assert_equal('no_domain', sanitized_domain_from_url('https://www.e%ample.com/'));
+assert_equal('no_domain', sanitized_domain_from_url('ordinary string'));
+assert_equal(null, sanitized_domain_from_url(null));
 
 function simplified_domain_from_url(url) {
     var domain = domain_from_url(url);
@@ -26,7 +26,7 @@ function simplified_domain_from_url(url) {
     ;
     return domain_simpler;
 }
-console.assert('example' === simplified_domain_from_url('https://www.example.com/foo'));
+assert_equal('example', simplified_domain_from_url('https://www.example.com/foo'));
 
 /**
  * Extract domain name from a valid URL.
@@ -68,11 +68,11 @@ function domain_from_url(url) {
     return 'no.domain';
     // TODO:  Make this special case string more generic.
 }
-console.assert('example.com' === domain_from_url('http://example.com/'));
-console.assert('exam-ple.com' === domain_from_url('https://Exam-ple.com/Foo/?Bar=Baz'));
-console.assert('no.domain' === domain_from_url('https://e%ample.com/'));
-console.assert('no.domain' === domain_from_url('example.com'));
-console.assert('no.domain' === domain_from_url(''), JSON.stringify(domain_from_url('')));
+assert_equal('example.com', domain_from_url('http://example.com/'));
+assert_equal('exam-ple.com', domain_from_url('https://Exam-ple.com/Foo/?Bar=Baz'));
+assert_equal('no.domain', domain_from_url('https://e%ample.com/'));
+assert_equal('no.domain', domain_from_url('example.com'));
+assert_equal('no.domain', domain_from_url(''), JSON.stringify(domain_from_url('')));
 
 function $_from_class(class_) {
     return $(selector_from_class(class_));
@@ -101,7 +101,7 @@ function random_element(an_array) {
     return an_array[Math.floor(Math.random() * an_array.length)];
     // THANKS:  https://stackoverflow.com/a/4550514/673991
 }
-console.assert(42 === random_element([42, 42, 42]));
+assert_equal(42, random_element([42, 42, 42]));
 
 /**
  * Loop through object or array.  Call back on each key-value pair.
@@ -148,13 +148,13 @@ var looper_test = [];
 looper({foo:1, length:0, bar:2}, function (k,v) {
     looper_test.push(k+"="+v);
 });
-console.assert("foo=1,length=0,bar=2" === looper_test.join(","));
+assert_equal("foo=1,length=0,bar=2", looper_test.join(","));
 
 looper_test = [];
 looper([1,2,42,8,9], function (i,v) {
     looper_test.push(i+"="+v); return v !== 42;
 });
-console.assert("0=1,1=2,2=42" === looper_test.join(","));
+assert_equal("0=1,1=2,2=42", looper_test.join(","));
 
 /**
  * Compare non-integer numbers, avoiding floating point pitfalls.
@@ -190,8 +190,8 @@ function strip_prefix(str, prefix) {
         return str;
     }
 }
-console.assert('berry' === strip_prefix('raspberry', 'rasp'));
-console.assert('inflammable' === strip_prefix('inflammable', 'un'));
+assert_equal('berry', strip_prefix('raspberry', 'rasp'));
+assert_equal('inflammable', strip_prefix('inflammable', 'un'));
 
 /**
  * Report the time between a series of events.
@@ -290,13 +290,13 @@ function any_lone_newlines(string) {
     });
     return return_value;
 }
-console.assert(false === any_lone_newlines("abcdef"));
-console.assert(false === any_lone_newlines("abc\n"));
-console.assert( true === any_lone_newlines("abc\ndef"));
-console.assert(false === any_lone_newlines("abc\n\ndef"));
-console.assert(false === any_lone_newlines("abc\n\n\ndef"));
-console.assert(false === any_lone_newlines("abc" + "\r\n" + "\r\n" + "\r\n" + "def"));
-console.assert( true === any_lone_newlines("abc\n\ndef\n\nghi\njkl"));
+assert_equal(false, any_lone_newlines("abcdef"));
+assert_equal(false, any_lone_newlines("abc\n"));
+assert_equal( true, any_lone_newlines("abc\ndef"));
+assert_equal(false, any_lone_newlines("abc\n\ndef"));
+assert_equal(false, any_lone_newlines("abc\n\n\ndef"));
+assert_equal(false, any_lone_newlines("abc" + "\r\n" + "\r\n" + "\r\n" + "def"));
+assert_equal( true, any_lone_newlines("abc\n\ndef\n\nghi\njkl"));
 
 /**
  * Does a long string start with a short string?  Case sensitive.
@@ -308,8 +308,8 @@ console.assert( true === any_lone_newlines("abc\n\ndef\n\nghi\njkl"));
 function starts_with(string, str) {
     return string.substr(0, str.length) === str;
 }
-console.assert( true === starts_with("string", "str"));
-console.assert(false === starts_with("string", "ing"));
+assert_equal( true, starts_with("string", "str"));
+assert_equal(false, starts_with("string", "ing"));
 
 /**
  * Is a string nonempty?  That is, not undefined, not null, and not the empty string.
@@ -322,10 +322,10 @@ console.assert(false === starts_with("string", "ing"));
 function is_laden(txt) {
     return is_specified(txt) && txt !== "";
 }
-console.assert(false === is_laden(null));
-console.assert(false === is_laden(""));
-console.assert( true === is_laden(" "));
-console.assert( true === is_laden(0));
+assert_equal(false, is_laden(null));
+assert_equal(false, is_laden(""));
+assert_equal( true, is_laden(" "));
+assert_equal( true, is_laden(0));
 
 /**
  * Not undefined, and not null.
@@ -333,10 +333,10 @@ console.assert( true === is_laden(0));
 function is_specified(z) {
     return is_defined(z) && z !== null;
 }
-console.assert(false === is_specified(undefined));
-console.assert(false === is_specified(null));
-console.assert( true === is_specified(0));
-console.assert( true === is_specified(''));
+assert_equal(false, is_specified(undefined));
+assert_equal(false, is_specified(null));
+assert_equal( true, is_specified(0));
+assert_equal( true, is_specified(''));
 
 /**
  * Not undefined.
@@ -344,14 +344,14 @@ console.assert( true === is_specified(''));
 function is_defined(x) {
     return typeof x !== 'undefined';
 }
-console.assert(false === is_defined(undefined));
-console.assert( true === is_defined(0));
+assert_equal(false, is_defined(undefined));
+assert_equal( true, is_defined(0));
 
 function is_string(x) {
     return typeof x === 'string';
 }
-console.assert( true === is_string(''));
-console.assert(false === is_string(0));
+assert_equal( true, is_string(''));
+assert_equal(false, is_string(0));
 
 /**
  * Does an array, object, or string contain a thing?
@@ -373,32 +373,32 @@ function has(collection, thing) {
         console.error("Don't understand has(", type_name(collection), ", )");
     }
 }
-console.assert( true === has([1, 2, 3], 2));
-console.assert(false === has([1, 2, 3], 9));
-console.assert( true === has({one:1, two:2, three:3}, 'three'));
-console.assert(false === has({one:1, two:2, three:3}, 3));
-console.assert( true === has('alphabet', 'a'));
-console.assert(false === has('alphabet', 'z'));
-console.assert(false === has(undefined, 'anything'));
-console.assert(false === has(null, 'anything'));
+assert_equal( true, has([1, 2, 3], 2));
+assert_equal(false, has([1, 2, 3], 9));
+assert_equal( true, has({one:1, two:2, three:3}, 'three'));
+assert_equal(false, has({one:1, two:2, three:3}, 3));
+assert_equal( true, has('alphabet', 'a'));
+assert_equal(false, has('alphabet', 'z'));
+assert_equal(false, has(undefined, 'anything'));
+assert_equal(false, has(null, 'anything'));
 
 function is_array(z) {
     return official_type_name(z) === 'Array';
     // return Object.prototype.toString.call(z) === '[object Array]';
     // THANKS:  isArray polyfill, https://stackoverflow.com/a/22289982/673991
 }
-console.assert( true === is_array([]));
-console.assert( true === is_array([1,2,3]));
+assert_equal( true, is_array([]));
+assert_equal( true, is_array([1,2,3]));
 // noinspection JSPrimitiveTypeWrapperUsage
-console.assert( true === is_array(new Array));
-console.assert( true === is_array(Array(1,2,3)));
-console.assert(false === is_array({a:1, b:2}));
-console.assert(false === is_array(42));
-console.assert(false === is_array("etc"));
-console.assert(false === is_array(null));
-console.assert(false === is_array(undefined));
-console.assert(false === is_array(true));
-console.assert(false === is_array(function () {}));
+assert_equal( true, is_array(new Array));
+assert_equal( true, is_array(Array(1,2,3)));
+assert_equal(false, is_array({a:1, b:2}));
+assert_equal(false, is_array(42));
+assert_equal(false, is_array("etc"));
+assert_equal(false, is_array(null));
+assert_equal(false, is_array(undefined));
+assert_equal(false, is_array(true));
+assert_equal(false, is_array(function () {}));
 
 /**
  * Is this a plain object with properties?
@@ -420,21 +420,21 @@ console.assert(false === is_array(function () {}));
 function is_associative_array(z) {
     return official_type_name(z) === 'Object';
 }
-console.assert( true === is_associative_array({a:1, b:2}));
-console.assert( true === is_associative_array(new function Legacy_Class(){}));
-// console.assert( true === is_associative_array(new class ES2015_Class{}));
+assert_equal( true, is_associative_array({a:1, b:2}));
+assert_equal( true, is_associative_array(new function Legacy_Class(){}));
+// assert_equal( true, is_associative_array(new class ES2015_Class{}));
 
-console.assert(false === is_associative_array(window));
-console.assert(false === is_associative_array(new Date()));
-console.assert(false === is_associative_array([]));
-console.assert(false === is_associative_array([1,2,3]));
-console.assert(false === is_associative_array(Array(1,2,3)));
-console.assert(false === is_associative_array(42));
-console.assert(false === is_associative_array("etc"));
-console.assert(false === is_associative_array(null));
-console.assert(false === is_associative_array(undefined));
-console.assert(false === is_associative_array(true));
-console.assert(false === is_associative_array(function () {}));
+assert_equal(false, is_associative_array(window));
+assert_equal(false, is_associative_array(new Date()));
+assert_equal(false, is_associative_array([]));
+assert_equal(false, is_associative_array([1,2,3]));
+assert_equal(false, is_associative_array(Array(1,2,3)));
+assert_equal(false, is_associative_array(42));
+assert_equal(false, is_associative_array("etc"));
+assert_equal(false, is_associative_array(null));
+assert_equal(false, is_associative_array(undefined));
+assert_equal(false, is_associative_array(true));
+assert_equal(false, is_associative_array(function () {}));
 
 /**
  * Get a reliable type name from the Object class toString() method, which always gives
@@ -454,18 +454,18 @@ function official_type_name(z) {
         return matcher[1];
     }
 }
-console.assert('Boolean'   === official_type_name(true));
-console.assert('Number'    === official_type_name(3));
-console.assert('String'    === official_type_name("three"));
-console.assert('Function'  === official_type_name(function () {}));
-console.assert('Null'      === official_type_name(null));
-console.assert('Undefined' === official_type_name(undefined));
-console.assert('Array'     === official_type_name([1,2,3]));
-console.assert('Object'    === official_type_name({a:1, b:2}));
-console.assert('Date'      === official_type_name(new Date()));
-console.assert('String'    === official_type_name(Date()));
-console.assert('Object'    === official_type_name(new function Legacy_Class(){}));
-// console.assert('Object'    === official_type_name(new class ES2015_Class{}));
+assert_equal('Boolean',   official_type_name(true));
+assert_equal('Number',    official_type_name(3));
+assert_equal('String',    official_type_name("three"));
+assert_equal('Function',  official_type_name(function () {}));
+assert_equal('Null',      official_type_name(null));
+assert_equal('Undefined', official_type_name(undefined));
+assert_equal('Array',     official_type_name([1,2,3]));
+assert_equal('Object',    official_type_name({a:1, b:2}));
+assert_equal('Date',      official_type_name(new Date()));
+assert_equal('String',    official_type_name(Date()));
+assert_equal('Object',    official_type_name(new function Legacy_Class(){}));
+// assert_equal('Object',   official_type_name(new class ES2015_Class{}));
 
 /**
  * Get an informative type name, especially for JavaScript Legacy classes.
@@ -483,9 +483,9 @@ function type_name(z) {
         return the_official_name;
     }
 }
-console.assert('Object'       === type_name({a:1, b:2}));
-console.assert('Legacy_Class' === type_name(new function Legacy_Class(){}));
-// console.assert('ES2015_Class' === type_name(new class ES2015_Class{}));
+assert_equal('Object',       type_name({a:1, b:2}));
+assert_equal('Legacy_Class', type_name(new function Legacy_Class(){}));
+// assert_equal('ES2015_Class', type_name(new class ES2015_Class{}));
 
 function type_should_be(parameter, expected_type) {
     // TODO:  expected_type_or_array_of_types
@@ -510,11 +510,11 @@ function default_to(parameter, default_value) {
         return default_value;
     }
 }
-console.assert('red'  === default_to('red',     'blue'));
-console.assert('blue' === default_to(undefined, 'blue'));
-console.assert(null   === default_to(null,      'blue'));
+assert_equal('red',  default_to('red',     'blue'));
+assert_equal('blue', default_to(undefined, 'blue'));
+assert_equal(null,   default_to(null,      'blue'));
 function missing_parameters_are_undefined(missing_parameter) {
-    console.assert(missing_parameter === undefined);
+    assert_equal(missing_parameter, undefined);
 }
 missing_parameters_are_undefined();
 missing_parameters_are_undefined(undefined);
@@ -684,8 +684,8 @@ function linear_transform(
     var y = (x - x1) * (y2 - y1) / (x2 - x1) + y1;
     return y;
 }
-console.assert(220 === linear_transform(22, 0, 100, 0, 1000));
-console.assert(-1000 === linear_transform(890, 880, 870, 0, 1000));
+assert_equal(220, linear_transform(22, 0, 100, 0, 1000));
+assert_equal(-1000, linear_transform(890, 880, 870, 0, 1000));
 
 /**
  * Plain jane string formatter.
@@ -706,7 +706,7 @@ function f(message, parameters) {
     });
     return formatted_message;
 }
-console.assert("life + everything = 42" === f("life + {a} = {b}", {a:'everything', b:42}));
+assert_equal("life + everything = 42", f("life + {a} = {b}", {a:'everything', b:42}));
 
 /**
  * Drop-in replacement for jQuery $element.animate(props, opts), but works around the ASS-OS bug.
@@ -777,8 +777,9 @@ function dom_from_$(jquery_object_or_selector) {
     return dom_object;
 }
 
-function assert_equal(expected, actual) {
-    console.assert(expected === actual, "Expected:", expected, "but got:", actual);
+function assert_equal(expected, actual, context) {
+    context = context || "";
+    console.assert(expected === actual, "Expected:", expected, "but got:", actual, context);
     return expected === actual;
 }
 assert_equal(4, 2+2);

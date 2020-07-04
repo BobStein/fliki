@@ -2893,8 +2893,8 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     function one_qigit(n) {
         return Math.round(n * 256.0) / 256.0;
     }
-    console.assert(26.0 / 256 === one_qigit(0.1));
-    console.assert(0.1015625 === one_qigit(0.1));
+    assert_equal(26.0 / 256, one_qigit(0.1));
+    assert_equal(0.1015625, one_qigit(0.1));
 
     Contribution.prototype.fix_caption_width = function Contribution_fix_caption_width() {
         // TODO:  Call this function more places where $caption_bar.width(is set to something)
@@ -3353,8 +3353,8 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
     function first_word(string) {
         return string.trim().split(' ')[0];
     }
-    console.assert("foo" === first_word(" foo bar "));
-    console.assert("" === first_word(""));
+    assert_equal("foo", first_word(" foo bar "));
+    assert_equal("",    first_word(""));
 
     /**
      * Is there unfinished entry or editing on the page?
@@ -6216,20 +6216,6 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         }
     }
 
-    // function rebuild_all_bars() {
-    //     // $('.sup-contribution').each(function () {
-    //     //     var cont = Contribution_from_element(this);
-    //     //     cont.rebuild_bars();
-    //     // });
-    //     contribution_lexi.loop(function (idn, cont) {
-    //         if (cont.is_dom_rendered()) {
-    //             console.assert(cont.is_dom_rendered(), cont.idn, cont);
-    //             // TODO:  We won't always assume all unsuperseded contributions are rendered!
-    //             cont.rebuild_bars();
-    //         }
-    //     });
-    // }
-
     function cont_list_from_query_string() {
         var cont_filter = query_get('cont', null);
         if (cont_filter === null) {
@@ -6662,12 +6648,12 @@ function js_for_contribution(window, $, qoolbar, MONTY, talkify) {
         // NOTE:  Strip nested quotes from '"\\"string\\""' === JSON.stringify('"string"')
         return safer;
     }
-    console.assert('string' === safe_string('string'));
-    console.assert('back\\\\slash line\\nfeed' === safe_string('back\\slash line\nfeed'));
-    console.assert('42' === safe_string(42));
+    assert_equal('string', safe_string('string'));
+    assert_equal('back\\\\slash line\\nfeed', safe_string('back\\slash line\nfeed'));
+    assert_equal('42', safe_string(42));
 
-    console.assert('"' + '\\' + '"' + 'string' + '\\' + '"' + '"' === JSON.stringify('"string"'));
-    console.assert(                   'string'                    ===    safe_string('"string"'));
+    assert_equal('"' + '\\' + '"' + 'string' + '\\' + '"' + '"', JSON.stringify('"string"'));
+    assert_equal(                   'string',                       safe_string('"string"'));
 
     /**
      * After major changes:
