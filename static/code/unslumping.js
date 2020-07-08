@@ -1277,6 +1277,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
      * At the end of each contribution.
      */
     Bot.prototype.media_ending = function Bot_media_ending() {
+        $(window.document.body).removeClass('playing-somewhere');
         $(window.document.body).removeClass('pausing-somewhere');
         $('#play_bot_sequence').prop('disabled', false);
         $('#play_bot_from'    ).prop('disabled', false);
