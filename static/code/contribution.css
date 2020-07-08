@@ -325,7 +325,7 @@ select#thumb-res option { direction: rtl; }
 
 .sup-contribution.pop-up                         .save-bar .edit    { visibility:hidden; }
 .sup-contribution.contribution-edit              .save-bar .edit    { display: none; }
-body.playing-somewhere                           .save-bar .edit    { display: none; }
+body.playing-somewhere                           .save-bar .edit    { visibility:hidden; }
 .sup-contribution:not(.contribution-edit)        .save-bar .cancel  { display: none; }
 .sup-contribution.edit-dirty                     .save-bar .cancel  { display: none; }
 .sup-contribution:not(.edit-dirty)               .save-bar .save    { display: none; }
@@ -333,28 +333,33 @@ body.playing-somewhere                           .save-bar .edit    { display: n
 
 .sup-contribution                                .save-bar   .play { display: inline-block; }
 .sup-contribution.contribution-edit              .save-bar   .play { display: none; }
-body.playing-somewhere                           .save-bar   .play { display: none; }
+body.playing-somewhere                           .save-bar   .play { visibility:hidden; }
 .sup-contribution.pop-up                         .save-bar   .play { visibility:hidden; }
 .sup-contribution.cant-play                      .save-bar   .play { display: none; }
 
 .sup-contribution                                .save-bar   .expand { display: inline-block; }
 .sup-contribution.contribution-edit              .save-bar   .expand { display: none; }
-body.playing-somewhere                           .save-bar   .expand { display: none; }
+body.playing-somewhere                           .save-bar   .expand { visibility:hidden; }
 .sup-contribution.pop-up                         .save-bar   .expand { visibility:hidden; }
 .sup-contribution.noembed-error                  .save-bar   .expand { display: none; }
 
 .sup-contribution.can-play                       .save-bar   .expand span { display: none; }
-/* NOTE:  Hide the "bigger" label to make room for the "play" label". */
+/* NOTE:  Hide the "bigger" label (but show the icon) to make room for the "play" label. */
 
 .sup-contribution                                .save-bar   .external-link { display: none; }
 .sup-contribution.render-media                   .save-bar   .external-link { display: inline-block; }
 .sup-contribution.render-media.noembed-error     .save-bar   .external-link { display: none; }
 .sup-contribution.render-media.contribution-edit .save-bar   .external-link { display: none; }
+body.playing-somewhere                           .save-bar   .external-link { visibility:hidden; }
 .sup-contribution.pop-up                         .save-bar   .external-link { visibility:hidden; }
 
 /* NOTE:  The .pop-up { visibility:hidden } settings above (instead of display:none) help the pop-up
           animation start with the correct size of the thumbnail, where the whole save-bar is
           visibility-hidden (i.e. taking up space) until hovering. */
+
+/* NOTE:  The .playing-somewhere { visibility:hidden } settings above (instead of display:none)
+          help the Bot disable all buttons on individual contributions, while not disrupting
+          the layout, which would cause contributions to reflow. */
 
 .grip {
     cursor: move;
@@ -508,6 +513,9 @@ iframe { display:block; }
             border-radius: 0.7em;
     padding: 0.5em;
     cursor: pointer;
+}
+.unrendered.zero {
+    display:none;
 }
 
 .talkify-sentence-highlight {

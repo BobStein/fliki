@@ -632,7 +632,7 @@ def setup_application_context():
 
 @flask_app.teardown_appcontext
 def teardown_application_context(exc=None):
-    if hasattr(flask.g, 'lex'):
+    if hasattr(flask.g, 'lex') and hasattr(flask.g.lex, 'disconnect') and callable(flask.g.lex.disconnect):
         if flask.g.is_online:
             flask.g.lex.disconnect()
             flask.g.pop('lex')
@@ -699,7 +699,7 @@ class Auth(object):
             #        Only record if they ever come back.
             #        This in preparation to eliminate the torrent of boring anonymous session
             #        words in the unslumping.org lex.  Presumably they're from digital ocean
-            #        monitoring.  But they could be hackers.
+            #        monitoring.  But they could be malefactors.
             #        Or find some other way to ignore the monitoring traffic.
             #        E.g. see what's in access_log.
             #        Maybe count newbie events, but don't log the details.
@@ -969,13 +969,13 @@ class Auth(object):
         return self.lex.idn_ify(word_or_idn)
 
 
-    def monty_cat(self):
-        idns_in_order = self.get_category_idns_in_order()
-        txt_from_cat_idn = {int(idn): self.lex.txt_from_idn[idn] for idn in idns_in_order}
-        return dict(
-            order=idns_in_order,
-            txt=txt_from_cat_idn,
-        )
+    # def monty_cat(self):
+    #     idns_in_order = self.get_category_idns_in_order()
+    #     txt_from_cat_idn = {int(idn): self.lex.txt_from_idn[idn] for idn in idns_in_order}
+    #     return dict(
+    #         order=idns_in_order,
+    #         txt=txt_from_cat_idn,
+    #     )
 
 
     def get_category_idns_in_order(self):
@@ -1312,7 +1312,7 @@ def login():
                 print("Whoops")
                 response.set_data("Whoops")
         else:
-            if hasattr(login_result, 'user'):
+            if hasattr(login_result, 'user') and hasattr(login_result.user, 'id'):
                 if login_result.user is None:
                     print("None user!")
                 else:
@@ -1542,35 +1542,7 @@ def cache_bust(s):
 
 @flask_app.route('/', methods=('GET', 'HEAD'))
 def home_or_root_directory():
-    # parts = urllib.parse.urlparse(flask.request.url)
-    # # print("Before request", repr(parts))
-    #
-    # if parts.netloc in secure.credentials.Options.redirect_domain_port:
-    #     # noinspection PyProtectedMember
-    #     new_parts = parts._replace(
-    #         netloc=secure.credentials.Options.redirect_domain_port[parts.netloc]
-    #     )
-    #     # NOTE:  This strips off the port number, if there was any.
-    #     # SEE:  _replace() method suggestion
-    #     #       https://docs.python.org/library/urllib.parse.html#urllib.parse.urlparse
-    #     # THANKS:  hostname and port substitution, https://stackoverflow.com/a/21629125/673991
-    #     # THANKS:  redirect to www., https://stackoverflow.com/a/10964868/673991
-    #     new_url = urllib.parse.urlunparse(new_parts)
-    #     print("Punting to", parts.netloc, new_parts.netloc, new_url, file=sys.stderr)
-    #     # return flask.redirect(new_url, code=301)
-    #     with FlikiHTML('html') as html:
-    #         with html.body() as body:
-    #             body.text("Please click on ")
-    #             with body.a(href=new_url) as a:
-    #                 a.text(new_url)
-    #         return html.doctype_plus_html()
-
     return contribution_home(secure.credentials.Options.home_page_title)
-
-
-@flask_app.route('/home', methods=('GET', 'HEAD'))
-def home_subdirectory():
-    return unslumping_home_obsolete()
 
 
 @flask_app.route('/meta/contrib', methods=('GET', 'HEAD'))
@@ -1579,12 +1551,13 @@ def meta_contrib():
 
 
 def contribution_home(home_page_title):
+    # TODO:  rename unslumping_home()?
     """
     User contributions (quotes, videos, etc.) in categories (mine, others, etc.).
 
     An unslumping.org inspired application.
 
-    Generate JSON for contribution.js to process.
+    Generate JSON for unslumping.js to process.
 
     MONTY.w - selected (and vetted) words from the lex
     MONTY.u - info about users, anonymous and logged-in
@@ -1623,6 +1596,7 @@ def contribution_home(home_page_title):
 
                 foot.js_stamped(static_code_url('util.js'))
                 foot.js_stamped(static_code_url('contribution.js'))
+                foot.js_stamped(static_code_url('unslumping.js'))
 
                 verbs = []
                 verbs += auth.get_category_idns_in_order()
@@ -1633,6 +1607,10 @@ def contribution_home(home_page_title):
                     auth.lex.IDN.EDIT,
                 ]
                 words_for_js = auth.vetted_find_by_verbs(verbs)
+                cat_words = [{
+                    'idn': idn,
+                    'txt': auth.lex[idn].txt,
+                } for idn in auth.get_category_idns_in_order()]
                 with foot.script() as script:
                     monty = dict(
                         me_idn=auth.qiki_user.idn.qstring(),
@@ -1643,7 +1621,7 @@ def contribution_home(home_page_title):
                         IDN=auth.lex.IDN.dictionary_of_ints(),
                         NOW=float(time_lex.now_word().num),
                         login_html=auth.login_html(),
-                        cat=auth.monty_cat(),
+                        cat_words=cat_words,
                         WHAT_IS_THIS_THING=secure.credentials.Options.what_is_this_thing,
                         OEMBED_CLIENT_PREFIX=secure.credentials.Options.oembed_client_prefix,
                         OEMBED_OTHER_ORIGIN=secure.credentials.Options.oembed_other_origin,
@@ -1680,7 +1658,7 @@ def contribution_home(home_page_title):
                                 );
                             };
                             try {
-                                js_for_contribution(window, jQuery, qoolbar, MONTY, window.talkify);
+                                js_for_unslumping(window, jQuery, qoolbar, MONTY, window.talkify);
                             } catch (e) {
                                 error_alert(
                                     "Exception: " + e.stack.toString() + 
@@ -1714,12 +1692,13 @@ def contribution_home(home_page_title):
                             }
                        \n''')
                         # EXAMPLE syntax error in contribution.js:
-                        #         ReferenceError: js_for_contribution is not defined at
+                        #         ReferenceError: js_for_unslumping is not defined at
                         #         http://localhost.visibone.com:5000/:3320:29
-                        # NOTE:  The above gyrations trying to debug Opera Mobile.  To no avail.
+                        # NOTE:  The above gyrations were trying to debug Opera Mobile.
+                        #        To no avail.
                     else:
                         script.raw_text('''
-                            js_for_contribution(window, jQuery, qoolbar, MONTY, window.talkify);
+                            js_for_unslumping(window, jQuery, qoolbar, MONTY, window.talkify);
                        \n''')
             t_end = time.time()
             q_end = auth.lex.query_count
@@ -1732,232 +1711,18 @@ def contribution_home(home_page_title):
     return "Please wait a bit..."   # TODO:  Never gets here.
 
 
-# TODO:  New sections:
+# DONE:  Categories:
 #        my unslumping - what I've entered, or dragged here, and not deleted
 #            Enter or drag stuff here that you find inspires you out of a slump.
 #        other's unslumping - entered by logged in users, and not dragged to my stuff
 #        anonymous unslumping - entered anonymously, and not dragged to my stuff
 #        trash
+# TODO:
 #        spam
 #        |____| (your category name here)
 
 
-def unslumping_home_obsolete():
-    auth = AuthFliki()
-    lex = auth.lex
-    auth.hit(auth.current_path)   # e.g. "/home"
-    with FlikiHTML('html') as html:
-        head = html.header("Ump The Former")
-        head.css_stamped(static_code_url('contribution.css'))
-        head.style('''
-            /** Vestigial stuff for unslumping_home_obsolete() **/
-            .deleted_hide,
-            .spam_hide,
-            .anonymous_hide {
-                display: none;
-            }
-            input:disabled + label {
-                color: #AAAAAA;
-            }
-            /* THANKS:  Disabled label, https://stackoverflow.com/a/19363036/673991 */
-        \n''')
-
-        with html.body() as body:
-            user_idn_qstring = auth.qiki_user.idn.qstring()
-            with body.div(id='login-prompt', title='your idn is ' + user_idn_qstring) as div_login:
-                div_login.raw_text(auth.login_html())
-            body.div(id='my-qoolbar')
-            body.div(id='status')
-
-            is_allowable_throughput = True
-            if auth.is_anonymous:
-                wait = seconds_until_anonymous_question()
-                if wait > 0:
-                    is_allowable_throughput = False
-                    between = MINIMUM_SECONDS_BETWEEN_ANONYMOUS_QUESTIONS
-                    ago = between - wait
-                    body.div.text(
-                        "Oops, this site only supports anonymous views every {between:.0f} seconds. "
-                        "Someone was here just {ago:.0f} seconds ago. "
-                        "Please try again in {wait:.0f} seconds.".format(
-                            between=float(between),
-                            wait=float(wait),
-                            ago=float(ago),
-                        )
-                    )
-                    # TODO:  Change "Someone" to "You" if it was (use cookies)
-                else:
-                    anonymous_question_happened()
-
-            if is_allowable_throughput:
-                with body.div(id='my_ump', class_='target-environment') as my_ump:
-                    my_ump.h2("Stuff you find inspiring")
-                    my_contributions = my_ump.div(id='my_contributions')
-                    with my_contributions.div(id='box_ump', class_='container-entry') as box_ump:
-                        box_ump.textarea(id='text_ump', placeholder="a quote")
-                        box_ump.br()
-                        box_ump.button(id='enter_ump').text("save")
-
-                with body.div(id='their_ump', class_='target-environment') as their_ump:
-                    their_ump.h2("Stuff others find inspiring")
-                    with their_ump.p(class_='show-options') as show_options:
-                        show_options.text("show ")
-
-                        anon_input = show_options.input(id='show_anonymous', type='checkbox')
-                        anon_label = show_options.label(for_='show_anonymous').text("anonymous")
-
-                        show_options.char_name('nbsp')
-                        show_options.text(" ")
-
-                        show_options.input(id='show_deleted', type='checkbox')
-                        show_options.label(for_='show_deleted', title="if you deleted it").text("deleted")
-
-                        show_options.char_name('nbsp')
-                        show_options.text(" ")
-
-                        show_options.input(id='show_spam', type='checkbox')
-                        show_options.label(for_='show_spam', title="if anybody tags something spam").text("spam")
-                    their_contributions = their_ump.div(id='their_contributions')
-
-                    if auth.is_anonymous:
-                        anon_input(disabled='disabled')
-                        anon_label(title='Logged-in users can see anonymous contributions.')
-                    else:
-                        pass
-                        # anon_input(checked='checked')
-                        # NOTE:  authenticated user, checkbox to see anonymous content defaults OFF
-
-                unslumps = lex.find_words(vrb=lex.IDN.DEFINE, txt=u'unslump')
-                uns_words = lex.find_words(
-                    vrb=unslumps,
-                    jbo_vrb=auth.qoolbar.get_verbs(),
-                    obj=lex[lex],
-                    idn_ascending=False,
-                    jbo_ascending=True,
-                )
-
-                # body.p("unslumps: {}".format(repr(unslumps)))
-                # EXAMPLE:  unslumps: [Word('unslump'), Word('unslump')]
-                # body.p("uns_words: {}".format(repr(uns_words)))
-                # EXAMPLE:  uns_words: [Word(956), Word(953), Word(947), Word(882)]
-
-                # TODO:  Send these as json instead?  Construct in unslump.js?
-                #        Ooh, imagine a long-poll where new contributions would show up as
-                #        a "show new stuff" button!!
-                for uns_word in uns_words:
-                    is_my_contribution = uns_word.sbj == auth.qiki_user
-
-                    # body.p("{me_or_they}({they_idn}, {they_lex_class}) "
-                    #        "unslumped by {uns_idn}: {uns_txt:.25s}...".format(
-                    #     they_idn=uns_word.sbj.idn.qstring(),
-                    #     they_lex_class=type_name(uns_word.sbj.lex),
-                    #     me_or_they="me" if is_me else "they",
-                    #     uns_idn=uns_word.idn,
-                    #     uns_txt=str(uns_word.txt),
-                    # ))
-                    # EXAMPLE:
-                    #     they(0q82_A7__8A05F9A0A1873A14BD1C_1D0B00, GoogleQikiListing)
-                    #         unslumped by 0q83_03BC: It is interesting to cont...
-                    #     me(0q82_A7__8A059E058E6A6308C8B0_1D0B00, GoogleQikiListing)
-                    #         unslumped by 0q83_03B9: profound...
-                    #     they(0q82_A8__82AB_1D0300, AnonymousQikiListing)
-                    #         unslumped by 0q83_03B3: Life has loveliness to se...
-                    #     me(0q82_A7__8A059E058E6A6308C8B0_1D0B00, GoogleQikiListing)
-                    #         unslumped by 0q83_0372: pithy...
-
-                    is_me_anon = auth.qiki_user.is_anonymous
-                    try:
-                        is_they_anon = uns_word.sbj.is_anonymous
-                    except AttributeError:
-                        print("USER WORD WITHOUT is_anonymous member", repr(uns_word.sbj))
-                        is_they_anon = True
-
-                    short_d, long_d = short_long_description(uns_word.sbj)
-
-                    def add_container(parent, class_):
-                        parent.text(" ")
-
-                        container_classes = ['container', 'word', class_]
-                        if is_they_anon:
-                            container_classes += ['anonymous', 'anonymous_hide']
-
-                        with parent.div(classes=container_classes) as this_container:
-                            with this_container.div(class_='contribution') as contribution:
-                                contribution.text(str(uns_word.txt))
-                            with this_container.div(
-                                class_='caption',
-                                title=long_d
-                            ) as contribution_caption:
-                                with contribution_caption.span(class_='grip') as grip:
-                                    grip.text(
-                                        UNICODE.VERTICAL_ELLIPSIS +
-                                        UNICODE.VERTICAL_ELLIPSIS +
-                                        " "   # TODO:  Make this a margin instead.
-                                    )
-                                contribution_caption.text(short_d)
-                            return this_container
-
-                    if is_my_contribution:
-                        container = add_container(my_contributions, 'mine')
-                        # my_contributions.text(" ")
-                        # with my_contributions.div(class_='container word') as container:
-                        #     container.div(class_='contribution mine').text(str(uns_word.txt))
-                    else:
-                        if is_me_anon and is_they_anon:
-                            container = None
-                            # NOTE:  Don't expose anonymous contributions to OTHER
-                            #        anonymous users' browsers.
-                            #        (But anons should see their own contributions)
-                        else:
-                            container = add_container(their_contributions, 'thine')
-
-                    if container is not None:
-                        container(
-                            **({
-                                'data-idn': uns_word.idn.qstring(),
-                                'data-jbo': json_from_words(uns_word.jbo),
-                            })
-                        )
-
-                foot = body.footer()
-                foot.js('https://cdn.jsdelivr.net/npm/sortablejs@1.9.0/Sortable.js')
-                foot.js('https://cdn.jsdelivr.net/npm/jquery-sortablejs@1.0.0/jquery-sortable.js')
-                foot.js_stamped(static_code_url('unslump.js'))
-                with foot.script() as script:
-                    script.raw_text('\n')
-                    monty = dict(
-                        me_idn=auth.qiki_user.idn.qstring(),
-                        AJAX_URL=AJAX_URL,
-                        IDN_LEX=lex[lex].idn.qstring(),
-                    )
-                    script.raw_text('var MONTY = {json};\n'.format(json=json_pretty(monty)))
-                    script.raw_text('js_for_unslumping(window, window.$, MONTY);\n')
-
-    return html.doctype_plus_html()
-
-
-def short_long_description(user_word):
-    try:
-        user_naming_txt = user_word.txt
-    except (IndexError, AttributeError):
-        user_naming_txt = "(unknown contributor)"
-
-    short_description = user_naming_txt
-
-    if is_qiki_user_anonymous(user_word):
-        long_description = "Anonymous user {ip_address}".format(ip_address=user_naming_txt)
-    elif isinstance(user_word, user_word.lex.word_google_class):
-        long_description = "Google user {googly_name}".format(googly_name=user_naming_txt)
-    else:
-        long_description = "User lex class {lex_class} user {user_txt}".format(
-            lex_class=type_name(user_word.lex),
-            user_txt=user_naming_txt
-        )
-
-    return short_description, long_description
-
-
-@flask_app.route('/meta/raw', methods=('GET', 'HEAD'))
+@flask_app.route('/meta/raw', methods=('GET', 'HEAD'))   # Experimental
 def meta_raw():
     """Raw json dump of all words in the lex."""
     auth = AuthFliki()
@@ -3121,11 +2886,6 @@ def ajax():
             oembed_dict = noembed_get(url)
             return valid_response('oembed', oembed_dict)
 
-        elif action == 'notable_occurrence':
-            print("Notable Occurrence", auth.form('message'))
-            # TODO:  Database
-            return valid_response()
-
         elif action == 'interact':
             interaction_name = auth.form('name')   # e.g. MONTY.INTERACTION.PAUSE == 'pause'
             interaction_obj = auth.form('obj')     # e.g. idn of a contribution
@@ -3359,26 +3119,24 @@ JSON_SEPARATORS_NO_SPACES = (',', ':')
 
 
 def json_encode(x, **kwargs):
-    """
-    JSON encoding a dict, including custom objects with to_json() methods.
-
-    SEE:  (own report) conform to script element, https://stackoverflow.com/a/57796324/673991
-    THANKS:  Jinja2 html safe json dumps utility, for inspiration
-             https://github.com/pallets/jinja/blob/90595070ae0c8da489faf24f153b918d2879e759/jinja2/utils.py#L549
-    """
-    # TODO:  Support encoding list, etc.
-    # if isinstance(x, dict):
-    #     x = dict(fix_dict(x))
+    """ JSON encoding a dict, including custom objects with a .to_json() method. """
+    # TODO:  Support encoding list, etc.  ((WTF does this mean?))
     json_almost = json.dumps(
         x,
         cls=WordEncoder,
         separators=JSON_SEPARATORS_NO_SPACES,
         allow_nan=False,
         **kwargs
-        # NOTE:  If there APPEAR to be newlines when viewed in a browser,
-        #        it may just be the browser wrapping lines on the commas.
+        # NOTE:  The output will have no newlines.
+        #        If there APPEAR to be newlines when viewed in a browser Ctrl-U page source,
+        #        it may just be the browser wrapping on the commas.
     )
+
     json_for_script = json_almost.replace('<', r'\u003C')
+    # SEE:  (my answer) JSON for a script element, https://stackoverflow.com/a/57796324/673991
+    # THANKS:  Jinja2 html safe json dumps utility, for inspiration
+    #          https://github.com/pallets/jinja/blob/90595070ae0c8da489faf24f153b918d2879e759/jinja2/utils.py#L549
+
     return json_for_script
 
 
@@ -3392,8 +3150,9 @@ def json_pretty(x):
 
 class WordEncoder(json.JSONEncoder):
     """Custom converter for json_encode()."""
+
     def default(self, w):
-        if hasattr(w, 'to_json'):
+        if hasattr(w, 'to_json') and callable(w.to_json):
             return w.to_json()
         else:
             return super(WordEncoder, self).default(w)

@@ -812,3 +812,9 @@ assert_equal(
                       "string, 0, 1, 2, 3, null, undefined, false, NaN",
     stringify_array(['string', 0, 1, 2, 3, null, undefined, false, 0/0]).join(", ")
 );
+
+function first_word(string) {
+    return string.trim().split(' ')[0];
+}
+assert_equal("foo", first_word(" foo bar "));
+assert_equal("",    first_word(""));
