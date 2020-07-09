@@ -452,7 +452,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
         $('.category, .frou-category').sortable(sortable_module_options());
 
         $(window.document)
-            .on('input', '.contribution, .caption-span', contribution_becomes_dirty)
+            .on('input', '.contribution, .caption-span', caption_input)
             .on('click', '.contribution', stop_propagation)
             .on('click', '.caption-bar, .save-bar', stop_propagation)
             .on('click', '.render-bar .thumb-link', thumb_click)
@@ -678,12 +678,12 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
      * @constructor
      */
     function Bot() {
-        if ( ! (this instanceof Bot)) {
+        var that = this;
+        if ( ! (that instanceof Bot)) {
             return new Bot();
         }
         // THANKS:  Automatic 'new', https://stackoverflow.com/a/383503/673991
 
-        var that = this;
         // THANKS:  that = this, https://alistapart.com/article/getoutbindingsituations/#snippet26
         //          `that` is set in all methods, so anonymous callbacks don't shadow `this`.
 
@@ -844,7 +844,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                 // NOTE:  e.stack shows the stack-trace of the exception where it first happened.
                 //        console.trace() on the other hand just shows the stack-trace HERE.
             }
-            var did_fsm_change_state = this.state !== this.last_tick_state
+            var did_fsm_change_state = that.state !== that.last_tick_state
         } while (did_fsm_change_state);
     };
 
@@ -1005,26 +1005,26 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                     ], S.DONE_CONTRIBUTION);
                     that.pop_end();
                 });
-                ON(E.MEDIA_PLAYING, function (/*data*/) {
-                    if (that.is_paused) {
-                //         that.assert_state_is([
-                //             S.MEDIA_PAUSE_IN_FORCE   // dynamic resume, parent or embed, bot only
-                //         ]);
-                //         console.log("Media resuming", data.idn);
-                //         interact.RESUME(data.idn, data.current_time);   // dynamic resume
-                        that._pause_ends();
-                    } else {
-                //         that.assert_state_is([
-                //             S.MEDIA_STARTED   // dynamic play for the first time, bot only
-                //         ]);
-                //         console.log("Media started playing", data.idn);
-                //         interact.START(data.idn, data.current_time);
-                //         // NOTE:  Don't think it's possible to get a double START on dynamic media
-                //         //        the way it was with static media.
-                //         //        We got here from an auto-play-playing message from the embed
-                //         //        and that could not hardly have come from a zero-size iframe.
-                    }
-                });
+                // ON(E.MEDIA_PLAYING, function (/*data*/) {
+                //     if (that.is_paused) {
+                // //         that.assert_state_is([
+                // //             S.MEDIA_PAUSE_IN_FORCE   // dynamic resume, parent or embed, bot only
+                // //         ]);
+                // //         console.log("Media resuming", data.idn);
+                // //         interact.RESUME(data.idn, data.current_time);   // dynamic resume
+                //         that._pause_ends();
+                //     } else {
+                // //         that.assert_state_is([
+                // //             S.MEDIA_STARTED   // dynamic play for the first time, bot only
+                // //         ]);
+                // //         console.log("Media started playing", data.idn);
+                // //         interact.START(data.idn, data.current_time);
+                // //         // NOTE:  Don't think it's possible to get a double START on dynamic media
+                // //         //        the way it was with static media.
+                // //         //        We got here from an auto-play-playing message from the embed
+                // //         //        and that could not hardly have come from a zero-size iframe.
+                //     }
+                // });
                 ON(E.MEDIA_PAUSED, function () {
                     // TODO:  This is where we disentangle a pause initiated by the outer website,
                     //        from one initiated by the embedded youtube iframe.
@@ -1120,9 +1120,8 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                 } catch (e) {
                     n_characters = "((" + e.message + "))";
                 }
-                flub(f("Speech {n_characters} failed to start {n_ticks}", {
-                    n_characters: n_characters,
-                    n_ticks: that.ticks_this_state
+                flub(f("Speech {n_characters} failed to start", {
+                    n_characters: n_characters
                 }));
 
                 window.speechSynthesis.cancel();
@@ -1433,21 +1432,30 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
      */
     function CategoriesUnslump() {
         var that = this;
-
         if ( ! (that instanceof CategoriesUnslump)) {
             return new CategoriesUnslump();
         }
         CategoryLexi.call(that, Category);
+
+        that.define_some_IDNS({
+            LEX: MONTY.IDN.LEX,
+            DEFINE: MONTY.IDN.DEFINE,
+            CATEGORY: MONTY.IDN.CATEGORY
+        });
+
+        that.notify = console.log.bind(console);   // should come before .word_pass() calls
+
+        that.loop(function (_, cat) {   // must come before .word_pass() calls
+            cat.cont_sequence.fence_post_right = MONTY.IDN.FENCE_POST_RIGHT;
+            // TODO:  Move to application-specific Category subclass, if we ever think of a
+            //        name for it that doesn't suck.
+        });
 
         looper(MONTY.cat_words, function (index, cat_word) {
             that.word_pass(cat_word);
         });
         // NOTE:  So for unslumping.js, MONTY.cat_words[] defines the order of categories
         //        on the screen.
-
-        that.loop(function (_, cat) {
-            cat.cont_sequence.fence_post_right = MONTY.IDN.FENCE_POST_RIGHT;
-        });
     }
     CategoriesUnslump.prototype = Object.create(CategoryLexi.prototype);
     CategoriesUnslump.prototype.constructor = CategoriesUnslump;
@@ -1478,10 +1486,37 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
      * @constructor
      */
     function ContributionsUnslump(category_lexi) {
-        if ( ! (this instanceof ContributionsUnslump)) {
+        var that = this;
+        if ( ! (that instanceof ContributionsUnslump)) {
             return new ContributionsUnslump(category_lexi);
         }
-        ContributionLexi.call(this, Contribution, category_lexi);
+        ContributionLexi.call(that, Contribution, category_lexi);
+        // TODO:  Subclass Contribution too, don't just add to it.
+
+        that.define_some_IDNS({
+            CONTRIBUTE: MONTY.IDN.CONTRIBUTE,
+            CAPTION: MONTY.IDN.CAPTION,
+            EDIT: MONTY.IDN.EDIT,
+            me: MONTY.me_idn
+        });
+        that.notify = console.log.bind(console);   // should come before .word_pass() calls
+        // EXAMPLE:
+        //     1918. Yes Bob Stein may caption 1917, work of Bob Stein
+        //     1919. Nope Horatio won't edit 956, work of Bob Stein
+        //     1920. (Can't caption 1919)
+        //     1921. Nope Horatio won't drag to 1871 in their, 1849, work of Horatio
+        //          ...because only admin can recategorize like this.
+
+        looper(MONTY.w, function (_, word) {
+            that.word_pass(word);
+        });
+
+        that.assert_consistent();   // more interesting after .word_pass() calls
+        // NOTE:  Early consistency check makes sure the .word_pass(MONTY.w) worked well.
+        //        It requires a special provision in .assert_consistent() because nothing is
+        //        rendered yet, and there are no .unrendered sections to count the not-rendered.
+
+        console.log("contribution_lexi", that);
     }
     ContributionsUnslump.prototype = Object.create(ContributionLexi.prototype);
     ContributionsUnslump.prototype.constructor = ContributionsUnslump;
@@ -1762,7 +1797,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
         MEDIA_BEGUN: 'MEDIA_BEGUN',     // e.g. youtube auto-play started
         MEDIA_WOKE: 'MEDIA_WOKE',       // e.g. youtube auto-play first state-change TODO:  Use or lose?
         MEDIA_PAUSED: 'MEDIA_PAUSED',   // e.g. youtube auto-play paused
-        MEDIA_PLAYING: 'MEDIA_PLAYING', // e.g. youtube auto-play playing
+        // MEDIA_PLAYING: 'MEDIA_PLAYING', // e.g. youtube auto-play playing
         // MEDIA_RESUME: 'MEDIA_RESUME',   // e.g. youtube auto-play resume
         MEDIA_ENDED: 'MEDIA_ENDED',     // e.g. youtube auto-play played to the end
         MEDIA_STATIC: 'MEDIA_STATIC'    // e.g. flickr, not going to play, timed display
@@ -1785,16 +1820,27 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
     // TODO:  Category.build_dom() method, instead of building dom, then objects.
 
     Object.defineProperties(Category.prototype, {
-        // $sup:        { get: function () {return js_for_unslumping.$sup_categories[this.idn];}},
-        // $cat:        { get: function () {return js_for_unslumping.$categories[this.idn];}},
-        $unrendered: { get: function () {return this.$cat.find('.unrendered');}}
+        $unrendered: { get: function () {return this.$cat.find('.unrendered');}},
+        $frou:       { get: function () {return this.$cat.find('.frou-category');}}
     });
 
-    // var ok_to_observe = true;
+    // var ok_to_observe_and_adjust_thumb_size = true;
 
+    // noinspection JSUnusedLocalSymbols
     function Category_from_idn(idn) {
         type_should_be(idn, 'Number');
         return categories.get(idn);
+    }
+
+    function Category_from_element(element_or_selector) {
+        var $sup = $(element_or_selector).closest('.sup-category');
+        if ($sup.length === 1) {
+            var cat = $sup.data('category-object');
+            console.assert(cat.$sup.is($sup), cat.$sup, $sup);
+            return cat;   // which could be undefined
+        } else {
+            return null;
+        }
     }
 
     Category.prototype.show_unrendered_count = function Category_show_unrendered_count() {
@@ -1832,11 +1878,11 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                 cont.rebuild_bars(function () {
 
                     // cont.observer = new MutationObserver(function mutated_cont_handler() {
-                    //     if (ok_to_observe) {
-                    //         ok_to_observe = false;
+                    //     if (ok_to_observe_and_adjust_thumb_size) {
+                    //         ok_to_observe_and_adjust_thumb_size = false;
                     //         thumb_size_adjust(cont.$sup);
                     //         console.log("Mutation", cont.id_attribute, cont.cat.txt, cont.caption_text, cont.$sup.width(), cont.$sup.height());
-                    //         ok_to_observe = true;
+                    //         ok_to_observe_and_adjust_thumb_size = true;
                     //     } else {
                     //         console.warn("Mutation recursion averted!", cont.id_attribute, cont.cat.txt, cont.caption_text);
                     //     }
@@ -1917,10 +1963,11 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
         $caption_span:    { get: function () {return this.$sup.find('.caption-span');}},
         $external_link:   { get: function () {return this.$sup.find('.external-link');}},
         content:          { get: function () {
-                              if (this.is_dom_rendered()) {
-                                  return this.$cont.text();
+                              var that = this;
+                              if (that.is_dom_rendered()) {
+                                  return that.$cont.text();
                               } else {
-                                  return this.fetch_txt();
+                                  return that.fetch_txt();   // TODO:  Make async
                               }
                           }},
         caption_text:     { get: function () {return is_specified(this.capt) ? this.capt.txt : ""}},
@@ -1929,12 +1976,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
         // is_noembed_error: { get: function () {return this.$sup.hasClass('noembed-error');}},
         // NOTE:  is_noembed_error is an ad hoc flag instead.
 
-        media_domain:     { get: function () {
-            // return this.$sup.attr('data-domain') || null;
-            return sanitized_domain_from_url(this.media_url);
-            // return this.is_media ? sanitized_domain_from_url(this.media_url) : null;
-        }},
-
+        media_domain:     { get: function () {return sanitized_domain_from_url(this.media_url);}},
         $img_thumb:       { get: function () {return this.$render_bar.find('img.thumb');}},
         has_iframe:       { get: function () {return this.is_dom_rendered() && this.$iframe.length === 1;}},
         $iframe:          { get: function () {return this.$render_bar.find('iframe');}},
@@ -2310,8 +2352,15 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
             // TODO:  Get smarter about the work iframe_incoming() does, and the work
             //        Bot.finite_state_machine() does.  The only reason to move the interact.VERB()
             //        calls here was so they'd record the manual playing of contributions.
+            //        The FSM event handlers don't catch those, because they're .off()ed
+            //        at MEDIA_END or POP_DOWN_ONE.
             //        Unfortunately it's still buggy, because bot.is_paused is tested here
-            //        but never set in MANUAL state.
+            //        but never set in MANUAL state when a pause comes through.
+            //        Maybe the multiple sources of play/pause/resume events should NOT be combined but
+            //        rather teased apart:
+            //            1. Global buttons - bot
+            //            2. Individual play button under each contribution thumbnail.
+            //            3. Media embedded buttons e.g. inside a YouTube video.
 
             var S = bot.State;
             if (bot.is_paused) {
@@ -2320,7 +2369,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                 ]);
                 console.log("Media resuming", idn, message.current_time);
                 interact.RESUME(idn, message.current_time);   // dynamic resume
-                // bot._pause_ends();
+                bot._pause_ends();
             } else {
                 bot.assert_state_is([
                     S.MANUAL,          // dynamic play for the first time, manual - and (BUG) resume after pause
@@ -2335,7 +2384,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
             }
 
 
-            that.trigger_event(that.Event.MEDIA_PLAYING);
+            // that.trigger_event(that.Event.MEDIA_PLAYING);
 
 
 
@@ -2400,9 +2449,9 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
     assert_equal(0.1015625, one_qigit(0.1));
 
     Contribution.prototype.fix_caption_width = function Contribution_fix_caption_width() {
+        var that = this;
         // TODO:  Call this function more places where $caption_bar.width(is set to something)
         // TODO:  Why can't this simply copy $sup.width() to $caption_bar.outerWidth()?
-        var that = this;
 
 
         var media_width  = that.$iframe    .is(':visible') ? that.$iframe    .outerWidth() || 0 : 0;
@@ -2638,9 +2687,9 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
      * Happens on page load, on entering a new contribution, or editing an old one.
      */
     Contribution.prototype.render_media = function Contribution_render_media(then) {
+        var that = this;
         // NOTE:  that.$iframe may not exist yet, e.g. on page reload, or entering a new cont.
         //        If it did exist it gets displaced here, e.g. after an edit.
-        var that = this;
         // that.$sup.attr('data-domain', sanitized_domain_from_url(that.content));
 
         that.$sup.addClass('render-media');
@@ -2701,7 +2750,6 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
 
     Contribution.prototype.render_text = function Contribution_render_text(then) {
         var that = this;
-        // that.$sup.removeAttr('data-domain');
         that.$sup.removeClass('render-media');
         that.set_can_play(true);   // (can be "played" as text to speech audio)
         that.$external_link.removeAttr('href');
@@ -2972,8 +3020,9 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
     }
 
     function contribution_edit(evt) {
-        var cont = Contribution_from_element(this);
-        console.assert(cont.is_dom_rendered(), this);
+        var element = this;
+        var cont = Contribution_from_element(element);
+        console.assert(cont.is_dom_rendered(), element);
         var $clicked_on = $(evt.target);
         // SEE:  this vs evt.target, https://stackoverflow.com/a/21667010/673991
         if ($clicked_on.is('.contribution') && is_click_on_the_resizer(evt, $clicked_on.get(0))) {
@@ -2998,8 +3047,9 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
     }
 
     function contribution_cancel() {
-        var cont = Contribution_from_element(this);
-        console.assert(cont.is_dom_rendered(), this);
+        var element = this;
+        var cont = Contribution_from_element(element);
+        console.assert(cont.is_dom_rendered(), element);
         console.assert(is_editing_some_contribution);
         // If not editing, how was the cancel button visible?
         if (is_editing_some_contribution) {
@@ -3015,14 +3065,13 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
     /**
      * The contribution or caption editing input field has changed value.  It's unsaved, so "dirty".
      */
-    function contribution_becomes_dirty() {
-        var cont = Contribution_from_element(this);
-        console.assert(cont.is_dom_rendered(), this);
-        var class_attr = this.classList;
+    function caption_input() {
+        var element = this;
+        var cont = Contribution_from_element(element);
+        console.assert(cont.is_dom_rendered(), element);
         if ( ! cont.$sup.hasClass('edit-dirty')) {
             cont.$sup.addClass('edit-dirty');
             $(window.document.body).removeClass('dirty-nowhere');
-            console.log("Dirty", cont.id_attribute, class_attr);
         }
     }
 
@@ -4914,8 +4963,15 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
             ghostClass: 'drop-hint',
             draggable: '.sup-contribution',
             onMove: function sortable_dragging(evt) {
-                if (is_in_frou(evt.related)) {
-                    if (is_open_drop(evt.related)) {
+                var target_candidate = evt.related;
+                if (is_in_popup(target_candidate)) {
+                    console.error("Whoa that's a popup, don't drag me here bro.");
+                    return MOVE_CANCEL;
+                }
+                var cat = Category_from_element(target_candidate);
+                if (is_in_frou(target_candidate)) {
+                    // if (is_open_drop(target_candidate)) {
+                    if (cat.valve.is_open()) {
                         // NOTE:  This category is open (triangle points down).
                         //        So user can drop on the (visible) contributions there.
                         //        So don't let them drop on the "frou" (header),
@@ -4928,13 +4984,13 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                         return MOVE_CANCEL;
                     }
                 }
-                if (is_in_about(evt.related)) {
+                if (cat === categories.about) {
                     if ( ! contribution_lexi.is_admin(MONTY.me_idn)) {
                         // NOTE:  Only the admin can move TO the about section.
                         return MOVE_CANCEL;
                     }
                 }
-                if (is_in_anon(evt.related)) {
+                if (cat === categories.anon) {
                     // TODO:  Instead of this clumsiness, don't make the anon category
                     //        into a functional .category.  Just make it look like one with info.
                     //        Or go ahead and make it a Category object, but instantiate it
@@ -4943,10 +4999,6 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                         // NOTE:  Anonymous users can't interact with other anonymous content.
                         return MOVE_CANCEL;
                     }
-                }
-                if (is_in_popup(evt.related)) {
-                    console.warn("Whoa there, don't drag me bro.");
-                    return MOVE_CANCEL;
                 }
                 var $introductory_blurb = $('#introductory-blurb');
                 $('#top-right-blurb').empty().append($introductory_blurb);
@@ -4960,22 +5012,27 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
             onEnd: function sortable_drop(evt) {
                 // NOTE:  movee means the contribution being moved
                 var $movee = $(evt.item);
-                var movee_idn = $movee.find('.contribution').attr('id');
+                // var movee_idn = $movee.find('.contribution').attr('id');
+                var movee_cont = Contribution_from_element(evt.item);
 
-                var from_cat_idn = $(evt.from).attr('id');
-                var to_cat_idn = $cat_of(evt.to).attr('id');   // whether frou or category
-                var from_cat_txt = Category_from_idn(from_cat_idn).txt;
-                var to_cat_txt = Category_from_idn(to_cat_idn).txt;
+                // var from_cat_idn = $(evt.from).attr('id');
+                // var from_cat = Category_from_idn(from_cat_idn);
+                var from_cat = Category_from_element(evt.from);
+                // var to_cat_idn = $cat_of(evt.to).attr('id');   // whether frou or category
+                var to_cat = Category_from_element(evt.to);
+                // var from_cat_txt = Category_from_idn(from_cat_idn).txt;
+                // var to_cat_txt = Category_from_idn(to_cat.idn).txt;
                 // var from_cat_txt = MONTY.words.cat[from_cat_idn].txt;
                 // var to_cat_txt = MONTY.words.cat[to_cat_idn].txt;
 
                 if (is_in_frou(evt.to)) {   // drop into a closed category
                     console.log(
-                        "Frou drop", to_cat_txt,
+                        "Frou drop", to_cat.txt,
                         "where cont", dom_from_$($movee).id,
-                        "goes into cat", to_cat_idn
+                        "goes into cat", to_cat.idn
                     );
-                    locate_contribution_at_category_left_edge($cat_of(evt.to), $movee);
+                    // locate_contribution_at_category_left_edge($cat_of(evt.to), $movee);
+                    to_cat.insert_left(movee_cont);
                 }
 
                 // NOTE:  buttee means the contribution shoved over to the right, if any
@@ -4990,19 +5047,19 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                     buttee_txt_excerpt = $buttee.find('.contribution').text().substr(0, 20) + "...";
                 }
                 console.log(
-                    "rearranged contribution", movee_idn,
-                    "from", from_cat_txt + "#" + evt.oldDraggableIndex.toString(),
-                    "to", to_cat_txt + "#" + evt.newDraggableIndex.toString(),
+                    "rearranged contribution", movee_cont.idn,
+                    "from", from_cat.txt + "#" + evt.oldDraggableIndex.toString(),
+                    "to", to_cat.txt + "#" + evt.newDraggableIndex.toString(),
                     "butting in before", buttee_idn, buttee_txt_excerpt
                 );
-                var is_same_category = from_cat_idn === to_cat_idn;
+                var is_same_category = from_cat.idn === to_cat.idn;
                 var is_same_contribution = evt.newDraggableIndex === evt.oldDraggableIndex;
                 if (is_same_category && is_same_contribution) {
                     console.log("(put back where it came from)");
                 } else {
                     qoolbar.sentence({
-                        vrb_idn: to_cat_idn,
-                        obj_idn: movee_idn,
+                        vrb_idn: to_cat.idn,
+                        obj_idn: movee_cont.idn,
                         num: buttee_idn,
                         txt: ""
                     }, function sortable_done(order_word) {
@@ -5022,7 +5079,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                         console.warn("Revert to before", first_word($from_neighbor.text()));
                         $from_neighbor.before($movee);
                     } else {
-                        console.warn("Revert to end of category", from_cat_idn);
+                        console.warn("Revert to end of category", from_cat.idn);
                         $from_cat.append($movee);
                     }
                 }
@@ -5196,58 +5253,79 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
         return px / parseFloat($element.css('font-size'));
     }
 
+    // /**
+    //  * Move or store a contribution to the left edge of a category.
+    //  *
+    //  * Works to either move a sup-contribution, or store it for the first time, in the DOM.
+    //  *
+    //  * @param {jQuery} $cat - e.g. $categories[MONTY.IDN.CAT_MY]
+    //  * @param {jQuery} $movee - e.g. Contribution('1461')
+    //  */
+    // function locate_contribution_at_category_left_edge($cat, $movee) {
+    //     var $container_entry = $cat.find('.container-entry');
+    //     if ($container_entry.length > 0) {
+    //         // Drop after contribution entry form (the one in 'my' category))
+    //         $container_entry.last().after($movee);
+    //     } else {
+    //         // drop into any other category, whether empty or not
+    //         $cat.prepend($movee);
+    //     }
+    //     // THANKS:  https://www.elated.com/jquery-removing-replacing-moving-elements/
+    //     //          'While there are no specific jQuery methods for moving elements around the DOM
+    //     //          tree, in fact it's very easy to do. All you have to do is select the element(s)
+    //     //          you want to move, then call an "adding" method such as append()'
+    // }
+
     /**
-     * Move or store a contribution to the left edge of a category.
+     * Insert a contribution's DOM into the left end of a category's DOM.
      *
-     * Works to either move a sup-contribution, or store it for the first time, in the DOM.
+     * This doesn't touch the object model, e.g. Category.cont_sequence, because
+     * the caller should do that with Category.word_pass().
      *
-     * @param {jQuery} $cat - e.g. $categories[MONTY.IDN.CAT_MY]
-     * @param {jQuery} $movee - e.g. Contribution('1461')
+     * @param cont
      */
-    // TODO:  Category method
-    function locate_contribution_at_category_left_edge($cat, $movee) {
-        var $container_entry = $cat.find('.container-entry');
+    Category.prototype.insert_left = function(cont) {
+        var that = this;
+        var $container_entry = that.$cat.find('.container-entry');
         if ($container_entry.length > 0) {
             // Drop after contribution entry form (the one in 'my' category))
-            $container_entry.last().after($movee);
+            $container_entry.last().after(cont.$sup);
         } else {
             // drop into any other category, whether empty or not
-            $cat.prepend($movee);
+            that.$cat.prepend(cont.$sup);
         }
-        // THANKS:  https://www.elated.com/jquery-removing-replacing-moving-elements/
-        //          'While there are no specific jQuery methods for moving elements around the DOM
-        //          tree, in fact it's very easy to do. All you have to do is select the element(s)
-        //          you want to move, then call an "adding" method such as append()'
-    }
+    };
 
-    /**
-     * Is this element being dropped in an open-valved category?
-     *
-     * @param element
-     * @return {boolean}
-     */
-    function is_open_drop(element) {
-        var cat_idn = $cat_of(element).attr('id');
-        var cat_txt = Category_from_idn(cat_idn).txt;
-        var is_open = get_valve($_from_id(id_valve(cat_txt)));
-        return is_open;
-    }
+    // /**
+    //  * Is this element being dropped in an open-valved category?
+    //  *
+    //  * @param element
+    //  * @return {boolean}
+    //  */
+    // function is_open_drop(element) {
+    //     var cat = Category_from_element(element);
+    //     var cat_idn = $cat_of(element).attr('id');
+    //     var cat_txt = Category_from_idn(parseInt(cat_idn)).txt;
+    //     // var is_open = get_valve($_from_id(id_valve(cat_txt)));
+    //     var is_open = cat.valve.is_open();
+    //     return is_open;
+    // }
 
-    /**
-     * What's the div.category element for this element inside it?
-     *
-     * @param element - any element inside div.sup-category
-     * @return {jQuery} - the div.category element
-     */
-    function $cat_of(element) {
-        var $sup_category = $(element).closest('.sup-category');
-        if ($sup_category.length === 0) {
-            console.error("How can it not be in a sup-category!?", element);
-            return null;
-        }
-        var $cat = $sup_category.find('.category');
-        return $cat;
-    }
+    // /**
+    //  * What's the div.category element for this element inside it?
+    //  *
+    //  * @param element - any element inside div.sup-category
+    //  * @return {jQuery} - the div.category element
+    //  */
+    // function $cat_of(element) {
+    //     var $sup_category = $(element).closest('.sup-category');
+    //     if ($sup_category.length === 0) {
+    //         console.error("How can it not be in a sup-category!?", element);
+    //         return null;
+    //     }
+    //     var $cat = $sup_category.find('.category');
+    //     return $cat;
+    // }
 
     /**
      * Is this element inside the frou-frou part of a category (h2 header)?
@@ -5265,20 +5343,20 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
         return $(element).closest('.pop-up').length > 0;
     }
 
-    // TODO:  Replace these functions with Contribution.is_about_category etc.
-    //        Better yet, make the uses of is_in_about() and is_in_anon() (and maybe is_in_popup)
-    //        defer to the era of category instantiation instead.
-    //        Then the test is:
-    //            if (cat == categories.about) ...
-    function is_in_about(element) {
-        // return $cat_of(element).attr('id') === MONTY.IDN.CAT_ABOUT.toString();
-        return $cat_of(element).attr('id') === categories.about.idn.toString();
-    }
-
-    function is_in_anon(element) {
-        // return $cat_of(element).attr('id') === MONTY.IDN.CAT_ANON.toString();
-        return $cat_of(element).attr('id') === categories.anon.idn.toString();
-    }
+    // // DONE:  Replace these functions with Contribution.is_about_category etc.
+    // //        Better yet, make the uses of is_in_about() and is_in_anon() (and maybe is_in_popup)
+    // //        defer to the era of category instantiation instead.
+    // //        Then the test is:
+    // //            if (cat == categories.about) ...
+    // function is_in_about(element) {
+    //     // return $cat_of(element).attr('id') === MONTY.IDN.CAT_ABOUT.toString();
+    //     return $cat_of(element).attr('id') === categories.about.idn.toString();
+    // }
+    //
+    // function is_in_anon(element) {
+    //     // return $cat_of(element).attr('id') === MONTY.IDN.CAT_ANON.toString();
+    //     return $cat_of(element).attr('id') === categories.anon.idn.toString();
+    // }
 
     function play_bot_speech_change() {
         var do_animate_speech = $('#play_bot_speech').val() !== PLAY_BOT_SPEECH_OFF;
@@ -5377,7 +5455,8 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
             var cont = Contribution_from_idn(cont_word.idn);
             cont.build_dom(cont_word.txt);
             // var $cat_my = $categories[MONTY.IDN.CAT_MY];
-            locate_contribution_at_category_left_edge(categories.my.$cat, cont.$sup);
+            // locate_contribution_at_category_left_edge(categories.my.$cat, cont.$sup);
+            categories.my.insert_left(cont);
 
             // NOTE:  From this point on, the new contribution is in the DOM.
 
@@ -5508,56 +5587,16 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
         };
 
         contribution_lexi = ContributionsUnslump(categories);
-        // TODO:  Subclass Contribution, don't just add to it.
-        contribution_lexi.IDN.CONTRIBUTE = MONTY.IDN.CONTRIBUTE;
-        contribution_lexi.IDN.CAPTION = MONTY.IDN.CAPTION;
-        contribution_lexi.IDN.EDIT = MONTY.IDN.EDIT;
-        contribution_lexi.IDN.me = MONTY.me_idn;
-
-        contribution_lexi.notify = function alt_notifier(message) {
-            console.log(message);
-            // EXAMPLE:
-            //     1918. Yes Bob Stein may caption 1917, work of Bob Stein
-            //     1919. Nope Horatio won't edit 956, work of Bob Stein
-            //     1920. (Can't caption 1919)
-            //     1921. Nope Horatio won't drag to 1871 in their, 1849, work of Horatio
-            //          ...because only admin can recategorize like this.
-        };
-        looper(MONTY.w, function (_, word) {
-            contribution_lexi.word_pass(word);
-        });
-
-        contribution_lexi.assert_consistent();
-        // NOTE:  Early consistency check makes sure the .word_pass(MONTY.w) worked well.
-        //        It requires special exception because nothing is rendered yet,
-        //        and there are no .unrendered sections to count them.
-
-        console.log("contribution_lexi", contribution_lexi);
 
 
-
-        // /**
-        //  * Put the newly minted contribution elements in their category DOMs.
-        //  */
-        // looper(conts_in_cat, function (cat_idn, cont_idns) {
-        //     looper(cont_idns, function (_, cont_idn) {
-        //         $categories[cat_idn].append($sup_contributions[cont_idn]);
-        //     });
-        // });
-
-        /**
-         * Put the categories in the page DOM.
-         */
-        // looper(MONTY.cat.order, function (_, idn) {
-        //     $(window.document.body).append($sup_categories[idn]);
-        // });
         categories.loop(function (_, cat) {
             $(window.document.body).append(cat.$sup);
         });
 
 
 
-        // NOTE:  Now all contribution elements are in the DOM.
+        // NOTE:  Categories are now in the DOM.
+        //        Contribution objects are instantiated, but none are yet in the DOM.
         //        Everything below requires this.
         //        After this the Contribution constructor may be called.
 
@@ -5873,7 +5912,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
         that.$cat = $('<div>', {id: that.idn, class: 'category'});
         that.$cat.addClass('category-' + that.txt);
         that.$sup.append(that.$cat);
-        var $valve = valve({
+        that.valve = Valve({
             name: that.txt,
             is_initially_open: is_initially_open,
             on_open: function() {
@@ -5898,6 +5937,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                 }
             }
         });
+        var $valve = that.valve.$valve;
         $title.prepend($valve);   // triangles go BEFORE the heading text
 
         $valve.append(title);
@@ -5908,7 +5948,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
         $valve.append($how_many);   // (n) anti-valve goes AFTER the heading text
         // NOTE:  Number is clickable to expand also.
 
-        valve_control($valve, that.$cat, $how_many);
+        that.valve.control(that.$cat, $how_many);
         var $unrendered = $('<div>', {class: 'unrendered'});
         // NOTE:  Until show_unrendered_count() is called, this element's 'count' data
         //        will remain unspecified.
@@ -6109,7 +6149,6 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
         });
     }
 
-    // noinspection JSUnusedLocalSymbols
     /**
      * Report some malfeasance or kerfuffle to the server.
      */
@@ -6121,7 +6160,9 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
             txt: report,
             use_already: false
         }, function () {
-            console.log("Uploaded field-flub.");
+            console.error("Flub:", report);
+        }, function () {
+            console.error("FLUB NOT RECORDED:", report);
         });
     }
 
@@ -6177,39 +6218,51 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
     ///////////////////////////////////////////////
 
     /**
-     * Hide or show stuff.
-     *
-     * $valve = valve('foo') generates the DOM controls for a valve called 'foo'.
-     * Append $valve somewhere in the DOM tree.
-     * valve_control() identifies what the valve should show or hide
-     * when the user clicks the triangles.
-     *
-     * @param opt
-     * @return {jQuery}
+     * Clickable opener and closer.
+     * 
+     * 
+     * @param opt - {name, is_initially_open, on_open}
+     * @return {Valve}
+     * @constructor
      */
-    // TODO:  Valve() object.
-    function valve(opt) {
-        type_should_be(opt.name,'String');
-        opt.is_initially_open = opt.is_initially_open || false;
-        opt.on_open = opt.on_open || function () {};
+    function Valve(opt) {
+        var that = this;
+        if ( ! (that instanceof Valve)) {
+            return new Valve(opt);
+        }
+        that.opt = opt;
+        type_should_be(that.opt,'Object');
+        type_should_be(that.opt.name,'String');
+        type_should_be(that.opt.is_initially_open = that.opt.is_initially_open || false,'Boolean');
+        type_should_be(that.opt.on_open = that.opt.on_open || function () {}, 'Function');
 
-        var $valve = $('<span>', {id: id_valve(opt.name), class: 'valve'});
-        $valve.data('opt', opt);
+        that.build_dom();
+    }
+
+    Object.defineProperties(Valve.prototype, {
+        _id_valve_control:  { get: function () {return this.opt.name + '-valve';}},
+        _class_valved:      { get: function () {return this.opt.name + '-valved';}},
+        _class_anti_valved: { get: function () {return this.opt.name + '-anti-valved';}}
+    });
+
+    Valve.prototype.build_dom = function () {
+        var that = this;
+        that.$valve = $('<span>', {id: that._id_valve_control, class: 'valve'});
+        that.$valve.data('opt', that.opt);
         var $closer = $('<span>', {class: 'closer'}).text(UNICODE.BLACK_DOWN_POINTING_TRIANGLE);
         var $opener = $('<span>', {class: 'opener'}).text(UNICODE.BLACK_RIGHT_POINTING_TRIANGLE);
-        $valve.append($closer, $opener);
+        that.$valve.append($closer, $opener);
 
-        set_valve($valve, opt.is_initially_open);
+        that.set_openness(that.opt.is_initially_open);
         // NOTE:  Cannot toggle valve-hidden on "-valved" objects here,
         //        because they can't have been "controlled" yet.
 
-        $valve.on('click', function () {
-            var old_open = get_valve($valve);
+        that.$valve.on('click', function () {
+            var old_open = that.is_open();
             var new_open = ! old_open;
-            set_valve($valve, new_open);
+            that.set_openness(new_open);
             if (new_open) {
-                var opt = $valve.data('opt');
-                opt.on_open();
+                that.opt.on_open();
                 setTimeout(function () {
                     // NOTE:  Give contributions a chance to render.
                     initial_thumb_size_adjustment();
@@ -6219,17 +6272,29 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                 }, 1);
             }
         });
-        return $valve;
+    };
+
+    Valve.prototype.is_open = function () {
+        var that = this;
+        return ! that.$valve.hasClass('valve-closed');
+    };
+
+    Valve.prototype.set_openness = function (should_be_open) {
+        var that = this;
+        that.$valve.toggleClass('valve-opened',   should_be_open);
+        that.$valve.toggleClass('valve-closed', ! should_be_open);
+        $_from_class(that._class_valved     ).toggleClass('valve-hidden', ! should_be_open);
+        $_from_class(that._class_anti_valved).toggleClass('valve-hidden',   should_be_open);
     }
 
     /**
      * Identify what gets opened and closed when clicking on the valve triangles.
      *
-     * @param $valve - returned by valve()
      * @param $elements - what's visible when "open"
      * @param $anti_elements - what's visible when "closed"
      */
-    function valve_control($valve, $elements, $anti_elements) {
+    Valve.prototype.control = function ($elements, $anti_elements) {
+        var that = this;
         // TODO:  Pass these parameters as fields to valve() options.
         //        Big problem with that!  Currently, between valve() and  valve_control() call,
         //        The element returned by valve() must be appended into the DOM.
@@ -6239,26 +6304,97 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
         //        But maybe the solution to all this is to create an empty element and
         //        pass that TO valve() who then fills it in with triangles.
         //        Maybe the "name" (and its derivatives) can be inferred from that element's id.
-        var opt = $valve.data('opt');
-        $elements.addClass(opt.name + '-valved');
-        $anti_elements.addClass(opt.name + '-anti-valved');
-        var is_open = get_valve($valve);
+        $elements.addClass(that._class_valved);
+        $anti_elements.addClass(that._class_anti_valved);
+        var is_open = that.is_open();
         $elements.toggleClass('valve-hidden', ! is_open);
         $anti_elements.toggleClass('valve-hidden', is_open);
     }
-    function id_valve(name) {
-        return name + '-valve';
-    }
-    function get_valve($valve) {
-        return ! $valve.hasClass('valve-closed');
-    }
-    function set_valve($valve, should_be_open) {
-        var opt = $valve.data('opt');
-        $valve.toggleClass('valve-opened',   should_be_open);
-        $valve.toggleClass('valve-closed', ! should_be_open);
-        $_from_class(opt.name +      '-valved').toggleClass('valve-hidden', ! should_be_open);
-        $_from_class(opt.name + '-anti-valved').toggleClass('valve-hidden',   should_be_open);
-    }
+
+    // /**
+    //  * Hide or show stuff.
+    //  *
+    //  * $valve = valve('foo') generates the DOM controls for a valve called 'foo'.
+    //  * Append $valve somewhere in the DOM tree.
+    //  * valve_control() identifies what the valve should show or hide
+    //  * when the user clicks the triangles.
+    //  *
+    //  * @param opt
+    //  * @return {jQuery}
+    //  */
+    // // TODO:  Valve() object.
+    // function valve(opt) {
+    //     type_should_be(opt,'Object');
+    //     type_should_be(opt.name,'String');
+    //     opt.is_initially_open = opt.is_initially_open || false;
+    //     opt.on_open = opt.on_open || function () {};
+    //
+    //     var $valve = $('<span>', {id: id_valve(opt.name), class: 'valve'});
+    //     $valve.data('opt', opt);
+    //     var $closer = $('<span>', {class: 'closer'}).text(UNICODE.BLACK_DOWN_POINTING_TRIANGLE);
+    //     var $opener = $('<span>', {class: 'opener'}).text(UNICODE.BLACK_RIGHT_POINTING_TRIANGLE);
+    //     $valve.append($closer, $opener);
+    //
+    //     set_valve($valve, opt.is_initially_open);
+    //     // NOTE:  Cannot toggle valve-hidden on "-valved" objects here,
+    //     //        because they can't have been "controlled" yet.
+    //
+    //     $valve.on('click', function () {
+    //         var old_open = get_valve($valve);
+    //         var new_open = ! old_open;
+    //         set_valve($valve, new_open);
+    //         if (new_open) {
+    //             var opt = $valve.data('opt');
+    //             opt.on_open();
+    //             setTimeout(function () {
+    //                 // NOTE:  Give contributions a chance to render.
+    //                 initial_thumb_size_adjustment();
+    //                 resizer_nudge_all();
+    //                 // NOTE:  This may be the first time some contribution renderings become
+    //                 //        visible.  Can't size-adjust until they're visible.
+    //             }, 1);
+    //         }
+    //     });
+    //     return $valve;
+    // }
+    //
+    // /**
+    //  * Identify what gets opened and closed when clicking on the valve triangles.
+    //  *
+    //  * @param $valve - returned by valve()
+    //  * @param $elements - what's visible when "open"
+    //  * @param $anti_elements - what's visible when "closed"
+    //  */
+    // function valve_control($valve, $elements, $anti_elements) {
+    //     // TODO:  Pass these parameters as fields to valve() options.
+    //     //        Big problem with that!  Currently, between valve() and  valve_control() call,
+    //     //        The element returned by valve() must be appended into the DOM.
+    //     //        What breaks if that doesn't happen?  I forget...
+    //     //        Well it may be a problem that the valved and anti-valved elements cannot
+    //     //        be conveniently placed until the $valve element exists.
+    //     //        But maybe the solution to all this is to create an empty element and
+    //     //        pass that TO valve() who then fills it in with triangles.
+    //     //        Maybe the "name" (and its derivatives) can be inferred from that element's id.
+    //     var opt = $valve.data('opt');
+    //     $elements.addClass(opt.name + '-valved');
+    //     $anti_elements.addClass(opt.name + '-anti-valved');
+    //     var is_open = get_valve($valve);
+    //     $elements.toggleClass('valve-hidden', ! is_open);
+    //     $anti_elements.toggleClass('valve-hidden', is_open);
+    // }
+    // function id_valve(name) {
+    //     return name + '-valve';
+    // }
+    // function get_valve($valve) {
+    //     return ! $valve.hasClass('valve-closed');
+    // }
+    // function set_valve($valve, should_be_open) {
+    //     var opt = $valve.data('opt');
+    //     $valve.toggleClass('valve-opened',   should_be_open);
+    //     $valve.toggleClass('valve-closed', ! should_be_open);
+    //     $_from_class(opt.name +      '-valved').toggleClass('valve-hidden', ! should_be_open);
+    //     $_from_class(opt.name + '-anti-valved').toggleClass('valve-hidden',   should_be_open);
+    // }
 
 
 

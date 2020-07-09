@@ -1221,6 +1221,21 @@ class AuthFliki(Auth):
         else:
             return value
 
+    def convert_unslump_words(self, words):
+
+        def convert(word):
+            if word.vrb.idn == self.lex.IDN.UNSLUMP_OBSOLETE:
+                word_dict = word.to_json()
+                word_dict['vrb'] = self.lex.IDN.CONTRIBUTE
+                return word_dict
+                # NOTE:  Sneaky return of modified dict, instead of word.  But it's all the same
+                #        to json, which is where these words are all headed anyway.
+            else:
+                return word
+
+        converted_words = [convert(word) for word in words]
+        return converted_words
+
 
 def is_qiki_user_anonymous(user_word):
     # return isinstance(user_word, AnonymousQikiUser)
@@ -1267,6 +1282,8 @@ def set_then_url(then_url):
     flask.session['then_url'] = then_url
 
 
+# FALSE WARNING (several places):  Unresolved attribute reference 'name' for class 'str'
+# noinspection PyUnresolvedReferences
 @flask_app.route('/meta/login', methods=('GET', 'POST'))
 def login():
     setup_application_context()
@@ -1490,9 +1507,9 @@ class Parse(object):
 
     def __str__(self):
         return self.remains
-p = Parse("rethink")
-assert True is p.remove_prefix("re")
-assert "think" == p.remains
+parser = Parse("rethink")
+assert True is parser.remove_prefix("re")
+assert "think" == parser.remains
 
 
 class FlikiHTML(web_html.WebHTML):
@@ -1606,9 +1623,15 @@ def contribution_home(home_page_title):
                     auth.lex.IDN.CAPTION,
                     auth.lex.IDN.EDIT,
                 ]
+
                 words_for_js = auth.vetted_find_by_verbs(verbs)
+
+                words_for_js['w'] = auth.convert_unslump_words(words_for_js['w'])
                 cat_words = [{
                     'idn': idn,
+                    'sbj': auth.lex[idn].sbj.idn,
+                    'vrb': auth.lex[idn].vrb.idn,
+                    'obj': auth.lex[idn].obj.idn,
                     'txt': auth.lex[idn].txt,
                 } for idn in auth.get_category_idns_in_order()]
                 with foot.script() as script:
@@ -1978,283 +2001,283 @@ def url_from_question(question_text):
     # THANKS:  Absolute url, https://stackoverflow.com/q/12162634/673991#comment17401215_12162726
 
 
-@flask_app.route('/meta/all', methods=('GET', 'HEAD'))
-def legacy_meta_all():
-    # TODO:  verb filter checkboxes (show/hide each one, especially may want to hide "questions")
-
-    auth = AuthFliki()
-    if not auth.is_online:
-        return "meta offline"
-    if not auth.is_authenticated:
-        return auth.login_html()   # anonymous viewing not allowed, just show "login" link
-        # TODO:  Instead of rejecting all anonymous-user viewing,
-        #        maybe just omit anonymous-content.
-        #        That is, where sbj.lex.meta_word.txt == 'anonymous'
-
-    lex = auth.lex
-    browse_verb = lex[lex.IDN.BROWSE]
-
-    with FlikiHTML('html') as html:
-        html.header("Lex all")
-
-        with html.body(class_='target-environment') as body:
-            with body.p() as p:
-                p.raw_text(auth.login_html())
-
-            qc_start = lex.query_count
-            t_start = time.time()
-            words = lex.find_words()
-            t_find_words = time.time()
-            qc_find_words = lex.query_count
-
-            words = list(words)[ : ]
-            all_subjects = {word.sbj for word in words}
-
-
-
-            def limbo_idns():
-                for word in words:
-                    for sub_word in (word.sbj, word.vrb, word.obj):
-                        if sub_word.lex.__class__.__name__ == 'ListingLimbo':
-                            yield sub_word.idn
-
-            limbo_set = set(list(limbo_idns()))
-
-            with body.pre() as pre:
-                for limbo_idn in sorted(limbo_set):
-                    pre.text("Limbo {idn}\n".format(idn=limbo_idn))
-
-
-
-            lex_words = lex.find_words(txt='lex')
-            define_words = lex.find_words(txt='define')
-            listing_words = lex.find_words(txt='listing')
-            with body.pre() as pre:
-                if len(lex_words) != 1:
-                    for word in lex_words:
-                        pre.text("lex: {}\n".format(word.idn))
-                if len(define_words) != 1:
-                    for word in define_words:
-                        pre.text("define: {}\n".format(word.idn))
-                if len(listing_words) != 1:
-                    for word in listing_words:
-                        pre.text("listing: {}\n".format(word.idn))
-            # Could loop through and beknight words that either use the first lex & define
-            # or at that moment lex and define aren't defined yet
-            # then later the strings have to be consistent
-
-
-
-            def latest_iconifier_or_none(s):
-                iconifiers = lex.find_words(obj=s, vrb=lex.IDN.ICONIFY)
-                try:
-                    return iconifiers[-1]
-                except IndexError:
-                    return None
-
-            subject_icons_nones = {s: latest_iconifier_or_none(s) for s in all_subjects}
-            subject_icons = {s: i for s, i in subject_icons_nones.items() if i is not None}
-            # print("Subject icons", repr(subject_icons))
-            # EXAMPLE:  Subject icons {
-            #     Word('user'): Word(338),
-            #     Word(0q82_A7__8A059E058E6A6308C8B0_1D0B00): Word(864)
-            # }
-
-            def word_identification(w):
-                w_idn = w.idn.qstring()
-                if not w.idn.is_suffixed() and w.idn.is_whole():
-                    w_idn += " ({})".format(render_num(w.idn))
-                w_idn += " " + w.lex.__class__.__name__
-                return w_idn
-
-            def word_identification_text(w):
-                return "{idn}: {txt}".format(
-                    idn=word_identification(w),
-                    txt=safe_txt(w),
-                )
-
-            def show_sub_word(element, w, title_prefix="", **kwargs):
-                if w.obj == browse_verb:
-                    w_txt = "session #" + str(native_num(w.idn))
-                elif w.vrb is not None and w.vrb.obj == browse_verb:
-                    w_txt = "hit #" + str(native_num(w.idn))
-                else:
-                    w_txt = compress_txt(safe_txt(w))
-                return show_sub_word_txt(element, w, w_txt, title_prefix=title_prefix, **kwargs)
-
-            def show_sub_word_txt(element, w, w_txt, title_prefix="", a_href=None, **kwargs):
-                """Diagram a sbj, vrb, or obj."""
-                with element.span(**kwargs) as span_sub_word:
-                    if a_href is None:
-                        inner = span_sub_word
-                    else:
-                        inner = span_sub_word.a(
-                            href=a_href,
-                            target='_blank',
-                        )
-
-                    if w in subject_icons:
-                        inner.img(
-                            src=subject_icons[w].txt,
-                            title=title_prefix + word_identification_text(w)
-                        )
-                        # NOTE:  w.__class__.__name__ == 'WordDerivedJustForThisListing'
-                    else:
-                        classes = ['named']
-                        # if isinstance(w.lex, AnonymousQikiListing):
-                        if is_qiki_user_anonymous(w):
-                            classes.append('anonymous')
-                        elif w.idn == lex.IDN.LEX:
-                            classes.append('lex')
-                        with inner.span(classes=classes) as span_named:
-                            span_named(w_txt, title=title_prefix + word_identification(w))
-                    return span_sub_word
-
-            def quoted_compressed_txt(element, txt):
-                element.char_name('ldquo')
-                element.text(compress_txt(txt))
-                element.char_name('rdquo')
-
-            def show_iconify_obj(element, word, title_prefix=""):
-                show_sub_word(element, word.obj, class_='wrend obj vrb-iconify', title_prefix=title_prefix)
-                with element.span(class_='txt') as span_txt:
-                    span_txt.text(" ")
-                    span_txt.img(src=word.txt, title="txt = " + compress_txt(word.txt))
-
-            def show_question_obj(element, word, title_prefix=""):
-
-                if word.obj.txt == '':
-                    show_sub_word(element, word.obj, class_='wrend obj vrb-question', title_prefix=title_prefix)
-                else:
-                    show_sub_word(
-                        element,
-                        word.obj,
-                        class_='wrend obj vrb-question',
-                        title_prefix=title_prefix,
-                        a_href=url_from_question(word.obj.txt)
-                    )
-
-                if word.txt != '':   # When vrb=question_verb, txt was once the referrer.
-                    if word.txt == auth.current_url:
-                        element.span(" (here)", class_='referrer', title="was referred from here")
-                    elif word.txt == url_from_question(word.obj.txt):
-                        element.span(" (self)", class_='referrer', title="was referred from itself")
-                    else:
-                        # TODO:  Remove these crufty if-clauses,
-                        #        because the referrer url is now stored in the txt
-                        #        of a separate referrer_verb word that objectifies the hit
-                        element.text(" ")
-                        with element.a(
-                            href=word.txt,
-                            title="referrer",
-                            target='_blank',
-                        ) as a:
-                            a.span("(ref)", class_='referrer')
-
-            def show_num(element, word):
-                if word.num != qiki.Number(1):
-                    with element.span(class_='num', title="num = " + word.num.qstring()) as num_span:
-                        num_span.text(" ")
-                        num_span.char_name('times')
-                        num_span.text(render_num(word.num))
-
-            def show_txt(element, word):
-                if word.txt != '':
-                    if word.vrb == lex[lex.IDN.REFERRER]:
-                        if word.txt == url_from_question(word.obj.obj.txt):
-                            with element.span(class_='referrer', title="was referred from itself") as ref_span:
-                                ref_span.text(" (self)")
-                            return
-                        if word.txt == auth.current_url:
-                            with element.span(class_='referrer', title="was referred from here") as ref_span:
-                                ref_span.text(" (here)")
-                            return
-                    with element.span(class_='txt') as txt_span:
-                        txt_span.text(" ")
-                        quoted_compressed_txt(txt_span, word.txt)
-
-            body.comment(["My URL is", auth.current_url])
-            with body.ol(class_='lex-list') as ol:
-                last_whn = None
-                first_word = True
-                ago_lex = AgoLex()
-
-                t_loop = time.time()
-                t_words = list()
-
-                for word in words:
-                    if first_word:
-                        first_word = False
-                        delta = None
-                        extra_class = ''
-                    else:
-                        delta = DeltaTimeLex()[last_whn](u'differ')[word.whn]
-                        extra_class = ' delta-' + delta.units_long
-                    with ol.li(
-                        value=render_num(word.idn),   # the "bullet" of the list
-                        title="idn = " + word.idn.qstring(),
-                        class_='srend' + extra_class,
-                    ) as li:
-                        if delta is not None:
-                            units_class = delta.units_long
-                            if 0.0 < delta.num < 1.0:
-                                units_class = 'subsec'
-                            with li.span(class_='delta-triangle ' + units_class) as triangle:
-                                triangle(title=delta.description_long)
-                                triangle.text(UNICODE.BLACK_RIGHT_POINTING_TRIANGLE)
-                            with li.span(class_='delta-amount ' + units_class) as amount:
-                                amount.text(delta.amount_short + delta.units_short)
-
-                        show_sub_word(li, word.sbj, class_='wrend sbj', title_prefix= "sbj = ")
-
-                        show_sub_word(li, word.vrb, class_='wrend vrb', title_prefix="vrb = ")
-
-                        if word.vrb.txt == 'iconify':
-                            show_iconify_obj(li, word, title_prefix="obj = ")
-                        elif word.vrb == lex[lex.IDN.QUESTION_OBSOLETE]:
-                            show_question_obj(li, word, title_prefix="obj = ")
-                        elif word.vrb.obj == browse_verb:
-                            show_question_obj(li, word, title_prefix="obj = ")
-                        else:
-                            show_sub_word(li, word.obj, class_='wrend obj', title_prefix="obj = ")
-                            show_num(li, word)
-                            show_txt(li, word)
-
-                        li.span(" ")
-                        ago = ago_lex.describe(word.whn)
-                        with li.span(
-                            title="whn = " + ago.description_longer,   # e.g. "34.9 hours ago: 2019.0604.0459.02"
-                            class_='whn ' + ago.units_long,       # e.g. "hours"
-                        ) as whn_span:
-                            whn_span.text(ago.description_short)       # e.g. "35h"
-                        last_whn = word.whn
-
-                    t_now = time.time()
-                    t_elapsed = t_now - t_loop
-                    t_loop = t_now
-                    t_words.append(t_elapsed)
-
-            body.footer()
-
-    qc_loop = lex.query_count
-
-    print(
-        "ALL TIMING "
-        "find {qc_find}:{t_find:.3f}, "
-        "{n}*loop {qc_loop} : {t_min:.3f} / {t_max:.3f} / {t_avg:.3f}, "
-        "total {t_total:.3f}".format(
-            qc_find=qc_find_words - qc_start,
-            t_find=t_find_words - t_start,
-            qc_loop=qc_loop - qc_find_words,
-            t_min=min(t_words),
-            t_max=max(t_words),
-            t_avg=sum(t_words)/len(t_words),
-            t_total=t_loop - t_start,
-            n=len(words),
-        )
-    )
-
-    return html.doctype_plus_html()
+# @flask_app.route('/meta/all', methods=('GET', 'HEAD'))
+# def legacy_meta_all():
+#     # TODO:  verb filter checkboxes (show/hide each one, especially may want to hide "questions")
+#
+#     auth = AuthFliki()
+#     if not auth.is_online:
+#         return "meta offline"
+#     if not auth.is_authenticated:
+#         return auth.login_html()   # anonymous viewing not allowed, just show "login" link
+#         # TODO:  Instead of rejecting all anonymous-user viewing,
+#         #        maybe just omit anonymous-content.
+#         #        That is, where sbj.lex.meta_word.txt == 'anonymous'
+#
+#     lex = auth.lex
+#     browse_verb = lex[lex.IDN.BROWSE]
+#
+#     with FlikiHTML('html') as html:
+#         html.header("Lex all")
+#
+#         with html.body(class_='target-environment') as body:
+#             with body.p() as p:
+#                 p.raw_text(auth.login_html())
+#
+#             qc_start = lex.query_count
+#             t_start = time.time()
+#             words = lex.find_words()
+#             t_find_words = time.time()
+#             qc_find_words = lex.query_count
+#
+#             words = list(words)[ : ]
+#             all_subjects = {word.sbj for word in words}
+#
+#
+#
+#             def limbo_idns():
+#                 for word in words:
+#                     for sub_word in (word.sbj, word.vrb, word.obj):
+#                         if sub_word.lex.__class__.__name__ == 'ListingLimbo':
+#                             yield sub_word.idn
+#
+#             limbo_set = set(list(limbo_idns()))
+#
+#             with body.pre() as pre:
+#                 for limbo_idn in sorted(limbo_set):
+#                     pre.text("Limbo {idn}\n".format(idn=limbo_idn))
+#
+#
+#
+#             lex_words = lex.find_words(txt='lex')
+#             define_words = lex.find_words(txt='define')
+#             listing_words = lex.find_words(txt='listing')
+#             with body.pre() as pre:
+#                 if len(lex_words) != 1:
+#                     for word in lex_words:
+#                         pre.text("lex: {}\n".format(word.idn))
+#                 if len(define_words) != 1:
+#                     for word in define_words:
+#                         pre.text("define: {}\n".format(word.idn))
+#                 if len(listing_words) != 1:
+#                     for word in listing_words:
+#                         pre.text("listing: {}\n".format(word.idn))
+#             # Could loop through and beknight words that either use the first lex & define
+#             # or at that moment lex and define aren't defined yet
+#             # then later the strings have to be consistent
+#
+#
+#
+#             def latest_iconifier_or_none(s):
+#                 iconifiers = lex.find_words(obj=s, vrb=lex.IDN.ICONIFY)
+#                 try:
+#                     return iconifiers[-1]
+#                 except IndexError:
+#                     return None
+#
+#             subject_icons_nones = {s: latest_iconifier_or_none(s) for s in all_subjects}
+#             subject_icons = {s: i for s, i in subject_icons_nones.items() if i is not None}
+#             # print("Subject icons", repr(subject_icons))
+#             # EXAMPLE:  Subject icons {
+#             #     Word('user'): Word(338),
+#             #     Word(0q82_A7__8A059E058E6A6308C8B0_1D0B00): Word(864)
+#             # }
+#
+#             def word_identification(w):
+#                 w_idn = w.idn.qstring()
+#                 if not w.idn.is_suffixed() and w.idn.is_whole():
+#                     w_idn += " ({})".format(render_num(w.idn))
+#                 w_idn += " " + w.lex.__class__.__name__
+#                 return w_idn
+#
+#             def word_identification_text(w):
+#                 return "{idn}: {txt}".format(
+#                     idn=word_identification(w),
+#                     txt=safe_txt(w),
+#                 )
+#
+#             def show_sub_word(element, w, title_prefix="", **kwargs):
+#                 if w.obj == browse_verb:
+#                     w_txt = "session #" + str(native_num(w.idn))
+#                 elif w.vrb is not None and w.vrb.obj == browse_verb:
+#                     w_txt = "hit #" + str(native_num(w.idn))
+#                 else:
+#                     w_txt = compress_txt(safe_txt(w))
+#                 return show_sub_word_txt(element, w, w_txt, title_prefix=title_prefix, **kwargs)
+#
+#             def show_sub_word_txt(element, w, w_txt, title_prefix="", a_href=None, **kwargs):
+#                 """Diagram a sbj, vrb, or obj."""
+#                 with element.span(**kwargs) as span_sub_word:
+#                     if a_href is None:
+#                         inner = span_sub_word
+#                     else:
+#                         inner = span_sub_word.a(
+#                             href=a_href,
+#                             target='_blank',
+#                         )
+#
+#                     if w in subject_icons:
+#                         inner.img(
+#                             src=subject_icons[w].txt,
+#                             title=title_prefix + word_identification_text(w)
+#                         )
+#                         # NOTE:  w.__class__.__name__ == 'WordDerivedJustForThisListing'
+#                     else:
+#                         classes = ['named']
+#                         # if isinstance(w.lex, AnonymousQikiListing):
+#                         if is_qiki_user_anonymous(w):
+#                             classes.append('anonymous')
+#                         elif w.idn == lex.IDN.LEX:
+#                             classes.append('lex')
+#                         with inner.span(classes=classes) as span_named:
+#                             span_named(w_txt, title=title_prefix + word_identification(w))
+#                     return span_sub_word
+#
+#             def quoted_compressed_txt(element, txt):
+#                 element.char_name('ldquo')
+#                 element.text(compress_txt(txt))
+#                 element.char_name('rdquo')
+#
+#             def show_iconify_obj(element, word, title_prefix=""):
+#                 show_sub_word(element, word.obj, class_='wrend obj vrb-iconify', title_prefix=title_prefix)
+#                 with element.span(class_='txt') as span_txt:
+#                     span_txt.text(" ")
+#                     span_txt.img(src=word.txt, title="txt = " + compress_txt(word.txt))
+#
+#             def show_question_obj(element, word, title_prefix=""):
+#
+#                 if word.obj.txt == '':
+#                     show_sub_word(element, word.obj, class_='wrend obj vrb-question', title_prefix=title_prefix)
+#                 else:
+#                     show_sub_word(
+#                         element,
+#                         word.obj,
+#                         class_='wrend obj vrb-question',
+#                         title_prefix=title_prefix,
+#                         a_href=url_from_question(word.obj.txt)
+#                     )
+#
+#                 if word.txt != '':   # When vrb=question_verb, txt was once the referrer.
+#                     if word.txt == auth.current_url:
+#                         element.span(" (here)", class_='referrer', title="was referred from here")
+#                     elif word.txt == url_from_question(word.obj.txt):
+#                         element.span(" (self)", class_='referrer', title="was referred from itself")
+#                     else:
+#                         # TODO:  Remove these crufty if-clauses,
+#                         #        because the referrer url is now stored in the txt
+#                         #        of a separate referrer_verb word that objectifies the hit
+#                         element.text(" ")
+#                         with element.a(
+#                             href=word.txt,
+#                             title="referrer",
+#                             target='_blank',
+#                         ) as a:
+#                             a.span("(ref)", class_='referrer')
+#
+#             def show_num(element, word):
+#                 if word.num != qiki.Number(1):
+#                     with element.span(class_='num', title="num = " + word.num.qstring()) as num_span:
+#                         num_span.text(" ")
+#                         num_span.char_name('times')
+#                         num_span.text(render_num(word.num))
+#
+#             def show_txt(element, word):
+#                 if word.txt != '':
+#                     if word.vrb == lex[lex.IDN.REFERRER]:
+#                         if word.txt == url_from_question(word.obj.obj.txt):
+#                             with element.span(class_='referrer', title="was referred from itself") as ref_span:
+#                                 ref_span.text(" (self)")
+#                             return
+#                         if word.txt == auth.current_url:
+#                             with element.span(class_='referrer', title="was referred from here") as ref_span:
+#                                 ref_span.text(" (here)")
+#                             return
+#                     with element.span(class_='txt') as txt_span:
+#                         txt_span.text(" ")
+#                         quoted_compressed_txt(txt_span, word.txt)
+#
+#             body.comment(["My URL is", auth.current_url])
+#             with body.ol(class_='lex-list') as ol:
+#                 last_whn = None
+#                 first_word = True
+#                 ago_lex = AgoLex()
+#
+#                 t_loop = time.time()
+#                 t_words = list()
+#
+#                 for word in words:
+#                     if first_word:
+#                         first_word = False
+#                         delta = None
+#                         extra_class = ''
+#                     else:
+#                         delta = DeltaTimeLex()[last_whn](u'differ')[word.whn]
+#                         extra_class = ' delta-' + delta.units_long
+#                     with ol.li(
+#                         value=render_num(word.idn),   # the "bullet" of the list
+#                         title="idn = " + word.idn.qstring(),
+#                         class_='srend' + extra_class,
+#                     ) as li:
+#                         if delta is not None:
+#                             units_class = delta.units_long
+#                             if 0.0 < delta.num < 1.0:
+#                                 units_class = 'subsec'
+#                             with li.span(class_='delta-triangle ' + units_class) as triangle:
+#                                 triangle(title=delta.description_long)
+#                                 triangle.text(UNICODE.BLACK_RIGHT_POINTING_TRIANGLE)
+#                             with li.span(class_='delta-amount ' + units_class) as amount:
+#                                 amount.text(delta.amount_short + delta.units_short)
+#
+#                         show_sub_word(li, word.sbj, class_='wrend sbj', title_prefix= "sbj = ")
+#
+#                         show_sub_word(li, word.vrb, class_='wrend vrb', title_prefix="vrb = ")
+#
+#                         if word.vrb.txt == 'iconify':
+#                             show_iconify_obj(li, word, title_prefix="obj = ")
+#                         elif word.vrb == lex[lex.IDN.QUESTION_OBSOLETE]:
+#                             show_question_obj(li, word, title_prefix="obj = ")
+#                         elif word.vrb.obj == browse_verb:
+#                             show_question_obj(li, word, title_prefix="obj = ")
+#                         else:
+#                             show_sub_word(li, word.obj, class_='wrend obj', title_prefix="obj = ")
+#                             show_num(li, word)
+#                             show_txt(li, word)
+#
+#                         li.span(" ")
+#                         ago = ago_lex.describe(word.whn)
+#                         with li.span(
+#                             title="whn = " + ago.description_longer,   # e.g. "34.9 hours ago: 2019.0604.0459.02"
+#                             class_='whn ' + ago.units_long,       # e.g. "hours"
+#                         ) as whn_span:
+#                             whn_span.text(ago.description_short)       # e.g. "35h"
+#                         last_whn = word.whn
+#
+#                     t_now = time.time()
+#                     t_elapsed = t_now - t_loop
+#                     t_loop = t_now
+#                     t_words.append(t_elapsed)
+#
+#             body.footer()
+#
+#     qc_loop = lex.query_count
+#
+#     print(
+#         "ALL TIMING "
+#         "find {qc_find}:{t_find:.3f}, "
+#         "{n}*loop {qc_loop} : {t_min:.3f} / {t_max:.3f} / {t_avg:.3f}, "
+#         "total {t_total:.3f}".format(
+#             qc_find=qc_find_words - qc_start,
+#             t_find=t_find_words - t_start,
+#             qc_loop=qc_loop - qc_find_words,
+#             t_min=min(t_words),
+#             t_max=max(t_words),
+#             t_avg=sum(t_words)/len(t_words),
+#             t_total=t_loop - t_start,
+#             n=len(words),
+#         )
+#     )
+#
+#     return html.doctype_plus_html()
 
 
 MAX_TXT_LITERAL = 120
