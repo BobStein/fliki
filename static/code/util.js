@@ -22,25 +22,17 @@ function assert_equal(expected, actual, context) {
 assert_equal(true, assert_equal(4, 2+2));
 
 /**
- * Type declaration.  Subtypes okay.
+ * Type declaration.  Subtypes okay.  Null or undefined are not ok.
  *
  * See type_name() and official_type_name() for terminology.  Capitalize.
  *
  * @param parameter
- * @param expected_type - e.g. 'String', 'Function', 'Null', 'Undefined',
- *                                                  'Undecided', 'Unwilling', 'Unmotivated', ...
- * @return {boolean} - support chaining:  type_should_be(a, x) && type_should_be(a.b, y)
+ * @param expected_type - e.g. String, Number, Array, Object, Function, MyClass, BaseClass
+ * @return {boolean} - to support chaining:  type_should_be(a, X) && type_should_be(a.b, Y)
  */
 function type_should_be(parameter, expected_type) {
     if (expected_type instanceof Function) {
-        var ok = (
-            is_specified(parameter) &&
-            (
-                       parameter  instanceof expected_type ||
-                Object(parameter) instanceof expected_type
-            )
-        );
-        if (ok) {
+        if (is_specified(parameter) && Object(parameter) instanceof expected_type) {
             return true;
         } else {
             console.error(

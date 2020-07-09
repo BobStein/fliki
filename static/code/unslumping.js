@@ -557,7 +557,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
 
         settle_down();
 
-        bot = Bot();
+        bot = new Bot();
         js_for_unslumping.bot = bot;
         // NOTE:  Must happen after Bot.prototype.ticker_interval_ms has been set.
         //        I.e. it must be immune to the issue that function declarations are hoisted
@@ -681,9 +681,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
      */
     function Bot() {
         var that = this;
-        if ( ! (that instanceof Bot)) {
-            return new Bot();
-        }
+        type_should_be(that, Bot)
         // THANKS:  Automatic 'new', https://stackoverflow.com/a/383503/673991
 
         // THANKS:  that = this, https://alistapart.com/article/getoutbindingsituations/#snippet26
@@ -5958,7 +5956,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
         that.$cat = $('<div>', {id: that.idn, class: 'category'});
         that.$cat.addClass('category-' + that.txt);
         that.$sup.append(that.$cat);
-        that.valve = Valve({
+        that.valve = new Valve({
             name: that.txt,
             is_initially_open: is_initially_open,
             on_open: function() {
@@ -6222,9 +6220,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
      */
     function Valve(opt) {
         var that = this;
-        if ( ! (that instanceof Valve)) {
-            return new Valve(opt);
-        }
+        type_should_be(that, Valve);
         that.opt = opt;
         type_should_be(that.opt, Object);
         type_should_be(that.opt.name, String);

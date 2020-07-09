@@ -30,7 +30,7 @@ function Category(idn) {
     type_should_be(that, Category);
     type_should_be(idn, Number);
     that.idn = idn;
-    that.cont_sequence = IdnSequence();
+    that.cont_sequence = new IdnSequence();
 }
 
 // noinspection JSUnusedGlobalSymbols
@@ -168,7 +168,7 @@ function CategoryLexi(word_class) {
     var that = this;
     type_should_be(that, CategoryLexi);
     Lexi.call(that, word_class);
-    that.cat_idns = IdnSequence();
+    that.cat_idns = new IdnSequence();
     that.define_some_IDNS({
         LEX: null,
         DEFINE: null,
@@ -674,9 +674,7 @@ ContributionLexi.prototype.is_admin = function ContributionLexi_is_admin(_user_i
  */
 function IdnSequence() {
     var that = this;
-    if ( ! (that instanceof IdnSequence)) {
-        return new IdnSequence();
-    }
+    type_should_be(that, IdnSequence);
     that._sequence = [];   // array of idns
     that.fence_post_right = null;
 }
