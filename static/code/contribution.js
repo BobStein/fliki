@@ -27,10 +27,8 @@
  */
 function Category(idn) {
     var that = this;
-    if ( ! (that instanceof Category)) {
-        return new Category(idn);
-    }
-    type_should_be(idn, 'Number');
+    type_should_be(that, Category);
+    type_should_be(idn, Number);
     that.idn = idn;
     that.cont_sequence = IdnSequence();
 }
@@ -59,11 +57,8 @@ Category.prototype.destructor = function Category_destructor() {
  */
 function Contribution(idn) {
     var that = this;
-    if ( ! (that instanceof Contribution)) {
-        return new Contribution(idn);
-    }
-    // THANKS:  Automatic 'new', https://stackoverflow.com/a/383503/673991
-    type_should_be(idn, 'Number');
+    type_should_be(that, Contribution);
+    type_should_be(idn, Number);
     that.idn = idn;
 }
 
@@ -76,9 +71,8 @@ function Contribution(idn) {
  */
 function Caption(idn) {
     var that = this;
-    if ( ! (that instanceof Caption)) {
-        return new Caption(idn);
-    }
+    type_should_be(that, Caption);
+    type_should_be(idn, Number);
     that.idn = idn;
     that.txt = "";
     that.owner = null;
@@ -99,9 +93,7 @@ function Caption(idn) {
  */
 function Lexi(word_class) {
     var that = this;
-    if ( ! (that instanceof Lexi)) {
-        return new Lexi(word_class);
-    }
+    type_should_be(that, Lexi);
     that.word_class = word_class;
     that._word_from_idn = {};
     that.IDN = {};
@@ -144,7 +136,7 @@ Lexi.prototype.add = function Lexi_add(idn) {
     if (that.has(idn)) {
         console.error(type_name(that), "already added", idn);
     } else {
-        var word_gets_instantiated_here = that.word_class(idn);
+        var word_gets_instantiated_here = new that.word_class(idn);
         that._word_from_idn[idn] = word_gets_instantiated_here;
     }
     return that._word_from_idn[idn];
@@ -174,9 +166,7 @@ Lexi.prototype.loop = function Lexi_loop(callback) {
  */
 function CategoryLexi(word_class) {
     var that = this;
-    if ( ! (that instanceof CategoryLexi)) {
-        return new CategoryLexi(word_class);
-    }
+    type_should_be(that, CategoryLexi);
     Lexi.call(that, word_class);
     that.cat_idns = IdnSequence();
     that.define_some_IDNS({
@@ -240,9 +230,7 @@ CategoryLexi.prototype.starting_cat = function CategoryLexi_starting_cat(_word_)
  */
 function ContributionLexi(word_class, category_lexi) {
     var that = this;
-    if ( ! (that instanceof ContributionLexi)) {
-        return new ContributionLexi(word_class, category_lexi);
-    }
+    type_should_be(that, ContributionLexi);
     Lexi.call(that, word_class);
     that.category_lexi = category_lexi;
     that.define_some_IDNS({
@@ -355,7 +343,7 @@ ContributionLexi.prototype.word_pass = function ContributionLexi_word_pass(word)
                 old_capt_owner = cont.owner;
             }
             if (that.is_authorized(word, old_capt_owner, "caption")) {
-                cont.capt = Caption(new_capt_idn);
+                cont.capt = new Caption(new_capt_idn);
                 cont.capt.txt = new_capt_txt;
                 cont.capt.owner = new_capt_owner;
             }

@@ -44,10 +44,11 @@
  * @property {function} yt_player.stopVideo
  */
 function embed_content_js(window, $, MONTY) {
-    type_should_be(window, 'Window');
-    type_should_be($, 'Function');
-    type_should_be($(), 'jQuery');
-    type_should_be(MONTY, 'Object');
+    type_should_be(window, Window);
+    type_should_be($, Function);
+    type_should_be($(), $);
+    type_should_be($().jquery, String);
+    type_should_be(MONTY, Object);
     // TODO:  Assert window and MONTY are not null without generating mfing
     //        PyCharm warnings from the eager beaver type nazi.
 
@@ -276,7 +277,7 @@ function embed_content_js(window, $, MONTY) {
             case 'un-pop-up':
                 if (is_dynamic) {
                     if (is_yt_player_ready) {
-                        type_should_be(yt_player.pauseVideo, 'Function');
+                        type_should_be(yt_player.pauseVideo, Function);
                         var youtube_state = yt_player.getPlayerState();
                         console.log("UN POP UP, youtube state", youtube_state);
                         if (quitable_state(youtube_state)) {
@@ -325,7 +326,7 @@ function embed_content_js(window, $, MONTY) {
                 break;
             case 'pause':
                 if (is_yt_player_ready) {
-                    type_should_be(yt_player.pauseVideo, 'Function');
+                    type_should_be(yt_player.pauseVideo, Function);
                     yt_player.pauseVideo();
                 } else if (is_auto_play) {
                     // NOTE:  Static media popup, or YouTube iFrame API failure
@@ -341,7 +342,7 @@ function embed_content_js(window, $, MONTY) {
                 break;
             case 'resume':
                 if (is_yt_player_ready) {
-                    type_should_be(yt_player.pauseVideo, 'Function');
+                    type_should_be(yt_player.pauseVideo, Function);
                     yt_player.playVideo();
                 } else if (is_auto_play) {
                     // TODO:  Why if is_auto_play?
@@ -380,7 +381,7 @@ function embed_content_js(window, $, MONTY) {
     var NO_YOUTUBE_STATE = -999;
 
     function name_from_code(state_code) {
-        type_should_be(state_code, 'Number');
+        type_should_be(state_code, Number);
         switch (state_code) {
         case window.YT.PlayerState.UNSTARTED: return "UNSTARTED";
         case window.YT.PlayerState.ENDED:     return "ENDED";
@@ -419,7 +420,7 @@ function embed_content_js(window, $, MONTY) {
         console.assert($('#youtube_iframe').length === 1);
         var first_state_change = true;
         var previous_state = NO_YOUTUBE_STATE;
-        type_should_be(window.YT.Player, 'Function');
+        type_should_be(window.YT.Player, Function);
         // FALSE WARNING:  Unused property onStateChange
         // noinspection JSUnusedGlobalSymbols
         yt_player = new window.YT.Player('youtube_iframe', {
@@ -428,7 +429,7 @@ function embed_content_js(window, $, MONTY) {
                     is_yt_player_ready = true;
                     if (is_auto_play) {
                         t.moment("yt-play");
-                        type_should_be(yt_player.playVideo, 'Function');
+                        type_should_be(yt_player.playVideo, Function);
                         // NOTE:  This checks for a problem that was possibly caused by
                         //        calling dynamic_player() twice.
                         //        (From a botched fix for the ASS-OS bug.)
@@ -823,8 +824,8 @@ function embed_content_js(window, $, MONTY) {
     }
 
     embed_content_js.youtube_iframe_api_ready = function () {
-        type_should_be(_youtube_iframe_api_when_ready, 'Function');
-        type_should_be(window.YT.Player, 'Function');
+        type_should_be(_youtube_iframe_api_when_ready, Function);
+        type_should_be(window.YT.Player, Function);
         _youtube_iframe_api_when_ready();
     };
 }

@@ -109,10 +109,12 @@
  * @property js_for_unslumping.utter - so JS console has access to SpeechSynthesisUtterance object
  */
 function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
-    type_should_be(window, 'Window');
-    type_should_be($, 'Function');
-    type_should_be($(), 'jQuery');
-    type_should_be(MONTY, 'Object');
+    type_should_be(window, Window);
+    type_should_be($, Function);
+    type_should_be($(), $);
+    type_should_be($().jquery, String);
+    type_should_be(qoolbar, Object);
+    type_should_be(MONTY, Object);
 
     var DO_LONG_PRESS_EDIT = false;
     // NOTE:  Long press seems like too easy a way to trigger an edit.
@@ -418,7 +420,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
         pop_speech_synthesis_init();
         qoolbar.ajax_url(MONTY.AJAX_URL);
 
-        categories = CategoriesUnslump();
+        category_instantiation();
 
         build_body_dom();
 
@@ -795,7 +797,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
 
     Bot.prototype.assert_state_is = function Bot_assert_state_is(states, context) {
         var that = this;
-        type_should_be(states, 'Array') && console.assert(that.is_state(states[0]));
+        type_should_be(states, Array) && console.assert(that.is_state(states[0]));
         if (has(states, that.state)) {
             return true;
         } else {
@@ -930,7 +932,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                 break;
             }
             var idn_string = list_play_bot[index_play_bot];
-            that.cont = Contribution_from_idn(idn_string);
+            that.cont = Contribution.from_idn(idn_string);
             if ( ! that.cont.is_dom_rendered()) {
                 console.log("unrendered contribution", that.cont.idn);
             }
@@ -1432,9 +1434,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
      */
     function CategoriesUnslump() {
         var that = this;
-        if ( ! (that instanceof CategoriesUnslump)) {
-            return new CategoriesUnslump();
-        }
+        type_should_be(that, CategoriesUnslump);
         CategoryLexi.call(that, Category);
 
         that.define_some_IDNS({
@@ -1479,6 +1479,33 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
         }
     }
 
+    function category_instantiation() {
+        categories = new CategoriesUnslump();
+
+        categories.loop(function (_, cat) {
+            cat.thumb_specs = {
+                for_width: WIDTH_MAX_EM,
+                for_height: HEIGHT_MAX_EM
+            };
+        });
+        // TODO:  .thumb_specs should be set in a Category subclass constructor.
+        categories.about.thumb_specs = {
+            for_width: WIDTH_MAX_EM_ABOUT,
+            for_height: HEIGHT_MAX_EM_ABOUT
+        };
+    }
+
+    function category_rendering() {
+        categories.my   .build_dom(me_title(),  true);
+        categories.their.build_dom("others",    true);
+        categories.anon .build_dom("anonymous", false);
+        categories.trash.build_dom("trash",     false);
+        categories.about.build_dom("about",     false);
+        // TODO:  Live category titles should not be buried in code like this.
+
+        categories.my.$sup.addClass('sup-category-first');
+    }
+
     /**
      * //// ContributionsUnslump ////
      *
@@ -1487,9 +1514,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
      */
     function ContributionsUnslump(category_lexi) {
         var that = this;
-        if ( ! (that instanceof ContributionsUnslump)) {
-            return new ContributionsUnslump(category_lexi);
-        }
+        type_should_be(that, ContributionsUnslump);
         ContributionLexi.call(that, Contribution, category_lexi);
         // TODO:  Subclass Contribution too, don't just add to it.
 
@@ -1499,7 +1524,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
             EDIT: MONTY.IDN.EDIT,
             me: MONTY.me_idn
         });
-        that.notify = console.log.bind(console);   // should come before .word_pass() calls
+        // that.notify = console.log.bind(console);   // should come before .word_pass() calls
         // EXAMPLE:
         //     1918. Yes Bob Stein may caption 1917, work of Bob Stein
         //     1919. Nope Horatio won't edit 956, work of Bob Stein
@@ -1565,7 +1590,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
     };
 
     /**
-     * Affirm that Categories and Contributions agree on which contain which.
+     * Affirm that Categories and Contributions agree on who contains whom.
      */
     ContributionsUnslump.prototype.assert_consistent = function ContributionsUnslump_assert_consistent() {
         var that = this;
@@ -1653,8 +1678,8 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                     var rendered_idn = parseInt(rendered_idn_string);
                     rendered_idn_strings.push(rendered_idn_string);
                     var cont_by_data = $sup.data('contribution-object');
-                    var cont_by_idn = Contribution_from_idn(rendered_idn);
-                    var cont_by_element = Contribution_from_element($sup);
+                    var cont_by_idn = Contribution.from_idn(rendered_idn);
+                    var cont_by_element = Contribution.from_element($sup);
 
                     assert_equal(cont_by_data, cont_by_idn) &&
                     assert_equal(cont_by_data, cont_by_element) &&
@@ -1740,107 +1765,26 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
         }
     }
 
-    function mouse_wheel_handler(evt) {
-        if (evt.originalEvent.ctrlKey) {
-            console.log("Mouse wheel", evt.originalEvent.deltaY);
-            // -100 for up (zoom in)
-            // +100 for down (zoom out)
-
-            // evt.preventDefault();
-            // EXAMPLE:  error message when trying to evt.preventDefault():
-            //           jquery.js:5575 [Intervention] Unable to preventDefault
-            //           inside passive event listener due to target being treated as passive.
-            //           See https://www.chromestatus.com/features/6662647093133312
-            // SEE:  addEventListener passive false, https://stackoverflow.com/a/55673572/673991
-            // SEE:  passive event listeners, https://stackoverflow.com/a/39187679/673991
-            // SEE:  passive events, https://stackoverflow.com/a/44339214/673991
-        }
-    }
-
-    function Contribution_from_idn(idn) {
-        type_should_be(idn, 'Number');
-        return contribution_lexi.get(idn);
-    }
-
     /**
-     * Construct a Contribution from any element inside it.
-     *
-     * @param element_or_selector - e.g. '#1821' or $('.pop-up')
-     * @return {Contribution}
+     * //// Category - unslumping.org
+     * @param element_or_selector
+     * @return {null|Category}
+     * @constructor - sorta - subclass should go here
      */
-    // idn (always a decimal integer
-    //        string in JavaScript, akin to the qiki.Number idn of a qiki.Word in Python)
-    //        and an id_attribute (which may be an idn or a prefixed idn, e.g. 'popup_1821')
-    //        Maybe cont.$sup.data('idn') should store a reliable idn, and cont.$sup.attr('id')
-    //        should be prefixed.  Because hogging all the decimal integer ids for idns is priggish.
-    function Contribution_from_element(element_or_selector) {
-        var $sup = $(element_or_selector).closest('.sup-contribution');
-        if ($sup.length === 1) {
-            var cont = $sup.data('contribution-object');
-            console.assert(cont.$sup.is($sup), cont.$sup, $sup);
-            return cont;   // which could be undefined
-        } else {
-            return null;
-        }
-        // var $cont = $sup.find('.contribution');
-        // var idn_string = $cont.attr('id');
-        // var idn = parseInt(idn_string);
-        // return Contribution_from_idn(idn);
-    }
-
-    Contribution.prototype.Event = {
-        SPEECH_PLAY: 'SPEECH_PLAY',     // speechSynthesis.speak() was just called
-        SPEECH_START: 'SPEECH_START',   // SpeechSynthesisUtterance 'start' event
-        SPEECH_END: 'SPEECH_END',       // SpeechSynthesisUtterance 'end' event
-        MEDIA_INIT: 'MEDIA_INIT',       // e.g. youtube started playing
-        MEDIA_ERROR: 'MEDIA_ERROR',     // e.g. noembed error
-        MEDIA_BEGUN: 'MEDIA_BEGUN',     // e.g. youtube auto-play started
-        MEDIA_WOKE: 'MEDIA_WOKE',       // e.g. youtube auto-play first state-change TODO:  Use or lose?
-        MEDIA_PAUSED: 'MEDIA_PAUSED',   // e.g. youtube auto-play paused
-        // MEDIA_PLAYING: 'MEDIA_PLAYING', // e.g. youtube auto-play playing
-        // MEDIA_RESUME: 'MEDIA_RESUME',   // e.g. youtube auto-play resume
-        MEDIA_ENDED: 'MEDIA_ENDED',     // e.g. youtube auto-play played to the end
-        MEDIA_STATIC: 'MEDIA_STATIC'    // e.g. flickr, not going to play, timed display
-    };
-    // TODO:  Should Event be an Enumerate()?  If so we need to add .name a buncha places, e.g.
-    //            that.$sup.trigger(that.Event.MEDIA_BEGUN);
-    //            that.$sup.trigger(that.Event.MEDIA_BEGUN.name);
-    //            that.Event.MEDIA_BEGUN.trigger(data);   (oops `that` doesn't propagate to .trigger()'s `this`)
-    //            that.trigger_event(that.Event.MEDIA_BEGUN, data);
-    //        or
-    //            that.pop_cont.$sup.on(that.pop_cont.Event.MEDIA_INIT, function (_, data) { ... } );
-    //            that.pop_cont.$sup.on(that.pop_cont.Event.MEDIA_INIT.name, function (_, data) { ... } );
-    //            that.pop_cont.Event.MEDIA_INIT.on(function (data) { ... } );   (oops)
-    //            that.pop_cont.on_event(that.pop_cont.Event.MEDIA_INIT, function (data) { ... } );
-    //            that.pop_cont.on_event(E.MEDIA_INIT, function (data) { ... } );
-    //            that.on_event(E.MEDIA_INIT, function (data) { ... } );
-    //            E(that.pop_cont.Event.MEDIA_INIT, function (data) { ... } );
-    //            that.pop_cont.off_events();
-
-    // TODO:  Category.build_dom() method, instead of building dom, then objects.
-
-    Object.defineProperties(Category.prototype, {
-        $unrendered: { get: function () {return this.$cat.find('.unrendered');}},
-        $frou:       { get: function () {return this.$cat.find('.frou-category');}}
-    });
-
-    // var ok_to_observe_and_adjust_thumb_size = true;
-
-    // noinspection JSUnusedLocalSymbols
-    function Category_from_idn(idn) {
-        type_should_be(idn, 'Number');
-        return categories.get(idn);
-    }
-
-    function Category_from_element(element_or_selector) {
+    Category.from_element = function Category_from_element(element_or_selector) {
         var $sup = $(element_or_selector).closest('.sup-category');
         if ($sup.length === 1) {
             var cat = $sup.data('category-object');
-            console.assert(cat.$sup.is($sup), cat.$sup, $sup);
+            console.assert(cat.$sup.is($sup), cat.$sup, $sup, element_or_selector);
             return cat;   // which could be undefined
         } else {
             return null;
         }
+    }
+
+    Category.from_idn = function Category_from_idn(idn) {
+        type_should_be(idn, Number);
+        return categories.get(idn);
     }
 
     Category.prototype.show_unrendered_count = function Category_show_unrendered_count() {
@@ -1868,43 +1812,18 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
         var that = this;
         var num_newly_rendered = 0;
         that.cont_sequence.loop(function (_, cont_idn) {
-            var cont = Contribution_from_idn(cont_idn);
-            console.assert( ! cont.is_superseded, cont);
+            var cont = Contribution.from_idn(cont_idn);
+            console.assert( ! cont.is_superseded, "Superseded", cont, cont_idn);
             if (cont.is_dom_rendered()) {
                 // NOTE:  Skip the rendered contributions.
             } else if (does_query_string_allow(cont.idn)) {
                 num_newly_rendered++;
                 cont.build_dom(cont.fetch_txt());
                 cont.rebuild_bars(function () {
-
-                    // cont.observer = new MutationObserver(function mutated_cont_handler() {
-                    //     if (ok_to_observe_and_adjust_thumb_size) {
-                    //         ok_to_observe_and_adjust_thumb_size = false;
-                    //         thumb_size_adjust(cont.$sup);
-                    //         console.log("Mutation", cont.id_attribute, cont.cat.txt, cont.caption_text, cont.$sup.width(), cont.$sup.height());
-                    //         ok_to_observe_and_adjust_thumb_size = true;
-                    //     } else {
-                    //         console.warn("Mutation recursion averted!", cont.id_attribute, cont.cat.txt, cont.caption_text);
-                    //     }
-                    // });
-                    // cont.observer.observe(dom_from_$(cont.$sup), {
-                    //     attributes: true,
-                    //     characterData: true,
-                    //     childList: true
-                    // });
-                    // cont.$sup.on('resize', function () {
-                    //     console.debug("Resize $sup", cont.id_attribute, cont.cat.txt, cont.caption_text);
-                    // });
-                    // cont.$cont.on('resize', function () {
-                    //     console.debug("Resize $cont", cont.id_attribute, cont.cat.txt, cont.caption_text);
-                    // });
-                    // NOTE:  Disabled this because it kept "adjusting" sizes when editing a quote,
-                    //        instead of maintaining the manually resized dimensions.  Grr.
-
                     if (is_defined(window.ResizeObserver)) {
-                        // SEE:  ResizeObserver support, https://caniuse.com/#feat=resizeobserver
+                        // SEE:  ResizeObserver, https://caniuse.com/#feat=resizeobserver
 
-                        cont.resize_observer = new ResizeObserver(function resized_cont_handler(/*e*/) {
+                        cont.resize_observer = new ResizeObserver(function resized_cont_handler() {
                             cont.fix_caption_width();
                         });
                         cont.resize_observer.observe(dom_from_$(cont.$cont));
@@ -1924,20 +1843,65 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
         });
     };
 
-    Contribution.prototype.on_event = function Contribution_on_event(event_name, handler_function) {
+    /**
+     * Insert a contribution's DOM into the left end of a category's DOM.
+     *
+     * This doesn't touch the object model, e.g. Category.cont_sequence, because
+     * the caller should do that with Category.word_pass().
+     *
+     * @param cont
+     */
+    Category.prototype.insert_left = function(cont) {
         var that = this;
-        that.$sup.on(event_name, function (_, custom_object) {
-            handler_function(custom_object);
-        });
+        var $container_entry = that.$cat.find('.container-entry');
+        if ($container_entry.length > 0) {
+            // Drop after contribution entry form (the one in 'my' category))
+            $container_entry.last().after(cont.$sup);
+        } else {
+            // drop into any other category, whether empty or not
+            that.$cat.prepend(cont.$sup);
+        }
     };
 
-    Contribution.prototype.trigger_event = function Contribution_trigger_event(
-        event_name,
-        custom_object   // not an array, as in jQuery .trigger()
-    ) {
-        var that = this;
-        that.$sup.trigger(event_name, [custom_object]);
-    };
+    /**
+     * //// Contribution - unslumping.org
+     *
+     * @param {number} idn
+     * @return {Contribution}
+     * @constructor - sorta - should subclass Contribution here
+     */
+    Contribution.from_idn = function Contribution_from_idn(idn) {
+        type_should_be(idn, Number);
+        var contribution_instance = contribution_lexi.get(idn, null);
+        console.assert(contribution_instance !== null, "No contribution with idn", idn);
+        return contribution_instance;
+    }
+
+    /**
+     * Construct a Contribution from any element inside it.
+     *
+     * @param element_or_selector - e.g. '#1821' or $('.pop-up')
+     * @return {Contribution}
+     */
+    // idn (always a decimal integer number
+    //        in JavaScript, akin to the qiki.Number idn of a qiki.Word in Python)
+    //        and an id_attribute (which may be an idn or a prefixed idn, e.g. 'popup_1821')
+    //        Maybe cont.$sup.data('idn') should store a reliable idn, and cont.$sup.attr('id')
+    //        should be prefixed.  Because hogging all the decimal integer ids for idns is priggish.
+    Contribution.from_element = function Contribution_from_element(element_or_selector) {
+        var $sup = $(element_or_selector).closest('.sup-contribution');
+        if ($sup.length === 1) {
+            var cont = $sup.data('contribution-object');
+            console.assert(cont.$sup.is($sup), "Contribution dom disassociated", cont.$sup, $sup, element_or_selector);
+            return cont;   // which could be undefined
+        } else {
+            return null;
+        }
+        // var $cont = $sup.find('.contribution');
+        // var idn_string = $cont.attr('id');
+        // var idn = parseInt(idn_string);
+        // return Contribution_from_idn(idn);
+    }
 
     Object.defineProperties(Contribution.prototype, {
         /**
@@ -2001,6 +1965,59 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
         is_superseded:  { get: function () {return is_defined(this.superseded_by_idn);}}
     });
 
+    Contribution.prototype.Event = {
+        SPEECH_PLAY: 'SPEECH_PLAY',     // speechSynthesis.speak() was just called
+        SPEECH_START: 'SPEECH_START',   // SpeechSynthesisUtterance 'start' event
+        SPEECH_END: 'SPEECH_END',       // SpeechSynthesisUtterance 'end' event
+        MEDIA_INIT: 'MEDIA_INIT',       // e.g. youtube started playing
+        MEDIA_ERROR: 'MEDIA_ERROR',     // e.g. noembed error
+        MEDIA_BEGUN: 'MEDIA_BEGUN',     // e.g. youtube auto-play started
+        MEDIA_WOKE: 'MEDIA_WOKE',       // e.g. youtube auto-play first state-change TODO:  Use or lose?
+        MEDIA_PAUSED: 'MEDIA_PAUSED',   // e.g. youtube auto-play paused
+        // MEDIA_PLAYING: 'MEDIA_PLAYING', // e.g. youtube auto-play playing
+        // MEDIA_RESUME: 'MEDIA_RESUME',   // e.g. youtube auto-play resume
+        MEDIA_ENDED: 'MEDIA_ENDED',     // e.g. youtube auto-play played to the end
+        MEDIA_STATIC: 'MEDIA_STATIC'    // e.g. flickr, not going to play, timed display
+    };
+    // TODO:  Should Event be an Enumerate()?  If so we need to add .name a buncha places, e.g.
+    //            that.$sup.trigger(that.Event.MEDIA_BEGUN);
+    //            that.$sup.trigger(that.Event.MEDIA_BEGUN.name);
+    //            that.Event.MEDIA_BEGUN.trigger(data);   (oops `that` doesn't propagate to .trigger()'s `this`)
+    //            that.trigger_event(that.Event.MEDIA_BEGUN, data);
+    //        or
+    //            that.pop_cont.$sup.on(that.pop_cont.Event.MEDIA_INIT, function (_, data) { ... } );
+    //            that.pop_cont.$sup.on(that.pop_cont.Event.MEDIA_INIT.name, function (_, data) { ... } );
+    //            that.pop_cont.Event.MEDIA_INIT.on(function (data) { ... } );   (oops)
+    //            that.pop_cont.on_event(that.pop_cont.Event.MEDIA_INIT, function (data) { ... } );
+    //            that.pop_cont.on_event(E.MEDIA_INIT, function (data) { ... } );
+    //            that.on_event(E.MEDIA_INIT, function (data) { ... } );
+    //            E(that.pop_cont.Event.MEDIA_INIT, function (data) { ... } );
+    //            that.pop_cont.off_events();
+
+    // TODO:  Category.build_dom() method, instead of building dom, then objects.
+
+    Object.defineProperties(Category.prototype, {
+        $unrendered: { get: function () {return this.$cat.find('.unrendered');}},
+        $frou:       { get: function () {return this.$cat.find('.frou-category');}}
+    });
+
+    // var ok_to_observe_and_adjust_thumb_size = true;
+
+    Contribution.prototype.on_event = function Contribution_on_event(event_name, handler_function) {
+        var that = this;
+        that.$sup.on(event_name, function (_, custom_object) {
+            handler_function(custom_object);
+        });
+    };
+
+    Contribution.prototype.trigger_event = function Contribution_trigger_event(
+        event_name,
+        custom_object   // not an array, as in jQuery .trigger()
+    ) {
+        var that = this;
+        that.$sup.trigger(event_name, [custom_object]);
+    };
+
     // Contribution.prototype.is_cat = function Contribution_is_category(cat_idn) {
     //     // FALSE WARNING:  Unresolved variable cat
     //     // noinspection JSUnresolvedVariable
@@ -2059,12 +2076,8 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
     //        does not match the recipient window's origin ('null').
     Contribution.prototype.resizer_init = function Contribution_resizer_init(on_init) {
         var that = this;
-        type_should_be(on_init, 'Function');
+        type_should_be(on_init, Function);
         var is_an_iframe = that.$iframe.length === 1;
-
-        // FALSE WARNING:  Argument type {get: (function(): any)} is not assignable to parameter
-        //                 type jQuery | string
-        // noinspection JSCheckFunctionSignatures
         var was_iframe_initialized = typeof dom_from_$(that.$iframe).iFrameResizer === 'object';
 
         if (!is_an_iframe) {
@@ -2421,10 +2434,10 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
     }
     function interact(interaction_name, obj, num, txt) {
         if ( ! is_specified(txt))   txt = "";
-        type_should_be(interaction_name, 'String');
-        type_should_be(obj, 'Number');   // e.g. 1435
-        type_should_be(num, 'Number');
-        type_should_be(txt, 'String');
+        type_should_be(interaction_name, String);
+        type_should_be(obj, Number);   // e.g. 1435
+        type_should_be(num, Number);
+        type_should_be(txt, String);
         var num_with_one_qigit_resolution = one_qigit(num);
         // NOTE:  current_time doesn't need to store more than one qigit below decimal.
         //        So it gets rounded to the nearest 1/256.
@@ -2440,13 +2453,8 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
         interact[INTERACTION_CODE] = function curried_interact(obj, num, txt) {
             interact(interaction_name, obj, num, txt);
         };
+        // NOTE:  Shorthand made possible here:  interact.START(obj, num, txt);
     });
-
-    function one_qigit(n) {
-        return Math.round(n * 256.0) / 256.0;
-    }
-    assert_equal(26.0 / 256, one_qigit(0.1));
-    assert_equal(0.1015625, one_qigit(0.1));
 
     Contribution.prototype.fix_caption_width = function Contribution_fix_caption_width() {
         var that = this;
@@ -2546,10 +2554,10 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
         error_callback
     ) {
         var that = this;
-        type_should_be(thumb_url, 'String');
-        type_should_be(thumb_title, 'String');
-        type_should_be(load_callback, 'Function');
-        type_should_be(error_callback, 'Function');
+        type_should_be(thumb_url, String);
+        type_should_be(thumb_title, String);
+        type_should_be(load_callback, Function);
+        type_should_be(error_callback, Function);
         var $a = $('<a>', {
             id: that.id_prefix + 'thumb_' + that.idn_string,
             class: 'thumb-link',
@@ -2864,6 +2872,84 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
         return did_find;
     };
 
+    /**
+     * Send a message to the embedded iframe JavaScript.
+     *
+     * @param message {object} - with an action property, and other action-specific properties
+     */
+    // TODO:  Contribution method
+    Contribution.prototype.embed_message = function Contribution_embed_message(message) {
+        var that = this;
+        that.iframe_resizer(
+            function (resizer) {
+                resizer.sendMessage(message);
+            },
+            function (why) {
+                console.warn("Cannot iframe", message.action, "--", why);
+                // Cannot pause or resume text -- no iframe
+                // NOTE:  This harmlessly happens because of the redundant un-pop-up,
+                //        when POP_DOWN_ONE state does a pop_down_all()
+                //        before it punts to NEXT_CONTRIBUTION which pops up
+                //        (which also does a pop_down_all()).
+            }
+        );
+    }
+
+    /**
+     * Do something with the iFrameResizer object.  Call back if there is one.  Explain if not.
+     *
+     * @param {function} callback_good - pass it the iFrameResizer object, if up and running
+     * @param {function=} callback_bad - pass it an explanation if not
+     */
+    Contribution.prototype.iframe_resizer = function Contribution_iframe_resizer(
+        callback_good,
+        callback_bad
+    ) {
+        var that = this;
+        callback_bad = callback_bad || function (message) { console.error(message); };
+
+        if (that.is_dom_rendered()) {
+            if (that.is_media) {
+                if (that.has_iframe) {
+                // var iframe = that.iframe;
+                // // FALSE WARNING:  Condition is always false since types '{get: (function():
+                // //                 any | null)}' and 'null' have no overlap
+                // // noinspection JSIncompatibleTypesComparison
+                // if (iframe === null) {
+                //     bad("No iframe element in " + that.id_attribute);
+                // } else {
+                    var resizer;
+                    try {
+                        resizer = that.iframe.iFrameResizer;
+                    } catch (e) {
+                        callback_bad(
+                            "No resizer " +
+                            that.id_attribute + " " +
+                            e.message + " - " +
+                            that.iframe.id
+                        );
+                        return
+                    }
+                    if ( ! is_specified(resizer)) {
+                        callback_bad("Null resizer " + that.id_attribute);
+                    } else if (typeof resizer.sendMessage !== 'function') {
+                        callback_bad("No resizer sendMessage " + that.id_attribute);
+                    } else if (typeof resizer.close !== 'function') {
+                        callback_bad("No resizer close " + that.id_attribute);
+                    } else {
+                        callback_good(resizer);
+                    }
+                } else {
+                    callback_bad("No iframe element in " + that.id_attribute);
+                }
+            } else {
+                // NOTE:  E.g. harmlessly trying to use a cont with no render-bar iframe.
+            }
+        } else {
+            callback_bad("No element " + that.idn);
+        }
+    };
+
     // TODO:  Contribution.one_word()
     // /**
     //  * Retrieve the first word of a contribution
@@ -2900,6 +2986,59 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
     //         }
     //     }
     // }
+
+    Contribution.prototype.fetch_txt = function fetch_txt() {
+        var that = this;
+        return monty_txt_from_idn(that.idn);
+    }
+
+    /**
+     * Make the primal connection between a Contribution object instance and a DOM element.
+     *
+     * @param $sup - DOM element rendering of the Contribution
+     */
+    Contribution.prototype.dom_link = function Contribution_dom_link($sup) {
+        var that = this;
+
+        that.$sup = $sup;
+        // NOTE:  primal connection:  from object instance --> to DOM element
+        //        `$sup` - DOM element was created in Contribution.build_dom()
+
+        that.$sup.data('contribution-object', that);
+        // NOTE:  primal connection:  from DOM element --> to object instance
+        //        `that` - object was instantiated in ContributionLexi.word_pass()
+    }
+
+    function could_be_url(text) {
+        return starts_with(text, 'http://') || starts_with(text, 'https://');
+    }
+
+    /**
+     * Try to find a caption?  I.e. is this text something we can "go meta" about?
+     *
+     * @param text - is this a URL of something we can get a caption about?
+     */
+    function can_i_get_meta_about_it(text) {
+        return could_be_url(text);
+    }
+
+    /**
+     * Replace each line's leading spaces with non-breaking en-spaces.
+     */
+    function leading_spaces_indent(text) {
+        if ( ! is_laden(text)) {
+            return "";
+        }
+        return text.replace(/^[ \t]+/gm, function each_indentation(spaces) {
+            return new Array(spaces.length + 1).join(UNICODE.EN_SPACE);
+            // NOTE:  UNICODE.NBSP is too narrow and UNICODE.EM_SPACE is too wide.
+        });
+        // THANKS:  leading spaces to nbsp, https://stackoverflow.com/a/4522228/673991
+    }
+
+
+
+    //// UX handlers
 
     /**
      * Is there unfinished entry or editing on the page?
@@ -3021,7 +3160,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
 
     function contribution_edit(evt) {
         var element = this;
-        var cont = Contribution_from_element(element);
+        var cont = Contribution.from_element(element);
         console.assert(cont.is_dom_rendered(), element);
         var $clicked_on = $(evt.target);
         // SEE:  this vs evt.target, https://stackoverflow.com/a/21667010/673991
@@ -3048,7 +3187,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
 
     function contribution_cancel() {
         var element = this;
-        var cont = Contribution_from_element(element);
+        var cont = Contribution.from_element(element);
         console.assert(cont.is_dom_rendered(), element);
         console.assert(is_editing_some_contribution);
         // If not editing, how was the cancel button visible?
@@ -3067,7 +3206,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
      */
     function caption_input() {
         var element = this;
-        var cont = Contribution_from_element(element);
+        var cont = Contribution.from_element(element);
         console.assert(cont.is_dom_rendered(), element);
         if ( ! cont.$sup.hasClass('edit-dirty')) {
             cont.$sup.addClass('edit-dirty');
@@ -3078,7 +3217,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
     // TODO:  Contribution method
     function contribution_save() {
         if (is_editing_some_contribution) {
-            var old_cont = Contribution_from_element($cont_editing);
+            var old_cont = Contribution.from_element($cont_editing);
             console.assert(old_cont.$cont.is($cont_editing));
 
             old_cont.save_alarm(false);
@@ -3150,7 +3289,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                         live_cont_idn,
                         function caption_saved(_capt_word_not_used_here_) {
                             if (was_new_cont_submitted) {
-                                var new_cont = Contribution_from_idn(live_cont_idn);
+                                var new_cont = Contribution.from_idn(live_cont_idn);
 
                                 var $new_dom_almost = old_cont.$sup;
                                 new_cont.dom_link($new_dom_almost);   // new cont becomes rendered
@@ -3210,9 +3349,8 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
     }
 
     function unrendered_click(evt) {
-        var $unrendered = $(this);
-        var $sup_cat = $unrendered.closest('.sup-category');
-        var cat = $sup_cat.data('category-object');
+        var cat = Category.from_element(this);
+        console.assert(cat !== null, this, evt);
         cat.render_some_conts(evt.shiftKey ? MORE_CAT_CONT_SHIFT : MORE_CAT_CONT);
         cat.show_unrendered_count();
         contribution_lexi.assert_consistent();
@@ -3232,7 +3370,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
     function thumb_click(evt) {
         var div = this;
         if ( ! check_contribution_edit_dirty(false, true)) {
-            var cont = Contribution_from_element(this);
+            var cont = Contribution.from_element(this);
             console.log("thumb click", cont.id_attribute);
             bigger(div, true);
             evt.stopPropagation();
@@ -3250,7 +3388,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
     // TODO:  Contribution method
     function bigger(element, do_play) {
         bot.stop();
-        var cont = Contribution_from_element(element);
+        var cont = Contribution.from_element(element);
         console.assert(cont.is_dom_rendered(), element);
         $(window.document.body).addClass('pop-up-manual');
         // NOTE:  body.pop-up-manual results from clicking any of:
@@ -3262,83 +3400,22 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
         cont.pop_up(do_play);
     }
 
-    /**
-     * Send a message to the embedded iframe JavaScript.
-     *
-     * @param message {object} - with an action property, and other action-specific properties
-     */
-    // TODO:  Contribution method
-    Contribution.prototype.embed_message = function Contribution_embed_message(message) {
-        var that = this;
-        that.iframe_resizer(
-            function (resizer) {
-                resizer.sendMessage(message);
-            },
-            function (why) {
-                console.warn("Cannot iframe", message.action, "--", why);
-                // Cannot pause or resume text -- no iframe
-                // NOTE:  This harmlessly happens because of the redundant un-pop-up,
-                //        when POP_DOWN_ONE state does a pop_down_all()
-                //        before it punts to NEXT_CONTRIBUTION which pops up
-                //        (which also does a pop_down_all()).
-            }
-        );
-    }
+    function mouse_wheel_handler(evt) {
+        if (evt.originalEvent.ctrlKey) {
+            console.log("Mouse wheel", evt.originalEvent.deltaY);
+            // -100 for up (zoom in)
+            // +100 for down (zoom out)
 
-    /**
-     * Do something with the iFrameResizer object.  Call back if there is one.  Explain if not.
-     *
-     * @param {function} callback_good - pass it the iFrameResizer object, if up and running
-     * @param {function=} callback_bad - pass it an explanation if not
-     */
-    Contribution.prototype.iframe_resizer = function Contribution_iframe_resizer(
-        callback_good,
-        callback_bad
-    ) {
-        var that = this;
-        callback_bad = callback_bad || function (message) { console.error(message); };
-
-        if (that.is_dom_rendered()) {
-            if (that.is_media) {
-                if (that.has_iframe) {
-                // var iframe = that.iframe;
-                // // FALSE WARNING:  Condition is always false since types '{get: (function():
-                // //                 any | null)}' and 'null' have no overlap
-                // // noinspection JSIncompatibleTypesComparison
-                // if (iframe === null) {
-                //     bad("No iframe element in " + that.id_attribute);
-                // } else {
-                    var resizer;
-                    try {
-                        resizer = that.iframe.iFrameResizer;
-                    } catch (e) {
-                        callback_bad(
-                            "No resizer " +
-                            that.id_attribute + " " +
-                            e.message + " - " +
-                            that.iframe.id
-                        );
-                        return
-                    }
-                    if ( ! is_specified(resizer)) {
-                        callback_bad("Null resizer " + that.id_attribute);
-                    } else if (typeof resizer.sendMessage !== 'function') {
-                        callback_bad("No resizer sendMessage " + that.id_attribute);
-                    } else if (typeof resizer.close !== 'function') {
-                        callback_bad("No resizer close " + that.id_attribute);
-                    } else {
-                        callback_good(resizer);
-                    }
-                } else {
-                    callback_bad("No iframe element in " + that.id_attribute);
-                }
-            } else {
-                // NOTE:  E.g. harmlessly trying to use a cont with no render-bar iframe.
-            }
-        } else {
-            callback_bad("No element " + that.idn);
+            // evt.preventDefault();
+            // EXAMPLE:  error message when trying to evt.preventDefault():
+            //           jquery.js:5575 [Intervention] Unable to preventDefault
+            //           inside passive event listener due to target being treated as passive.
+            //           See https://www.chromestatus.com/features/6662647093133312
+            // SEE:  addEventListener passive false, https://stackoverflow.com/a/55673572/673991
+            // SEE:  passive event listeners, https://stackoverflow.com/a/39187679/673991
+            // SEE:  passive events, https://stackoverflow.com/a/44339214/673991
         }
-    };
+    }
 
     /**
      * End pop-up.
@@ -3410,7 +3487,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                 then();
             } else {
 
-                var thumb_cont = Contribution_from_idn(popup_cont.idn);
+                var thumb_cont = Contribution.from_idn(popup_cont.idn);
 
                 // popup_cont.$sup.removeClass('pop-up');
                 // // NOTE:  This immediate removal of the pop-up class, though premature
@@ -3937,9 +4014,6 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
             var range_word = window.document.createRange();
             that.$cont.text(pop_text);
 
-            // FALSE WARNING:  Argument type {get: (function(): jQuery | [])} is not assignable to
-            //                 parameter type jQuery | string
-            // noinspection JSCheckFunctionSignatures
             var text_node = dom_from_$(that.$cont).childNodes[0];
 
             console.assert(text_node.nodeName === '#text', text_node, that);
@@ -4377,7 +4451,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
 
         deanimate("popping up quote", that.id_attribute);
 
-        var thumb_cont = Contribution_from_idn(that.idn);
+        var thumb_cont = Contribution.from_idn(that.idn);
 
         // NOTE:  Popup text elements are now are at their FINAL place and size.
         //        But nobody has seen that yet.
@@ -4497,7 +4571,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
             $element.finish();
             // NOTE:  Don't use mfing jQuery .finish(), callbacks are NOT "immediately called".
             $element.stop(true, true);
-            var deanimating_cont = Contribution_from_element($element);
+            var deanimating_cont = Contribution.from_element($element);
             if (is_specified(deanimating_cont)/* && deanimating_cont.is_dom_rendered()*/) {
                 console.warn(
                     "Deanimating",
@@ -4647,7 +4721,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
             $cont_editing.removeData('original_text');
             $caption_span.removeData('original_text');
 
-            var cont = Contribution_from_element($cont_editing);
+            var cont = Contribution.from_element($cont_editing);
             cont.resizer_nudge();
             cont.zero_iframe_recover();
             // NOTE:  A crude response to the occasional zero-height or zero-width contribution
@@ -4664,7 +4738,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
         $sup_cont.addClass('contribution-edit');
         $cont.prop('contentEditable', true);
         $caption_span.prop('contentEditable', true);
-        var cont = Contribution_from_element($cont);
+        var cont = Contribution.from_element($cont);
         cont.fix_caption_width();
     }
 
@@ -4677,7 +4751,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
         $caption_span.prop('contentEditable', false);
         var $save_bar = $save_bar_from_cont($cont);
         $save_bar.removeClass('abandon-alert');
-        var cont = Contribution_from_element($cont);
+        var cont = Contribution.from_element($cont);
         cont.fix_caption_width();
     }
 
@@ -4968,7 +5042,10 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                     console.error("Whoa that's a popup, don't drag me here bro.");
                     return MOVE_CANCEL;
                 }
-                var cat = Category_from_element(target_candidate);
+                var cat = Category.from_element(target_candidate);
+                if (cat === null) {
+                    console.error("Unexpected drop candidate outside any category", evt);
+                }
                 if (is_in_frou(target_candidate)) {
                     // if (is_open_drop(target_candidate)) {
                     if (cat.valve.is_open()) {
@@ -5013,13 +5090,19 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                 // NOTE:  movee means the contribution being moved
                 var $movee = $(evt.item);
                 // var movee_idn = $movee.find('.contribution').attr('id');
-                var movee_cont = Contribution_from_element(evt.item);
+                var movee_cont = Contribution.from_element(evt.item);
 
                 // var from_cat_idn = $(evt.from).attr('id');
                 // var from_cat = Category_from_idn(from_cat_idn);
-                var from_cat = Category_from_element(evt.from);
+                var from_cat = Category.from_element(evt.from);
+                if (from_cat === null) {
+                    console.error("Unexpected drop from outside any category", evt);
+                }
                 // var to_cat_idn = $cat_of(evt.to).attr('id');   // whether frou or category
-                var to_cat = Category_from_element(evt.to);
+                var to_cat = Category.from_element(evt.to);
+                if (to_cat === null) {
+                    console.error("Unexpected drop to outside any category", evt);
+                }
                 // var from_cat_txt = Category_from_idn(from_cat_idn).txt;
                 // var to_cat_txt = Category_from_idn(to_cat.idn).txt;
                 // var from_cat_txt = MONTY.words.cat[from_cat_idn].txt;
@@ -5154,7 +5237,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
 
     // TODO:  Make Contribution method?
     function thumb_size_adjust(element_or_selector) {
-        var cont = Contribution_from_element(element_or_selector);
+        var cont = Contribution.from_element(element_or_selector);
         if (cont.is_media) {
             // if (cont.is_noembed_error) {
             //     size_adjust(cont.$render_bar, cont.cat.thumb_specs.for_width, cont.cat.thumb_specs.for_height);
@@ -5183,7 +5266,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
     // TODO:  Contribution method
     function resizer_nudge_all() {
         $('.sup-contribution').each(function () {
-            var cont = Contribution_from_element(this);
+            var cont = Contribution.from_element(this);
             if (cont.is_dom_rendered() && cont.is_media) {
                 cont.resizer_nudge();
                 cont.zero_iframe_recover();
@@ -5276,26 +5359,6 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
     //     //          you want to move, then call an "adding" method such as append()'
     // }
 
-    /**
-     * Insert a contribution's DOM into the left end of a category's DOM.
-     *
-     * This doesn't touch the object model, e.g. Category.cont_sequence, because
-     * the caller should do that with Category.word_pass().
-     *
-     * @param cont
-     */
-    Category.prototype.insert_left = function(cont) {
-        var that = this;
-        var $container_entry = that.$cat.find('.container-entry');
-        if ($container_entry.length > 0) {
-            // Drop after contribution entry form (the one in 'my' category))
-            $container_entry.last().after(cont.$sup);
-        } else {
-            // drop into any other category, whether empty or not
-            that.$cat.prepend(cont.$sup);
-        }
-    };
-
     // /**
     //  * Is this element being dropped in an open-valved category?
     //  *
@@ -5303,7 +5366,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
     //  * @return {boolean}
     //  */
     // function is_open_drop(element) {
-    //     var cat = Category_from_element(element);
+    //     var cat = Category.from_element(element);
     //     var cat_idn = $cat_of(element).attr('id');
     //     var cat_txt = Category_from_idn(parseInt(cat_idn)).txt;
     //     // var is_open = get_valve($_from_id(id_valve(cat_txt)));
@@ -5452,7 +5515,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
             contribution_lexi.word_pass(cont_word);
             contribution_lexi.word_pass(capt_word);
 
-            var cont = Contribution_from_idn(cont_word.idn);
+            var cont = Contribution.from_idn(cont_word.idn);
             cont.build_dom(cont_word.txt);
             // var $cat_my = $categories[MONTY.IDN.CAT_MY];
             // locate_contribution_at_category_left_edge(categories.my.$cat, cont.$sup);
@@ -5542,16 +5605,11 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
         // build_category_dom("trash",     categories.trash.idn, true, false);
         // build_category_dom("about",     categories.about.idn, true, false);
 
-        categories.my   .build_dom(me_title(),  true);
-        categories.their.build_dom("others",    true);
-        categories.anon .build_dom("anonymous", false);
-        categories.trash.build_dom("trash",     false);
-        categories.about.build_dom("about",     false);
-        // TODO:  Live category titles should not be buried in code like this.
+
+        category_rendering();
 
 
         // $sup_categories[categories.my.idn].addClass('sup-category-first');
-        categories.my.$sup.addClass('sup-category-first');
 
         var $entry = $('<div>', {class: 'container-entry'});
         $entry.append($('<textarea>', {id: 'enter_some_text', placeholder: "enter a quote or video"}));
@@ -5573,20 +5631,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
 
         // NOTE:  Now all categories have DOM objects.
 
-        categories.loop(function (_, cat) {
-            cat.$sup.data('category-object', cat);
-            // TODO:  This should happen in Category.build_dom()
-            cat.thumb_specs = {
-                for_width: WIDTH_MAX_EM,
-                for_height: HEIGHT_MAX_EM
-            };
-        });
-        categories.about.thumb_specs = {
-            for_width: WIDTH_MAX_EM_ABOUT,
-            for_height: HEIGHT_MAX_EM_ABOUT
-        };
-
-        contribution_lexi = ContributionsUnslump(categories);
+        contribution_lexi = new ContributionsUnslump(categories);
 
 
         categories.loop(function (_, cat) {
@@ -5883,7 +5928,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
     // }
 
     function monty_txt_from_idn(idn) {
-        type_should_be(idn, 'Number');
+        type_should_be(idn, Number);
         var return_txt = null;
         looper(MONTY.w, function (_, word) {
             if (word.idn === idn) {
@@ -5898,6 +5943,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
     Category.prototype.build_dom = function Category_build_dom(title, is_initially_open) {
         var that = this;
         that.$sup = $('<div>', {class: 'sup-category'});
+        that.$sup.data('category-object', that);
 
         var $title = $('<h2>', {class: 'frou-category'});
         // NOTE:  "frou" refers to the decorative stuff associated with a category.
@@ -5960,10 +6006,8 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
     Contribution.prototype.build_dom = function Contribution_build_dom(txt) {
         var that = this;
 
-        var $brand_spanking_new_dom_element_for_this_contribution = $('<div>', {
-            class: 'sup-contribution word size-adjust-once'
-        });
-        that.dom_link($brand_spanking_new_dom_element_for_this_contribution);
+        var $sup = $('<div>', {class: 'sup-contribution word size-adjust-once'});
+        that.dom_link($sup);
 
         var $cont = $('<div>', {class: 'contribution', id: that.id_attribute});
         that.$sup.append($cont);
@@ -6010,55 +6054,6 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
         if (that.was_submitted_anonymous) {
             that.$sup.addClass('was-submitted-anonymous');
         }
-    }
-
-    Contribution.prototype.fetch_txt = function fetch_txt() {
-        var that = this;
-        return monty_txt_from_idn(that.idn);
-    }
-
-    /**
-     * Make the primal connection between a Contribution object instance and a DOM element.
-     *
-     * @param $sup - DOM element rendering of the Contribution
-     */
-    Contribution.prototype.dom_link = function Contribution_dom_link($sup) {
-        var that = this;
-
-        that.$sup = $sup;
-        // NOTE:  primal connection from object instance to DOM element
-        //        `$sup` - DOM element was created in Contribution.build_dom()
-
-        that.$sup.data('contribution-object', that);
-        // NOTE:  primal connection from DOM element to object instance
-        //        `that` - object was instantiated in ContributionLexi.word_pass()
-    }
-
-    function could_be_url(text) {
-        return starts_with(text, 'http://') || starts_with(text, 'https://');
-    }
-
-    /**
-     * Try to find a caption?  I.e. is this text something we can "go meta" about?
-     *
-     * @param text - is this a URL of something we can get a caption about?
-     */
-    function can_i_get_meta_about_it(text) {
-        return could_be_url(text);
-    }
-
-    /**
-     * Replace each line's leading spaces with non-breaking en-spaces.
-     */
-    function leading_spaces_indent(text) {
-        if ( ! is_laden(text)) {
-            return "";
-        }
-        return text.replace(/^[ \t]+/gm, function each_indentation(spaces) {
-            return new Array(spaces.length + 1).join(UNICODE.EN_SPACE);
-            // NOTE:  UNICODE.NBSP is too narrow and UNICODE.EM_SPACE is too wide.
-        });
-        // THANKS:  leading spaces to nbsp, https://stackoverflow.com/a/4522228/673991
     }
 
     // /**
@@ -6231,10 +6226,10 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
             return new Valve(opt);
         }
         that.opt = opt;
-        type_should_be(that.opt,'Object');
-        type_should_be(that.opt.name,'String');
-        type_should_be(that.opt.is_initially_open = that.opt.is_initially_open || false,'Boolean');
-        type_should_be(that.opt.on_open = that.opt.on_open || function () {}, 'Function');
+        type_should_be(that.opt, Object);
+        type_should_be(that.opt.name, String);
+        type_should_be(that.opt.is_initially_open = that.opt.is_initially_open || false, Boolean);
+        type_should_be(that.opt.on_open = that.opt.on_open || function () {}, Function);
 
         that.build_dom();
     }
@@ -6310,91 +6305,6 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
         $elements.toggleClass('valve-hidden', ! is_open);
         $anti_elements.toggleClass('valve-hidden', is_open);
     }
-
-    // /**
-    //  * Hide or show stuff.
-    //  *
-    //  * $valve = valve('foo') generates the DOM controls for a valve called 'foo'.
-    //  * Append $valve somewhere in the DOM tree.
-    //  * valve_control() identifies what the valve should show or hide
-    //  * when the user clicks the triangles.
-    //  *
-    //  * @param opt
-    //  * @return {jQuery}
-    //  */
-    // // TODO:  Valve() object.
-    // function valve(opt) {
-    //     type_should_be(opt,'Object');
-    //     type_should_be(opt.name,'String');
-    //     opt.is_initially_open = opt.is_initially_open || false;
-    //     opt.on_open = opt.on_open || function () {};
-    //
-    //     var $valve = $('<span>', {id: id_valve(opt.name), class: 'valve'});
-    //     $valve.data('opt', opt);
-    //     var $closer = $('<span>', {class: 'closer'}).text(UNICODE.BLACK_DOWN_POINTING_TRIANGLE);
-    //     var $opener = $('<span>', {class: 'opener'}).text(UNICODE.BLACK_RIGHT_POINTING_TRIANGLE);
-    //     $valve.append($closer, $opener);
-    //
-    //     set_valve($valve, opt.is_initially_open);
-    //     // NOTE:  Cannot toggle valve-hidden on "-valved" objects here,
-    //     //        because they can't have been "controlled" yet.
-    //
-    //     $valve.on('click', function () {
-    //         var old_open = get_valve($valve);
-    //         var new_open = ! old_open;
-    //         set_valve($valve, new_open);
-    //         if (new_open) {
-    //             var opt = $valve.data('opt');
-    //             opt.on_open();
-    //             setTimeout(function () {
-    //                 // NOTE:  Give contributions a chance to render.
-    //                 initial_thumb_size_adjustment();
-    //                 resizer_nudge_all();
-    //                 // NOTE:  This may be the first time some contribution renderings become
-    //                 //        visible.  Can't size-adjust until they're visible.
-    //             }, 1);
-    //         }
-    //     });
-    //     return $valve;
-    // }
-    //
-    // /**
-    //  * Identify what gets opened and closed when clicking on the valve triangles.
-    //  *
-    //  * @param $valve - returned by valve()
-    //  * @param $elements - what's visible when "open"
-    //  * @param $anti_elements - what's visible when "closed"
-    //  */
-    // function valve_control($valve, $elements, $anti_elements) {
-    //     // TODO:  Pass these parameters as fields to valve() options.
-    //     //        Big problem with that!  Currently, between valve() and  valve_control() call,
-    //     //        The element returned by valve() must be appended into the DOM.
-    //     //        What breaks if that doesn't happen?  I forget...
-    //     //        Well it may be a problem that the valved and anti-valved elements cannot
-    //     //        be conveniently placed until the $valve element exists.
-    //     //        But maybe the solution to all this is to create an empty element and
-    //     //        pass that TO valve() who then fills it in with triangles.
-    //     //        Maybe the "name" (and its derivatives) can be inferred from that element's id.
-    //     var opt = $valve.data('opt');
-    //     $elements.addClass(opt.name + '-valved');
-    //     $anti_elements.addClass(opt.name + '-anti-valved');
-    //     var is_open = get_valve($valve);
-    //     $elements.toggleClass('valve-hidden', ! is_open);
-    //     $anti_elements.toggleClass('valve-hidden', is_open);
-    // }
-    // function id_valve(name) {
-    //     return name + '-valve';
-    // }
-    // function get_valve($valve) {
-    //     return ! $valve.hasClass('valve-closed');
-    // }
-    // function set_valve($valve, should_be_open) {
-    //     var opt = $valve.data('opt');
-    //     $valve.toggleClass('valve-opened',   should_be_open);
-    //     $valve.toggleClass('valve-closed', ! should_be_open);
-    //     $_from_class(opt.name +      '-valved').toggleClass('valve-hidden', ! should_be_open);
-    //     $_from_class(opt.name + '-anti-valved').toggleClass('valve-hidden',   should_be_open);
-    // }
 
 
 

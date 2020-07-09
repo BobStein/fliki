@@ -1283,7 +1283,7 @@ def set_then_url(then_url):
 
 
 # FALSE WARNING (several places):  Unresolved attribute reference 'name' for class 'str'
-# noinspection PyUnresolvedReferences
+# no noinspection PyUnresolvedReferences
 @flask_app.route('/meta/login', methods=('GET', 'POST'))
 def login():
     setup_application_context()
@@ -1301,6 +1301,12 @@ def login():
         #            session=flask.session,
         #            session_saver=lambda: flask_app.save_session(flask.session, response),
     )
+
+    logged_in_user = login_result.user
+    # TODO:  Instead of this intermediate variable, work out the type warnings such as
+    #            Unresolved attribute reference 'name' for class 'str'
+    #        using typing hints or annotations.  Then use e.g. login_result.user.name
+
     # print(repr(login_result))
     if login_result:
         if hasattr(login_result, 'error') and login_result.error is not None:
@@ -1329,30 +1335,30 @@ def login():
                 print("Whoops")
                 response.set_data("Whoops")
         else:
-            if hasattr(login_result, 'user') and hasattr(login_result.user, 'id'):
-                if login_result.user is None:
+            if hasattr(login_result, 'user') and hasattr(logged_in_user, 'id'):
+                if logged_in_user is None:
                     print("None user!")
                 else:
-                    if login_result.user.id is None or login_result.user.name is None:   # Try #1
+                    if logged_in_user.id is None or logged_in_user.name is None:   # Try #1
                         print(
                             "Fairly routine, user data needed updating",
-                            repr(login_result.user.id),
-                            repr(login_result.user.name),
+                            repr(logged_in_user.id),
+                            repr(logged_in_user.name),
                         )
-                        login_result.user.update()
+                        logged_in_user.update()
                         # SEE:  about calling user.update() only if id or name is missing,
                         #       http://authomatic.github.io/authomatic/#log-the-user-in
 
-                    if login_result.user.id is None or login_result.user.name is None:   # Try #2
+                    if logged_in_user.id is None or logged_in_user.name is None:   # Try #2
                         print(
                             "Freakish!  "
                             "Updated, but something is STILL None, "
-                            "user id:", repr(login_result.user.id),
-                            "name:", repr(login_result.user.name),
+                            "user id:", repr(logged_in_user.id),
+                            "name:", repr(logged_in_user.name),
                         )
                     else:
 
-                        # EXAMPLE:  2019.1028 - login_result.user
+                        # EXAMPLE:  2019.1028 - logged_in_user
                         #     User(
                         #         provider=Google(...),
                         #         credentials=Credentials(...),
@@ -1386,17 +1392,17 @@ def login():
                         #         picture=str(...)
                         #     )
 
-                        # EXAMPLE:  2018.1204 - login_result.user.picture
+                        # EXAMPLE:  2018.1204 - logged_in_user.picture
                         #     https://lh5.googleusercontent.com/-_K6qO6tjH1A/AAAAAAAAAAI/AAAAAAAAKbQ/N14tJbQVKCc/photo.jpg?sz=50
-                        # EXAMPLE:  2019.0519 - login_result.user.picture
+                        # EXAMPLE:  2019.0519 - logged_in_user.picture
                         #     https://lh5.googleusercontent.com/-_K6qO6tjH1A/AAAAAAAAAAI/AAAAAAAAKbQ/N14tJbQVKCc/s50/photo.jpg
-                        # EXAMPLE:  2019.1028 - login_result.user.picture (first appeared 2019.0820)
+                        # EXAMPLE:  2019.1028 - logged_in_user.picture (first appeared 2019.0820)
                         #     https://lh3.googleusercontent.com/a-/AAuE7mDmUoEqODezLnr1LEwU_DW-Rkyvu1-3fvrdA34Fog=s50
 
-                        flask_user = GoogleFlaskUser(login_result.user.id)
-                        qiki_user = lex.word_google_class(login_result.user.id)
+                        flask_user = GoogleFlaskUser(logged_in_user.id)
+                        qiki_user = lex.word_google_class(logged_in_user.id)
 
-                        picture_size_string = url_var(login_result.user.picture, 'sz', '0')
+                        picture_size_string = url_var(logged_in_user.picture, 'sz', '0')
                         try:
                             picture_size_int = int(picture_size_string)
                         except ValueError:
@@ -1404,8 +1410,8 @@ def login():
                         avatar_width = qiki.Number(picture_size_int)
                         # TODO:  avatar_width is always 0 - recompute?  Alternative?
 
-                        avatar_url = login_result.user.picture or ''
-                        display_name = login_result.user.name or ''
+                        avatar_url = logged_in_user.picture or ''
+                        display_name = logged_in_user.name or ''
                         print("Logging in", qiki_user.index, qiki_user.idn.qstring())
                         # EXAMPLE:   Logging in 0q8A_059E058E6A6308C8B0 0q82_15__8A059E058E6A6308C8B0_1D0B00
                         lex[lex](lex.IDN.ICONIFY, use_already=True)[qiki_user.idn] = (

@@ -4,6 +4,76 @@
  * Requires jQuery as $.
  */
 
+/**
+ * Assert that two things are identical.  Show both values in the log if not.
+ *
+ * SEE:  expected, actual parameter order (my answer), https://stackoverflow.com/a/53603565/673991
+ *
+ * @param expected - often a literal
+ * @param actual - often an expression
+ * @param {string=} context - more stuff to show if there's a problem
+ * @return {boolean} - support chaining:  assert_foo(a) && assert_bar(a.b)
+ */
+function assert_equal(expected, actual, context) {
+    context = context || "";
+    console.assert(expected === actual, "Expected:", expected, "but got:", actual, context);
+    return expected === actual;
+}
+assert_equal(true, assert_equal(4, 2+2));
+
+/**
+ * Type declaration.  Subtypes okay.
+ *
+ * See type_name() and official_type_name() for terminology.  Capitalize.
+ *
+ * @param parameter
+ * @param expected_type - e.g. 'String', 'Function', 'Null', 'Undefined',
+ *                                                  'Undecided', 'Unwilling', 'Unmotivated', ...
+ * @return {boolean} - support chaining:  type_should_be(a, x) && type_should_be(a.b, y)
+ */
+function type_should_be(parameter, expected_type) {
+    if (expected_type instanceof Function) {
+        var ok = (
+            is_specified(parameter) &&
+            (
+                       parameter  instanceof expected_type ||
+                Object(parameter) instanceof expected_type
+            )
+        );
+        if (ok) {
+            return true;
+        } else {
+            console.error(
+                "Expecting a", expected_type.name,
+                "type of thing, but got a", type_name(parameter),
+                "of value", parameter
+            );
+        }
+    } else {
+        console.error("That's not even a type, it's a", type_name(expected_type), "of value", expected_type);
+        return false;
+    }
+}
+type_should_be(42, Number);
+type_should_be("X", String);
+type_should_be(function (){}, Function);
+type_should_be(function (){}, Object);
+
+
+function to_string(z) {
+    if (is_specified(z)) {
+        return z.toString();
+    } else {
+        return official_type_name(z).toLowerCase();
+    }
+}
+assert_equal("42", to_string(42));
+assert_equal("sic", to_string('sic'));
+assert_equal("null", to_string(null));
+assert_equal("false", to_string(false));
+assert_equal("undefined", to_string(undefined));
+
+
 function sanitized_domain_from_url(url) {
     if (url === null) {
         return null;
@@ -77,6 +147,7 @@ assert_equal('no.domain', domain_from_url(''), JSON.stringify(domain_from_url(''
 function $_from_class(class_) {
     return $(selector_from_class(class_));
 }
+// noinspection JSUnusedGlobalSymbols
 function $_from_id(id) {
     return $(selector_from_id(id));
 }
@@ -478,7 +549,17 @@ assert_equal('Object',    official_type_name(new function Legacy_Class(){}));
 function type_name(z) {
     var the_official_name = official_type_name(z);
     if (the_official_name === 'Object') {
-        return z.constructor.name;
+        try {
+            return z.constructor.name;
+        } catch (exception) {
+            if (exception instanceof TypeError) {
+                console.error("Object with no constructor", z);
+                return the_official_name;
+            } else {
+                console.error("Freakish object", z, exception);
+                throw exception;
+            }
+        }
     } else {
         return the_official_name;
     }
@@ -486,22 +567,6 @@ function type_name(z) {
 assert_equal('Object',       type_name({a:1, b:2}));
 assert_equal('Legacy_Class', type_name(new function Legacy_Class(){}));
 // assert_equal('ES2015_Class', type_name(new class ES2015_Class{}));
-
-function type_should_be(parameter, expected_type) {
-    // TODO:  expected_type_or_array_of_types
-    var is_correct_type = type_name(parameter) === expected_type;
-    console.assert(
-        is_correct_type,
-        "Expecting", expected_type,
-        "but got", type_name(parameter),
-        "-", parameter
-    );
-    return is_correct_type;
-}
-type_should_be(42, 'Number');
-type_should_be("X", 'String');
-type_should_be(null, 'Null');
-type_should_be(undefined, 'Undefined');
 
 function default_to(parameter, default_value) {
     if (is_defined(parameter)) {
@@ -591,7 +656,7 @@ function iterate(opt) {
  * @return {object} setInterval object, caller could pass to clearInterval() to abort.
  */
 function array_async(array, process, delay_ms, n_chunk, then) {
-    type_should_be(array, 'Array') && type_should_be(array.length, 'Number');
+    type_should_be(array, Array) && type_should_be(array.length, Number);
     if (typeof n_chunk !== 'number' || n_chunk < 1) {
         n_chunk = 1;
     }
@@ -725,7 +790,7 @@ assert_equal("life + everything = 42", f("life + {a} = {b}", {a:'everything', b:
  */
 function animate_surely(element, properties, options) {
     var duration = options.duration || 1000;
-    type_should_be(duration, 'Number');
+    type_should_be(duration, Number);
     var timeout = duration * 2;
     var complete = options.complete || function () {};
     var $element = $(element);
@@ -761,9 +826,16 @@ function animate_surely(element, properties, options) {
 }
 
 /**
- * Convert jQuery object to DOM object.  Or a selector such as dom_from_$('.css-class')
+ * Convert jQuery object to DOM object.  Selector works too:  dom_from_$('.css-class')
  *
- * @param {jQuery|string} jquery_object_or_selector
+ * SEE:  What could possibly justify all this verbose verbosity here?  `[0]` would totally work.
+ *       (my answer) https://stackoverflow.com/a/62595720/673991
+ *
+ * NOTE:  constraining the parameter type to {jQuery|string} generates noisome warnings, e.g.
+ *        Argument type {get: (function(): jQuery | [])} is not assignable to parameter type
+ *        jQuery | string
+ *
+ * @param jquery_object_or_selector
  * @return {HTMLElement|undefined}
  */
 function dom_from_$(jquery_object_or_selector) {
@@ -776,26 +848,6 @@ function dom_from_$(jquery_object_or_selector) {
     var dom_object = $jquery_object.get(0);
     return dom_object;
 }
-
-function assert_equal(expected, actual, context) {
-    context = context || "";
-    console.assert(expected === actual, "Expected:", expected, "but got:", actual, context);
-    return expected === actual;
-}
-assert_equal(4, 2+2);
-
-function to_string(z) {
-    if (is_specified(z)) {
-        return z.toString();
-    } else {
-        return official_type_name(z).toLowerCase();
-    }
-}
-assert_equal("42", to_string(42));
-assert_equal("sic", to_string('sic'));
-assert_equal("null", to_string(null));
-assert_equal("false", to_string(false));
-assert_equal("undefined", to_string(undefined));
 
 /**
  * Convert an array of things to an array of strings.
@@ -818,3 +870,18 @@ function first_word(string) {
 }
 assert_equal("foo", first_word(" foo bar "));
 assert_equal("",    first_word(""));
+
+/**
+ * Constrain a floating point resolution so it only requires one qigit (qiki base-256 digit)
+ * below the decimal point.  (Yes it should be called the radix point, but hey. English.)
+ *
+ * This lets imprecise numbers take up fewer bytes.
+ *
+ * @param {number} n
+ * @return {number}
+ */
+function one_qigit(n) {
+    return Math.round(n * 256.0) / 256.0;
+}
+assert_equal(0.1015625, one_qigit(0.1));
+assert_equal(26 / 256, one_qigit(0.1));

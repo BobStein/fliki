@@ -18,7 +18,7 @@
             var pattern_match_object = cont.handler.match_object;
             console.assert(pattern_match_object.length === 2, cont.content, pattern_match_object);
             var media_id = pattern_match_object[1];
-            type_should_be(media_id, 'String') && console.assert(media_id.length === 11);
+            type_should_be(media_id, String) && console.assert(media_id.length === 11);
             var thumbnail_1 = 'https://img.youtube.com/vi/' + media_id + '/mqdefault.jpg';
             var thumbnail_2 = 'https://img.youtube.com/vi/' + media_id + '/2.jpg';
             // THANKS:  Thumbnail options, https://stackoverflow.com/a/20542029/673991
