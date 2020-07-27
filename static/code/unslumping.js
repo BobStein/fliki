@@ -3598,7 +3598,19 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
 
         var thumb_fixed_coordinates = that.fixed_coordinates();
 
-        popup_cont = Contribution.from_idn(that.idn);
+        popup_cont = new Contribution(that.idn);
+        // NOTE:  Only the second place we ever call the Contribution constructor.
+        //        That's because we actually do want to create a new Contribution instance here.
+        //        This will mean TWO instances of the Contribution class representing TWO
+        //        elements in the DOM represent only ONE contribution word from the qiki Lex.
+        //        The old element will be hidden (because it'll have .pop-down CSS class).
+        //        The new element will be popped up big with a screen behind it.
+        //        Thus the illusion that only one Contribution is seen.
+        //        The old element can be accessed by pulling the old instance from contribution_lexi
+        //        using the factory method Contribution.from_idn().
+        //        But the new element will now be built from scratch for the new instance
+        //        rendering the popup.
+
         js_for_unslumping.popup_cont = popup_cont;   // for console access
         popup_cont.id_prefix = MONTY.POPUP_ID_PREFIX;
         popup_cont.cat = that.cat;
