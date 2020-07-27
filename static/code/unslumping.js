@@ -3598,7 +3598,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
 
         var thumb_fixed_coordinates = that.fixed_coordinates();
 
-        popup_cont = Contribution(that.idn);
+        popup_cont = new Contribution(that.idn);
         js_for_unslumping.popup_cont = popup_cont;   // for console access
         popup_cont.id_prefix = MONTY.POPUP_ID_PREFIX;
         popup_cont.cat = that.cat;
