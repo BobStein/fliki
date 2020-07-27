@@ -267,6 +267,7 @@ ContributionLexi.prototype.constructor = ContributionLexi;
  *     .capt.txt
  *     .capt.owner
  *     .superseded_by_idn
+ *     .supersedes_idn
  *
  * Notably ignored, the .txt or .content of the contribution.  Though the .capt.txt is set.
  *
@@ -401,7 +402,7 @@ ContributionLexi.prototype.word_pass = function ContributionLexi_word_pass(word)
                 }
                 // old_cont.superseded_by_idn = new_cont_idn;
                 old_cont.superseded_by(new_cont);
-                new_cont.supersedes_idn(old_cont.idn);
+                new_cont.supersedes(old_cont.idn);
 
                 // TODO:  Maybe superseded contributions can be destroyed:
                 //        del that.
@@ -411,7 +412,7 @@ ContributionLexi.prototype.word_pass = function ContributionLexi_word_pass(word)
             new_cont.cat = that.category_lexi.starting_cat(word);
             new_cont.owner = word.sbj;
             new_cont.cat.cont_sequence.insert_left(new_cont.idn);
-            new_cont.supersedes_idn(old_cont_idn);
+            new_cont.supersedes(old_cont_idn);
             that.notify(f("{new_cont_idn}. Resurrecting my edit of ghostly #{old_cont_idn})", {
                 new_cont_idn: new_cont_idn,
                 old_cont_idn: old_cont_idn

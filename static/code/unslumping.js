@@ -1769,7 +1769,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
      * @return {null|Category}
      * @constructor - sorta - subclass should go here
      */
-    Category.from_element = function Category_from_element(element_or_selector) {
+    Category.from_element = function (element_or_selector) {
         var $sup = $(element_or_selector).closest('.sup-category');
         if ($sup.length === 1) {
             var cat = $sup.data('category-object');
@@ -1886,7 +1886,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
     //        and an id_attribute (which may be an idn or a prefixed idn, e.g. 'popup_1821')
     //        Maybe cont.$sup.data('idn') should store a reliable idn, and cont.$sup.attr('id')
     //        should be prefixed.  Because hogging all the decimal integer ids for idns is priggish.
-    Contribution.from_element = function Contribution_from_element(element_or_selector) {
+    Contribution.from_element = function (element_or_selector) {
         var $sup = $(element_or_selector).closest('.sup-contribution');
         if ($sup.length === 1) {
             var cont = $sup.data('contribution-object');
@@ -3292,7 +3292,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                                 var $new_dom_almost = old_cont.$sup;
                                 new_cont.dom_link($new_dom_almost);   // new cont becomes rendered
                                 old_cont.superseded_by(new_cont);     // old cont becomes superseded
-                                new_cont.supersedes_idn(old_cont.idn);
+                                new_cont.supersedes(old_cont.idn);
                                 old_cont.un_render();                 // old cont becomes unrendered
                                 // TODO:  Encapsulate this code into some kind of new method
                                 //        ContributionLexi.cont_supersede(
@@ -3332,7 +3332,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
         $save_button.attr('title', title_text);
     }
 
-    Contribution.prototype.supersedes_idn = function Contribution_supersedes_idn(older_cont_idn) {
+    Contribution.prototype.supersedes = function Contribution_supersedes(older_cont_idn) {
         var that = this;
         that.supersedes_idn = older_cont_idn;
     }
