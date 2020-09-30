@@ -211,9 +211,9 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
     // noinspection HtmlRequiredAltAttribute,RequiredAttributes
     var INTRODUCTORY_BLURB = [
         "The site for therapeutic ",
-        $('<img>', {src: weep_url, alt: "weeping"}),
+        $('<img>', {src: weep_url, alt: "weeping", title: "weeping"}),
         " and ",
-        $('<img>', {src: laugh_url, alt: "laughing"})
+        $('<img>', {src: laugh_url, alt: "laughing", title: "laughing"})
     ];
 
     var MAX_OEMBED_CAPTION_LENGTH = 100;  // Because some oembed titles are huge
@@ -6337,7 +6337,10 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
     function exit_full_screen() {
         // THANKS:  Exit full screen, https://stackoverflow.com/a/36672683/673991
         if (window.document.exitFullscreen) {
-            window.document.exitFullscreen();
+            var exit_full_screen_promise = window.document.exitFullscreen();
+            exit_full_screen_promise.catch(function (error_message) {
+                console.error("Exit full screen error:", error_message);
+            });
         } else if (window.document.webkitExitFullscreen) {
             window.document.webkitExitFullscreen();
         } else if (window.document.mozCancelFullScreen) {

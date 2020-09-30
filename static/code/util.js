@@ -28,6 +28,10 @@ assert_equal(true, assert_equal(4, 2+2));
  *
  * @param parameter
  * @param expected_type - e.g. String, Number, Array, Object, Function, MyClass, BaseClass
+ *                        Because parameter is passed through the Object constructor, the formal
+ *                        capitalized type names must be used.  E.g. these are both true:
+ *                            type_should_be(42, Number);
+ *                            type_should_be(Number(42), Number);
  * @return {boolean} - to support chaining:  type_should_be(a, X) && type_should_be(a.b, Y)
  */
 function type_should_be(parameter, expected_type) {
@@ -375,7 +379,7 @@ assert_equal( true, starts_with("string", "str"));
 assert_equal(false, starts_with("string", "ing"));
 
 /**
- * Is a string nonempty?  That is, not undefined, not null, and not the empty string.
+ * Is an expected string nonempty?  That is, not undefined, not null, and not the empty string.
  *
  * THANKS:  Nonnegative synonym for nonempty, https://english.stackexchange.com/a/102788/18673
  *
@@ -383,7 +387,7 @@ assert_equal(false, starts_with("string", "ing"));
  * @return {boolean}
  */
 function is_laden(txt) {
-    return is_specified(txt) && txt !== "";
+    return is_specified(txt) && txt.toString() !== "";
 }
 assert_equal(false, is_laden(null));
 assert_equal(false, is_laden(""));
