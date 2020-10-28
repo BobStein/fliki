@@ -651,7 +651,7 @@ authomatic_global = authomatic.Authomatic(
             'scope':
                 authomatic.providers.oauth2.Google.user_info_scope
                 # + ['https://gdata.youtube.com']
-                # SEE:  get a users's YouTube uploads, https://stackoverflow.com/a/21987075/673991
+                # SEE:  get a user's YouTube uploads, https://stackoverflow.com/a/21987075/673991
                 # The gdata.youtube.com field means that logging in for the first time
                 # asks if you want to allow the app to "Manage your YouTube account"
             ,
@@ -1302,11 +1302,6 @@ def login():
         #            session_saver=lambda: flask_app.save_session(flask.session, response),
     )
 
-    logged_in_user = login_result.user
-    # TODO:  Instead of this intermediate variable, work out the type warnings such as
-    #            Unresolved attribute reference 'name' for class 'str'
-    #        using typing hints or annotations.  Then use e.g. login_result.user.name
-
     # print(repr(login_result))
     if login_result:
         if hasattr(login_result, 'error') and login_result.error is not None:
@@ -1335,16 +1330,26 @@ def login():
                 print("Whoops")
                 response.set_data("Whoops")
         else:
-            if hasattr(login_result, 'user') and hasattr(logged_in_user, 'id'):
+            if hasattr(login_result, 'user'):
+
+                logged_in_user = login_result.user
+                # TODO:  Instead of this intermediate variable, work out the type warnings such as
+                #            Unresolved attribute reference 'name' for class 'str'
+                #        using typing hints or annotations.  Then use e.g. login_result.user.name
+
                 if logged_in_user is None:
                     print("None user!")
                 else:
-                    if logged_in_user.id is None or logged_in_user.name is None:   # Try #1
+                    if (
+                        not hasattr(login_result.user, 'id'  ) or logged_in_user.id   is None or
+                        not hasattr(login_result.user, 'name') or logged_in_user.name is None
+                    ):                                                             # Try #1
                         print(
                             "Fairly routine, user data needed updating",
-                            repr(logged_in_user.id),
-                            repr(logged_in_user.name),
+                            repr_attr(logged_in_user, 'id'),
+                            repr_attr(logged_in_user, 'name'),
                         )
+
                         logged_in_user.update()
                         # SEE:  about calling user.update() only if id or name is missing,
                         #       http://authomatic.github.io/authomatic/#log-the-user-in
@@ -1426,7 +1431,7 @@ def login():
                         # SEE:  Fragment of resource, https://stackoverflow.com/a/5283528/673991
             else:
                 print("No user!")
-            if login_result.provider:
+            if hasattr(login_result, 'provider'):
                 print("Provider:", repr(login_result.provider))
     else:
         '''Is this where anonymous users go?'''
@@ -1435,6 +1440,22 @@ def login():
         # EXAMPLE:  None (e.g. with extraneous variable on request query, e.g. ?then_url=...)
 
     return response
+
+
+def repr_attr(z, attribute_name):
+    """Represent the attribute of an object in a safe way, even if it has no such attribute."""
+    if hasattr(z, attribute_name):
+        return repr(getattr(z, attribute_name))
+    else:
+        return "Undefined"
+
+
+class TestReprAttr:
+    string = "string"
+    none = None
+assert  "'string'" == repr_attr(TestReprAttr, 'string')
+assert      "None" == repr_attr(TestReprAttr, 'none')
+assert "Undefined" == repr_attr(TestReprAttr, 'undefined')
 
 
 def url_var(url, key, default):
@@ -3035,6 +3056,9 @@ def retry(exception_to_check, tries=4, delay=3, delay_multiplier=2):
     return decorated_function
 
 
+# FALSE WARNING:  Expected type 'Union[Exception, tuple]', got 'Type[URLError]' instead
+#                 because URLError is a OSError is a ... Exception
+# noinspection PyTypeChecker
 @retry(urllib.error.URLError, tries=4, delay=3, delay_multiplier=2)
 def _urlopen_with_retries(url):
     return urllib.request.urlopen(url)
