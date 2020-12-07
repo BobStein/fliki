@@ -128,7 +128,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
     var DEBUG_SIZE_ADJUST = false;
     var DEBUG_BOT_STATES = true;
 
-    var MS_IFRAME_RESIZER_INIT = 0.1 * 1000;
+    var IFRAME_RESIZER_INIT_MS = .100 * 1000;
     // NOTE:  Increase to 2000 milliseconds to avoid the following Chrome error:
     //            Failed to execute 'postMessage' on 'DOMWindow':
     //            The target origin provided ('<URL>')
@@ -154,18 +154,18 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
     //            The target origin provided (‘http://xxx’)
     //            does not match the recipient window’s origin (‘http://yyy’).
 
-    var MS_IFRAME_RECOVERY_CHECK = 5 * 1000;
+    var IFRAME_RECOVERY_CHECK_MS = 5.000 * 1000;
     // TODO:  3 seconds seemed to brief, lots of churn.
 
-    var MS_MEDIA_HANDLER_LOAD_CHECK = 10 * 1000;
+    var MEDIA_HANDLER_LOAD_CHECK_MS = 10.000 * 1000;
 
-    var MS_LONG_PRESS_DEFAULT = 1 * 1000;
+    var LONG_PRESS_DEFAULT_MS = 1.000 * 1000;
 
-    var MS_INITIAL_RESIZING_NUDGE = 3 * 1000;   // Ask iFrameResizer to resize after some settling.
+    var INITIAL_RESIZING_NUDGE_MS = 3.000 * 1000;   // Ask iFrameResizer to resize after some settling.
 
     // var MS_THUMB_TO_POP_UP = 1;   // ms to freeze thumbnail clone before popping it up
 
-    var MS_FINITE_STATE_MACHINE_INTERVAL = 1 * 1000;
+    var FINITE_STATE_MACHINE_INTERVAL_MS = 1.000 * 1000;
 
     var EXPERIMENTAL_RED_WORD_READING = false;
 
@@ -388,8 +388,8 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
     //        here in contribution.js, e.g.
     //        $('#up-top').css('height', TOP_SPACER_REM.toString() + 'em');
 
-    var POP_UP_ANIMATE_MS = 0.5 * 1000;
-    var POP_DOWN_ANIMATE_MS = 0.25 * 1000;
+    var POP_UP_ANIMATE_MS = .500 * 1000;
+    var POP_DOWN_ANIMATE_MS = .250 * 1000;
     var POP_UP_ANIMATE_EASING = 'swing';   // swing or linear
     var POP_DOWN_ANIMATE_EASING = 'linear';   // swing or linear
 
@@ -612,7 +612,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                 //     resizer_nudge_all();
                 // }, 10000);
 
-            }, MS_INITIAL_RESIZING_NUDGE);
+            }, INITIAL_RESIZING_NUDGE_MS);
             // NOTE:  If this delay is not enough, I don't think anything too bad happens.
             //        You might see briefly a wafer-thin iframe before it gives its children
             //        the data-iframe-width attribute that taggedElement needs.
@@ -691,7 +691,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
         that.last_tick_state = null;
         that.ticks_this_state = 0;    // N means state is [N to N+1) seconds old, if no pauses.
         that._interval_timer = null;
-        that.ticker_interval_ms(MS_FINITE_STATE_MACHINE_INTERVAL);
+        that.ticker_interval_ms(FINITE_STATE_MACHINE_INTERVAL_MS);
         that.breather_seconds = null;
         that.cont = null;       // e.g. id_attribute '1821' a thumbnail
         that.pop_cont = null;   // e.g. id_attribute 'popup_1821' an almost full screen pop-up
@@ -981,14 +981,6 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                         S.MEDIA_STARTED           // e.g. youtube videos deleted or restricted
                     ]);
                     interact.ERROR(popup_cont.idn, 1, data.message);
-                    // popup_cont.$sup.animate({
-                    //     top: TOP_SPACER_PX,
-                    //     left: 0
-                    // }, {
-                    //     duration: POP_UP_ANIMATE_MS,
-                    //     easing: POP_UP_ANIMATE_EASING,
-                    //     queue: false
-                    // });
                     that.end_one_begin_another(SECONDS_ERROR_MESSAGE, true);
                 });
                 ON(E.MEDIA_STATIC, function (data) {
@@ -2229,7 +2221,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                 //        The target origin provided ('http://...') does not match the recipient
                 //        window's origin ('http://...').
                 on_init();
-            }, MS_IFRAME_RESIZER_INIT);
+            }, IFRAME_RESIZER_INIT_MS);
         }
     };
 
@@ -2558,14 +2550,14 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
         type_should_be(error_callback, Function);
         var $a = $('<a>', {
             id: that.id_prefix + 'thumb_' + that.idn_string,
-            class: 'thumb-link',
+            'class': 'thumb-link',
             href: thumb_url,
             target: '_blank',
             title: thumb_title
         });
         // noinspection HtmlRequiredAltAttribute,RequiredAttributes
         var $img = $('<img>', {
-            class: 'thumb thumb-loading',
+            'class': 'thumb thumb-loading',
             alt: thumb_title
         });
         that.$render_bar.empty().append($a);
@@ -2634,7 +2626,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
             var loader_timer = setTimeout(function () {
                 $iframe.removeData('loader_timer');
                 that.zero_iframe_recover();
-            }, MS_IFRAME_RECOVERY_CHECK);
+            }, IFRAME_RECOVERY_CHECK_MS);
             $iframe.data('loader_timer', loader_timer);
 
             then();
@@ -2767,7 +2759,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
 
     Contribution.prototype.render_error = function Contribution_render_error(error_message) {
         var that = this;
-        var $p = $('<p>', { class: 'error-message' });
+        var $p = $('<p>', { 'class': 'error-message' });
         $p.text(error_message);
         that.$render_bar.empty().append($p);
         // NOTE:  A different error message, from the one we're storing here in the thumbnail,
@@ -3528,6 +3520,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                             width: popup_cont.pop_stuff.caption_css_width,
                             height: popup_cont.pop_stuff.caption_css_height,
                             'background-color': popup_cont.pop_stuff.caption_css_background
+                            // TODO:  Use .fadeIn() or .fadeOut(), to wean from jQuery UI
                         }, {
                             duration: POP_DOWN_ANIMATE_MS,
                             easing: POP_DOWN_ANIMATE_EASING,
@@ -3612,6 +3605,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
         //        rendering the popup.
 
         js_for_unslumping.popup_cont = popup_cont;   // for console access
+
         popup_cont.id_prefix = MONTY.POPUP_ID_PREFIX;
         popup_cont.cat = that.cat;
         popup_cont.capt = that.capt;
@@ -4030,7 +4024,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
             range_word.setStart(text_node, start_word);
             range_word.setEnd(text_node, end_word);
             // THANKS:  Range of text, https://stackoverflow.com/a/29903556/673991
-            var speaking_node = dom_from_$($('<span>', { class:'speaking' }));
+            var speaking_node = dom_from_$($('<span>', { 'class': 'speaking' }));
             range_word.surroundContents(speaking_node);
             // THANKS:  Range wrap, https://stackoverflow.com/a/6328906/673991
             speech_progress = end_word;
@@ -4061,7 +4055,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                         'top:'+svg_top.toString()+'px;' +
                         'left:'+svg_left.toString()+'px;'
                     )
-                }).append($('<text>', { fill:'red !important' }).append(the_word));
+                }).append($('<text>', { fill: 'red !important' }).append(the_word));
                 that.$sup.append($svg);
                 // TODO:  Needs to scroll word into view,
                 //        and then also position the svg right onto the scrolled word.
@@ -4516,6 +4510,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
         var caption_promise = that.$caption_bar.animate({
             width: pop_caption_css_width,
             'background-color': pop_up_caption_background
+            // TODO:  Use .fadeIn() or .fadeOut(), to wean from jQuery UI
         }, {
             duration: POP_UP_ANIMATE_MS,
             easing: POP_UP_ANIMATE_EASING,
@@ -4541,7 +4536,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
     function pop_screen_fade_out() {   // while popping down, fade to transparent
         return pop_screen_fade(
             'rgba(0,0,0,0.25)',
-            'rgba(0,0,0,0)',
+            'rgba(0,0,0,0.00)',
             POP_DOWN_ANIMATE_MS,
             POP_DOWN_ANIMATE_EASING
         )
@@ -4549,7 +4544,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
 
     function pop_screen_fade_in() {   // while popping up, fade to 1/4 darkened background
         return pop_screen_fade(
-            'rgba(0,0,0,0)',
+            'rgba(0,0,0,0.00)',
             'rgba(0,0,0,0.25)',
             POP_UP_ANIMATE_MS,
             POP_UP_ANIMATE_EASING
@@ -4557,10 +4552,14 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
     }
 
     function pop_screen_fade(from_color, to_color, duration, easing) {
+        // CAUTION:  This requires the jQuery-UI plugin (or the color plugin)
+        //           Otherwise colors won't animate!
+        //           Use jQuery .fadeIn() instead?
         var $pop_screen = $('#popup-screen');
         $pop_screen.css({'background-color': from_color});
         $pop_screen.animate({
             'background-color': to_color
+            // TODO:  Use .fadeIn() or .fadeOut(), to wean from jQuery UI
         }, {
             duration: duration,
             easing: easing,
@@ -5621,7 +5620,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
 
         // $sup_categories[categories.my.idn].addClass('sup-category-first');
 
-        var $entry = $('<div>', {class: 'container-entry'});
+        var $entry = $('<div>', {'class': 'container-entry'});
         $entry.append($('<textarea>', {id: 'enter_some_text', placeholder: "enter a quote or video"}));
         $entry.append($('<input>', {id: 'enter_a_caption', placeholder: "and a caption"}));
         $entry.append($('<button>', {id: 'post_it_button'}).text("post it"));
@@ -5776,7 +5775,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                 num_failed, "failed,",
                 num_registered, "registered"
             );
-        }, MS_MEDIA_HANDLER_LOAD_CHECK);
+        }, MEDIA_HANDLER_LOAD_CHECK_MS);
     }
 
     window.qiki = window.qiki || {};
@@ -5875,9 +5874,9 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
     // // DONE:  Category method
     // function build_category_dom(title, cat_idn, do_valve, is_initially_open) {
     //     var name = MONTY.cat.txt[cat_idn];
-    //     var $sup_category = $('<div>', {class: 'sup-category'});
+    //     var $sup_category = $('<div>', {'class': 'sup-category'});
     //
-    //     var $title = $('<h2>', {class: 'frou-category'});
+    //     var $title = $('<h2>', {'class': 'frou-category'});
     //     // NOTE:  "frou" refers to the decorative stuff associated with a category.
     //     //        In this case, that's just the <h2> heading,
     //     //        which contains the category valve (the open-close triangles).
@@ -5887,7 +5886,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
     //     // $title.append(title);
     //
     //     $sup_category.append($title);
-    //     var $category = $('<div>', {id: cat_idn, class: 'category'});
+    //     var $category = $('<div>', {id: cat_idn, 'class': 'category'});
     //     var category_code_name = MONTY.cat.txt[cat_idn];   // e.g. my, about
     //     $category.addClass('category-' + category_code_name);
     //     $sup_category.append($category);
@@ -5923,13 +5922,13 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
     //         // NOTE:  Include title inside valve element, so clicking the word opens and closes,
     //         //        along with the triangle symbols.
     //
-    //         var $how_many = $('<span>', {class:'how-many'});
+    //         var $how_many = $('<span>', {'class': 'how-many'});
     //         $valve.append($how_many);   // (n) anti-valve goes AFTER the heading text
     //         // NOTE:  Number is clickable to expand also.
     //
     //         valve_control($valve, $category, $how_many);
     //     }
-    //     var $unrendered = $('<div>', {class: 'unrendered'});
+    //     var $unrendered = $('<div>', {'class': 'unrendered'});
     //     // NOTE:  Until show_unrendered_count() is called, this element's 'count' data
     //     //        will remain unspecified.
     //     $category.append($unrendered);
@@ -5952,10 +5951,10 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
 
     Category.prototype.build_dom = function Category_build_dom(title, is_initially_open) {
         var that = this;
-        that.$sup = $('<div>', {class: 'sup-category'});
+        that.$sup = $('<div>', {'class': 'sup-category'});
         that.$sup.data('category-object', that);
 
-        var $title = $('<h2>', {class: 'frou-category'});
+        var $title = $('<h2>', {'class': 'frou-category'});
         // NOTE:  "frou" refers to the decorative stuff associated with a category.
         //        In this case, that's just the <h2> heading,
         //        which contains the category valve (the open-close triangles).
@@ -5965,7 +5964,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
         // $title.append(title);
 
         that.$sup.append($title);
-        that.$cat = $('<div>', {id: that.idn, class: 'category'});
+        that.$cat = $('<div>', {id: that.idn, 'class': 'category'});
         that.$cat.addClass('category-' + that.txt);
         that.$sup.append(that.$cat);
         that.valve = new Valve({
@@ -6000,12 +5999,12 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
         // NOTE:  Include title inside valve element, so clicking the word opens and closes,
         //        along with the triangle symbols.
 
-        var $how_many = $('<span>', {class:'how-many'});
+        var $how_many = $('<span>', {'class': 'how-many'});
         $valve.append($how_many);   // (n) anti-valve goes AFTER the heading text
         // NOTE:  Number is clickable to expand also.
 
         that.valve.control(that.$cat, $how_many);
-        var $unrendered = $('<div>', {class: 'unrendered'});
+        var $unrendered = $('<div>', {'class': 'unrendered'});
         // NOTE:  Until show_unrendered_count() is called, this element's 'count' data
         //        will remain unspecified.
         that.$cat.append($unrendered);
@@ -6016,35 +6015,35 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
     Contribution.prototype.build_dom = function Contribution_build_dom(txt) {
         var that = this;
 
-        var $sup = $('<div>', {class: 'sup-contribution word size-adjust-once'});
+        var $sup = $('<div>', {'class': 'sup-contribution word size-adjust-once'});
         that.dom_link($sup);
 
-        var $cont = $('<div>', {class: 'contribution', id: that.id_attribute});
+        var $cont = $('<div>', {'class': 'contribution', id: that.id_attribute});
         that.$sup.append($cont);
         console.assert(that.$cont.is($cont));
 
         that.$cont.text(leading_spaces_indent(txt));
-        var $render_bar = $('<div>', {class: 'render-bar'});
-        var $caption_bar = $('<div>', {class: 'caption-bar'});
-        var $save_bar = $('<div>', {class: 'save-bar'});
-        $save_bar.append($('<button>', {class: 'edit'}).text("edit"));
-        $save_bar.append($('<button>', {class: 'cancel'}).text("cancel"));
-        $save_bar.append($('<button>', {class: 'save'}).text("save"));
-        $save_bar.append($('<button>', {class: 'discard'}).text("discard"));
+        var $render_bar = $('<div>', {'class': 'render-bar'});
+        var $caption_bar = $('<div>', {'class': 'caption-bar'});
+        var $save_bar = $('<div>', {'class': 'save-bar'});
+        $save_bar.append($('<button>', {'class': 'edit'}).text("edit"));
+        $save_bar.append($('<button>', {'class': 'cancel'}).text("cancel"));
+        $save_bar.append($('<button>', {'class': 'save'}).text("save"));
+        $save_bar.append($('<button>', {'class': 'discard'}).text("discard"));
         $save_bar.append(
             $('<button>', {
-                class: 'expand',
+                'class': 'expand',
                 title: "expand"
             })
                 .append($icon('fullscreen'))
-                .append($('<span>', {class: 'wordy-label'}).text(" bigger"))
+                .append($('<span>', {'class': 'wordy-label'}).text(" bigger"))
         );
         $save_bar.append(
-            $('<button>', {class: 'play'})
+            $('<button>', {'class': 'play'})
                 .append($icon('play_arrow'))
-                .append($('<span>', {class: 'wordy-label'}).text(" play"))
+                .append($('<span>', {'class': 'wordy-label'}).text(" play"))
         );
-        var $external_link = $('<a>', {class: 'external-link among-buttons'});
+        var $external_link = $('<a>', {'class': 'external-link among-buttons'});
         $external_link.append($icon('launch'))
         $save_bar.append($external_link);
 
@@ -6052,10 +6051,10 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
         that.$sup.append($caption_bar);
         that.$sup.append($save_bar);
 
-        var $grip = $('<span>', {class: 'grip'});
+        var $grip = $('<span>', {'class': 'grip'});
         $caption_bar.append($grip);
         $grip.text(GRIP_SYMBOL);
-        var $caption_span = $('<span>', {class: 'caption-span'});
+        var $caption_span = $('<span>', {'class': 'caption-span'});
         $caption_bar.append($caption_span);
 
         $caption_span.append(that.caption_text);
@@ -6250,10 +6249,10 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
 
     Valve.prototype.build_dom = function () {
         var that = this;
-        that.$valve = $('<span>', {id: that._id_valve_control, class: 'valve'});
+        that.$valve = $('<span>', {id: that._id_valve_control, 'class': 'valve'});
         that.$valve.data('opt', that.opt);
-        var $closer = $('<span>', {class: 'closer'}).text(UNICODE.BLACK_DOWN_POINTING_TRIANGLE);
-        var $opener = $('<span>', {class: 'opener'}).text(UNICODE.BLACK_RIGHT_POINTING_TRIANGLE);
+        var $closer = $('<span>', {'class': 'closer'}).text(UNICODE.BLACK_DOWN_POINTING_TRIANGLE);
+        var $opener = $('<span>', {'class': 'opener'}).text(UNICODE.BLACK_RIGHT_POINTING_TRIANGLE);
         that.$valve.append($closer, $opener);
 
         that.set_openness(that.opt.is_initially_open);
@@ -6361,7 +6360,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
 
     var long_press_timer = null;
     function long_press(selector, handler, enough_milliseconds) {
-        enough_milliseconds = enough_milliseconds || MS_LONG_PRESS_DEFAULT;
+        enough_milliseconds = enough_milliseconds || LONG_PRESS_DEFAULT_MS;
         $(window.document)
             .on('mousedown touchstart', selector, function (evt) {
                 var element = this;
