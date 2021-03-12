@@ -227,9 +227,13 @@ from __future__ import with_statement
 __version__ = '1.16'
 
 import sys
-import cgi
 import unittest
 import six
+
+if six.PY2:
+    from cgi import escape as html_escape
+if six.PY3:
+    from html import escape as html_escape
 
 
 class HTML(object):
@@ -294,7 +298,7 @@ class HTML(object):
         special to HTML will be escaped.
         '''
         if escape:
-            text = cgi.escape(text)
+            text = html_escape(text)
         # adding text
         if self._top:
             self._stack[-1]._content.append(text)
@@ -322,7 +326,7 @@ class HTML(object):
         if content:
             if escape:
                 try:
-                    self._content = list(map(cgi.escape, content))
+                    self._content = list(map(html_escape, content))
                 except AttributeError as e:
                     raise AttributeError('%r caused error %r' % (content, str(e)))
             else:
@@ -335,9 +339,9 @@ class HTML(object):
                 # TODO:  six.string_types instead of (str, unicode)
                 raise ValueError("Attribute values should be string, not " + type(kw[k]).__name__)
             if k == 'klass':
-                self._attrs['class'] = cgi.escape(kw[k], True)
+                self._attrs['class'] = html_escape(kw[k], True)
             else:
-                self._attrs[k] = cgi.escape(kw[k], True)
+                self._attrs[k] = html_escape(kw[k], True)
         return self
 
     def __enter__(self):

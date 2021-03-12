@@ -724,6 +724,9 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
     });
     Bot.prototype.StateArray = Object.values(Bot.prototype.State);
     // Array of states, [S.MANUAL, S.START_AUTO, ...] where S = Bot.prototype.State
+    // TODO:  Fix IE11 error maybe?
+    //        Object doesn't support property or method 'values'
+    //        Bunch of assert failures too.
 
     Bot.prototype.State.describe = function(states, delimiter) {
         if (states.length === 0) {
@@ -2555,6 +2558,12 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
             target: '_blank',
             title: thumb_title
         });
+        // THANKS:  class is a reserved word,
+        //          https://api.jquery.com/jQuery/#creating-new-elements
+        //          'The name "class" must be quoted in the object since it is a JavaScript
+        //          reserved word, and "className" cannot be used since it refers to the
+        //          DOM property, not the attribute.'
+
         // noinspection HtmlRequiredAltAttribute,RequiredAttributes
         var $img = $('<img>', {
             'class': 'thumb thumb-loading',
