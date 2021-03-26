@@ -1469,7 +1469,7 @@ def url_var(url, key, default):
     :param default:                     - e.g. 'bar'
     :return:                            - e.g. 'bar'
     """
-                        # THANKS:  Parse URL query-string, http://stackoverflow.com/a/21584580/673991
+    # THANKS:  Parse URL query-string, http://stackoverflow.com/a/21584580/673991
     the_parts = urllib.parse.urlsplit(url)
     the_dict = urllib.parse.parse_qs(the_parts.query)
     the_value = the_dict.get(key, [default])[-1]
@@ -1482,6 +1482,8 @@ assert 'qux' == url_var('http://example.com/',         'foo', 'qux')
 def static_response_from_qiki_javascript(filename):
     """
     Make a pseudo-static directory out of the qiki-javascript repo.
+
+    TODO:  There has got to be a better way to use a sibling repo.
 
     Prevent penetrating into .idea, etc.
     TODO:  Prevent nonexistent
@@ -1571,6 +1573,7 @@ class FlikiHTML(web_html.WebHTML):
     @classmethod
     def os_path_from_url(cls, url):
         url_parse = Parse(url)
+        # TODO:  Ugh, use urllib.parse and pathlib instead.
         if url_parse.remove_prefix(static_url('')):
             return os_path_static(url_parse.remains)
         elif url_parse.remove_prefix(web_path_qiki_javascript('')):
@@ -1740,7 +1743,7 @@ def contribution_home(home_page_title):
                             function s(z) { 
                                 return z === undefined ? "((undefined))" : z.toString(); 
                             }
-                       \n''')
+                        \n''')
                         # EXAMPLE syntax error in contribution.js:
                         #         ReferenceError: js_for_unslumping is not defined at
                         #         http://localhost.visibone.com:5000/:3320:29
@@ -1749,7 +1752,7 @@ def contribution_home(home_page_title):
                     else:
                         script.raw_text('''
                             js_for_unslumping(window, jQuery, qoolbar, MONTY, window.talkify);
-                       \n''')
+                        \n''')
             t_end = time.time()
             q_end = auth.lex.query_count
             print("/meta/contrib {q:d} queries, {t:.3f} sec".format(

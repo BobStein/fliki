@@ -469,16 +469,10 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
             //        Closing the popup with Escape does this already.
             //        Closing with the close button, or clicking on the popup-screen does not.
 
-            .on('keyup', function (evt) {
-                if (evt.key === 'Escape') {
-                    // THANKS:  Escape event, https://stackoverflow.com/a/3369624/673991
-                    // THANKS:  Escape event, https://stackoverflow.com/a/46064532/673991
-                    // SEE:  evt.key values, https://developer.mozilla.org/search?q=key+values
-                    bot.stop();
-                    check_contribution_edit_dirty(false, true);
-                    // TODO:  Return false if handled?  So Escape doesn't do other things?
-                }
-            })
+            .on('keydown', keyboard_shortcut_handler)
+            // THANKS:  no keyup .preventDefault(), https://stackoverflow.com/a/14055191/673991
+            // THANKS:  no keypress on Escape, https://stackoverflow.com/a/38502715/673991
+
             .on('blur keyup paste input', '[contenteditable=true]', function () {
                 work_around_jumpy_contenteditable_chrome_bug(this);
             })
@@ -622,6 +616,93 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
 
     });
 
+    function keyboard_shortcut_handler(evt) {
+        switch (evt.key) {
+        case 'Escape':
+            if (bot.is_manual()) {
+                console.warn("Escape - maybe pop down, maybe ignored");
+            } else {
+                console.info("Escape - stop");
+            }
+            bot.stop();
+            check_contribution_edit_dirty(false, true);
+            // TODO:  Return false if handled?  So Escape doesn't do other things?
+            break;
+        case 'ArrowLeft':
+        case 'ArrowRight':
+            console.info("forward / back 10 seconds -- goes here");   // TODO
+            break;
+        case 'ArrowDown':
+        case 'ArrowUp':
+            console.info("volume up/down -- goes here");   // TODO
+            break;
+        // case 'Tab':
+        //     console.info("tab -- goes here");   // TODO -- but what's shift-tab?
+        //     break;
+        case 'f':
+        case 'F':
+            console.info("full screen -- goes here");   // TODO
+            break;
+        case 'm':
+        case 'M':
+            console.info("mute -- goes here");   // TODO
+            break;
+        case 'n':
+        case 'N':
+            if (bot.is_manual()) {
+                console.warn("N - next - IGNORED");
+            } else {
+                console.info("N - next");
+            }
+            bot.skip();
+            break;
+        case 'q':
+        case 'Q':
+            if (bot.is_manual()) {
+                console.warn("Q - quit - IGNORED");
+            } else {
+                console.info("Q - quit");
+            }
+            bot.stop();
+            break;
+        case ' ':
+            if (bot.is_manual()) {
+                // console.info("spacebar - play");
+                // bot.play();
+                // NOTE:  This doesn't feel natural.
+                //        It would begin the long play of a sequence of contributions.
+                //        Just too big of a step to take on a whole web page.
+                // SEE:  Spacebar ux, https://ux.stackexchange.com/a/53113/25643
+                // TODO:  It could initiate play if a contribution has been manually popped up.
+            } else if (bot.is_paused) {
+                console.info("spacebar - resume");
+                bot.resume();
+            } else {
+                console.info("spacebar - pause");
+                bot.pause();
+            }
+            evt.preventDefault();
+            break;
+        case '?':
+            console.info("keyboard help -- goes here");   // TODO
+            break;
+        default:
+            console.info(
+                "key", evt.key,
+                evt.shiftKey ? "SHIFT"   : "",
+                evt.ctrlKey  ? "CONTROL" : "",
+                evt.altKey   ? "ALT"     : "",
+                evt.metaKey  ? "META"    : ""
+            );   // HACK
+            // EXAMPLE:  key F9 SHIFT CONTROL
+            break;
+        }
+        // THANKS:  KeyboardEvent.key, https://stackoverflow.com/a/46064532/673991
+        // THANKS:  Escape event, https://stackoverflow.com/a/3369624/673991
+        // THANKS:  KeyboardEvent.key values,
+        //          https://developer.mozilla.org/en-US/docs/Web/API/KeyboardEvent/key/Key_Values
+    }
+
     function play_bot_default_others_if_empty_my_category() {
         var is_my_category_empty = categories.my.cont_sequence.len() === 0;
         if (is_my_category_empty) {
@@ -758,7 +839,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
     //        that.transit([S.OLD_STATE], S.NEW_STATE);
     Bot.prototype.transit = function Bot_transit(old_states, new_state) {
         var that = this;
-        console.assert(that.is_state(new_state), new_state);
+        console.assert(that.is_valid_state(new_state), new_state);
         if (that.assert_state_is(old_states, "transitioning to " + new_state.name)) {
             that.state = new_state;
             return true;
@@ -791,14 +872,25 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
         // }
     };
 
-    Bot.prototype.is_state = function Bot_is_state(maybe_state) {
+    /**
+     * Is this object a valid Bot state?
+     *
+     * @param maybe_state
+     * @return {boolean}
+     */
+    Bot.prototype.is_valid_state = function Bot_is_state(maybe_state) {
         var that = this;
         return has(that.StateArray, maybe_state);
     };
 
+    Bot.prototype.is_manual = function Bot_is_manual() {
+        var that = this;
+        return that.state === that.State.MANUAL;
+    };
+
     Bot.prototype.assert_state_is = function Bot_assert_state_is(states, context) {
         var that = this;
-        type_should_be(states, Array) && console.assert(that.is_state(states[0]));
+        type_should_be(states, Array) && console.assert(that.is_valid_state(states[0]));
         if (has(states, that.state)) {
             return true;
         } else {
@@ -1391,8 +1483,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
     Bot.prototype.stop = function Bot_stop() {
         var that = this;
         that._pause_ends("stop");
-
-        if (that.state === that.State.MANUAL) {
+        if (that.is_manual()) {
             // NOTE:  Harmlessly getting a precautionary bot.stop() when not animating or anything.
         } else {
             that.state = that.State.END_AUTO;
@@ -1404,15 +1495,15 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
 
     Bot.prototype.skip = function Bot_skip() {
         var that = this;
-        that._pause_ends("skip");
-        if (index_play_bot < list_play_bot.length) {
-            console.log("Skipping idn", list_play_bot[index_play_bot], "at state", that.state.name);
-        } else {
-            console.error("Skip shouldn't be possible", index_play_bot, list_play_bot, that.state.name);
-        }
-        if (that.state === that.State.MANUAL) {
+        if (that.is_manual()) {
             console.warn("Mysteriously but harmlessly getting a skip when not animating or anything.");
         } else {
+            that._pause_ends("skip");
+            if (index_play_bot < list_play_bot.length) {
+                console.log("Skipping idn", list_play_bot[index_play_bot], "at state", that.state.name);
+            } else {
+                console.error("Skip shouldn't be possible", index_play_bot, list_play_bot, that.state.name);
+            }
             that.pop_end();
             that.end_one_begin_another(SECONDS_BREATHER_AT_SKIP, false);
         }
@@ -5848,6 +5939,11 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
             return cont_parameter_value.split(',');
         }
     }
+
+    function url_with_no_query_string() {
+        return window.location.href.split('?')[0];
+    }
+    // TODO:  Instead, just strip the 'cont' variable from the query string.
 
     function augment_title_with_query_string_constraints() {
         var conts_were_limited_to = cont_array_from_query_string();

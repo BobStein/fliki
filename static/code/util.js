@@ -44,16 +44,72 @@ function type_should_be(parameter, expected_type) {
                 "type of thing, but got a", type_name(parameter),
                 "of value", parameter
             );
+            return false;
         }
     } else {
         console.error("That's not even a type, it's a", type_name(expected_type), "of value", expected_type);
         return false;
     }
 }
-type_should_be(42, Number);
-type_should_be("X", String);
-type_should_be(function (){}, Function);
-type_should_be(function (){}, Object);
+assert_equal(true, type_should_be(42, Number));
+assert_equal(true, type_should_be("X", String));
+assert_equal(true, type_should_be(function () {}, Function));
+assert_equal(true, type_should_be(function () {}, Object));
+error_expected(function () {
+    assert_equal(false, type_should_be(42, String));
+});
+
+function should_be_array_like(putative_array) {
+    if (putative_array.hasOwnProperty('length')) {
+        if (Object(putative_array.length) instanceof Number) {
+            var n = putative_array.length;
+            if (n <= 0) {
+                return true;
+            } else {
+                if (putative_array.hasOwnProperty(0) && putative_array.hasOwnProperty(n-1)) {
+                    return true;
+                }
+            }
+        }
+    }
+    console.error(
+        "Expecting an array-like thing, but got a", type_name(putative_array),
+        "of value", putative_array
+    );
+    return false;
+}
+assert_equal(true, should_be_array_like(['alpha', 'bravo']));
+assert_equal(true, should_be_array_like({length:2, 0:'alpha', 1:'bravo'}));
+assert_equal(true, should_be_array_like({'length':2, '0':'alpha', '1':'bravo'}));
+error_expected(function () {
+    assert_equal(false, should_be_array_like({length:99, 0:'alpha', 1:'bravo'}));
+    // NOTE:  Array-like except that it's missing a [98] element.
+});
+
+/**
+ * When the callback is expected to generate a console.error()
+ *
+ * @param callback
+ */
+// TODO:  Optional regular expression to match error message.
+function error_expected(callback) {
+    var number_of_error_calls = 0;
+
+    function fake_error() {
+        number_of_error_calls++;
+    }
+
+    var real_error = console.error;
+    console.error = fake_error;
+
+    callback();
+
+    console.error = real_error;
+    if (number_of_error_calls === 0) {
+        console.error("This function should have called console.error():", callback);
+    }
+}
+error_expected(function () { error_expected(function () {}); });
 
 
 function to_string(z) {
@@ -488,7 +544,7 @@ function is_associative_array(z) {
     return official_type_name(z) === 'Object';
 }
 assert_equal( true, is_associative_array({a:1, b:2}));
-assert_equal( true, is_associative_array(new function Legacy_Class(){}));
+assert_equal( true, is_associative_array(new function Legacy_Class() {}));
 // assert_equal( true, is_associative_array(new class ES2015_Class{}));
 
 assert_equal(false, is_associative_array(window));
@@ -531,7 +587,7 @@ assert_equal('Array',     official_type_name([1,2,3]));
 assert_equal('Object',    official_type_name({a:1, b:2}));
 assert_equal('Date',      official_type_name(new Date()));
 assert_equal('String',    official_type_name(Date()));
-assert_equal('Object',    official_type_name(new function Legacy_Class(){}));
+assert_equal('Object',    official_type_name(new function Legacy_Class() {}));
 // assert_equal('Object',   official_type_name(new class ES2015_Class{}));
 
 /**
@@ -546,6 +602,8 @@ function type_name(z) {
     var the_official_name = official_type_name(z);
     if (the_official_name === 'Object') {
         try {
+            // FALSE WARNING:  Unresolved variable name
+            // noinspection JSUnresolvedVariable
             return z.constructor.name;
         } catch (exception) {
             if (exception instanceof TypeError) {
@@ -561,7 +619,7 @@ function type_name(z) {
     }
 }
 assert_equal('Object',       type_name({a:1, b:2}));
-assert_equal('Legacy_Class', type_name(new function Legacy_Class(){}));
+assert_equal('Legacy_Class', type_name(new function Legacy_Class() {}));
 // assert_equal('ES2015_Class', type_name(new class ES2015_Class{}));
 
 function default_to(parameter, default_value) {
@@ -598,7 +656,7 @@ missing_parameters_are_undefined(undefined);
  *                    Typically whatever variable stores this value, is nulled by then().
  */
 function iterate(opt) {
-    opt.then     = default_to(opt.then,     function (){});
+    opt.then     = default_to(opt.then,     function () {});
     opt.do_early = default_to(opt.do_early, false);
     if (typeof opt.n_chunk !== 'number' || opt.n_chunk < 1) {
         opt.n_chunk = 1;
@@ -652,7 +710,8 @@ function iterate(opt) {
  * @return {object} setInterval object, caller could pass to clearInterval() to abort.
  */
 function array_async(array, process, delay_ms, n_chunk, then) {
-    type_should_be(array, Array) && type_should_be(array.length, Number);
+    // type_should_be(array, Array) && type_should_be(array.length, Number);
+    should_be_array_like(array);
     if (typeof n_chunk !== 'number' || n_chunk < 1) {
         n_chunk = 1;
     }
@@ -761,7 +820,7 @@ assert_equal(-1000, linear_transform(890, 880, 870, 0, 1000));
  */
 function f(message, parameters) {
     var formatted_message = message;
-    looper(parameters, function(name, value) {
+    looper(parameters, function (name, value) {
         var symbol = '{' + name + '}';
         formatted_message = formatted_message.replace(symbol, to_string(value));
     });
@@ -803,6 +862,8 @@ function animate_surely(element, properties, options) {
         //        don't need no lovin?
         $element.stop();
         $element.css(properties);
+        // FALSE WARNING:  Promise returned from complete is ignored
+        // noinspection JSIgnoredPromiseFromCall
         complete();
     }, timeout);
     var modified_options = $.extend({}, options, {
@@ -810,6 +871,8 @@ function animate_surely(element, properties, options) {
             if (animation_timeout !== null) {
                 clearTimeout(animation_timeout);
                 animation_timeout = null;
+                // FALSE WARNING:  Promise returned from complete is ignored
+                // noinspection JSIgnoredPromiseFromCall
                 complete();
                 // NOTE:  complete() is called exactly once.  Either by
                 //        animation doing its duty and completing.  Or by it
