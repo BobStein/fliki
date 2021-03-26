@@ -26,7 +26,7 @@ assert_equal(true, assert_equal(4, 2+2));
  *
  * See type_name() and official_type_name() for terminology.  Capitalize.
  *
- * @param parameter
+ * @param thing
  * @param expected_type - e.g. String, Number, Array, Object, Function, MyClass, BaseClass
  *                        Because parameter is passed through the Object constructor, the formal
  *                        capitalized type names must be used.  E.g. these are both true:
@@ -34,15 +34,16 @@ assert_equal(true, assert_equal(4, 2+2));
  *                            type_should_be(Number(42), Number);
  * @return {boolean} - to support chaining:  type_should_be(a, X) && type_should_be(a.b, Y)
  */
-function type_should_be(parameter, expected_type) {
-    if (expected_type instanceof Function) {
-        if (is_specified(parameter) && Object(parameter) instanceof expected_type) {
+
+function type_should_be(thing, expected_type) {
+    if (is_a(expected_type, Function)) {
+        if (is_specified(thing) && is_a(thing, expected_type)) {
             return true;
         } else {
             console.error(
                 "Expecting a", expected_type.name,
-                "type of thing, but got a", type_name(parameter),
-                "of value", parameter
+                "type of thing, but got a", type_name(thing),
+                "of value", thing
             );
             return false;
         }
@@ -59,9 +60,40 @@ error_expected(function () {
     assert_equal(false, type_should_be(42, String));
 });
 
+/**
+ * Slightly more versatile alternative to instanceof or typeof operators.
+ *
+ * Better than instanceof for fundamental types,
+ *     because 42 is not an instanceof Number,
+ *     but is_a(42, Number) and is_a(Number(42), Number).
+ * Better than typeof for complex types,
+ *     because typeof (new Date()) === 'object'
+ *     but is_a(new Date(), Date)
+ * Better than typeof for fundamental types too,
+ *     because the typo typeof x === 'spring' is not caught by an IDE
+ *     but the typo is_a(x, Spring) could be.
+ * About the same as instanceof for complex types,
+ *     x instanceof T is less obscure,
+ *     is_a(x, T) is slightly briefer.
+ *
+ * SEE:  typeof vs instanceof, https://stackoverflow.com/a/6625960/673991
+ *
+ * @param thing
+ * @param expected_type
+ * @return {boolean}
+ */
+function is_a(thing, expected_type) {
+    return Object(thing) instanceof expected_type;
+}
+assert_equal(false, is_a(42, String));
+assert_equal(true, is_a(42, Number));
+assert_equal(true, is_a("X", String));
+assert_equal(true, is_a(function () {}, Function));
+assert_equal(true, is_a(function () {}, Object));
+
 function should_be_array_like(putative_array) {
     if (putative_array.hasOwnProperty('length')) {
-        if (Object(putative_array.length) instanceof Number) {
+        if (is_a(putative_array.length, Number)) {
             var n = putative_array.length;
             if (n <= 0) {
                 return true;
@@ -91,7 +123,7 @@ error_expected(function () {
  *
  * @param callback
  */
-// TODO:  Optional regular expression to match error message.
+// TODO:  Optional regular expression to match expected error message.
 function error_expected(callback) {
     var number_of_error_calls = 0;
 
@@ -109,9 +141,15 @@ function error_expected(callback) {
         console.error("This function should have called console.error():", callback);
     }
 }
-error_expected(function () { error_expected(function () {}); });
+error_expected(function () { console.error("Pretend something is wrong."); });
+error_expected(function () { error_expected(function () { /* Pretend nothing is wrong. */ }); });
 
-
+/**
+ * Make an unknown thing moderately presentable (or at least a little informative) as a string.
+ *
+ * @param z
+ * @return {string}
+ */
 function to_string(z) {
     if (is_specified(z)) {
         return z.toString();
@@ -120,6 +158,7 @@ function to_string(z) {
     }
 }
 assert_equal("42", to_string(42));
+assert_equal("4,2", to_string([4,2]));
 assert_equal("sic", to_string('sic'));
 assert_equal("null", to_string(null));
 assert_equal("false", to_string(false));
@@ -471,7 +510,7 @@ assert_equal(false, is_defined(undefined));
 assert_equal( true, is_defined(0));
 
 function is_string(x) {
-    return typeof x === 'string';
+    return is_a(x, String);
 }
 assert_equal( true, is_string(''));
 assert_equal(false, is_string(0));
@@ -485,6 +524,7 @@ assert_equal(false, is_string(0));
  */
 function has(collection, thing) {
     if (collection === null || typeof collection === 'undefined') {
+        // TODO:  Explain why this should not throw an exception.
         return false;
     } else if (is_array(collection)) {
         return $.inArray(thing, collection) !== -1;
@@ -560,7 +600,9 @@ assert_equal(false, is_associative_array(true));
 assert_equal(false, is_associative_array(function () {}));
 
 /**
- * Get a reliable type name from the Object class toString() method, which always gives
+ * Get a formal type name.  Legacy JavaScript class instances are all 'Object'.
+ *
+ * Extracts it from the Object class toString() method, which always gives
  * a string like "[Object {type name}]"
  *
  * @param z - an object of any type
@@ -572,7 +614,7 @@ function official_type_name(z) {
     // THANKS:  ES3 vintage Object.toString(), https://stackoverflow.com/a/22289869/673991
     var matcher = simple_reliable_type_description.match(/object (\w+)/);
     if (matcher === null) {
-        return simple_reliable_type_description;   // but this should never happen
+        return simple_reliable_type_description;   // Okay, but this should never happen.
     } else {
         return matcher[1];
     }
@@ -591,7 +633,7 @@ assert_equal('Object',    official_type_name(new function Legacy_Class() {}));
 // assert_equal('Object',   official_type_name(new class ES2015_Class{}));
 
 /**
- * Get an informative type name, especially for JavaScript Legacy classes.
+ * Get a more human-readable type name, especially for JavaScript Legacy class instances.
  *
  * @param z
  * @return {string|*}
@@ -808,7 +850,7 @@ assert_equal(220, linear_transform(22, 0, 100, 0, 1000));
 assert_equal(-1000, linear_transform(890, 880, 870, 0, 1000));
 
 /**
- * Plain jane string formatter.
+ * Plain jane, crude jude string formatter.
  *
  * @param message - string with "{name}" symbols in it.
  * @param parameters - name to value mapping.
@@ -911,8 +953,6 @@ function dom_from_$(jquery_object_or_selector) {
 /**
  * Convert an array of things to an array of strings.
  *
- * Each "thing" must have a .toString() method.  So no nulls should be in the input array.
- *
  * @param {Array} things
  * @return {Array.<string>}
  */
@@ -920,8 +960,8 @@ function stringify_array(things) {
     return things.map(function (thing) { return to_string(thing); });
 }
 assert_equal(
-                      "string, 0, 1, 2, 3, null, undefined, false, NaN",
-    stringify_array(['string', 0, 1, 2, 3, null, undefined, false, 0/0]).join(", ")
+                      "string, 0, 1, 2, 3, null, undefined, false, NaN, 1,2",
+    stringify_array(['string', 0, 1, 2, 3, null, undefined, false, 0/0, [1,2]]).join(", ")
 );
 
 function first_word(string) {
