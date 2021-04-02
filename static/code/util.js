@@ -92,6 +92,32 @@ assert_equal(true, is_a(function () {}, Function));
 assert_equal(true, is_a(function () {}, Object));
 
 function should_be_array_like(putative_array) {
+    if (is_array_like(putative_array)) {
+        return true;
+    }
+    console.error(
+        "Expecting an array-like thing, but got a", type_name(putative_array),
+        "of value", putative_array
+    );
+    return false;
+}
+assert_equal(true, should_be_array_like(['yes', 'array']));
+error_expected(function () {
+    assert_equal(false, should_be_array_like(42));
+});
+
+/**
+ * Does this behave like an array?
+ *
+ * Includes strings.
+ * Includes jQuery collection.
+ * Includes an object with a length and first and last elements.
+ * Does not include an allocated but uninitialized array.
+ *
+ * @param putative_array
+ * @return {boolean}
+ */
+function is_array_like(putative_array) {
     if (putative_array.hasOwnProperty('length')) {
         if (is_a(putative_array.length, Number)) {
             var n = putative_array.length;
@@ -104,19 +130,18 @@ function should_be_array_like(putative_array) {
             }
         }
     }
-    console.error(
-        "Expecting an array-like thing, but got a", type_name(putative_array),
-        "of value", putative_array
-    );
     return false;
 }
-assert_equal(true, should_be_array_like(['alpha', 'bravo']));
-assert_equal(true, should_be_array_like({length:2, 0:'alpha', 1:'bravo'}));
-assert_equal(true, should_be_array_like({'length':2, '0':'alpha', '1':'bravo'}));
-error_expected(function () {
-    assert_equal(false, should_be_array_like({length:99, 0:'alpha', 1:'bravo'}));
-    // NOTE:  Array-like except that it's missing a [98] element.
-});
+assert_equal(true, is_array_like(['alpha', 'bravo']));
+assert_equal(true, is_array_like({length:2, 0:'alpha', 1:'bravo'}));
+assert_equal(true, is_array_like($('<input> <br>')));   // 3 elements
+assert_equal(true, is_array_like('yes strings are array-like'));
+
+assert_equal(false, is_array_like(42));
+assert_equal(false, is_array_like(new Array(3)));
+// SEE:  Why [] is better than new Array(), https://stackoverflow.com/a/8206581/673991
+assert_equal(false, is_array_like({length:99, 0:'alpha', 1:'bravo'}));
+// NOTE:  Would be array-like, except it's missing a [98] element.
 
 /**
  * When the callback is expected to generate a console.error()
@@ -518,6 +543,8 @@ assert_equal(false, is_string(0));
 /**
  * Does an array, object, or string contain a thing?
  *
+ * An array-like object would compare the INDEXES.  A true array would compare the VALUES.
+ *
  * @param collection - array, object, or string
  * @param thing
  * @return {boolean}
@@ -545,16 +572,36 @@ assert_equal(false, has('alphabet', 'z'));
 assert_equal(false, has(undefined, 'anything'));
 assert_equal(false, has(null, 'anything'));
 
+// TODO:  Use or lose has_method().  E.g. in enter_full_screen()
+function has_method(object_instance, method_name_string) {
+    return method_name_string in object_instance;
+}
+assert_equal(true, has_method(window, 'hasOwnProperty'));
+assert_equal(false, window.hasOwnProperty('hasOwnProperty'));
+
+/**
+ * Is this an honest to Oprah array?
+ *
+ * Includes an allocated but uninitialized array.
+ * Does not include a string.
+ * Does not include a jQuery container.
+ * Does not include an object with a length and numeric properties.
+ *
+ * @param z
+ * @return {boolean}
+ */
 function is_array(z) {
-    return official_type_name(z) === 'Array';
-    // return Object.prototype.toString.call(z) === '[object Array]';
-    // THANKS:  isArray polyfill, https://stackoverflow.com/a/22289982/673991
+    // return official_type_name(z) === 'Array';                        // but this works
+    // return Object.prototype.toString.call(z) === '[object Array]';   // this works too
+    // return Array.isArray(z);                                         // this works too
+    // SEE:  isArray() is better across iframes, https://stackoverflow.com/a/22289982/673991
+    return is_a(z, Array);
 }
 assert_equal( true, is_array([]));
 assert_equal( true, is_array([1,2,3]));
-// noinspection JSPrimitiveTypeWrapperUsage
-assert_equal( true, is_array(new Array));
 assert_equal( true, is_array(Array(1,2,3)));
+assert_equal( true, is_array(new Array(3)));
+
 assert_equal(false, is_array({a:1, b:2}));
 assert_equal(false, is_array(42));
 assert_equal(false, is_array("etc"));
@@ -562,9 +609,14 @@ assert_equal(false, is_array(null));
 assert_equal(false, is_array(undefined));
 assert_equal(false, is_array(true));
 assert_equal(false, is_array(function () {}));
+assert_equal(false, is_array($('<input> <br>')));
+assert_equal(false, is_array({length:2, 0:'x', 1:'y'}));
 
 /**
  * Is this a plain object with properties?
+ *
+ * Includes an object literal.
+ * Includes a class instance.
  *
  * Why is_associative_array() is a better name for this function than is_object()?
  * Because 'object' is too generic a term in JavaScript.  Lots of things are objects.

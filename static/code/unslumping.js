@@ -259,8 +259,8 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
     // js_for_unslumping.$sup_categories = $sup_categories;
     // js_for_unslumping.$categories = $categories;
 
-    var popup_cont = null;
-    js_for_unslumping.popup_cont = popup_cont;
+    var popup_cont;
+    set_popup_cont(null);
 
     // Config options for size_adjust()
     var WIDTH_MAX_EM = {
@@ -415,6 +415,14 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
     //          https://github.com/pallets/flask/issues/1045#issuecomment-42202749-permalink
 
     // THANKS:  "var" warnings, EcmaScript 6 to 5, https://stackoverflow.com/q/54551923/673991
+
+    function set_popup_cont(contribution_instance_or_null) {
+        popup_cont = contribution_instance_or_null;
+        js_for_unslumping.popup_cont = popup_cont;
+    }
+    function is_popup() {
+        return popup_cont !== null;
+    }
 
     $(function document_ready() {
         pop_speech_synthesis_init();
@@ -616,21 +624,84 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
 
     });
 
+    /**
+     * Could this element conceivably expect the user to type something?
+     *
+     * For calling from a keyboard event handler on event_object.target
+     * Doesn't matter:  where focus is, what's visible, what's disabled, what's readonly.
+     *
+     * SEE:  Is typable question, https://stackoverflow.com/q/34149423/673991
+     *
+     * @param element - jQuery object or DOM object or selector
+     * @return {boolean}
+     */
+    function is_typable(element) {
+        return $(element).is(':input, [contenteditable]');
+    }
+
     function keyboard_shortcut_handler(evt) {
+        // console.info(
+        //     "key", evt.key,
+        //     evt.shiftKey ? "SHIFT"   : "",
+        //     evt.ctrlKey  ? "CONTROL" : "",
+        //     evt.altKey   ? "ALT"     : "",
+        //     evt.metaKey  ? "META"    : "",
+        //     evt.target,
+        //     is_typable(evt.target)
+        // );
+
         switch (evt.key) {
         case 'Escape':
-            if (bot.is_manual()) {
-                console.warn("Escape - maybe pop down, maybe ignored");
+            var was_editing = is_editing_some_contribution;
+            var was_dirty = check_contribution_edit_dirty(false, true);
+            if (was_editing) {
+                if (was_dirty) {
+                    console.info("Ignoring escape - dirty edit.");
+                } else {
+                    console.info("Escape - cancel a clean edit.");
+                }
             } else {
-                console.info("Escape - stop");
+                if (bot.is_manual()) {
+                    if (is_popup()) {
+                        console.info("Escape - popping down manual popup.");
+                    } else {
+                        console.debug("Ignoring escape - no animation, no popup, no editing.");
+                    }
+                } else {
+                    console.info("Escape - stop animation.");
+                }
+                bot.stop();
             }
-            bot.stop();
-            check_contribution_edit_dirty(false, true);
-            // TODO:  Return false if handled?  So Escape doesn't do other things?
+            break;
+        }
+
+        // NOTE:  Keystrokes above can happen while user is expected to be typing.
+
+        if (is_typable(evt.target)) {
+            // Expect user typing -- silently ignore keyboard shortcuts.
+            // TODO:  Is this always true of Escape?
+            return;
+        }
+
+        // NOTE:  Keystrokes below CANNOT happen while user is typing.
+
+        switch (evt.key) {
+        case 'Escape':
+            // handled above
             break;
         case 'ArrowLeft':
+            if (is_popup()) {
+                popup_cont.embed_message({ action: 'seek_relative', seconds: -10 });
+            } else {
+                console.warn("Oops can't seek behind");
+            }
+            break;
         case 'ArrowRight':
-            console.info("forward / back 10 seconds -- goes here");   // TODO
+            if (is_popup()) {
+                popup_cont.embed_message({ action: 'seek_relative', seconds: +10 });
+            } else {
+                console.warn("Oops can't seek ahead");
+            }
             break;
         case 'ArrowDown':
         case 'ArrowUp':
@@ -641,7 +712,14 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
         //     break;
         case 'f':
         case 'F':
-            console.info("full screen -- goes here");   // TODO
+            if (isFullScreen) {
+                console.debug("F keystroke to exit full screen");
+                // TODO:  This may never happen because in full screen mode, the inner
+                //        iframe (hosted at youtube.com) has focus.
+                exit_full_screen();
+            } else {
+                embed_enter_full_screen();
+            }
             break;
         case 'm':
         case 'M':
@@ -693,7 +771,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                 evt.ctrlKey  ? "CONTROL" : "",
                 evt.altKey   ? "ALT"     : "",
                 evt.metaKey  ? "META"    : ""
-            );   // HACK
+            );
             // EXAMPLE:  key F9 SHIFT CONTROL
             break;
         }
@@ -1429,7 +1507,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
     };
 
     Bot.prototype.pause_media = function Bot_pause_media() {
-        if (popup_cont !== null) {
+        if (is_popup()) {
             popup_cont.embed_message({ action: 'pause' });
             // NOTE:  Indiscriminately send this to static media and error messages that don't need it.
         }
@@ -1454,7 +1532,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
             window.speechSynthesis.resume();
             // NOTE:  utter events will trigger interact.RESUME()
             that._pause_ends();
-        } else if (popup_cont !== null && ! popup_cont.is_noembed_error) {
+        } else if (is_popup() && ! popup_cont.is_noembed_error) {
             console.log("Resume static media.  Or dynamic media's breather after it completed.");
             interact.RESUME(popup_cont.idn, bot.ticks_this_state);   // static resume
             that._pause_ends();
@@ -1469,7 +1547,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
     Bot.prototype.is_dynamic_resume_called_for = function Bot_is_dynamic_resume_called_for() {
         var that = this;
         return (
-            popup_cont !== null &&             // not if no popup
+            is_popup() &&             // not if no popup
             popup_cont.is_media &&             // not if text
             popup_cont.is_able_to_play &&      // not if instagram photo
             ! popup_cont.is_noembed_error &&   // no, error message is not dynamic
@@ -2325,7 +2403,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
         that.$sup.addClass('noembed-error');
         that.trigger_event(that.Event.MEDIA_ERROR, {message: message});
         console.warn("Media error", what, "#" + that.id_attribute, message);
-        if (popup_cont !== null && popup_cont.idn === that.idn) {
+        if (is_popup() && popup_cont.idn === that.idn) {
             // NOTE:  In other words, is there a popup, and is the error for the same contribution
             //        as the popup!  The second test is so that a delayed (dynamic) thumbnail
             //        error does not interfere with displaying the popup.
@@ -2516,6 +2594,21 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
             break;
         }
     }
+
+    /**
+     * Record an interaction in the Lex.
+     *
+     * The looper below the interact() function definition creates short versions of all the
+     * interact() calls, for example:
+     *
+     *     interact(MONTY.INTERACTION.START, o, n, t);   // long version
+     *     interact.START(o, n, t);                      // short version
+     *
+     * @param interaction_name - value from MONTY.INTERACTION associative array
+     * @param obj
+     * @param num
+     * @param txt
+     */
     function interact(interaction_name, obj, num, txt) {
         if ( ! is_specified(txt))   txt = "";
         type_should_be(interaction_name, String);
@@ -2523,7 +2616,8 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
         type_should_be(num, Number);
         type_should_be(txt, String);
         var num_with_one_qigit_resolution = one_qigit(num);
-        // NOTE:  current_time doesn't need to store more than one qigit below decimal.
+        // NOTE:  current_time (the position of play within a video)
+        //        doesn't need to be stored with more than one qigit below the decimal.
         //        So it gets rounded to the nearest 1/256.
         //        Does this throw away 2 useful bits?  Dubious how useful.
        qoolbar.post('interact', {
@@ -2537,7 +2631,6 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
         interact[INTERACTION_CODE] = function curried_interact(obj, num, txt) {
             interact(interaction_name, obj, num, txt);
         };
-        // NOTE:  Shorthand made possible here:  interact.START(obj, num, txt);
     });
 
     Contribution.prototype.fix_caption_width = function Contribution_fix_caption_width() {
@@ -3554,7 +3647,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
             // CAUTION:  .cancel() then immediately .play() may not have worked at some point.
             //           https://stackoverflow.com/a/44042494/673991
             //           Though it seems to have been fixed in Chrome.
-            if (speech_progress !== null && popup_cont !== null) {
+            if (speech_progress !== null && is_popup()) {
                 // NOTE:  No manual QUIT after automated END.
                 interact.QUIT(popup_cont.idn, speech_progress);
             }
@@ -3565,7 +3658,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
             breather_timer = null;
         }
 
-        if (popup_cont === null) {
+        if ( ! is_popup()) {
             then();
         } else {
 
@@ -3573,7 +3666,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
             // NOTE:  popup_cont could now be null if this pop-down interrupted another pop-down.
             //        which would have caused all its animations to immediately complete.
 
-            if (popup_cont === null) {
+            if ( ! is_popup()) {
                 then();
             } else {
 
@@ -3660,8 +3753,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                 var combined_promise = $.when.apply($, promises);
                 combined_promise.done(function popdown_animation_done() {
                     $('#popup-screen').remove();   // Removes contained popup contribution too.
-                    popup_cont = null;
-                    js_for_unslumping.popup_cont = popup_cont;
+                    set_popup_cont(null);
                     then();
                 });
                 combined_promise.fail(function popdown_animation_fail() {
@@ -3691,20 +3783,19 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
 
         var thumb_fixed_coordinates = that.fixed_coordinates();
 
-        popup_cont = new Contribution(that.idn);
+        set_popup_cont(new Contribution(that.idn));
         // NOTE:  Only the second place we ever call the Contribution constructor.
         //        That's because we actually do want to create a new Contribution instance here.
-        //        This will mean TWO instances of the Contribution class representing TWO
-        //        elements in the DOM represent only ONE contribution word from the qiki Lex.
-        //        The old element will be hidden (because it'll have .pop-down CSS class).
-        //        The new element will be popped up big with a screen behind it.
+        //        This will mean TWO instances of the Contribution class,
+        //        representing TWO elements in the DOM,
+        //        representing only ONE contribution word from the qiki Lex.
+        //        The old (thumb) element will be hidden (because it'll have .pop-down CSS class).
+        //        The new (popup) element will be popped up big with a screen behind it.
         //        Thus the illusion that only one Contribution is seen.
         //        The old element can be accessed by pulling the old instance from contribution_lexi
         //        using the factory method Contribution.from_idn().
         //        But the new element will now be built from scratch for the new instance
         //        rendering the popup.
-
-        js_for_unslumping.popup_cont = popup_cont;   // for console access
 
         popup_cont.id_prefix = MONTY.POPUP_ID_PREFIX;
         popup_cont.cat = that.cat;
@@ -6439,20 +6530,54 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
     }
 
     function exit_full_screen() {
-        // THANKS:  Exit full screen, https://stackoverflow.com/a/36672683/673991
-        if (window.document.exitFullscreen) {
-            var exit_full_screen_promise = window.document.exitFullscreen();
-            exit_full_screen_promise.catch(function (error_message) {
-                console.error("Exit full screen error:", error_message);
-            });
-        } else if (window.document.webkitExitFullscreen) {
-            window.document.webkitExitFullscreen();
-        } else if (window.document.mozCancelFullScreen) {
-            window.document.mozCancelFullScreen();
-        } else if (window.document.msExitFullscreen) {
-            window.document.msExitFullscreen();
+        // // NO THANKS:  Exit full screen, https://stackoverflow.com/a/36672683/673991
+        // if (window.document.exitFullscreen) {
+        //     var exit_full_screen_promise = window.document.exitFullscreen();
+        //     exit_full_screen_promise.catch(function (error_message) {
+        //         console.error("Exit full screen error:", error_message);
+        //     });
+        // } else if (window.document.webkitExitFullscreen) {
+        //     window.document.webkitExitFullscreen();
+        // } else if (window.document.mozCancelFullScreen) {
+        //     window.document.mozCancelFullScreen();
+        // } else if (window.document.msExitFullscreen) {
+        //     window.document.msExitFullscreen();
+        // } else {
+        //     console.error("No function to exit full screen.");
+        // }
+        
+        
+        
+        var dom_object = window.document;  
+        // NOTE:  document appears to have exit-full-screen capabilities,
+        //        even if a doubly embedded iframe entered full screen.
+
+        if ('exitFullscreen' in dom_object) {
+            dom_object.exitFullscreen()
+                .then(function () {
+                    console.debug("Successfully exited full screen");
+                })
+                .catch(function (error_message) {
+                    console.error("Exit full screen error:", error_message);
+                })
+            ;
+        } else if ('webkitExitFullscreen' in dom_object) {
+            dom_object.webkitExitFullscreen();
+        } else if ('mozExitFullScreen' in dom_object) {
+            dom_object.mozExitFullScreen();
+        } else if ('msExitFullscreen' in dom_object) {
+            dom_object.msExitFullscreen();
         } else {
-            console.error("No function to exit full screen.");
+            console.error("No way to exit full screen.");
+        }
+        // THANKS:  Freakish capital S for moz, https://stackoverflow.com/a/30044770/673991
+    }
+
+    function embed_enter_full_screen() {
+        if (is_popup()) {
+            popup_cont.embed_message({ action: 'full_screen' });
+        } else {
+            console.info("Ignoring the f-key when there is nothing to switch to full-screen.");
         }
     }
 

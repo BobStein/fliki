@@ -1485,10 +1485,11 @@ def static_response_from_qiki_javascript(filename):
 
     TODO:  There has got to be a better way to use a sibling repo.
 
-    Prevent penetrating into .idea, etc.
+    Prevent penetrating into .git, .idea, etc.
     TODO:  Prevent nonexistent
     """
-    only_file_name_no_slashes = r'^[\w.]+$'
+    only_file_name_no_slashes = r'^\w[\w.]+$'
+    # NOTE:  prevents access to .gitignore
     if re.search(only_file_name_no_slashes, filename):
         try:
             return flask.send_file(os_path_qiki_javascript(filename))

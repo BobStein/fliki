@@ -38,9 +38,11 @@
  * @param {number}      MONTY.THUMB_MAX_WIDTH
  *
  * @property {object}   yt_player
+ * @property {function} yt_player.getCurrentTime
  * @property {function} yt_player.getPlayerState
  * @property {function} yt_player.pauseVideo
  * @property {function} yt_player.playVideo
+ * @property {function} yt_player.seekTo
  * @property {function} yt_player.stopVideo
  */
 function embed_content_js(window, $, MONTY) {
@@ -269,10 +271,14 @@ function embed_content_js(window, $, MONTY) {
                         fix_embedded_content();   // Again, after provider processing.
                     }, POLL_MILLISECONDS);
                 }
+                $(window.document).on('keydown', keyboard_shortcut_handler);
+                // TODO:  Does this ever happen?  Appears the intermediate iframe never has focus.
             });
         },
         onMessage: function resizer_message(message) {
             // noinspection JSRedundantSwitchStatement
+            // TODO:  Make these action names constant, e.g. MONTY.EMBED_ACTION.UN_POP_UP
+            //        And of course the parent should use them too.
             switch (message.action) {
             case 'un-pop-up':
                 if (is_dynamic) {
@@ -355,6 +361,21 @@ function embed_content_js(window, $, MONTY) {
                     console.error("Resume message on thumbnail", id_attribute);   // manual play?
                 }
                 break;
+            case 'seek_relative':
+                if (is_yt_player_ready) {
+                    var old_position = yt_player.getCurrentTime();
+                    var new_position = old_position + message.seconds;
+                    yt_player.seekTo(new_position, true);
+                    console.debug("Seek", message.seconds, "-", old_position, "to", new_position);
+                } else {
+                    console.error("Cannot seek relative", message.seconds);
+                }
+                break;
+            case 'full_screen':
+                console.debug("Embedded full screen attempt");
+                // noinspection JSJQueryEfficiency
+                enter_full_screen('#youtube_iframe');
+                break;
             default:
                 console.error(
                     "Unknown action, parent ==> child",
@@ -364,6 +385,39 @@ function embed_content_js(window, $, MONTY) {
             }
         }
     };
+
+    function enter_full_screen(selector) {
+        var dom_object = dom_from_$(selector);
+        if ('requestFullscreen' in dom_object) {
+            dom_object.requestFullscreen()
+                .then(function () {
+                    console.debug("Successfully entered full screen");
+                })
+                .catch(function (error_message) {
+                    console.error("Enter full screen error:", error_message);
+                })
+            ;
+        } else if ('webkitRequestFullscreen' in dom_object) {
+            dom_object.webkitRequestFullscreen();
+        } else if ('mozRequestFullScreen' in dom_object) {
+            dom_object.mozRequestFullScreen();
+        } else if ('msRequestFullscreen' in dom_object) {
+            dom_object.msRequestFullscreen();
+        } else {
+            console.error(
+                "No way to enter full screen.",
+                selector,
+                typeof dom_object.requestFullscreen,
+                type_name(dom_object.requestFullscreen)
+            );
+        }
+    }
+    // THANKS:  Full screen clues, https://stackoverflow.com/a/20289540/673991
+    //          But beware:  in his example code, `$` is NOT jQuery.
+    // THANKS:  has own method, up the prototype chain, https://stackoverflow.com/a/41008152/673991
+    //          unlike .hasOwnProperty().  Although typeof ... 'function' would have worked too,
+    //          except the IDE might not recognize it.  Without naming JetBrains by name.
+    // THANKS:  Freakish capital S for moz, https://stackoverflow.com/a/30044770/673991
 
     if (am_i_in_an_iframe()) {
         $.getScript(
@@ -393,7 +447,13 @@ function embed_content_js(window, $, MONTY) {
         default:                              return f("(unknown state {n})", {n:state_code});
         }
     }
-
+    function keyboard_shortcut_handler(evt) {
+        switch (evt.key) {
+        case 'Escape':
+            console.debug("ESCAPE GOES HERE");
+            break;
+        }
+    }
     /**
      * Begin dynamic-media auto-play if we're doing that.  Get event handlers ready.
      *
@@ -559,6 +619,7 @@ function embed_content_js(window, $, MONTY) {
         var message = $.extend({ action: action }, etc);
         parent_iframe().sendMessage(message, window.iFrameResizer.targetOrigin);
     }
+    // TODO:  Make action names constant, e.g. MONTY.PARENT_ACTION.AUTO_PLAY_QUIT
 
     function parent_iframe() {
         if (is_specified(window.parentIFrame)) {
