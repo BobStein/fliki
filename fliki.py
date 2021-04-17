@@ -1629,6 +1629,7 @@ def unslumping_home(home_page_title):
                 head.css_stamped(static_code_url('contribution.css'))
                 head.css('https://fonts.googleapis.com/css?family=Literata&display=swap')
                 head.css('https://fonts.googleapis.com/icon?family=Material+Icons')
+                # noinspection SpellCheckingInspection
                 head.raw_text('''
                     <link rel="apple-touch-icon" sizes="180x180" href="{path}/apple-touch-icon.png">
                     <link rel="icon" type="image/png" sizes="32x32" href="{path}/favicon-32x32.png">

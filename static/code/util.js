@@ -54,8 +54,10 @@ function type_should_be(thing, expected_type) {
 }
 assert_equal(true, type_should_be(42, Number));
 assert_equal(true, type_should_be("X", String));
+assert_equal(true, type_should_be({}, Object));
 assert_equal(true, type_should_be(function () {}, Function));
-assert_equal(true, type_should_be(function () {}, Object));
+assert_equal(true, type_should_be(new Date(), Date));
+assert_equal(true, type_should_be($('<div>'), $));
 error_expected(function () {
     assert_equal(false, type_should_be(42, String));
 });
@@ -986,21 +988,20 @@ function animate_surely(element, properties, options) {
  * Convert jQuery object to DOM object.  Selector works too:  dom_from_$('.css-class')
  *
  * SEE:  What could possibly justify all this verbose verbosity here?  `[0]` would totally work.
- *       (my answer) https://stackoverflow.com/a/62595720/673991
+ *       My answer:  https://stackoverflow.com/a/62595720/673991
  *
- * NOTE:  constraining the parameter type to {jQuery|string} generates noisome warnings, e.g.
- *        Argument type {get: (function(): jQuery | [])} is not assignable to parameter type
- *        jQuery | string
+ * NOTE:  constraining the parameter type to {jQuery} generates noisome warnings in caller code,
+ *        e.g. Argument type {get: function(): any} is not assignable to parameter type jQuery
  *
- * @param jquery_object_or_selector
+ * @param $jquery_object
  * @return {HTMLElement|undefined}
  */
-function dom_from_$(jquery_object_or_selector) {
-    var $jquery_object = $(jquery_object_or_selector);
+function dom_from_$($jquery_object) {
+    type_should_be($jquery_object, $);
     console.assert(
         $jquery_object.length === 1,
         "Expecting exactly one element",
-        jquery_object_or_selector
+        $jquery_object
     );
     var dom_object = $jquery_object.get(0);
     return dom_object;
