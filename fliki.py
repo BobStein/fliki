@@ -1556,10 +1556,10 @@ class FlikiHTML(web_html.WebHTML):
             head.title(title)
             head.meta(charset='utf-8')
             head.meta(name='viewport', content='width=device-width, initial-scale=0.7')
-            head.link(
-                rel='shortcut icon',
-                href=web_path_qiki_javascript('favicon.ico')
-            )
+            # head.link(
+            #     rel='shortcut icon',
+            #     href=web_path_qiki_javascript('favicon.ico')
+            # )
             head.css_stamped(web_path_qiki_javascript('qoolbar.css'))
             return head
 
@@ -1588,17 +1588,22 @@ def cache_bust(s):
     return FlikiHTML.url_stamp(s)
 
 
+@flask_app.route('/favicon.ico')
+def favicon_ico():
+    return flask.send_file(os_path_static('image/favicon/favicon.ico'))
+
+
 @flask_app.route('/', methods=('GET', 'HEAD'))
 def home_or_root_directory():
-    return contribution_home(secure.credentials.Options.home_page_title)
+    return unslumping_home(secure.credentials.Options.home_page_title)
 
 
-@flask_app.route('/meta/contrib', methods=('GET', 'HEAD'))
-def meta_contrib():
-    return contribution_home(secure.credentials.Options.home_page_title)
+# @flask_app.route('/meta/contrib', methods=('GET', 'HEAD'))
+# def meta_contrib():
+#     return unslumping_home(secure.credentials.Options.home_page_title)
 
 
-def contribution_home(home_page_title):
+def unslumping_home(home_page_title):
     # TODO:  rename unslumping_home()?
     """
     User contributions (quotes, videos, etc.) in categories (mine, others, etc.).
@@ -1624,6 +1629,16 @@ def contribution_home(home_page_title):
                 head.css_stamped(static_code_url('contribution.css'))
                 head.css('https://fonts.googleapis.com/css?family=Literata&display=swap')
                 head.css('https://fonts.googleapis.com/icon?family=Material+Icons')
+                head.raw_text('''
+                    <link rel="apple-touch-icon" sizes="180x180" href="{path}/apple-touch-icon.png">
+                    <link rel="icon" type="image/png" sizes="32x32" href="{path}/favicon-32x32.png">
+                    <link rel="icon" type="image/png" sizes="16x16" href="{path}/favicon-16x16.png">
+                    <link rel="manifest" href="{path}/site.webmanifest">
+                    <link rel="mask-icon" href="{path}/safari-pinned-tab.svg" color="#5bbad5">
+                    <meta name="msapplication-TileColor" content="#da532c">
+                    <meta name="theme-color" content="#ffffff">
+                \n'''.format(path='/meta/static/image/favicon'))
+            # THANKS:  real favicon generator, https://realfavicongenerator.net/
             html.body("Loading . . .")
             with html.footer() as foot:
                 foot.js('https://cdn.jsdelivr.net/npm/sortablejs@1.9.0/Sortable.js')
@@ -2658,9 +2673,9 @@ def answer_qiki(url_suffix):
     :return:
     """
 
-    if url_suffix == 'favicon.ico':
-        return static_response_from_qiki_javascript(filename=url_suffix)
-        # SEE:  favicon.ico in root, https://realfavicongenerator.net/faq#why_icons_in_root
+    # if url_suffix == 'favicon.ico':
+    #     return static_response_from_qiki_javascript(filename=url_suffix)
+    #     # SEE:  favicon.ico in root, https://realfavicongenerator.net/faq#why_icons_in_root
 
     if not secure.credentials.Options.enable_answer_qiki:
         flask.abort(404)

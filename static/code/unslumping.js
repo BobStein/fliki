@@ -6,7 +6,8 @@
  * Auxiliary input parameter extracted from the URL (window.location.search):
  *
  *     ?cont=IDN,IDN,...    Only show some contributions.  (IDN of latest edit.)
- *     ?initial=NN          Initially show NN to NN+M-1 contributions, M=MORE_CAT_CONT
+ *     ?initial=NN          Initially show NN to NN+MORE_CAT_CONT-1 contributions
+ *     ?console_verbose     Details on the JavaScript console of how words are processed
  *
  * Limits the contributions displayed.
  * Each IDN is the inconvenient ROOT id_attribute,
@@ -198,8 +199,10 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
         "Log in to see the anonymous contributions from others."
     );
 
-    var weep_url = MONTY.STATIC_IMAGE + '/' + 'weep_80.png';
-    var laugh_url = MONTY.STATIC_IMAGE + '/' + 'laugh_80_left.png';
+    // var weep_url = MONTY.STATIC_IMAGE + '/' + 'weep_80.png';
+    // var laugh_url = MONTY.STATIC_IMAGE + '/' + 'laugh_80_left.png';
+    var weep_url = MONTY.STATIC_IMAGE + '/' + 'weep_104_right.png';
+    var laugh_url = MONTY.STATIC_IMAGE + '/' + 'laugh_103_left.png';
 
     // var INTRODUCTORY_BLURB = "or drag stuff here by its " + GRIP_SYMBOL;
     // var INTRODUCTORY_BLURB = "drag " + GRIP_SYMBOL + " here";
@@ -401,7 +404,9 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
     var INITIAL_CAT_CONT_QUERY = 'initial';   // query-string variable to override INITIAL_CAT_CONT
 
     var MORE_CAT_CONT = 20;   // Clicking "N MORE" renders this many contributions
-    var MORE_CAT_CONT_SHIFT = 5 * MORE_CAT_CONT;  // Shift-click renders this many
+                              // It's also the granularity of the "N MORE" contributions --
+                              // they're always an integral multiple of this number.
+    var MORE_CAT_CONT_SHIFT = 5 * MORE_CAT_CONT;  // Shift-click renders THIS many
     var DO_WHOLE_UNRENDERED_PIECES = true;  // Show a few more than INITIAL_CAT_CONT initially,
                                             // to make unrendered count an even multiple of
                                             // MORE_CAT_CONT.  This way in the "N more" label,
@@ -625,7 +630,32 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
     });
 
     /**
-     * Could this element conceivably expect the user to type something?
+     * Handle keyboard shortcut `keydown` event.
+     *
+     * EXAMPLE:  $(window.document).on('keydown', keyboard_shortcut_handler)
+     *
+     * @param evt
+     */
+    function keyboard_shortcut_handler(evt) {
+        if ( ! handle_keystroke_in_all_contexts(evt)) {
+            if ( ! is_text_entry_element(evt.target)) {
+                if ( ! handle_keystroke_when_not_typing_text(evt)) {
+                    console.info(
+                        "ignoring key", evt.key,
+                        evt.shiftKey ? "SHIFT"   : "",
+                        evt.ctrlKey  ? "CONTROL" : "",
+                        evt.altKey   ? "ALT"     : "",
+                        evt.metaKey  ? "META"    : "",
+                        evt.target
+                    );
+                    // EXAMPLE:  ignoring keystroke F9 SHIFT CONTROL
+                }
+            }
+        }
+    }
+
+    /**
+     * Does element expect the user to be typing some text?
      *
      * For calling from a keyboard event handler on event_object.target
      * Doesn't matter:  where focus is, what's visible, what's disabled, what's readonly.
@@ -635,21 +665,17 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
      * @param element - jQuery object or DOM object or selector
      * @return {boolean}
      */
-    function is_typable(element) {
+    function is_text_entry_element(element) {
         return $(element).is(':input, [contenteditable]');
     }
 
-    function keyboard_shortcut_handler(evt) {
-        // console.info(
-        //     "key", evt.key,
-        //     evt.shiftKey ? "SHIFT"   : "",
-        //     evt.ctrlKey  ? "CONTROL" : "",
-        //     evt.altKey   ? "ALT"     : "",
-        //     evt.metaKey  ? "META"    : "",
-        //     evt.target,
-        //     is_typable(evt.target)
-        // );
-
+    /** Handle a keystroke whether the user is entering text or not.
+     *
+     * @param evt - as passed to jQuery .on() callback
+     * @return {boolean} - true=handled it
+     */
+    // THANKS:  Escape event, https://stackoverflow.com/a/3369624/673991
+    function handle_keystroke_in_all_contexts(evt) {
         switch (evt.key) {
         case 'Escape':
             var was_editing = is_editing_some_contribution;
@@ -672,44 +698,43 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                 }
                 bot.stop();
             }
-            break;
+            return true;
+        default:
+            return false;
         }
+    }
 
-        // NOTE:  Keystrokes above can happen while user is expected to be typing.
-
-        if (is_typable(evt.target)) {
-            // Expect user typing -- silently ignore keyboard shortcuts.
-            // TODO:  Is this always true of Escape?
-            return;
-        }
-
-        // NOTE:  Keystrokes below CANNOT happen while user is typing.
-
+    /** Handle a keystroke when a user is NOT entering text.
+     *
+     * @param evt - as passed to jQuery .on() callback
+     * @return {boolean} - true=handled it
+     */
+    // THANKS:  KeyboardEvent.key, https://stackoverflow.com/a/46064532/673991
+    // THANKS:  KeyboardEvent.key values,
+    //          https://developer.mozilla.org/en-US/docs/Web/API/KeyboardEvent/key/Key_Values
+    function handle_keystroke_when_not_typing_text(evt) {
         switch (evt.key) {
-        case 'Escape':
-            // handled above
-            break;
         case 'ArrowLeft':
             if (is_popup()) {
                 popup_cont.embed_message({ action: 'seek_relative', seconds: -10 });
             } else {
                 console.warn("Oops can't seek behind");
             }
-            break;
+            return true;
         case 'ArrowRight':
             if (is_popup()) {
                 popup_cont.embed_message({ action: 'seek_relative', seconds: +10 });
             } else {
                 console.warn("Oops can't seek ahead");
             }
-            break;
+            return true;
         case 'ArrowDown':
         case 'ArrowUp':
             console.info("volume up/down -- goes here");   // TODO
-            break;
+            return true;
         // case 'Tab':
         //     console.info("tab -- goes here");   // TODO -- but what's shift-tab?
-        //     break;
+        //     return true;
         case 'f':
         case 'F':
             if (isFullScreen) {
@@ -720,11 +745,11 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
             } else {
                 embed_enter_full_screen();
             }
-            break;
+            return true;
         case 'm':
         case 'M':
             console.info("mute -- goes here");   // TODO
-            break;
+            return true;
         case 'n':
         case 'N':
             if (bot.is_manual()) {
@@ -733,7 +758,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                 console.info("N - next");
             }
             bot.skip();
-            break;
+            return true;
         case 'q':
         case 'Q':
             if (bot.is_manual()) {
@@ -742,7 +767,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                 console.info("Q - quit");
             }
             bot.stop();
-            break;
+            return true;
         case ' ':
             if (bot.is_manual()) {
                 // console.info("spacebar - play");
@@ -752,6 +777,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                 //        Just too big of a step to take on a whole web page.
                 // SEE:  Spacebar ux, https://ux.stackexchange.com/a/53113/25643
                 // TODO:  It could initiate play if a contribution has been manually popped up.
+                console.info("spacebar ignored when not playing");
             } else if (bot.is_paused) {
                 console.info("spacebar - resume");
                 bot.resume();
@@ -760,25 +786,17 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                 bot.pause();
             }
             evt.preventDefault();
-            break;
+            // NOTE:  Prevent spacebar from scrolling down a web page.
+            // SEE:  About that ancient crusty convention of a spacebar scrolling down a web page,
+            //       https://ux.stackexchange.com/a/53112/25643
+            return true;
         case '?':
-            console.info("keyboard help -- goes here");   // TODO
-            break;
+            console.info("keyboard help -- goes here");
+            // TODO:  Scroll to and open a blurb in the About category?  Noice!
+            return true;
         default:
-            console.info(
-                "key", evt.key,
-                evt.shiftKey ? "SHIFT"   : "",
-                evt.ctrlKey  ? "CONTROL" : "",
-                evt.altKey   ? "ALT"     : "",
-                evt.metaKey  ? "META"    : ""
-            );
-            // EXAMPLE:  key F9 SHIFT CONTROL
-            break;
+            return false;
         }
-        // THANKS:  KeyboardEvent.key, https://stackoverflow.com/a/46064532/673991
-        // THANKS:  Escape event, https://stackoverflow.com/a/3369624/673991
-        // THANKS:  KeyboardEvent.key values,
-        //          https://developer.mozilla.org/en-US/docs/Web/API/KeyboardEvent/key/Key_Values
     }
 
     function play_bot_default_others_if_empty_my_category() {
@@ -1589,7 +1607,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
 
 
     /**
-     * //// CategoriesUnslump ////
+     * //// CategoriesUnslump //// - collection of all categories for unslumping.org
      *
      * @return {CategoriesUnslump}
      * @constructor
@@ -1605,19 +1623,27 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
             CATEGORY: MONTY.IDN.CATEGORY
         });
 
-        that.notify = console.log.bind(console);   // should come before .word_pass() calls
+        that.notify = console.log.bind(console);
 
-        that.loop(function (_, cat) {   // must come before .word_pass() calls
-            cat.cont_sequence.fence_post_right = MONTY.IDN.FENCE_POST_RIGHT;
-            // TODO:  Move to application-specific Category subclass, if we ever think of a
-            //        name for it that doesn't suck.
-        });
+        // NOTE:  Setting our .notify() function should come BEFORE our CategoryLexi.word_pass() calls
 
         looper(MONTY.cat_words, function (index, cat_word) {
             that.word_pass(cat_word);
+            // NOTE:  So for unslumping.js, MONTY.cat_words[] defines the order of categories
+            //        on the screen.
         });
-        // NOTE:  So for unslumping.js, MONTY.cat_words[] defines the order of categories
-        //        on the screen.
+
+        // NOTE:  Setting the fence_post_right values for the cont_sequence in each Category
+        //        instance, must come AFTER the above CategoryLexi.word_pass() calls
+        //        which populate this collection of categories.
+        //        And it has to come BEFORE all the ContributionLexi.word_pass() calls
+        //        because they will need to know the fence_post_right values.
+
+        that.loop(function (_, cat) {
+            cat.cont_sequence.fence_post_right = MONTY.IDN.FENCE_POST_RIGHT;
+            // TODO:  Move this to application-specific Category subclass,
+            //        if we ever think of a name for it that doesn't confuse.
+        });
     }
     CategoriesUnslump.prototype = Object.create(CategoryLexi.prototype);
     CategoriesUnslump.prototype.constructor = CategoriesUnslump;
@@ -1664,12 +1690,21 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
         categories.trash.build_dom("trash",     false);
         categories.about.build_dom("about",     false);
         // TODO:  Live category titles should not be buried in code like this.
+        //        Talking about the double-quoted text strings above, e.g. "others".
+        //        These strings appear next to the triangle valves at the top of each category.
+        // NOTE:  Sneaky code in the CategoryLexi() constructor enables the category objects to be
+        //        referred to by internal name above, e.g. categories.their
+        //        These internal names are in the lex. They are the txt parts of each category word.
+        //        They don't show up on the website.
+        //        I'm sure this duplicate naming spread across code and data won't foncuse anyone.
 
         categories.my.$sup.addClass('sup-category-first');
     }
 
     /**
-     * //// ContributionsUnslump ////
+     * //// ContributionsUnslump //// - collection of all contributions for unslumping.org
+     *
+     * This is ALL contributions, in definition order, not caring about categories.
      *
      * @return {ContributionsUnslump}
      * @constructor
@@ -1686,13 +1721,18 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
             EDIT: MONTY.IDN.EDIT,
             me: MONTY.me_idn
         });
-        // that.notify = console.log.bind(console);   // should come before .word_pass() calls
-        // EXAMPLE:
-        //     1918. Yes Bob Stein may caption 1917, work of Bob Stein
-        //     1919. Nope Horatio won't edit 956, work of Bob Stein
-        //     1920. (Can't caption 1919)
-        //     1921. Nope Horatio won't drag to 1871 in their, 1849, work of Horatio
-        //          ...because only admin can recategorize like this.
+
+        var console_verbose = query_get('console_verbose', false) !== false;
+
+        if (console_verbose) {
+            that.notify = console.log.bind(console);   // should come before .word_pass() calls
+            // EXAMPLE:
+            //     1918. Yes Bob Stein may caption 1917, work of Bob Stein
+            //     1919. Nope Horatio won't edit 956, work of Bob Stein
+            //     1920. (Can't caption 1919)
+            //     1921. Nope Horatio won't drag to 1871 in their, 1849, work of Horatio
+            //          ...because only admin can recategorize like this.
+        }
 
         looper(MONTY.w, function (_, word) {
             that.word_pass(word);
@@ -5782,8 +5822,8 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
             .append($('<option>', {value: PLAY_BOT_SEQUENCE_ORDER}).text("in order"))
         );
         $bot.append($('<select>', {id: 'play_bot_from'})
-            .append($('<option>', {value: PLAY_BOT_FROM_MY}).text("from my playlist"))
-            .append($('<option>', {value: PLAY_BOT_FROM_OTHERS}).text("from others playlist"))
+            .append($('<option>', {value: PLAY_BOT_FROM_MY}))       // .text("from my playlist"))
+            .append($('<option>', {value: PLAY_BOT_FROM_OTHERS}))   // .text("from others playlist"))
         );
         $bot.append($('<select>', {id: 'play_bot_speech'})
             .append($('<option>', {value: PLAY_BOT_SPEECH_OUT_LOUD}).text("quotes are spoken out loud"))
@@ -5837,6 +5877,11 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
         categories.loop(function (_, cat) {
             $(window.document.body).append(cat.$sup);
         });
+
+        refresh_labels_in_play_bot_from();
+        // NOTE:  Must come after play_bot_from is in DOM.
+        //        Must come after categories are countable.
+        //        (I think that happens in ContributionsUnslump.word_pass().)
 
 
 
@@ -5967,6 +6012,30 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                 num_registered, "registered"
             );
         }, MEDIA_HANDLER_LOAD_CHECK_MS);
+    }
+
+    var PLAY_BOT_FROM_STUFF = [
+        {
+            option_value: PLAY_BOT_FROM_MY,
+            label: "from my playlist ({number})"
+        },
+        {
+            option_value: PLAY_BOT_FROM_OTHERS,
+            label: "from others playlist ({number})"
+        }
+    ];
+
+    function refresh_labels_in_play_bot_from() {
+        var $select = $('#play_bot_from');
+        looper(PLAY_BOT_FROM_STUFF, function (_, stuff) {
+            var $option = $select.find('[value=' + $.escapeSelector(stuff.option_value) + ']');
+            var cat_idn = MONTY.IDN[stuff.option_value];
+            var cat = categories.get(cat_idn);
+            var num_cont = cat.cont_sequence.len();
+            var formatted_label = f(stuff.label, {number: num_cont});
+            console.debug(stuff.option_value, formatted_label, cat_idn, num_cont);
+            $option.text(formatted_label);
+        });
     }
 
     window.qiki = window.qiki || {};
@@ -6325,6 +6394,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
     function settle_down() {
         // console.log(order_report(order_of_contributions_in_each_category()));
         refresh_how_many();
+        refresh_labels_in_play_bot_from();
     }
 
     /**

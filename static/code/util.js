@@ -275,6 +275,10 @@ function selector_from_class(class_) {
 }
 
 function query_get(name, default_value) {
+    default_value = is_defined(default_value) ? default_value : null;
+    // CAUTION:  Bad idea:  default_value = default_value || null
+    //           That would turn 0 into null.
+    // NOTE:  default_value can never be the primitive value `undefined`.
     var query_params = new window.URLSearchParams(window.location.search);
     var value = query_params.get(name);
     if (value === null) {

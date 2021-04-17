@@ -143,10 +143,10 @@ Lexi.prototype.add = function Lexi_add(idn) {
 }
 
 /**
- * Iterate through all idns and words.
+ * Iterate through all idns and words in this lex.
  *
- * @param callback - passed (idn, word)
- *                   return false (not just falsy) to terminate loop early
+ * @param {function(int,object)} callback - passed (idn, word)
+ *                                          return false (not just falsy) to terminate loop early
  */
 Lexi.prototype.loop = function Lexi_loop(callback) {
     var that = this;
@@ -661,7 +661,7 @@ ContributionLexi.prototype.is_admin = function ContributionLexi_is_admin(_user_i
  * - An IdnSequence is an ordered sequence of idns.
  *   Each idn probably refers to a word in some Lexi,
  *   but the word is not contained by the IdnSequence.
- * - An IdnSequence is ordered.  A Lexi is not.
+ * - An IdnSequence encapsulates the order of a set of idns.
  *
  * Members:
  *     fence_post_right - special idn value to represent right-most edge.
@@ -695,7 +695,7 @@ IdnSequence.prototype.idn_array = function IdnSequence_idn_array() {
  * Delete an idn from the sequence
  *
  * @param {number} idn - by value, not by index
- * @param {function} error_callback - in case it was never there
+ * @param {function(string)} error_callback - in case it was never there
  */
 IdnSequence.prototype.delete = function IdnSequence_delete(idn, error_callback) {
     var that = this;
@@ -723,6 +723,13 @@ IdnSequence.prototype.len = function IdnSequence_len() {
     return that._sequence.length;
 }
 
+/**
+ * Iterate through all idns in this sequence.
+ *
+ * @param {function(int,int)} callback - passed (nearly_useless_index, idn)
+ *                                       return false (not just falsy) to terminate loop early
+ */
+
 IdnSequence.prototype.loop = function IdnSequence_loop(callback) {
     var that = this;
     looper(that._sequence, callback);
@@ -747,7 +754,7 @@ IdnSequence.prototype.has = function IdnSequence_has(idn) {
  *
  * @param idn_old
  * @param idn_new
- * @param error_callback
+ * @param {function(string)} error_callback
  */
 IdnSequence.prototype.renumber = function IdnSequence_insert(idn_old, idn_new, error_callback) {
     var that = this;
@@ -774,7 +781,7 @@ IdnSequence.prototype.renumber = function IdnSequence_insert(idn_old, idn_new, e
  * @param idn - new idn to be added to the sequence.
  * @param idn_to_right - first idn inserts on the left edge (typically the earliest).
  *                       fence_post_right inserts on right (latest).
- * @param error_callback
+ * @param {function(string)} error_callback
  */
 IdnSequence.prototype.insert = function IdnSequence_insert(idn, idn_to_right, error_callback) {
     var that = this;
@@ -785,10 +792,11 @@ IdnSequence.prototype.insert = function IdnSequence_insert(idn, idn_to_right, er
         } else {
             var index = that._sequence.indexOf(idn_to_right);
             if (index === -1) {
-                error_callback(f("Can't insert {idn} at {idn_to_right} in:\n{idns}", {
+                error_callback(f("Can't insert {idn} at {idn_to_right} in:\n{idns} --- {fp}", {
                     idn: idn,
                     idn_to_right: idn_to_right,
-                    idns: that._sequence.join(" ")
+                    idns: that._sequence.join(" "),
+                    fp: that.fence_post_right
                 }));
                 that.insert_left(idn);
             } else {
@@ -800,6 +808,7 @@ IdnSequence.prototype.insert = function IdnSequence_insert(idn, idn_to_right, er
         that.insert_left(idn);
     }
 }
+// THANKS:  callback parameters in JSDoc, https://stackoverflow.com/a/38586423/673991
 
 IdnSequence.prototype.insert_left = function IdnSequence_insert_left(idn) {
     var that = this;
