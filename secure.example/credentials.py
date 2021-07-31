@@ -24,7 +24,7 @@ The secret keys may be created with:
         14 characters long
         numeric, uppercase, lowercase
         unique
-    http://textmechanic.com/text-tools/randomization-tools/random-string-generator/
+    https://textmechanic.com/text-tools/randomization-tools/random-string-generator/
         Object Input Box
             abcefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789@#$%^&*()_+-=
         1 random string
@@ -40,6 +40,10 @@ The google credentials come from:
                 my_web_client
 
 """
+
+
+import pathlib
+
 
 for_fliki_lex_database = dict(
     language= 'MySQL',
@@ -120,7 +124,7 @@ class Options(object):
                           The provider is YouTube, flickr, etc.
                           Consequences if other origin is wrong:
 
-                              Unexpected message received from: http://... for iframe_NNNN.
+                              Unexpected message received from: https://... for iframe_NNNN.
                               Message was: [iFrameSizer]iframe_NNNN:128:220:mutationObserver.
                               This error can be disabled by setting the checkOrigin: false option
                               or by providing of array of trusted domains.
@@ -179,3 +183,11 @@ class Options(object):
     oembed_other_origin  = 'https://my.other.example.com'   # should NOT end with a slash
 
     oembed_target_origin = 'https://my.example.com'
+
+    path_public_key = pathlib.Path(__file__).with_name('my.crt')
+    path_private_key = pathlib.Path(__file__).with_name('my.key')
+    # NOTE:  These keys are for the testing Flask web server.  They're not used by Apache or WSGI.
+    #        They are used when running fliki.py directly.
+    # THANKS:  this directory, alternate file, https://stackoverflow.com/a/65174822/673991
+    # THANKS:  Flask cert, https://kracekumar.com/post/54437887454/ssl-for-flask-local-development/
+    # THANKS:  Flask cert, https://stackoverflow.com/a/42906465/673991

@@ -197,47 +197,47 @@ class WorkingIdns(object):
             #         Maybe so this class can be instantiated once at server startup to
             #         detect errors with IDN definitions a little earlier.
             if lex is not None:
-                self.LEX               = lex.noun(u'lex').idn
-                self.VERB              = lex.noun(u'verb').idn
-                self.DEFINE            = lex.verb(u'define').idn
-                self.LISTING           = lex.noun(u'listing').idn
-                self.NAME              = lex.verb(u'name').idn
-                self.BROWSE            = lex.verb(u'browse').idn
-                self.SESSION_OBSOLETE  = lex.verb(u'session').idn
-                self.IP_ADDRESS_OBSOLETE = lex.verb(u'IP address').idn
-                self.PATH              = lex.noun(u'path').idn
-                self.QUESTION_OBSOLETE = lex.noun(u'question').idn
-                self.ANSWER            = lex.noun(u'answer').idn
-                self.TAG               = lex.verb(u'tag').idn
-                self.IP_ADDRESS_TAG    = lex.define(self.TAG, u'ip address tag').idn
-                self.USER_AGENT_TAG    = lex.define(self.TAG, u'user agent tag').idn
-                self.REFERRER          = lex.verb(u'referrer').idn
-                self.ICONIFY           = lex.verb(u'iconify').idn
-                self.ANONYMOUS_LISTING = lex.define(self.LISTING, u'anonymous').idn
-                self.GOOGLE_LISTING    = lex.define(self.LISTING, u'google user').idn
-                self.QOOL              = lex.verb(u'qool').idn
-                self.UNSLUMP_OBSOLETE  = lex.verb(u'unslump').idn
+                self.LEX               = lex.noun('lex').idn
+                self.VERB              = lex.noun('verb').idn
+                self.DEFINE            = lex.verb('define').idn
+                self.LISTING           = lex.noun('listing').idn
+                self.NAME              = lex.verb('name').idn
+                self.BROWSE            = lex.verb('browse').idn
+                self.SESSION_OBSOLETE  = lex.verb('session').idn
+                self.IP_ADDRESS_OBSOLETE = lex.verb('IP address').idn
+                self.PATH              = lex.noun('path').idn
+                self.QUESTION_OBSOLETE = lex.noun('question').idn
+                self.ANSWER            = lex.noun('answer').idn
+                self.TAG               = lex.verb('tag').idn
+                self.IP_ADDRESS_TAG    = lex.define(self.TAG, 'ip address tag').idn
+                self.USER_AGENT_TAG    = lex.define(self.TAG, 'user agent tag').idn
+                self.REFERRER          = lex.verb('referrer').idn
+                self.ICONIFY           = lex.verb('iconify').idn
+                self.ANONYMOUS_LISTING = lex.define(self.LISTING, 'anonymous').idn
+                self.GOOGLE_LISTING    = lex.define(self.LISTING, 'google user').idn
+                self.QOOL              = lex.verb('qool').idn
+                self.UNSLUMP_OBSOLETE  = lex.verb('unslump').idn
 
-                self.RESOURCE          = lex.noun(u'resource').idn
-                self.QUOTE             = lex.define(self.RESOURCE, u'quote').idn
+                self.RESOURCE          = lex.noun('resource').idn
+                self.QUOTE             = lex.define(self.RESOURCE, 'quote').idn
 
-                self.CONTRIBUTE        = lex.verb(u'contribute').idn
-                self.CAPTION           = lex.verb(u'caption').idn
+                self.CONTRIBUTE        = lex.verb('contribute').idn
+                self.CAPTION           = lex.verb('caption').idn
 
-                self.CATEGORY          = lex.verb(u'category').idn
-                self.CAT_MY            = lex.define(self.CATEGORY, u'my').idn
-                self.CAT_THEIR         = lex.define(self.CATEGORY, u'their').idn
-                self.CAT_ANON          = lex.define(self.CATEGORY, u'anon').idn
-                self.CAT_TRASH         = lex.define(self.CATEGORY, u'trash').idn
-                self.CAT_ABOUT         = lex.define(self.CATEGORY, u'about').idn
-                self.FENCE_POST_RIGHT  = lex.noun(u'fence post right').idn
+                self.CATEGORY          = lex.verb('category').idn
+                self.CAT_MY            = lex.define(self.CATEGORY, 'my').idn
+                self.CAT_THEIR         = lex.define(self.CATEGORY, 'their').idn
+                self.CAT_ANON          = lex.define(self.CATEGORY, 'anon').idn
+                self.CAT_TRASH         = lex.define(self.CATEGORY, 'trash').idn
+                self.CAT_ABOUT         = lex.define(self.CATEGORY, 'about').idn
+                self.FENCE_POST_RIGHT  = lex.noun('fence post right').idn
                 # TODO:  Rename FENCE_POST_END?
                 #        Because order could be vertical, e.g. categories,
                 #        not to mention right-to-left in arabic/hebrew.
 
-                # self.EDIT_TXT          = lex.verb(u'edit txt').idn
-                # self.CONTRIBUTE_EDIT   = lex.define(self.EDIT_TXT, u'contribute edit').idn
-                self.EDIT              = lex.verb(u'edit').idn
+                # self.EDIT_TXT          = lex.verb('edit txt').idn
+                # self.CONTRIBUTE_EDIT   = lex.define(self.EDIT_TXT, 'contribute edit').idn
+                self.EDIT              = lex.verb('edit').idn
 
                 # lex[lex](self.EXPLAIN, use_already=True)[self.FENCE_POST_RIGHT] = \
                 #     u"Represent the contribution to the right of the right-most contribution in a category.", 2
@@ -251,9 +251,9 @@ class WorkingIdns(object):
                 # NOTE:  Oops, these step on each other.  Each thinks it's overwriting the other, because
                 #        use_already looks at the latest s,v,o match.
 
-                self.FIELD_FLUB        = lex.verb(u'field flub').idn   # report of some wrongness from the field
+                self.FIELD_FLUB        = lex.verb('field flub').idn   # report of some wrongness from the field
 
-                self.INTERACT          = lex.verb(u'interact').idn   # UX action
+                self.INTERACT          = lex.verb('interact').idn   # UX action
 
 
     def dictionary_of_qstrings(self):
@@ -526,6 +526,8 @@ class LexFliki(qiki.LexMySQL):
             raise ValueError("Not a Listing idn: " + repr(idn) + " - " + six.text_type(e))
 
     def read_word(self, idn_ish):
+        # TODO:  This code resembles Lex.read_word().  Explain the duplication or avoid it.
+        #        Did I start to move this logic to Lex.read_word() and not finish the job?
         if idn_ish is None:
             return super(LexFliki, self).read_word(None)
 
@@ -601,10 +603,10 @@ def anonymous_question_happened():
 
 
 class UNICODE(object):
-    BLACK_RIGHT_POINTING_TRIANGLE = u'\u25B6'
-    VERTICAL_ELLIPSIS = u'\u22EE'   # 3 vertical dots, aka &vellip; &#x022ee; &#8942;
-    VERTICAL_FOUR_DOTS = u'\u205E'   # 4 vertical dots
-    HORIZONTAL_LINE_EXTENSION = u'\u23AF'
+    BLACK_RIGHT_POINTING_TRIANGLE = '\u25B6'
+    VERTICAL_ELLIPSIS = '\u22EE'   # 3 vertical dots, aka &vellip; &#x022ee; &#8942;
+    VERTICAL_FOUR_DOTS = '\u205E'   # 4 vertical dots
+    HORIZONTAL_LINE_EXTENSION = '\u23AF'
 
 
 # TODO:  Combine classes, e.g. GoogleUser(flask_login.UserMixin, qiki.Listing)
@@ -1190,7 +1192,7 @@ class AuthFliki(Auth):
 
     @property
     def login_url(self):
-        return flask.url_for(u'login')
+        return flask.url_for('login')
         # NOTE:  Adding a parameter to the query string makes Authomatic.login()
         #        return None.
 
@@ -1464,7 +1466,7 @@ def url_var(url, key, default):
 
     If redundant values, gets the last.
 
-    :param url: - e.g. 'http://example.com/?foo=bar'
+    :param url: - e.g. 'https://example.com/?foo=bar'
     :param key:                     - e.g. 'foo'
     :param default:                     - e.g. 'bar'
     :return:                            - e.g. 'bar'
@@ -1474,8 +1476,8 @@ def url_var(url, key, default):
     the_dict = urllib.parse.parse_qs(the_parts.query)
     the_value = the_dict.get(key, [default])[-1]
     return the_value
-assert 'bar' == url_var('http://example.com/?foo=bar', 'foo', 'qux')
-assert 'qux' == url_var('http://example.com/',         'foo', 'qux')
+assert 'bar' == url_var('https://example.com/?foo=bar', 'foo', 'qux')
+assert 'qux' == url_var('https://example.com/',         'foo', 'qux')
 
 
 @flask_app.route('/module/qiki-javascript/<path:filename>')
@@ -1776,7 +1778,19 @@ def unslumping_home(home_page_title):
                 q=q_end - q_start,
                 t=t_end - t_start,
             ))
-            return html.doctype_plus_html()
+            html_response = html.doctype_plus_html()
+            flask_response = flask.Response(html_response)
+            # flask_response.headers['Cross-Origin-Resource-Policy'] = 'cross-origin'
+            # NOTE:  This hail-mary attempt to fix broken Instagram thumbnails was misguided.
+            #        I think I misunderstood the Chrome message about this.  Anyway Firefox
+            #        fails too.  A clue is in the Chrome-F12-Network highlighting of the
+            #        "same-origin" value in the *instagram* response header, not the fliki header.
+            #        In other words, fixing this requires a change on the instagram servers.
+            #        They're being stingy with sharing their images now.
+            # SEE:  CORS policy change Feb 2021, https://stackoverflow.com/q/66336314/673991
+            # SEE:  Possible solution in a deleted answer, is this an instagram proxy?
+            #       https://rapidapi.com/restyler/api/instagram40
+            return flask_response
 
     return "Please wait a bit..."   # TODO:  Never gets here.
 
@@ -1933,7 +1947,8 @@ def meta_lex():
                     listing_dict[q] = dict()
                 listing_dict[q].update(kwargs)
 
-            qc_find = auth.lex.query_count
+            t_find_words = time.time()
+            qc_find_words = auth.lex.query_count
 
             def z(idn):
                 """Convert qiki.Number into something more efficient to compare."""
@@ -2001,8 +2016,8 @@ def meta_lex():
                             platform=ua.platform,
                         )
 
-            t_lex = time.time()
-            qc_foot = auth.lex.query_count
+            t_footer = time.time()
+            qc_footer = auth.lex.query_count
             with body.footer() as foot:
                 foot.js_stamped(static_code_url('d3.js'))
                 # TODO:  Is d3.js here just to draw delta-time triangles?  If so replace it.
@@ -2026,17 +2041,18 @@ def meta_lex():
     t_end = time.time()
     print(
         "META LEX TIMING,",
-        qc_find - qc_start,
-        qc_foot - qc_find,
-        auth.lex.query_count - qc_foot,
+        qc_find_words - qc_start,           # query count - find_words()
+        qc_footer - qc_find_words,          # query count - word loop
+        auth.lex.query_count - qc_footer,   # query count - footer & concat html elements
         "queries,",
         len(words),
         "words,",
-        "{:.3f} {:.3f} {:.3f} =  {:.3f}".format(
-            t_lex - t_start,
-            t_render - t_lex,
-            t_end - t_render,
-            t_end - t_start,
+        "{:.3f} {:.3f} {:.3f} {:.3f} = {:.3f}".format(
+            t_find_words - t_start,       # elapsed time - find_words()
+            t_footer - t_find_words,      # elapsed time - word loop
+            t_render - t_footer,          # elapsed time - footer
+            t_end - t_render,             # elapsed time - concat html elements
+            t_end - t_start,              # elapsed time - total
         ),
         "sec"
     )
@@ -2048,288 +2064,9 @@ def url_from_question(question_text):
     # THANKS:  Absolute url, https://stackoverflow.com/q/12162634/673991#comment17401215_12162726
 
 
-# @flask_app.route('/meta/all', methods=('GET', 'HEAD'))
-# def legacy_meta_all():
-#     # TODO:  verb filter checkboxes (show/hide each one, especially may want to hide "questions")
-#
-#     auth = AuthFliki()
-#     if not auth.is_online:
-#         return "meta offline"
-#     if not auth.is_authenticated:
-#         return auth.login_html()   # anonymous viewing not allowed, just show "login" link
-#         # TODO:  Instead of rejecting all anonymous-user viewing,
-#         #        maybe just omit anonymous-content.
-#         #        That is, where sbj.lex.meta_word.txt == 'anonymous'
-#
-#     lex = auth.lex
-#     browse_verb = lex[lex.IDN.BROWSE]
-#
-#     with FlikiHTML('html') as html:
-#         html.header("Lex all")
-#
-#         with html.body(class_='target-environment') as body:
-#             with body.p() as p:
-#                 p.raw_text(auth.login_html())
-#
-#             qc_start = lex.query_count
-#             t_start = time.time()
-#             words = lex.find_words()
-#             t_find_words = time.time()
-#             qc_find_words = lex.query_count
-#
-#             words = list(words)[ : ]
-#             all_subjects = {word.sbj for word in words}
-#
-#
-#
-#             def limbo_idns():
-#                 for word in words:
-#                     for sub_word in (word.sbj, word.vrb, word.obj):
-#                         if sub_word.lex.__class__.__name__ == 'ListingLimbo':
-#                             yield sub_word.idn
-#
-#             limbo_set = set(list(limbo_idns()))
-#
-#             with body.pre() as pre:
-#                 for limbo_idn in sorted(limbo_set):
-#                     pre.text("Limbo {idn}\n".format(idn=limbo_idn))
-#
-#
-#
-#             lex_words = lex.find_words(txt='lex')
-#             define_words = lex.find_words(txt='define')
-#             listing_words = lex.find_words(txt='listing')
-#             with body.pre() as pre:
-#                 if len(lex_words) != 1:
-#                     for word in lex_words:
-#                         pre.text("lex: {}\n".format(word.idn))
-#                 if len(define_words) != 1:
-#                     for word in define_words:
-#                         pre.text("define: {}\n".format(word.idn))
-#                 if len(listing_words) != 1:
-#                     for word in listing_words:
-#                         pre.text("listing: {}\n".format(word.idn))
-#             # Could loop through and beknight words that either use the first lex & define
-#             # or at that moment lex and define aren't defined yet
-#             # then later the strings have to be consistent
-#
-#
-#
-#             def latest_iconifier_or_none(s):
-#                 iconifiers = lex.find_words(obj=s, vrb=lex.IDN.ICONIFY)
-#                 try:
-#                     return iconifiers[-1]
-#                 except IndexError:
-#                     return None
-#
-#             subject_icons_nones = {s: latest_iconifier_or_none(s) for s in all_subjects}
-#             subject_icons = {s: i for s, i in subject_icons_nones.items() if i is not None}
-#             # print("Subject icons", repr(subject_icons))
-#             # EXAMPLE:  Subject icons {
-#             #     Word('user'): Word(338),
-#             #     Word(0q82_A7__8A059E058E6A6308C8B0_1D0B00): Word(864)
-#             # }
-#
-#             def word_identification(w):
-#                 w_idn = w.idn.qstring()
-#                 if not w.idn.is_suffixed() and w.idn.is_whole():
-#                     w_idn += " ({})".format(render_num(w.idn))
-#                 w_idn += " " + w.lex.__class__.__name__
-#                 return w_idn
-#
-#             def word_identification_text(w):
-#                 return "{idn}: {txt}".format(
-#                     idn=word_identification(w),
-#                     txt=safe_txt(w),
-#                 )
-#
-#             def show_sub_word(element, w, title_prefix="", **kwargs):
-#                 if w.obj == browse_verb:
-#                     w_txt = "session #" + str(native_num(w.idn))
-#                 elif w.vrb is not None and w.vrb.obj == browse_verb:
-#                     w_txt = "hit #" + str(native_num(w.idn))
-#                 else:
-#                     w_txt = compress_txt(safe_txt(w))
-#                 return show_sub_word_txt(element, w, w_txt, title_prefix=title_prefix, **kwargs)
-#
-#             def show_sub_word_txt(element, w, w_txt, title_prefix="", a_href=None, **kwargs):
-#                 """Diagram a sbj, vrb, or obj."""
-#                 with element.span(**kwargs) as span_sub_word:
-#                     if a_href is None:
-#                         inner = span_sub_word
-#                     else:
-#                         inner = span_sub_word.a(
-#                             href=a_href,
-#                             target='_blank',
-#                         )
-#
-#                     if w in subject_icons:
-#                         inner.img(
-#                             src=subject_icons[w].txt,
-#                             title=title_prefix + word_identification_text(w)
-#                         )
-#                         # NOTE:  w.__class__.__name__ == 'WordDerivedJustForThisListing'
-#                     else:
-#                         classes = ['named']
-#                         # if isinstance(w.lex, AnonymousQikiListing):
-#                         if is_qiki_user_anonymous(w):
-#                             classes.append('anonymous')
-#                         elif w.idn == lex.IDN.LEX:
-#                             classes.append('lex')
-#                         with inner.span(classes=classes) as span_named:
-#                             span_named(w_txt, title=title_prefix + word_identification(w))
-#                     return span_sub_word
-#
-#             def quoted_compressed_txt(element, txt):
-#                 element.char_name('ldquo')
-#                 element.text(compress_txt(txt))
-#                 element.char_name('rdquo')
-#
-#             def show_iconify_obj(element, word, title_prefix=""):
-#                 show_sub_word(element, word.obj, class_='wrend obj vrb-iconify', title_prefix=title_prefix)
-#                 with element.span(class_='txt') as span_txt:
-#                     span_txt.text(" ")
-#                     span_txt.img(src=word.txt, title="txt = " + compress_txt(word.txt))
-#
-#             def show_question_obj(element, word, title_prefix=""):
-#
-#                 if word.obj.txt == '':
-#                     show_sub_word(element, word.obj, class_='wrend obj vrb-question', title_prefix=title_prefix)
-#                 else:
-#                     show_sub_word(
-#                         element,
-#                         word.obj,
-#                         class_='wrend obj vrb-question',
-#                         title_prefix=title_prefix,
-#                         a_href=url_from_question(word.obj.txt)
-#                     )
-#
-#                 if word.txt != '':   # When vrb=question_verb, txt was once the referrer.
-#                     if word.txt == auth.current_url:
-#                         element.span(" (here)", class_='referrer', title="was referred from here")
-#                     elif word.txt == url_from_question(word.obj.txt):
-#                         element.span(" (self)", class_='referrer', title="was referred from itself")
-#                     else:
-#                         # TODO:  Remove these crufty if-clauses,
-#                         #        because the referrer url is now stored in the txt
-#                         #        of a separate referrer_verb word that objectifies the hit
-#                         element.text(" ")
-#                         with element.a(
-#                             href=word.txt,
-#                             title="referrer",
-#                             target='_blank',
-#                         ) as a:
-#                             a.span("(ref)", class_='referrer')
-#
-#             def show_num(element, word):
-#                 if word.num != qiki.Number(1):
-#                     with element.span(class_='num', title="num = " + word.num.qstring()) as num_span:
-#                         num_span.text(" ")
-#                         num_span.char_name('times')
-#                         num_span.text(render_num(word.num))
-#
-#             def show_txt(element, word):
-#                 if word.txt != '':
-#                     if word.vrb == lex[lex.IDN.REFERRER]:
-#                         if word.txt == url_from_question(word.obj.obj.txt):
-#                             with element.span(class_='referrer', title="was referred from itself") as ref_span:
-#                                 ref_span.text(" (self)")
-#                             return
-#                         if word.txt == auth.current_url:
-#                             with element.span(class_='referrer', title="was referred from here") as ref_span:
-#                                 ref_span.text(" (here)")
-#                             return
-#                     with element.span(class_='txt') as txt_span:
-#                         txt_span.text(" ")
-#                         quoted_compressed_txt(txt_span, word.txt)
-#
-#             body.comment(["My URL is", auth.current_url])
-#             with body.ol(class_='lex-list') as ol:
-#                 last_whn = None
-#                 first_word = True
-#                 ago_lex = AgoLex()
-#
-#                 t_loop = time.time()
-#                 t_words = list()
-#
-#                 for word in words:
-#                     if first_word:
-#                         first_word = False
-#                         delta = None
-#                         extra_class = ''
-#                     else:
-#                         delta = DeltaTimeLex()[last_whn](u'differ')[word.whn]
-#                         extra_class = ' delta-' + delta.units_long
-#                     with ol.li(
-#                         value=render_num(word.idn),   # the "bullet" of the list
-#                         title="idn = " + word.idn.qstring(),
-#                         class_='srend' + extra_class,
-#                     ) as li:
-#                         if delta is not None:
-#                             units_class = delta.units_long
-#                             if 0.0 < delta.num < 1.0:
-#                                 units_class = 'subsec'
-#                             with li.span(class_='delta-triangle ' + units_class) as triangle:
-#                                 triangle(title=delta.description_long)
-#                                 triangle.text(UNICODE.BLACK_RIGHT_POINTING_TRIANGLE)
-#                             with li.span(class_='delta-amount ' + units_class) as amount:
-#                                 amount.text(delta.amount_short + delta.units_short)
-#
-#                         show_sub_word(li, word.sbj, class_='wrend sbj', title_prefix= "sbj = ")
-#
-#                         show_sub_word(li, word.vrb, class_='wrend vrb', title_prefix="vrb = ")
-#
-#                         if word.vrb.txt == 'iconify':
-#                             show_iconify_obj(li, word, title_prefix="obj = ")
-#                         elif word.vrb == lex[lex.IDN.QUESTION_OBSOLETE]:
-#                             show_question_obj(li, word, title_prefix="obj = ")
-#                         elif word.vrb.obj == browse_verb:
-#                             show_question_obj(li, word, title_prefix="obj = ")
-#                         else:
-#                             show_sub_word(li, word.obj, class_='wrend obj', title_prefix="obj = ")
-#                             show_num(li, word)
-#                             show_txt(li, word)
-#
-#                         li.span(" ")
-#                         ago = ago_lex.describe(word.whn)
-#                         with li.span(
-#                             title="whn = " + ago.description_longer,   # e.g. "34.9 hours ago: 2019.0604.0459.02"
-#                             class_='whn ' + ago.units_long,       # e.g. "hours"
-#                         ) as whn_span:
-#                             whn_span.text(ago.description_short)       # e.g. "35h"
-#                         last_whn = word.whn
-#
-#                     t_now = time.time()
-#                     t_elapsed = t_now - t_loop
-#                     t_loop = t_now
-#                     t_words.append(t_elapsed)
-#
-#             body.footer()
-#
-#     qc_loop = lex.query_count
-#
-#     print(
-#         "ALL TIMING "
-#         "find {qc_find}:{t_find:.3f}, "
-#         "{n}*loop {qc_loop} : {t_min:.3f} / {t_max:.3f} / {t_avg:.3f}, "
-#         "total {t_total:.3f}".format(
-#             qc_find=qc_find_words - qc_start,
-#             t_find=t_find_words - t_start,
-#             qc_loop=qc_loop - qc_find_words,
-#             t_min=min(t_words),
-#             t_max=max(t_words),
-#             t_avg=sum(t_words)/len(t_words),
-#             t_total=t_loop - t_start,
-#             n=len(words),
-#         )
-#     )
-#
-#     return html.doctype_plus_html()
-
-
-MAX_TXT_LITERAL = 120
-BEFORE_DOTS = 80
-AFTER_DOTS = 20
+MAX_TXT_LITERAL = 120   # Longer txt is broken up with ... ellipses,
+BEFORE_DOTS = 80        # showing this many before ...
+AFTER_DOTS = 20         #                          ... and this many after.
 
 
 def compress_txt(txt):
@@ -2439,7 +2176,7 @@ class AgoLex(DeltaTimeLex):
         return does_exist
 
     def describe(self, t):
-        return self[t](u'differ')[self._now]
+        return self[t]('differ')[self._now]
 
 
 @flask_app.route('/meta/all words', methods=('GET', 'HEAD'))   # the older, simpler way
@@ -2604,7 +2341,13 @@ def noembed_render(url, idn, matched_groups):
                 script.raw_text('embed_content_js(window, jQuery, MONTY);\n')
 
         html.body()
-        return html.doctype_plus_html()
+        # return html.doctype_plus_html()
+        # HACK:  In case this helps instagram
+        html_response = html.doctype_plus_html()
+        flask_response = flask.Response(html_response)
+        # flask_response.headers['Cross-Origin-Resource-Policy'] = 'cross-origin'
+        # SEE:  The other place I tried this hail-mary in unslumping_home()
+        return flask_response
 
 
 def fix_noembed_bug_with_instagram(url):
@@ -3039,8 +2782,8 @@ def retry(exception_to_check, tries=4, delay=3, delay_multiplier=2):
     :
     Nth try happens (4th if tries is 4).  This time exception bubbles up to caller.
 
-    http://www.saltycrane.com/blog/2009/11/trying-out-retry-decorator-python/
-    original from: http://wiki.python.org/moin/PythonDecoratorLibrary#Retry
+    https://www.saltycrane.com/blog/2009/11/trying-out-retry-decorator-python/
+    original from: https://wiki.python.org/moin/PythonDecoratorLibrary#Retry
 
     :param exception_to_check: the exception to check. may be a tuple of
         exceptions to check
@@ -3174,11 +2917,20 @@ def matcher_groups(url, pattern_list):
 #     return any_pattern_matched
 
 
-def valid_response(name=None, value=None):
+def _valid_html_response(name=None, value=None):
     if name is None or value is None:
         return json_encode(dict([('is_valid', True)]))
     else:
         return json_encode(dict([('is_valid', True), (name, value)]))
+
+
+def valid_response(name=None, value=None):
+    # HACK:  In case this helps instagram
+    html_response = _valid_html_response(name, value)
+    flask_response = flask.Response(html_response)
+    # flask_response.headers['Cross-Origin-Resource-Policy'] = 'cross-origin'
+    # SEE:  The other place I tried this hail-mary in unslumping_home()
+    return flask_response
 
 
 def invalid_response(error_message):
@@ -3285,7 +3037,16 @@ def version_report():
 
 if __name__ == '__main__':
     '''Run locally, fliki.py spins up its own web server.'''
-    flask_app.run(debug=True)
+    flask_app.run(
+        debug=True,
+        ssl_context=(
+            secure.credentials.Options.path_public_key,
+            secure.credentials.Options.path_private_key,
+        ),
+    )
+    # NOTE:  A mostly functional local https server.
+    #        You still get "Your connection is not private" in Chrome, and have to use the
+    #        Advanced option:  Proceed to localhost ... (unsafe)
 
 
 # TODO:  CSRF Protection
