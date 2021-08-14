@@ -244,10 +244,12 @@ class WebHTML(richard_jones_html.HTML):
         Examples:
 
              body.jquery()
-                1st try:  http://ajax.googleapis.com/ajax/libs/jquery/latest/jquery.js
+                1st try:  https://ajax.googleapis.com/ajax/libs/jquery/latest/jquery.js
+                SEE:  Why this doesn't work any more, https://stackoverflow.com/a/12608285/673991
+                SEE:  My snarky answer to this problem, https://stackoverflow.com/a/47398670/673991
 
              body.jquery(version='3.2.1', local_directory='/static/code')
-                1st try:  http://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.js
+                1st try:  https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.js
                 2nd try:  /static/code/jquery-3.2.1.js
         """
         js_parameters = dict(
@@ -315,6 +317,20 @@ class WebHTML(richard_jones_html.HTML):
         # THANKS:  #34 no better than quot, https://stackoverflow.com/a/4015380/673991#comment4304632_4015380
         string = string.replace("'", '&#39;')
         return string
+
+    @classmethod
+    def unescape(cls, html_string):
+        try:
+            # noinspection PyUnresolvedReferences
+            return cls.html_parser_instance.unescape(html_string)
+        except AttributeError:
+            # noinspection PyUnresolvedReferences
+            return six.moves.html_parser.unescape(html_string)
+            # TODO:  Use html.unescape() instead.
+            #        Looks as if six.moves.html_parser.unescape IS html.unescape
+
+    # noinspection PyUnresolvedReferences
+    html_parser_instance = six.moves.html_parser.HTMLParser()
 
     def dot_min(self):
         return '.min' if self.do_minify else ''
@@ -488,7 +504,7 @@ class WebHTML(richard_jones_html.HTML):
 
     @classmethod
     def js_from_html(cls, html_string):
-        js_string = cls.js_string_literal(cls.html_parser_instance.unescape(html_string))
+        js_string = cls.js_string_literal(cls.unescape(html_string))
         return js_string
 
     @classmethod
@@ -509,9 +525,6 @@ class WebHTML(richard_jones_html.HTML):
         """ Remove dictionary entries with a value of None. """
         without_nones = {k: v for k, v in dictionary_with_nones.items() if v is not None}
         return without_nones
-
-    # noinspection PyUnresolvedReferences
-    html_parser_instance = six.moves.html_parser.HTMLParser()
 
 
 assert '&lt;p class=&quot;foo&quot;&gt;' == WebHTML.escape('<p class="foo">')

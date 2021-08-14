@@ -1,13 +1,18 @@
 """
-secure.template/credentials.py
+secure.template/credentials.py   (((THIS FILE IS A TEMPLATE)))
 ------------------------------
-Copy to secure/credentials.py and change everything with "my" or "88"
+Credentials and configuration options for a fliki server.
 
-Credentials and configuration options for a fliki server.  (((THIS FILE IS A TEMPLATE)))
+((( INSTRUCTIONS:
+    1. Copy this file to secure/credentials.py
+    2. Change everything with "my" or "88" (except "MySQL")
+    3. Read notes in triple parentheses and remove them.
 
-SEE:  Safe credential hosting, https://security.stackexchange.com/a/117634/20266
+    SEE:  Safe credential hosting, https://security.stackexchange.com/a/117634/20266
+)))
 
-Your MySQL server might be prepared with:   (((Suggest you edit, copy, paste, run this SQL.)))
+
+MySQL statements used to prepare this server:
 
     CREATE DATABASE `my_database`;
     CREATE USER 'my_user'@'my.mysql.server.example.com';
@@ -17,7 +22,10 @@ Your MySQL server might be prepared with:   (((Suggest you edit, copy, paste, ru
         ON `my_database`.*
         TO 'my_user'@'my.mysql.server.example.com';
 
-The secret keys may be created with:
+    (((Suggest you edit, copy, paste, and run the above SQL.)))
+    (((Maintain it in tandem with the `for_fliki_lex_database` dictionary below.)))
+
+Secret keys may be created with:
 
     https://www.random.org/strings/
         3 random strings
@@ -30,7 +38,7 @@ The secret keys may be created with:
         1 random string
         42 objects in length
 
-The google credentials come from:
+Google credentials come from:
 
     https://console.developers.google.com/apis/credentials?project=my-project
         Credentials

@@ -41,6 +41,8 @@ import six
 import six.moves.urllib as urllib
 import werkzeug.local
 import werkzeug.useragents
+import werkzeug.user_agent
+import werkzeug.utils
 
 import qiki
 from qiki.number import type_name
@@ -243,7 +245,7 @@ class WorkingIdns(object):
                 #     u"Represent the contribution to the right of the right-most contribution in a category.", 2
                 # lex[lex](self.EXPLAIN, use_already=True)[self.FENCE_POST_RIGHT] = \
                 #     u"Use it for a reordering number, instead of a contribution idn. " \
-                #     u"Call it a psuedo-contribution-idn. " \
+                #     u"Call it a pseudo-contribution-idn. " \
                 #     u"So when we say a new contribution goes to the left of this, " \
                 #     u"we mean it goes all the way on the right. " \
                 #     u"It solves this fence-post-problem: " \
@@ -470,7 +472,8 @@ class LexFliki(qiki.LexMySQL):
                     '''session was never user-agent-tagged'''
                 else:
                     try:
-                        user_agent_object = werkzeug.useragents.UserAgent(user_agent_str)
+                        # user_agent_object = werkzeug.useragents.UserAgent(user_agent_str)
+                        user_agent_object = werkzeug.user_agent.UserAgent(user_agent_str)
                     except AttributeError:
                         parts.append("(indeterminate user agent)")
                     else:
@@ -1316,6 +1319,17 @@ def login():
             #     }.
             # e.g. after a partial login crashes, trying to resume with a URL such as:
             # http://.../meta/login?state=f45ad ... 4OKQ#
+            # EXAMPLE:  Unable to retrieve stored state!
+            # EXAMPLE:  The returned state csrf cookie "c5...2b" doesn't match with the stored state!
+            #           Solved maybe by deleting cookies on session_cookie_domain
+            #           and apparently the embedded domain too
+            # INSTRUCTIONS:
+            #           Chrome | Settings | Privacy and security | Cookies and other site data |
+            #           See all cookies and site data | Search cookies | unslumping.org
+            #           authomatic X <--- maybe that's the one that fixed it
+            # TODO:  Delete cookies automatically here.
+            #        Apparent cookie names:  authomatic, session
+            #        https://stackoverflow.com/questions/14386304/flask-how-to-remove-cookies
 
             url_has_question_mark_parameters = flask.request.path != flask.request.full_path
             is_stale = str(login_result.error) == STALE_LOGIN_ERROR
@@ -1330,6 +1344,8 @@ def login():
                 return flask.redirect(flask.request.path)  # Hopefully not a redirect loop.
             else:
                 print("Whoops")
+                # TODO:  WTF "Unexpected argument"?  It's supposed to take a string.
+                # noinspection PyArgumentList
                 response.set_data("Whoops")
         else:
             if hasattr(login_result, 'user'):
@@ -1507,11 +1523,14 @@ def os_path_static(relative_url):
 
     EXAMPLE:  '/var/www/static/foo.bar' == os_path_static('foo.bar')
     """
-    return flask.safe_join(flask_app.static_folder, relative_url)
+    return werkzeug.utils.safe_join(flask_app.static_folder, relative_url)
+    # NOTE:  Was flask.safe_join(), then:
+    #        DeprecationWarning: 'flask.helpers.safe_join' is deprecated and will be removed
+    #        in Flask 2.1. Use 'werkzeug.utils.safe_join' instead.
 
 
 def os_path_qiki_javascript(relative_url):
-    return flask.safe_join(PARENT_DIRECTORY, 'qiki-javascript', relative_url)
+    return werkzeug.utils.safe_join(PARENT_DIRECTORY, 'qiki-javascript', relative_url)
     # NOTE:  Assume the fliki and qiki-javascript repos are in sibling directories.
 
 
@@ -1832,25 +1851,27 @@ def meta_raw():
             elif meta_idn == auth.lex.IDN.GOOGLE_LISTING:
                 num_google += 1
     t_loop = time.time()
-    response = valid_response('words', words)
+    # response = valid_response('words', words)
+    response_html = _valid_html_response('words', words)
     t_end = time.time()
     print(
         "RAW LEX,",
         auth.lex.query_count - qc_start, "queries,",
         len(words), "words,",
         "{:.3f} + {:.3f} + {:.3f} = {:.3f}".format(
-            t_find - t_start,
-            t_loop - t_find,
-            t_end - t_loop,
-            t_end - t_start,
+            t_find - t_start,   # time to authenticate?   e.g.  6.8 sec
+            t_loop - t_find,    # time to count words,    e.g.  1.7 sec
+            t_end - t_loop,     # time to render json,    e.g.  9.3 sec
+            t_end - t_start,    # time total,             e.g. 17.7 sec
         ),
         "sec,",
-        len(response) // 1000, "Kbytes,",
+        # len(response.get_data(as_text=False)) // 1000, "Kbytes,",
+        len(response_html) // 1000, "Kbytes,",
         num_suffixed, "suffixed",
         num_anon, "anon",
         num_google, "google",
     )
-    return flask.Response(response, mimetype='application/json')
+    return flask.Response(response_html, mimetype='application/json')
     # THANKS:  Flask mime type, https://stackoverflow.com/a/11774026/673991
     # THANKS:  JSON mime type, https://stackoverflow.com/a/477819/673991
 
@@ -1924,6 +1945,7 @@ def meta_lex():
     if not auth.is_authenticated:
         return auth.login_html()   # anonymous viewing not allowed, just show "login" link
         # TODO:  Omit anonymous content for anonymous users (except their own).
+        #        I.e. show anonymous user only their own words, logged-in user words, and lex words.
 
     t_start = time.time()
     qc_start = auth.lex.query_count
@@ -2007,7 +2029,8 @@ def meta_lex():
                     elif vrb_z == Z.ICONIFY:
                         listing_log(word.obj, iconify=word.txt, name=word.obj.txt)
                     elif vrb_z == Z.USER_AGENT_TAG:
-                        ua = werkzeug.useragents.UserAgent(word.txt)
+                        # ua = werkzeug.useragents.UserAgent(word.txt)
+                        ua = werkzeug.user_agent.UserAgent(word.txt)
                         # noinspection PyUnresolvedReferences
                         listing_log(
                             word.sbj,
