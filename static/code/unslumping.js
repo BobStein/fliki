@@ -17,6 +17,7 @@
  * @param window.clipboardData
  * @param window.document
  * @param window.document.body
+ * @param window.document.createRange
  * @param window.document.currentScript
  * @param window.document.exitFullscreen
  * @param window.document.fullScreen
@@ -48,7 +49,6 @@
  * @param MONTY.cat.txt
  * @param MONTY.cat.txt[] {string}
  * @param MONTY.cat_words
- * @param MONTY.FENCE_POST_RIGHT
  * @param MONTY.IDN
  * @param MONTY.IDN.CAPTION
  * @param MONTY.IDN.CATEGORY
@@ -58,8 +58,11 @@
  * @param MONTY.IDN.CAT_TRASH
  * @param MONTY.IDN.CAT_ABOUT
  * @param MONTY.IDN.CONTRIBUTE
+ * @param MONTY.IDN.DEFINE
  * @param MONTY.IDN.EDIT
+ * @param MONTY.IDN.FENCE_POST_RIGHT
  * @param MONTY.IDN.FIELD_FLUB
+ * @param MONTY.IDN.LEX
  * @param MONTY.IDN.QUOTE
  * @param MONTY.IDN.REORDER
  * @param MONTY.IDN.UNSLUMP_OBSOLETE
@@ -3233,6 +3236,8 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
     }
 
     function could_be_url(text) {
+        // FALSE WARNING:  HTTP links are not secure
+        // noinspection HttpUrlsUsage
         return starts_with(text, 'http://') || starts_with(text, 'https://');
     }
 
