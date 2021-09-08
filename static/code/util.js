@@ -1,3 +1,6 @@
+// TODO:  Namespace this.
+// noinspection JSUnusedGlobalSymbols
+
 /**
  * util.js
  *
@@ -32,9 +35,11 @@ assert_equal(true, assert_equal(4, 2+2));
  *                        capitalized type names must be used.  E.g. these are both true:
  *                            type_should_be(42, Number);
  *                            type_should_be(Number(42), Number);
+ *                        Also supports an array of such types, any of which valid.
+ *                        TODO:  Allow null to be among the "types" meaning the variable
+ *                               should/could be identical to null.
  * @return {boolean} - to support chaining:  type_should_be(a, X) && type_should_be(a.b, Y)
  */
-
 function type_should_be(thing, expected_type) {
     if (is_a(expected_type, Function)) {
         if (is_specified(thing) && is_a(thing, expected_type)) {
@@ -47,14 +52,38 @@ function type_should_be(thing, expected_type) {
             );
             return false;
         }
+    } else if (is_array_like(expected_type)) {
+        var is_thing_good = false;
+        var alternative_type_names = [];
+        looper(expected_type, function (_, alternative_type) {
+            type_should_be(alternative_type, Function);
+            alternative_type_names.push(alternative_type.name);
+            if (is_a(thing, alternative_type)) {
+                is_thing_good = true;
+            }
+        });
+        if ( ! is_thing_good) {
+            console.error(
+                "Expecting either a", " or ".join(alternative_type_names),
+                "type of thing, but got a", type_name(thing),
+                "of value", thing
+            );
+        }
+        return is_thing_good;
     } else {
-        console.error("That's not even a type, it's a", type_name(expected_type), "of value", expected_type);
+        console.error(
+            "That's not a type, it's a",
+            type_name(expected_type),
+            "of value",
+            expected_type
+        );
         return false;
     }
 }
 assert_equal(true, type_should_be(42, Number));
 assert_equal(true, type_should_be("X", String));
 assert_equal(true, type_should_be({}, Object));
+assert_equal(true, type_should_be([], Array));
 assert_equal(true, type_should_be(function () {}, Function));
 assert_equal(true, type_should_be(new Date(), Date));
 assert_equal(true, type_should_be($('<div>'), $));
@@ -84,12 +113,23 @@ error_expected(function () {
  * @param expected_type
  * @return {boolean}
  */
+// TODO:  Figure out if is_a() is some kind of obscure security risk with the way it casts a
+//        function into a Function.
+//        Ominous clues at
+//        https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Function
+//        "Calling the constructor directly can create functions dynamically but suffers from
+//        security and similar (but far less significant) performance issues to Global_Objects/eval.
+//        However, unlike eval, the Function constructor creates functions that execute in the
+//        global scope only."
+//        Certainly has nothing to do with is_a(string_from_user).
+//        So I'll let this marinate a bit but it's probably nothing.
 function is_a(thing, expected_type) {
     return Object(thing) instanceof expected_type;
 }
 assert_equal(false, is_a(42, String));
 assert_equal(true, is_a(42, Number));
 assert_equal(true, is_a("X", String));
+assert_equal(true, is_a([], Array));
 assert_equal(true, is_a(function () {}, Function));
 assert_equal(true, is_a(function () {}, Object));
 
@@ -140,10 +180,22 @@ assert_equal(true, is_array_like($('<input> <br>')));   // 3 elements
 assert_equal(true, is_array_like('yes strings are array-like'));
 
 assert_equal(false, is_array_like(42));
-assert_equal(false, is_array_like(new Array(3)));
-// SEE:  Why [] is better than new Array(), https://stackoverflow.com/a/8206581/673991
 assert_equal(false, is_array_like({length:99, 0:'alpha', 1:'bravo'}));
 // NOTE:  Would be array-like, except it's missing a [98] element.
+
+(function () {
+    assert_equal(false, is_array_like(new Array(3)));
+    // noinspection JSLastCommaInArrayLiteral,JSConsecutiveCommasInArrayLiteral
+    assert_equal(false, is_array_like([, , , ]));
+    // noinspection JSPrimitiveTypeWrapperUsage
+    assert_equal(true, is_array_like(new Array()));
+    assert_equal(true, is_array_like([]));
+    assert_equal(true, is_array_like([undefined, undefined, undefined]));
+    // NOTE:  An Array with empty slots fails is_array_like() because it has no first and last
+    //        elements.  But an empty array squeaks by.
+    //        An array with undefined stored in its slots also passes.
+    // SEE:  Why [] is better than new Array(), https://stackoverflow.com/a/8206581/673991
+})();
 
 /**
  * When the callback is expected to generate a console.error()
@@ -170,26 +222,6 @@ function error_expected(callback) {
 }
 error_expected(function () { console.error("Pretend something is wrong."); });
 error_expected(function () { error_expected(function () { /* Pretend nothing is wrong. */ }); });
-
-/**
- * Make an unknown thing moderately presentable (or at least a little informative) as a string.
- *
- * @param z
- * @return {string}
- */
-function to_string(z) {
-    if (is_specified(z)) {
-        return z.toString();
-    } else {
-        return official_type_name(z).toLowerCase();
-    }
-}
-assert_equal("42", to_string(42));
-assert_equal("4,2", to_string([4,2]));
-assert_equal("sic", to_string('sic'));
-assert_equal("null", to_string(null));
-assert_equal("false", to_string(false));
-assert_equal("undefined", to_string(undefined));
 
 
 function sanitized_domain_from_url(url) {
@@ -256,6 +288,7 @@ function domain_from_url(url) {
     return 'no.domain';
     // TODO:  Make this special case string more generic.
 }
+// noinspection HttpUrlsUsage
 assert_equal('example.com', domain_from_url('http://example.com/'));
 assert_equal('exam-ple.com', domain_from_url('https://Exam-ple.com/Foo/?Bar=Baz'));
 assert_equal('no.domain', domain_from_url('https://e%ample.com/'));
@@ -316,7 +349,7 @@ assert_equal(42, random_element([42, 42, 42]));
  *
  * SEE:  object property keys are always strings, https://stackoverflow.com/a/3633390/673991
  *
- * SEE:  $.each() bug for objects, https://stackoverflow.com/a/49652688/673991
+ * SEE:  $.each() bug for objects (my own posting), https://stackoverflow.com/a/49652688/673991
  */
 // TODO:  async_interval, async_chunk, async_done optional parameters!
 //        Unifying setTimeout() and $.each(), as it were.
@@ -483,7 +516,7 @@ function any_lone_newlines(string) {
     });
     return return_value;
 }
-assert_equal(false, any_lone_newlines("abcdef"));
+assert_equal(false, any_lone_newlines("abc"));
 assert_equal(false, any_lone_newlines("abc\n"));
 assert_equal( true, any_lone_newlines("abc\ndef"));
 assert_equal(false, any_lone_newlines("abc\n\ndef"));
@@ -908,7 +941,7 @@ assert_equal(220, linear_transform(22, 0, 100, 0, 1000));
 assert_equal(-1000, linear_transform(890, 880, 870, 0, 1000));
 
 /**
- * Plain jane, crude jude string formatter.
+ * Plain jane, crude jude, string formatter.
  *
  * @param message - string with "{name}" symbols in it.
  * @param parameters - name to value mapping.
@@ -917,12 +950,16 @@ assert_equal(-1000, linear_transform(890, 880, 870, 0, 1000));
  * TODO:  Support multiple instances of a symbol, e.g. "to {be} or not to {be}",
  *        https://stackoverflow.com/a/1144788/673991
  * TODO:  Warn of any unspecified symbols.
+ * TODO:  Much better approach would be to iterate through the MESSAGE not the PARAMETERS,
+ *        then replace curly symbol {x} with the value o parameters.x.
+ *        That way, parameters might be an object, and it might have dynamic properties.
  */
 function f(message, parameters) {
     var formatted_message = message;
     looper(parameters, function (name, value) {
         var symbol = '{' + name + '}';
-        formatted_message = formatted_message.replace(symbol, to_string(value));
+        formatted_message = formatted_message.replace(symbol, String(value));
+        // THANKS:  String() trumps .toString(), https://stackoverflow.com/a/35673907/673991
     });
     return formatted_message;
 }
@@ -1014,7 +1051,7 @@ function dom_from_$($jquery_object) {
  * @return {Array.<string>}
  */
 function stringify_array(things) {
-    return things.map(function (thing) { return to_string(thing); });
+    return things.map(String);
 }
 assert_equal(
                       "string, 0, 1, 2, 3, null, undefined, false, NaN, 1,2",
@@ -1041,3 +1078,26 @@ function one_qigit(n) {
 }
 assert_equal(0.1015625, one_qigit(0.1));
 assert_equal(26 / 256, one_qigit(0.1));
+
+/**
+ * Get the last element of an array.
+ *
+ * Honorable mention to the array.slice(-1)[0] method and its gratuitous brevity,
+ * https://stackoverflow.com/a/12099341/673991
+ */
+function last_item(array, value_if_empty) {
+    var n = array.length;
+    if (n === 0) {
+        return value_if_empty;
+    } else {
+        return array[n-1];
+    }
+}
+console.assert(42 === last_item([1,2,3,42]))
+console.assert("default" === last_item([], "default"))
+console.assert(undefined === last_item([]))
+
+function console_log_styled(message, css) {
+    console.log('%c' + message, css);
+    // THANKS:  colors in DevTools, https://stackoverflow.com/a/13017382/673991
+}

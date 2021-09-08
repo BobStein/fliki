@@ -17,7 +17,7 @@
 /**
  *  //// Category //// What we need to know about each category.
  *
- * @param idn - e.g. MONTY.cat_words[n].idn -- which will eventually be categories.my.idn
+ * @param idn - e.g. MONTY.cat_words[n].idn -- which will eventually be categories.by_name.my.idn
  * @return {Category}
  * @constructor
  *
@@ -52,14 +52,17 @@ Category.prototype.destructor = function Category_destructor() {
  * @return {Contribution}
  * @constructor
  *
- * Properties not set by the constructor, but maybe added to an instance later:
- *     (must be some)
+ * cont.unrendered_content is set from the data stream soon after construction.
+ * When a contribution is rendered (maybe much later), it is moved to the DOM.
+ * From then on, the text is fetched from the DOM.
+ *
  */
 function Contribution(idn) {
     var that = this;
     type_should_be(that, Contribution);
     type_should_be(idn, Number);
     that.idn = idn;
+    that.unrendered_content = null;
 }
 
 /**
@@ -174,45 +177,40 @@ function CategoryLexi(word_class) {
         DEFINE: null,
         CATEGORY: null
     });
+    that.by_name = {};
 }
 CategoryLexi.prototype = Object.create(Lexi.prototype);
 CategoryLexi.prototype.constructor = CategoryLexi;
 
-// /**
-//  * Initialize a category list from ordering and names.
-//  *
-//  * @param {Array<number>} cat_order - array of category idns in top-down display order
-//  * @param txt_from_idn - associative array of category names, indexed by category idn
-//  * @return {CategoryLexi}
-//  */
-// CategoryLexi.prototype.from_monty = function CategoryLexi_from_monty(cat_order, txt_from_idn) {
+// CategoryLexi.prototype.word_pass = function CategoryLexi(word) {
 //     var that = this;
-//     looper(cat_order, function (_, cat_idn) {
-//         var cat = that.add(cat_idn);
-//         cat.txt = txt_from_idn[cat_idn];
-//     });
-//     return that;
+//     if (
+//         word.sbj === that.IDN.LEX &&
+//         word.vrb === that.IDN.DEFINE &&
+//         word.obj === that.IDN.CATEGORY
+//     ) {
+//         that.add_cat(word.idn, word.txt);
+//     } else {
+//         that.notify("Passing a non-category word to CategoryLexi.word_pass()", word, that.IDN);
+//     }
 // }
 
-CategoryLexi.prototype.word_pass = function CategoryLexi(word) {
+CategoryLexi.prototype.add_cat = function CategoryLexi_add_cat(idn, category_internal_name) {
     var that = this;
-    if (
-        word.sbj === that.IDN.LEX &&
-        word.vrb === that.IDN.DEFINE &&
-        word.obj === that.IDN.CATEGORY
-    ) {
-        var cat = that.add(word.idn);
-        cat.txt = word.txt;
-        that.cat_idns.insert_left(word.idn);
+    var cat = that.add(idn);
+    cat.txt = category_internal_name;
+    that.cat_idns.sequence_left(idn);
 
-        that[cat.txt] = cat;
-        // NOTE:  This sneaky step allows
-        //            categories.about
-        //        as a shortcut to
-        //            categories.get(IDN_FOR_ABOUT)
-    } else {
-        that.notify("Passing a non-category word to CategoryLexi.word_pass()", word, that.IDN);
-    }
+    that.by_name[cat.txt] = cat;
+    // NOTE:  This sneaky step allows
+    //            categories.by_name.about
+    //        as a shorthand to
+    //            categories.get(IDN_FOR_ABOUT)
+    // NOTE:  In anticipation of future user-defined categories, this trick was moved to the
+    //        by_name sub-property, so it could not e.g. conflict with other category object
+    //        properties.  Hmm, not sure we'd need this trick for those exotic things anyway.
+
+    return cat;
 }
 
 CategoryLexi.prototype.starting_cat = function CategoryLexi_starting_cat(_word_) {
@@ -244,20 +242,23 @@ ContributionLexi.prototype = Object.create(Lexi.prototype);
 ContributionLexi.prototype.constructor = ContributionLexi;
 
 /**
- * Build up an understanding of contributions by passing through relevant words, one at a time.
+ * Handle a word that is relevant to contributions and categories.
  *
- * Relevant words are words with these verbs:
- *     'contribute'
- *     'caption'
- *     'edit'
- *     categorization & ordering verbs:
+ * Check authorization first.
+ * Keep category sequences in sync.
+ *
+ * A relevant word has one of these verbs:
+ *     'contribute'   (instantiate a Contribution object and stow it here in this ContributionLexi)
+ *     'caption'      (give a Contribution a shiny new Caption object)
+ *     'edit'         (change a Contribution's text)
+ *     example categorization & ordering verbs:   (which change a Contribution's Category)
  *         'my'
  *         'their'
  *         'anon'
  *         'trash'
  *         'about'
  *
- * .word_pass() after constructing a Contribution knowing only its idn, affect these fields:
+ * .word_pass() after constructing a new Contribution knowing only its idn, affect these fields:
  *     .was_submitted_anonymous
  *     .cat
  *     .cat.cont_sequence
@@ -280,202 +281,214 @@ ContributionLexi.prototype.constructor = ContributionLexi;
 ContributionLexi.prototype.word_pass = function ContributionLexi_word_pass(word) {
     var that = this;
     switch (word.vrb) {
-    // case MONTY.IDN.UNSLUMP_OBSOLETE:
     case that.IDN.CONTRIBUTE:
-        contribute_word(word);
+        that.contribute_word(word);
         break;
     case that.IDN.CAPTION:
-        caption_word(word);
+        that.caption_word(word);
         break;
     case that.IDN.EDIT:
-        edit_word(word);
+        that.edit_word(word);
         break;
     default:
         if (that.category_lexi.has(word.vrb)) {
-            cat_ordering_word(word);
+            that.cat_ordering_word(word);
         } else {
             that.notify("Passing a non-contribution word to ContributionLexi.word_pass()", word, that.IDN);
         }
     }
+}
 
-    function contribute_word(word) {
-        var new_cont_idn = word.idn;
-        var new_cont_owner = word.sbj;
+ContributionLexi.prototype.contribute_word = function (word) {
+    var that = this;
+    var new_cont_idn = word.idn;
+    var new_cont_owner = word.sbj;
 
-        var cont = that.add(new_cont_idn);
-        // Contribution objects are all instantiated here.
+    var cont = that.add(new_cont_idn);
+    // Contribution objects are all instantiated here.
 
-        if (word.was_submitted_anonymous) {
-            cont.was_submitted_anonymous = true;
-            // NOTE:  Captioning or moving a contribution retains its .was_submitted_anonymous
-            //        But editing by a logged-in user removes it.
+    if (word.was_submitted_anonymous) {
+        cont.was_submitted_anonymous = true;
+        // NOTE:  Captioning or moving a contribution retains its .was_submitted_anonymous
+        //        But editing by a logged-in user removes it.
+    }
+    cont.cat = that.category_lexi.starting_cat(word);
+    console.assert(cont.cat instanceof Category, "Not a category", cont.cat);
+    cont.cat.cont_sequence.sequence_left(new_cont_idn);   // insert LEFT end, nothing ever goes wrong with that
+    cont.owner = new_cont_owner;
+    cont.unrendered_content = word.txt;
+    // NOTE:  Captioning does not change a contribution's owner.
+    //        (It does change the caption's owner.)
+    //        Moving and editing do change the contribution's owner.
+    //        (They do not change the caption's owner.  One way this could be weird:
+    //        if I move an anonymous contribution to "my" category, then that user
+    //        edits the caption, I will see the new caption too.  So this is a possible
+    //        leak between anonymous users.)
+    that.notify(f("{idn}. {owner} contributes {n} bytes to {cat}", {
+        idn: new_cont_idn,
+        owner: that.user_name_short(new_cont_owner),
+        cat: cont.cat.txt,
+        n: cont.unrendered_content.length
+    }));
+}
+
+ContributionLexi.prototype.caption_word = function (word) {
+    var that = this;
+    var cont_idn = word.obj;
+    var new_capt_idn = word.idn;
+    var new_capt_txt = word.txt;
+    var new_capt_owner = word.sbj;
+
+    // TODO:  Justify why I'm not handling word.was_submitted_anonymous for captions?
+    //        Ah is it because we don't COLOR captions with anonymous pink?
+    //        I fell prey to the misconception that JavaScript is where I should enforce
+    //        ANY security.  That must all be taken care of in Python!
+
+    if (that.has(cont_idn)) {
+        var cont = that.get(cont_idn);
+        var is_capt_already = is_specified(cont.capt);
+        var old_capt_owner;
+        if (is_capt_already) {
+            old_capt_owner = cont.capt.owner;
+        } else {
+            old_capt_owner = cont.owner;
         }
-        cont.cat = that.category_lexi.starting_cat(word);
-        console.assert(cont.cat instanceof Category, "Not a category", cont.cat);
-        cont.cat.cont_sequence.insert_left(new_cont_idn);   // insert LEFT end, nothing ever goes wrong with that
-        cont.owner = new_cont_owner;
-        // NOTE:  Captioning does not change a contribution's owner.
-        //        (It does change the caption's owner.)
-        //        Moving and editing do change the contribution's owner.
-        //        (They do not change the caption's owner.  One way this could be weird:
-        //        if I move an anonymous contribution to "my" category, then that user
-        //        edits the caption, I will see the new caption too.  So this is a possible
-        //        leak between anonymous users.)
-        that.notify(f("{idn}. {owner} contributes to {cat}", {
-            idn: new_cont_idn,
-            owner: that.user_name_short(new_cont_owner),
-            cat: cont.cat.txt
+        if (that.is_authorized(word, old_capt_owner, "caption")) {
+            cont.capt = new Caption(new_capt_idn);
+            cont.capt.txt = new_capt_txt;
+            cont.capt.owner = new_capt_owner;
+        }
+    } else {
+        that.notify(f("{capt_idn}. (Can't caption {cont_idn})", {
+            cont_idn: cont_idn,
+            capt_idn: new_capt_idn
         }));
     }
+}
 
-    function caption_word(word) {
-        var cont_idn = word.obj;
-        var new_capt_idn = word.idn;
-        var new_capt_txt = word.txt;
-        var new_capt_owner = word.sbj;
+ContributionLexi.prototype.edit_word = function (word) {
+    var that = this;
+    // TODO:  Is it true and desirable that .was_submitted_anonymous is NOT copied?
+    //        So edits are not anonymous, even if edited by an anonymous person?
+    //        Does this create a leak?
+    //        No but logged in users see it without the pink, though still in anon cat.
+    //        There may be other leaky behavior, such as editing or dragging a
+    //        contribution inadvertently making it visible to other anonymous users.
+    var old_cont_idn = word.obj;
+    var new_cont_idn = word.idn;
+    var new_cont_owner = word.sbj;
+    var new_cont;
 
-        if (that.has(cont_idn)) {
-            var cont = that.get(cont_idn);
-            var is_capt_already = is_specified(cont.capt);
-            var old_capt_owner;
-            if (is_capt_already) {
-                old_capt_owner = cont.capt.owner;
-            } else {
-                old_capt_owner = cont.owner;
-            }
-            if (that.is_authorized(word, old_capt_owner, "caption")) {
-                cont.capt = new Caption(new_capt_idn);
-                cont.capt.txt = new_capt_txt;
-                cont.capt.owner = new_capt_owner;
-            }
-        } else {
-            that.notify(f("{capt_idn}. (Can't caption {cont_idn})", {
-                cont_idn: cont_idn,
-                capt_idn: new_capt_idn
-            }));
-        }
-    }
-
-    function edit_word(word) {
-        // TODO:  Is it true and desirable that .was_submitted_anonymous is NOT copied?
-        //        So edits are not anonymous, even if edited by an anonymous person?
-        //        Does this create a leak?
-        //        No but logged in users see it without the pink, though still in anon cat.
-        //        There may be other leaky behavior, such as editing or dragging a
-        //        contribution inadvertently making it visible to other anonymous users.
-        var old_cont_idn = word.obj;
-        var new_cont_idn = word.idn;
-        var new_cont_owner = word.sbj;
-        var new_cont;
-
-        if (that.has(old_cont_idn)) {
-            var old_cont = that.get(old_cont_idn);
-            var old_cont_owner = old_cont.owner;
-            if (that.is_authorized(word, old_cont_owner, "edit")) {
-                new_cont = that.add(new_cont_idn);
-                new_cont.cat = old_cont.cat;
-                new_cont.capt = old_cont.capt;
-                new_cont.owner = new_cont_owner;
-                // TODO:  Should a lesser-privileged caption owner
-                //        be replaced by new_cont_owner?
-                //        Maybe always do this here:
-                //            new_cont.capt.owner = new_cont_owner;
-                //        Is there a downside?
-                //        What does it mean to "own" a contribution or caption??
-                //        It's certainly not equivalent to being permitted to edit it.
-                new_cont.cat.cont_sequence.renumber(old_cont_idn, new_cont_idn);
-                if (old_cont.is_superseded) {
-                    console.warn(
-                        "Edit fork",
-                        old_cont_idn,
-                        "superseded by",
-                        old_cont.superseded_by_idn,
-                        "and",
-                        new_cont_idn
-                    );
-                    // Probably harmless.  Different non-admin users, editing the same cont?
-                    // TODO:  Report the sequence of owners too?
-                    //        that.get( old_cont_idn).owner == old_cont_owner
-                    //        that.get(fork_cont_idn).owner
-                    //        that.get( new_cont_idn).owner === new_cont_owner
-                    // NOTE:  This is probably not the only fork.
-                }
-                // old_cont.superseded_by_idn = new_cont_idn;
-                old_cont.superseded_by(new_cont);
-                new_cont.supersedes(old_cont.idn);
-
-                // TODO:  Maybe superseded contributions can be destroyed:
-                //        del that.
-            }
-        } else if (word.sbj === that.IDN.me) {
+    if (that.has(old_cont_idn)) {
+        var old_cont = that.get(old_cont_idn);
+        var old_cont_owner = old_cont.owner;
+        if (that.is_authorized(word, old_cont_owner, "edit")) {
             new_cont = that.add(new_cont_idn);
-            new_cont.cat = that.category_lexi.starting_cat(word);
-            new_cont.owner = word.sbj;
-            new_cont.cat.cont_sequence.insert_left(new_cont.idn);
-            new_cont.supersedes(old_cont_idn);
-            that.notify(f("{new_cont_idn}. Resurrecting my edit of ghostly #{old_cont_idn})", {
-                new_cont_idn: new_cont_idn,
-                old_cont_idn: old_cont_idn
-            }));
-        } else {
-            that.notify(f("{new_cont_idn}. (Can't edit {old_cont_idn})", {
-                new_cont_idn: new_cont_idn,
-                old_cont_idn: old_cont_idn
-            }));
-        }
-    }
-
-    function cat_ordering_word(word) {
-        var reordering_idn = word.idn;
-        var new_cont_owner = word.sbj;
-        var new_cat_idn = word.vrb;
-        var new_cat = that.category_lexi.get(new_cat_idn);
-        var cont_idn = word.obj;
-        var idn_to_the_right = word.num;
-        // var is_far_right = idn_to_the_right === MONTY.IDN.FENCE_POST_RIGHT;
-        var is_far_right = idn_to_the_right === new_cat.cont_sequence.fence_post_right;
-
-        if (that.has(cont_idn)) {
-            var cont = that.get(cont_idn);
-            var old_cat = cont.cat;
-            var old_cont_owner = cont.owner;
-            var action_template = is_far_right
-                ? "drop on right end of {cat},"
-                : "drop left of #{idn} in {cat},";
-            var action = f(action_template, {
-                cat: new_cat.txt,
-                idn: idn_to_the_right
-            });
-            if (that.is_authorized(word, old_cont_owner, action)) {
-                if (is_specified(old_cat)) {
-                    old_cat.cont_sequence.delete(cont_idn, cat_ordering_error);
-                }
-                new_cat.cont_sequence.insert(cont_idn, idn_to_the_right, function (message) {
-                    var cat_message = new_cat.txt + " - " + message;
-                    // NOTE:  IdnSequence.insert() didn't know what category we're moving to,
-                    //        but here, we know.
-                    cat_ordering_error(cat_message);
-                });
-                cont.cat = new_cat;
-                cont.owner = new_cont_owner;
-                // TODO:  Commandeer the caption ownership too?
-                //        cont.capt.owner = new_cont_owner;
+            new_cont.cat = old_cont.cat;
+            new_cont.capt = old_cont.capt;
+            new_cont.owner = new_cont_owner;
+            // TODO:  Should a lesser-privileged caption owner
+            //        be replaced by new_cont_owner?
+            //        Maybe always do this here:
+            //            new_cont.capt.owner = new_cont_owner;
+            //        Is there a downside?
+            //        What does it mean to "own" a contribution or caption??
+            //        It's certainly not equivalent to being permitted to edit it.
+            new_cont.unrendered_content = word.txt;
+            new_cont.cat.cont_sequence.renumber(old_cont_idn, new_cont_idn);
+            if (old_cont.is_superseded) {
+                console.warn(
+                    "Edit fork",
+                    old_cont_idn,
+                    "superseded by",
+                    old_cont.superseded_by_idn,
+                    "and",
+                    new_cont_idn
+                );
+                // Probably harmless.  Different non-admin users, editing the same cont?
+                // TODO:  Report the sequence of owners too?
+                //        that.get( old_cont_idn).owner == old_cont_owner
+                //        that.get(fork_cont_idn).owner
+                //        that.get( new_cont_idn).owner === new_cont_owner
+                // NOTE:  This is probably not the only fork.
             }
+            // old_cont.superseded_by_idn = new_cont_idn;
+            old_cont.superseded_by(new_cont);
+            new_cont.supersedes(old_cont.idn);
 
-            function cat_ordering_error(message) {
-                that.notify(f("{idn}. {message}", {
-                    idn: reordering_idn,
-                    message: message
-                }));
-            }
-        } else {
-            that.notify(f("{reordering_idn}. (Can't reorder {cont_idn})", {
-                reordering_idn: reordering_idn,
-                cont_idn: cont_idn
-            }));
+            // TODO:  Maybe superseded contributions can be destroyed:
+            //        del that.
         }
+    } else if (word.sbj === that.IDN.me) {
+        new_cont = that.add(new_cont_idn);
+        new_cont.cat = that.category_lexi.starting_cat(word);
+        new_cont.owner = word.sbj;
+        new_cont.cat.cont_sequence.sequence_left(new_cont.idn);
+        new_cont.supersedes(old_cont_idn);
+        that.notify(f("{new_cont_idn}. Resurrecting my edit of ghostly #{old_cont_idn})", {
+            new_cont_idn: new_cont_idn,
+            old_cont_idn: old_cont_idn
+        }));
+    } else {
+        that.notify(f("{new_cont_idn}. (Can't edit {old_cont_idn})", {
+            new_cont_idn: new_cont_idn,
+            old_cont_idn: old_cont_idn
+        }));
     }
 }
+
+ContributionLexi.prototype.cat_ordering_word = function (word) {
+    var that = this;
+    var reordering_idn = word.idn;
+    var new_cont_owner = word.sbj;
+    var new_cat_idn = word.vrb;
+    var new_cat = that.category_lexi.get(new_cat_idn);
+    var cont_idn = word.obj;
+    var idn_to_the_right = word.num;
+    // var is_far_right = idn_to_the_right === MONTY.IDN.FENCE_POST_RIGHT;
+    var is_far_right = idn_to_the_right === new_cat.cont_sequence.fence_post_right;
+
+    if (that.has(cont_idn)) {
+        var cont = that.get(cont_idn);
+        var old_cat = cont.cat;
+        var old_cont_owner = cont.owner;
+        var action_template = is_far_right
+            ? "drop on right end of {cat},"
+            : "drop left of #{idn} in {cat},";
+        var action = f(action_template, {
+            cat: new_cat.txt,
+            idn: idn_to_the_right
+        });
+        if (that.is_authorized(word, old_cont_owner, action)) {
+            if (is_specified(old_cat)) {
+                old_cat.cont_sequence.delete(cont_idn, cat_ordering_error);
+            }
+            new_cat.cont_sequence.insert(cont_idn, idn_to_the_right, function (seq_message) {
+                var cat_message = new_cat.txt + " - " + seq_message;
+                // NOTE:  IdnSequence.insert() didn't know what category we're moving to,
+                //        but here, we know.  So we prepend it to insert()'s error message.
+                cat_ordering_error(cat_message);
+            });
+            cont.cat = new_cat;
+            cont.owner = new_cont_owner;
+            // TODO:  Commandeer the caption ownership too?
+            //        cont.capt.owner = new_cont_owner;
+        }
+
+        function cat_ordering_error(message) {
+            that.notify(f("{idn}. {message}", {
+                idn: reordering_idn,
+                message: message
+            }));
+        }
+    } else {
+        that.notify(f("{reordering_idn}. (Can't reorder {cont_idn})", {
+            reordering_idn: reordering_idn,
+            cont_idn: cont_idn
+        }));
+    }
+}
+
 
 
 /**
@@ -535,8 +548,6 @@ ContributionLexi.prototype.is_authorized = function ContributionLexi_is_authoriz
 //            or by what we want to do with them?
 //                (my unslumping, others, trash)
 
-// function is_authorized(word, old_owner, action, reporter) {
-//     reporter = reporter || function () {};
     var change_idn = word.idn;
     var new_owner = word.sbj;
     var change_vrb = word.vrb;
@@ -553,16 +564,7 @@ ContributionLexi.prototype.is_authorized = function ContributionLexi_is_authoriz
     var let_admin_change = ! did_i_change_last                            && is_change_admin;
     var let_owner_change = ! did_i_change_last && ! did_admin_change_last && is_same_owner;
 
-    // Third stage of decision making:
-    // var only_i_can_do_these = [
-    //     // NOTE:  These rearranging actions are only allowed by the browsing user.
-    //     //        Not the admin nor the owner (if they're somebody else of course).
-    //     MONTY.IDN.CAT_MY,
-    //     MONTY.IDN.CAT_THEIR,
-    //     MONTY.IDN.CAT_ANON
-    // ];
     var ok;
-    // if (has(only_i_can_do_these, change_vrb)) {
     if (that.is_verb_guardrailed(change_vrb)) {
         ok = is_change_mine;
     } else {
@@ -593,6 +595,9 @@ ContributionLexi.prototype.is_authorized = function ContributionLexi_is_authoriz
             target +
             ", work of " +
             that.user_name_short(old_owner)
+            // +
+            // " for " +
+            // that.IDN.me
         );
         if (let_owner_change) {
             that.notify("     ...because only owner can recategorize like this.");
@@ -629,27 +634,6 @@ ContributionLexi.prototype.user_name_short = function ContributionLexi_user_name
 ContributionLexi.prototype.is_admin = function ContributionLexi_is_admin(_user_idn_) {
     throw Error("You should override the .is_admin() method.");
 };
-
-// function user_name_short(user_idn) {
-//     if (is_defined(user_idn)) {
-//         if (has(MONTY.u, user_idn)) {
-//             return MONTY.u[user_idn].name_short;
-//         } else {
-//             return user_idn;
-//         }
-//     } else {
-//         return "(unowned)";
-//     }
-// }
-//
-// function is_admin(user_idn) {
-//     if (has(MONTY.u, user_idn)) {
-//         return MONTY.u[user_idn].is_admin;
-//     } else {
-//         return false;
-//     }
-// }
-//
 
 
 
@@ -798,19 +782,19 @@ IdnSequence.prototype.insert = function IdnSequence_insert(idn, idn_to_right, er
                     idns: that._sequence.join(" "),
                     fp: that.fence_post_right
                 }));
-                that.insert_left(idn);
+                that.sequence_left(idn);
             } else {
                 that._sequence.splice(index, 0, idn);
             }
         }
     } else {
         // TODO:  console.error()?
-        that.insert_left(idn);
+        that.sequence_left(idn);
     }
 }
 // THANKS:  callback parameters in JSDoc, https://stackoverflow.com/a/38586423/673991
 
-IdnSequence.prototype.insert_left = function IdnSequence_insert_left(idn) {
+IdnSequence.prototype.sequence_left = function IdnSequence_sequence_left(idn) {
     var that = this;
     that._sequence.unshift(idn);
 }

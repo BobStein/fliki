@@ -68,9 +68,10 @@ THUMB_MAX_WIDTH = 160
 THUMB_MAX_HEIGHT = 128
 NON_ROUTABLE_IP_ADDRESS = '10.255.255.1'   # THANKS:  https://stackoverflow.com/a/904609/673991
 NON_ROUTABLE_URL = 'https://' + NON_ROUTABLE_IP_ADDRESS + '/'   # for testing
-SHOW_LOG_AJAX_NOEMBED_META = True
+SHOW_LOG_AJAX_NOEMBED_META = False
 CATCH_JS_ERRORS = False
 POPUP_ID_PREFIX = 'popup_'
+FINISHER_METHOD_NAME = 'fin'   # see qiki.js
 INTERACTION_VERBS = dict(
     BOT='bot',         # |>  global play button
     START='start',     # |>  individual media play
@@ -81,6 +82,11 @@ INTERACTION_VERBS = dict(
     ERROR='error',     #     something went wrong, human-readable txt
     UNBOT='unbot',     #     bot ended, naturally or artificially (but not crash)
 )
+# NOTE:  The above dictionary maps JavaScript names to Lex names.  E.g.
+#            javascript:  interact.START(idn, media_seconds);
+#            lex:  [me](start)[contribution]
+#        It constrains the IDE editor to approved interaction verbs.
+#        These are not yet among the "relevant" verbs in MONTY.IDN or MONTY.w.
 # TODO:  Move to WorkingIdns.__init__() yet still bunch together somehow?
 #        Problem is, I'd like to define new ones without necessarily generating words for them,
 #        until of course they are used.
@@ -200,8 +206,9 @@ class WorkingIdns(object):
             #         detect errors with IDN definitions a little earlier.
             if lex is not None:
                 self.LEX               = lex.noun('lex').idn
-                self.VERB              = lex.noun('verb').idn
                 self.DEFINE            = lex.verb('define').idn
+                self.VERB              = lex.noun('verb').idn
+                self.AGENT             = lex.noun('agent').idn   # added to repurpose
                 self.LISTING           = lex.noun('listing').idn
                 self.NAME              = lex.verb('name').idn
                 self.BROWSE            = lex.verb('browse').idn
@@ -325,6 +332,12 @@ class LexFliki(qiki.LexMySQL):
                 # if isinstance(self.sbj, self.lex.word_anon_class):
                 if self.sbj.is_anonymous:
                     dictionary['was_submitted_anonymous'] = True
+                # dictionary['sbj_lineage'] = self.sbj.lineage()
+                dictionary['sbj'] = self.sbj.lineage()
+                # NOTE:  Drastic step of clobbering the (almost certain) qstring output of
+                #        Number.to_json(), replacing it with the new improved tentative guess at
+                #        a future syntax of:
+                #            local-idn   colon   remote-number-of-some-sort-opaque-to-us
                 return dictionary
 
             @property
@@ -373,6 +386,9 @@ class LexFliki(qiki.LexMySQL):
                     qiki.Suffix(qiki.Suffix.Type.LISTING, self.index)
                 )
                 super(WordFlikiUser, self).__init__(idn)
+
+            def lineage(self):
+                return "{}:{}".format(int(self.meta_idn), int(self.index))
 
             @property
             def name(self):
@@ -955,7 +971,8 @@ class Auth(object):
             )
         elif self.is_anonymous:
             return (
-                u"<a href='{login_link}' title='{login_title}'>"
+                # u"<a href='{login_link}' title='{login_title}'>"
+                u"<a href='{login_link}'>"
                 u"login"
                 u"</a>"
             ).format(
@@ -1024,33 +1041,74 @@ class Auth(object):
         return vetted_words
 
     def vetted_find_by_verbs(self, verbs):
+        # TODO:  Would it be feasible to have a pre-formed list of nits with anonymous data scrubbed,
+        #        that anonymous users would see?
+        #        Would need to augment it with that anonymous users own contributions.
+        #        For that matter, feed it to logged-in users too.
+        #        And when they open the anonymous category, THEN fetch and render anonymous
+        #        contributions
+        #        Would still need to determine how much anonymous material there is, for the "(N)".
+        #        But that is one datum for everyone.
+        #        Except anonymous users who contributed their own stuff, and logged-in users who
+        #        moved stuff, would want to see a lesser number in "(N)".
+        """
+        Generate dictionaries of relevant words and users from the lex.
+
+        :param verbs:
+        :return: e.g. dict(
+            u={
+                "0q82_12__88888888888888888888_1D0B00":{
+                    "is_admin":true,
+                    "name_long":"Bob Stein",
+                    "name_short":"Bob Stein"
+                },
+                "0q82_13__8234_1D0300":{
+                    "is_admin":false,
+                    "name_long":"67.255.7.88 session #52",
+                    "name_short":"anon#52"
+                },
+            },
+            w=[
+                {
+                    "idn":50,
+                    "obj":23,
+                    "sbj":"0q82_12__8A059E058E6A6308C8B0_1D0B00",
+                    "txt":"\u201cAnd when you're in a Slump,\nyou're not in for much fun.\n"
+                          "Un-slumping yourself\nis not easily done.\u201d",
+                    "vrb":24
+                },
+                {
+                    "idn":51,
+                    "obj":50,
+                    "sbj":"0q82_12__8A059E058E6A6308C8B0_1D0B00",
+                    "txt":"Dr. Seuss, Oh the Places You'll Go",
+                    "vrb":25
+                },
+            ],
+        )
+        """
         qc = list()
         qc.append(self.lex.query_count)
         vetted_list = self.vet(self.lex.find_words(vrb=verbs, idn_ascending=True))
         qc.append(self.lex.query_count)
-        # if len(vetted_list) > 0:
-        #     max_idn = vetted_list[-1].idn
-        # else:
-        #     max_idn = 0
-        # max_idint = int(max_idn)
-        # vetted_array = [None] * (max_idint + 1)
         user_table = dict()
         for word in vetted_list:
-            # idint = int(word.idn)
-            # assert 0 <= idint <= max_idint, str(idint)
-            # vetted_array[idint] = word
-
-            user_qstring = word.sbj.idn.qstring()
-            if user_qstring not in user_table:   # conserves number of queries
-                # if word.sbj.is_lex():
-                #     name_short = "Lex"
-                # else:
-                #     name_short = word.sbj.name
+            # user_qstring = word.sbj.idn.qstring()
+            user_lineage = word.sbj.lineage()
+            if user_lineage not in user_table:   # conserves number of queries
                 name_short = word.sbj.name
-                user_table[user_qstring] = dict(
+                # meta_idn, index = qiki.Listing.split_compound_idn(word.sbj.idn)
+                # user_table[user_qstring] = dict(
+                user_table[user_lineage] = dict(
                     name_short=name_short,
                     name_long=word.sbj.txt,
                     is_admin=word.sbj.is_admin,
+                    type_name=type_name(word.sbj),
+                    # listing_idn=meta_idn.qstring(),
+                    # listing_index=index,   # e.g. the 21-digit, 67-bit Google user number
+                    listing_txt=self.lex[word.sbj.idn.unsuffixed].txt,
+                    lineage=user_lineage,
+                    # idn_qstring=user_qstring,
                 )
         qc.append(self.lex.query_count)
         qc_delta = [qc[i+1] - qc[i] for i in range(len(qc)-1)]
@@ -1098,7 +1156,8 @@ class AuthFliki(Auth):
             if ok_to_print:
                 print(
                     "AUTH",
-                    self.qiki_user.idn.qstring(),
+                    # self.qiki_user.idn.qstring(),
+                    self.qiki_user.lineage(),
                     auth_anon,
                     self.qiki_user.txt
                 )
@@ -1227,7 +1286,7 @@ class AuthFliki(Auth):
             return value
 
     def convert_unslump_words(self, words):
-
+        """Account for an archaic verb in the lex:  make 'unslump' look like 'contribute'. """
         def convert(word):
             if word.vrb.idn == self.lex.IDN.UNSLUMP_OBSOLETE:
                 word_dict = word.to_json()
@@ -1435,13 +1494,34 @@ def login():
 
                         avatar_url = logged_in_user.picture or ''
                         display_name = logged_in_user.name or ''
-                        print("Logging in", qiki_user.index, qiki_user.idn.qstring())
+
+                        print("Logging in", qiki_user.index, qiki_user.lineage())
                         # EXAMPLE:   Logging in 0q8A_059E058E6A6308C8B0 0q82_15__8A059E058E6A6308C8B0_1D0B00
-                        lex[lex](lex.IDN.ICONIFY, use_already=True)[qiki_user.idn] = (
-                            avatar_width,
-                            avatar_url
+
+                        # lex[lex](lex.IDN.ICONIFY, use_already=True)[qiki_user.idn] = (
+                        #     avatar_width,
+                        #     avatar_url
+                        # )
+                        # lex[lex](lex.IDN.NAME, use_already=True)[qiki_user.idn] = display_name
+                        # NOTE:  Above bracket notation is falling out of my favor,
+                        #        in spite of how clever and visionary and creative it made me look.
+                        #        I may be procedural down to my ever-loving soul.
+
+                        lex.create_word(
+                            sbj=lex.IDN.LEX,
+                            vrb=lex.IDN.ICONIFY,
+                            use_already=True,
+                            obj=qiki_user,
+                            num=avatar_width,
+                            txt=avatar_url,
                         )
-                        lex[lex](lex.IDN.NAME, use_already=True)[qiki_user.idn] = display_name
+                        lex.create_word(
+                            sbj=lex.IDN.LEX,
+                            vrb=lex.IDN.NAME,
+                            use_already=True,
+                            obj=qiki_user,
+                            txt=display_name,
+                        )
                         flask_login.login_user(flask_user)
                         return flask.redirect(get_then_url())
                         # TODO:  Why does Chrome put a # on the end of this URL (empty fragment)?
@@ -1577,11 +1657,7 @@ class FlikiHTML(web_html.WebHTML):
             head.title(title)
             head.meta(charset='utf-8')
             head.meta(name='viewport', content='width=device-width, initial-scale=0.7')
-            # head.link(
-            #     rel='shortcut icon',
-            #     href=web_path_qiki_javascript('favicon.ico')
-            # )
-            head.css_stamped(web_path_qiki_javascript('qoolbar.css'))
+            # head.css_stamped(web_path_qiki_javascript('qoolbar.css'))
             return head
 
     def footer(self):
@@ -1625,7 +1701,6 @@ def home_or_root_directory():
 
 
 def unslumping_home(home_page_title):
-    # TODO:  rename unslumping_home()?
     """
     User contributions (quotes, videos, etc.) in categories (mine, others, etc.).
 
@@ -1639,180 +1714,470 @@ def unslumping_home(home_page_title):
     MONTY.IDN - idns by name
     """
     t_start = time.time()
-    auth = AuthFliki()
+    auth = AuthFliki(ok_to_print=False)
+
     if not auth.is_online:
         return "lex database offline"
+    if not auth.is_enough_anonymous_patience(MINIMUM_SECONDS_BETWEEN_ANONYMOUS_QUESTIONS):
+        return "wait a bit"
+
     q_start = auth.lex.query_count
-    # auth.hit(auth.current_path)   Commented out to suppress early churn
-    if auth.is_enough_anonymous_patience(MINIMUM_SECONDS_BETWEEN_ANONYMOUS_QUESTIONS):
-        with FlikiHTML('html') as html:
-            with html.header(home_page_title) as head:
-                head.css_stamped(static_code_url('contribution.css'))
-                head.css('https://fonts.googleapis.com/css?family=Literata&display=swap')
-                head.css('https://fonts.googleapis.com/icon?family=Material+Icons')
-                # noinspection SpellCheckingInspection
-                head.raw_text('''
-                    <link rel="apple-touch-icon" sizes="180x180" href="{path}/apple-touch-icon.png">
-                    <link rel="icon" type="image/png" sizes="32x32" href="{path}/favicon-32x32.png">
-                    <link rel="icon" type="image/png" sizes="16x16" href="{path}/favicon-16x16.png">
-                    <link rel="manifest" href="{path}/site.webmanifest">
-                    <link rel="mask-icon" href="{path}/safari-pinned-tab.svg" color="#5bbad5">
-                    <meta name="msapplication-TileColor" content="#da532c">
-                    <meta name="theme-color" content="#ffffff">
-                \n'''.format(path='/meta/static/image/favicon'))
-            # THANKS:  real favicon generator, https://realfavicongenerator.net/
-            html.body("Loading . . .")
-            with html.footer() as foot:
-                foot.js('https://cdn.jsdelivr.net/npm/sortablejs@1.9.0/Sortable.js')
-                # foot.comment("SEE:  /meta/static/code/Sortable-LICENSE.txt")
 
-                foot.js('https://cdn.jsdelivr.net/npm/jquery-sortablejs@1.0.0/jquery-sortable.js')
-                # foot.comment("SEE:  /meta/static/code/jquery-sortable-LICENSE.txt")
+    # auth.hit(auth.current_path)
+    # NOTE:  Commented out to suppress early churn from all my hits.
 
-                # foot.js('https://cdn.jsdelivr.net/npm/iframe-resizer@4.1.1/js/iframeResizer.min.js')
-                foot.js(static_code_url('iframeResizer.js'))
-                foot.comment("SEE:  /meta/static/code/iframe-resizer-LICENSE.txt")
+    with FlikiHTML('html') as html:
+        with html.header(home_page_title) as head:
+            head.css_stamped(web_path_qiki_javascript('qoolbar.css'))
+            head.css_stamped(static_code_url('contribution.css'))
+            head.css('https://fonts.googleapis.com/css?family=Literata&display=swap')
+            head.css('https://fonts.googleapis.com/icon?family=Material+Icons')
+            # noinspection SpellCheckingInspection
+            head.raw_text('''
+                <link rel="apple-touch-icon" sizes="180x180" href="{path}/apple-touch-icon.png">
+                <link rel="icon" type="image/png" sizes="32x32" href="{path}/favicon-32x32.png">
+                <link rel="icon" type="image/png" sizes="16x16" href="{path}/favicon-16x16.png">
+                <link rel="manifest" href="{path}/site.webmanifest">
+                <link rel="mask-icon" href="{path}/safari-pinned-tab.svg" color="#5bbad5">
+                <meta name="msapplication-TileColor" content="#da532c">
+                <meta name="theme-color" content="#ffffff">
+            \n'''.format(path='/meta/static/image/favicon'))
+        # THANKS:  real favicon generator, https://realfavicongenerator.net/
+        html.body("Loading . . .")
+        with html.footer() as foot:
+            foot.js('https://cdn.jsdelivr.net/npm/sortablejs@1.9.0/Sortable.js')
+            # foot.comment("SEE:  /meta/static/code/Sortable-LICENSE.txt")
 
-                # foot.js('https://use.fontawesome.com/49adfe8390.js')   # req by talkify
-                # foot.js('https://cdn.jsdelivr.net/npm/talkify-tts@2.6.0/dist/talkify.min.js')
-                # NOTE:  Commenting the above lines out is how talkify is disabled.
-                #        Might want to revive it someday,
-                #        because talkify voices seemed better than the standard browser voices.
+            foot.js('https://cdn.jsdelivr.net/npm/jquery-sortablejs@1.0.0/jquery-sortable.js')
+            # foot.comment("SEE:  /meta/static/code/jquery-sortable-LICENSE.txt")
 
-                foot.js_stamped(static_code_url('util.js'))
-                foot.js_stamped(static_code_url('contribution.js'))
-                foot.js_stamped(static_code_url('unslumping.js'))
+            # foot.js('https://cdn.jsdelivr.net/npm/iframe-resizer@4.1.1/js/iframeResizer.min.js')
+            foot.js(static_code_url('iframeResizer.js'))
+            foot.comment("SEE:  /meta/static/code/iframe-resizer-LICENSE.txt")
 
-                verbs = []
-                verbs += auth.get_category_idns_in_order()
-                verbs += [
-                    auth.lex.IDN.CONTRIBUTE,
-                    auth.lex.IDN.UNSLUMP_OBSOLETE,
-                    auth.lex.IDN.CAPTION,
-                    auth.lex.IDN.EDIT,
-                ]
+            # foot.js('https://use.fontawesome.com/49adfe8390.js')   # req by talkify
+            # foot.js('https://cdn.jsdelivr.net/npm/talkify-tts@2.6.0/dist/talkify.min.js')
+            # NOTE:  Commenting the above lines out is how talkify is disabled.
+            #        Might want to revive it someday,
+            #        because talkify voices seemed better than the standard browser voices.
 
-                words_for_js = auth.vetted_find_by_verbs(verbs)
+            foot.js_stamped(static_code_url('util.js'))
+            foot.js_stamped(static_code_url('qiki.js'))
+            foot.js_stamped(static_code_url('contribution.js'))
+            foot.js_stamped(static_code_url('unslumping.js'))
 
-                words_for_js['w'] = auth.convert_unslump_words(words_for_js['w'])
-                cat_words = [{
-                    'idn': idn,
-                    'sbj': auth.lex[idn].sbj.idn,
-                    'vrb': auth.lex[idn].vrb.idn,
-                    'obj': auth.lex[idn].obj.idn,
-                    'txt': auth.lex[idn].txt,
-                } for idn in auth.get_category_idns_in_order()]
-                with foot.script() as script:
-                    monty = dict(
-                        me_idn=auth.qiki_user.idn.qstring(),
-                        me_txt=auth.qiki_user.txt,
-                        is_anonymous=auth.is_anonymous,
-                        URL_HERE=auth.current_url,
-                        AJAX_URL=AJAX_URL,
-                        IDN=auth.lex.IDN.dictionary_of_ints(),
-                        NOW=float(time_lex.now_word().num),
-                        login_html=auth.login_html(),
-                        cat_words=cat_words,
-                        WHAT_IS_THIS_THING=secure.credentials.Options.what_is_this_thing,
-                        OEMBED_CLIENT_PREFIX=secure.credentials.Options.oembed_client_prefix,
-                        OEMBED_OTHER_ORIGIN=secure.credentials.Options.oembed_other_origin,
-                        THUMB_MAX_WIDTH=THUMB_MAX_WIDTH,
-                        THUMB_MAX_HEIGHT=THUMB_MAX_HEIGHT,
-                        MEDIA_HANDLERS=[
-                            static_code_url('media_youtube.js', _external=True),
-                            static_code_url('media_instagram.js', _external=True),
-                            static_code_url('media_noembed.js', _external=True),
-                            static_code_url('media_any_url.js', _external=True),
-                        ],
-                        # NOTE:  FIRST matching media handler wins, high priority first, catch-all
-                        #        last.
-                        INTERACTION=INTERACTION_VERBS,
-                        POPUP_ID_PREFIX=POPUP_ID_PREFIX,
-                        STATIC_IMAGE=static_url('image'),
-                    )
-                    monty.update(words_for_js)
-                    script.raw_text('var MONTY = {json};\n'.format(json=json_pretty(monty)))
-                    if CATCH_JS_ERRORS:
-                        script.raw_text('''
-                            window.onerror = function (a,b,c,d,e,f) {
-                                // document.getElementsByTagName('body')[0].prepend(
-                                error_alert(
-                                    "Error Event: " + 
-                                    s(a) + ", " +
-                                    s(b) + ", " +
-                                    s(c) + ", " +
-                                    s(d) + ", " +
-                                    s(e) + ", " +
-                                    s(f) + 
-                                    "\\n\\n" +
-                                    "Please reload."
-                                );
-                            };
-                            try {
-                                js_for_unslumping(window, jQuery, qoolbar, MONTY, window.talkify);
-                            } catch (e) {
-                                error_alert(
-                                    "Exception: " + e.stack.toString() + 
-                                    "\\n\\n" +
-                                    "Please reload."
-                                );
-                                // document.getElementsByTagName('body')[0].innerHTML = (
-                                //     "<p>" + 
-                                //         "Exception: " + e.stack.toString() + 
-                                //     "</p>\\n" +
-                                //     "<p>" + 
-                                //         "Please " + 
-                                //         "<a href='javascript:window.location.reload(); return false;'>" + 
-                                //             "reload" + 
-                                //         "</a>." + 
-                                //     "</p>\\n"
-                                // );
-                            }
-                            var error_alerted = false;
-                            // Because emeffing Chrome thinks its helpful to auto-close alert popups.
-                            function error_alert(message) { 
-                                console.error(message);
-                                if ( ! error_alerted) {
-                                    error_alerted = true;
-                                    alert(message);
-                                    throw new Error("Something went terribly wrong.");
-                                }
-                            }
-                            function s(z) { 
-                                return z === undefined ? "((undefined))" : z.toString(); 
-                            }
-                        \n''')
-                        # EXAMPLE syntax error in contribution.js:
-                        #         ReferenceError: js_for_unslumping is not defined at
-                        #         http://localhost.visibone.com:5000/:3320:29
-                        # NOTE:  The above gyrations were trying to debug Opera Mobile.
-                        #        To no avail.
-                    else:
-                        script.raw_text('''
+            with foot.script() as script:
+
+                # monty = contribution_dictionary(auth)
+                monty = dict()
+
+                monty.update(dict(
+                    AJAX_URL=AJAX_URL,
+                    login_html=auth.login_html(),
+                    WHAT_IS_THIS_THING=secure.credentials.Options.what_is_this_thing,
+                    OEMBED_CLIENT_PREFIX=secure.credentials.Options.oembed_client_prefix,
+                    OEMBED_OTHER_ORIGIN=secure.credentials.Options.oembed_other_origin,
+                    THUMB_MAX_WIDTH=THUMB_MAX_WIDTH,
+                    THUMB_MAX_HEIGHT=THUMB_MAX_HEIGHT,
+                    MEDIA_HANDLERS=[
+                        static_code_url('media_youtube.js', _external=True),
+                        static_code_url('media_instagram.js', _external=True),
+                        static_code_url('media_noembed.js', _external=True),
+                        static_code_url('media_any_url.js', _external=True),
+                        # NOTE:  FIRST matching media handler wins, high priority first,
+                        #        catch-all last.
+                    ],
+                    POPUP_ID_PREFIX=POPUP_ID_PREFIX,
+                    STATIC_IMAGE=static_url('image'),
+                ))
+                script.raw_text('var MONTY = {json};\n'.format(json=json_pretty(monty)))
+                if CATCH_JS_ERRORS:
+                    script.raw_text('''
+                        window.onerror = function (a,b,c,d,e,f) {
+                            // document.getElementsByTagName('body')[0].prepend(
+                            error_alert(
+                                "Error Event: " + 
+                                s(a) + ", " +
+                                s(b) + ", " +
+                                s(c) + ", " +
+                                s(d) + ", " +
+                                s(e) + ", " +
+                                s(f) + 
+                                "\\n\\n" +
+                                "Please reload."
+                            );
+                        };
+                        try {
                             js_for_unslumping(window, jQuery, qoolbar, MONTY, window.talkify);
-                        \n''')
-            t_end = time.time()
-            q_end = auth.lex.query_count
-            print("/meta/contrib {q:d} queries, {t:.3f} sec".format(
-                q=q_end - q_start,
-                t=t_end - t_start,
+                        } catch (e) {
+                            error_alert(
+                                "Exception: " + e.stack.toString() + 
+                                "\\n\\n" +
+                                "Please reload."
+                            );
+                            // document.getElementsByTagName('body')[0].innerHTML = (
+                            //     "<p>" + 
+                            //         "Exception: " + e.stack.toString() + 
+                            //     "</p>\\n" +
+                            //     "<p>" + 
+                            //         "Please " + 
+                            //         "<a href='javascript:window.location.reload(); return false;'>" + 
+                            //             "reload" + 
+                            //         "</a>." + 
+                            //     "</p>\\n"
+                            // );
+                        }
+                        var error_alerted = false;
+                        // Because emeffing Chrome thinks its helpful to auto-close alert popups.
+                        function error_alert(message) { 
+                            console.error(message);
+                            if ( ! error_alerted) {
+                                error_alerted = true;
+                                alert(message);
+                                throw new Error("Something went terribly wrong.");
+                            }
+                        }
+                        function s(z) { 
+                            return z === undefined ? "((undefined))" : z.toString(); 
+                        }
+                    \n''')
+                    # EXAMPLE syntax error in contribution.js:
+                    #         ReferenceError: js_for_unslumping is not defined at
+                    #         http://localhost.visibone.com:5000/:3320:29
+                    # NOTE:  The above javascript gyrations (javations? javascryrations?)
+                    #        were an attempt to debug Opera Mobile.  To no avail.
+                else:
+                    script.raw_text('''
+                        js_for_unslumping(window, jQuery, qoolbar, MONTY, window.talkify);
+                    \n''')
+        t_end = time.time()
+        q_end = auth.lex.query_count
+        print("unslumping home {q:d} queries, {t:.3f} sec".format(
+            q=q_end - q_start,
+            t=t_end - t_start,
+        ))
+        html_response = html.doctype_plus_html()
+        flask_response = flask.Response(html_response)
+        # flask_response.headers['Cross-Origin-Resource-Policy'] = 'cross-origin'
+        # NOTE:  This hail-mary attempt to fix broken Instagram thumbnails was misguided.
+        #        I think I misunderstood the Chrome message about this.  Anyway Firefox
+        #        fails too.  A clue is in the Chrome-F12-Network highlighting of the
+        #        "same-origin" value in the *instagram* response header, not the fliki header.
+        #        In other words, fixing this requires a change on the instagram servers.
+        #        They're being stingy with sharing their images now.
+        # SEE:  CORS policy change Feb 2021, https://stackoverflow.com/q/66336314/673991
+        # SEE:  Possible solution in a deleted answer, is this an instagram proxy?
+        #       https://rapidapi.com/restyler/api/instagram40
+        return flask_response
+
+
+def contribution_dictionary(auth, more_verb_idns=None):
+    """Put the relevant contribution information from the lex into a dictionary."""
+    if not auth.is_online:
+        return dict(error="lex database offline")
+    if not auth.is_enough_anonymous_patience(MINIMUM_SECONDS_BETWEEN_ANONYMOUS_QUESTIONS):
+        return dict(error="wait a bit")
+
+    verbs = []
+    verbs += auth.get_category_idns_in_order()
+    verbs += [
+        auth.lex.IDN.CONTRIBUTE,
+        auth.lex.IDN.UNSLUMP_OBSOLETE,
+        auth.lex.IDN.CAPTION,
+        auth.lex.IDN.EDIT,
+    ]
+    if more_verb_idns is not None:
+        verbs += more_verb_idns
+
+    words_for_js = auth.vetted_find_by_verbs(verbs)
+    words_for_js['w'] = auth.convert_unslump_words(words_for_js['w'])
+
+
+    cat_words = [{
+        'idn': idn,
+        'sbj': auth.lex[idn].sbj.idn,
+        'vrb': auth.lex[idn].vrb.idn,
+        'obj': auth.lex[idn].obj.idn,
+        'txt': auth.lex[idn].txt,
+    } for idn in auth.get_category_idns_in_order()]
+
+    monty = dict(
+        # me_idn=auth.qiki_user.idn.qstring(),
+        # me_lineage=auth.qiki_user.lineage(),
+        me_idn=auth.qiki_user.lineage(),
+
+        me_txt=auth.qiki_user.txt,
+        is_anonymous=auth.is_anonymous,
+        URL_HERE=auth.current_url,
+        IDN=auth.lex.IDN.dictionary_of_ints(),
+        NOW=float(time_lex.now_word().num),
+        cat_words=cat_words,
+        INTERACTION=INTERACTION_VERBS,
+    )
+    monty.update(words_for_js)
+    return monty
+
+
+@flask_app.route('/meta/contribution_json', methods=('GET', 'HEAD'))
+def meta_contribution_json():
+    auth = AuthFliki()
+    monty = contribution_dictionary(auth)
+    return flask.Response(json_pretty(monty), mimetype='application/json')
+
+
+@flask_app.route('/meta/nits', methods=('GET', 'HEAD'))
+def meta_nits():
+    before_file = flask.request.args.get('before_file', '')
+    after_file = flask.request.args.get('after_file', '')
+    before_assign = flask.request.args.get('before_assign', '')
+
+    auth = AuthFliki()
+
+    if not auth.is_online:
+        return dict(error="lex database offline")
+    if not auth.is_enough_anonymous_patience(MINIMUM_SECONDS_BETWEEN_ANONYMOUS_QUESTIONS):
+        return dict(error="wait a bit")
+
+    interaction_idns = [int(auth.lex[n].idn) for n in INTERACTION_VERBS.values()]
+    interaction_name_from_idn = {int(idn): auth.lex[idn].txt for idn in interaction_idns}
+
+    # monty_hybrid = contribution_dictionary(auth)
+    monty_hybrid = contribution_dictionary(auth, interaction_idns)
+    # NOTE:  This hybrid thingie is actually a mish-mash of dict()s and objects.
+    #        Yet another curse on the seemingly honorable and versatile notion of making
+    #        json_encode() treat a qiki.Word as a dictionary, aka a JavaScript associative array.
+
+    monty_json = json_encode(monty_hybrid)
+    monty_dict = json.loads(monty_json)
+    # NOTE:  Now its dictionaries, all the way down.
+
+    lex_variable_name = 'c'
+    user_variable_prefix = 'u'
+
+    category_idns = auth.get_category_idns_in_order()
+    category_name_from_idn = {int(idn): auth.lex[idn].txt for idn in category_idns}
+
+    define_lines = []
+    variable_name_from_idn = dict()
+    # NOTE:  In the following loop,
+    #            variable_name - name of each variable in the data stream.
+    #            symbol        - key in the MONTY.IDN dictionary.
+    for variable_name, symbol in (
+        ('category',    'CATEGORY'),
+        ('interaction', 'INTERACT'),
+        ('text',        'AGENT'),   # HACK:  AGENT was barely used, it was INTENDED for users but that didn't happen
+        # ('qstring',     'QUESTION_OBSOLETE'),   # HACK repurposed
+        ('user',        'LISTING'),   # HACK:  LISTING was only used for users, across all sites.
+        ('google_user', 'GOOGLE_LISTING'),
+        ('anonymous',   'ANONYMOUS_LISTING'),
+        ('locus',       'RESOURCE'),   # HACK:  Appropriating this too, for "base class" of contribute and rightmost
+        ('contribute',  'CONTRIBUTE'),
+        ('caption',     'CAPTION'),
+        ('edit',        'EDIT'),
+        ('rightmost',   'FENCE_POST_RIGHT'),
+    ):
+        # NOTE:  A 'user' word was defined in LUnslumping (idn 9, whn 2016), but not Unslumping.
+        idn = monty_dict['IDN'][symbol]
+        definer = lex_variable_name
+        etc = ''
+        if symbol in ('GOOGLE_LISTING', 'ANONYMOUS_LISTING'):   # HACK:  Oh come on
+            definer = 'user'
+            # etc = ', qstring, lineage'
+        elif symbol == 'FENCE_POST_RIGHT':
+            definer = 'locus'
+        elif symbol == 'CONTRIBUTE':
+            definer = 'locus'
+            etc = ', user, text'
+        elif symbol == 'CAPTION':
+            etc = ', user, text, contribute'
+        elif symbol == 'EDIT':
+            etc = ', user, text, contribute'
+
+        define_lines.append('{variable_name} = {definer}({idn}, "{variable_name}"{etc});'.format(
+            variable_name=variable_name,
+            symbol=symbol,
+            idn=idn,
+            definer=definer,
+            etc=etc,
+        ))
+        variable_name_from_idn[idn] = variable_name
+
+    # TODO:  Some way to unify anonymous and google_user curried words, by defining both as a
+    #        "user" curried word?  Need to make up some IDN for the "user" definition then I guess.
+    #        Haha maybe commandeer the MONTY.IDN.LISTING definition?
+    #        In desktop and unslumping, the only listings are google user and anonymous.
+
+    user_lines = []
+    i_user_from_lineage = dict()
+    for (i_user, (lineage, user_word)) in enumerate(monty_dict['u'].items()):
+        # i_user_from_lineage[user_word['idn_qstring']] = i_user
+        i_user_from_lineage[lineage] = i_user
+        user_lines.append(
+            '{user_variable_prefix}{i_user} = {user_type}('
+                '"{lineage}", '
+                '{name_json}'
+            ');'.format(
+                user_variable_prefix=user_variable_prefix,
+                i_user=i_user,
+                user_type=user_word.get('listing_txt', "").replace(' ', '_'),
+                lineage=lineage,
+                name_json=json.dumps(user_word.get('name_short', "[no name]")),
+                # idn=json.dumps(idn),
+                # listing_index=user_word.get('listing_index', ""),
+            )
+        )
+
+    category_lines = []
+    category_txt_from_idn = dict()
+    for category_word in monty_dict['cat_words']:
+        # NOTE:  The definitive order of categories as they appear on the webpage.
+        category_lines.append(
+            '{name} = category('
+                '{idn}, '
+                '{name_json}, '
+                'user, '
+                'contribute, '
+                'locus'
+            ');'.format(
+                idn=category_word['idn'],
+                name=category_word['txt'],
+                name_json=json.dumps(category_word['txt']),
+            )
+        )
+        category_txt_from_idn[category_word['idn']] = category_word['txt']
+
+    interaction_lines = []
+    for interaction_name in monty_dict['INTERACTION'].values():
+        interaction_lines.append('{name} = interaction({idn}, {name_json});'.format(
+            idn=int(auth.lex[interaction_name].idn),
+            name=interaction_name,
+            name_json=json.dumps(interaction_name),
+        ))
+
+    lex_lines = []
+    for w in monty_dict['w']:
+
+        def idn_render(idn):
+            if idn in variable_name_from_idn:
+                return variable_name_from_idn[idn]
+            else:
+                # return "{lex_variable_name}({idn})".format(
+                #     idn=idn,
+                #     lex_variable_name=lex_variable_name
+                # )
+                return str(idn)
+
+        vrb = w['vrb']
+        txt = w.get('txt', "")
+        num = w.get('num', None)
+        txt_json = json_encode(txt)
+        obj_idn = w.get('obj', None)
+        obj_render = idn_render(obj_idn)
+        author = "{user_variable_prefix}{i_user}".format(
+            user_variable_prefix=user_variable_prefix,
+            # i_user=i_user_from_lineage[w['sbj_lineage']],
+            i_user=i_user_from_lineage[w['sbj']],
+        )
+
+        if vrb == auth.lex.IDN.CAPTION:
+            lex_lines.append('caption({idn}, {author}, {txt_json}, {obj});'.format(
+                idn=w.get('idn', "IDN"),
+                author=author,
+                txt_json=txt_json,
+                obj=obj_render,
             ))
-            html_response = html.doctype_plus_html()
-            flask_response = flask.Response(html_response)
-            # flask_response.headers['Cross-Origin-Resource-Policy'] = 'cross-origin'
-            # NOTE:  This hail-mary attempt to fix broken Instagram thumbnails was misguided.
-            #        I think I misunderstood the Chrome message about this.  Anyway Firefox
-            #        fails too.  A clue is in the Chrome-F12-Network highlighting of the
-            #        "same-origin" value in the *instagram* response header, not the fliki header.
-            #        In other words, fixing this requires a change on the instagram servers.
-            #        They're being stingy with sharing their images now.
-            # SEE:  CORS policy change Feb 2021, https://stackoverflow.com/q/66336314/673991
-            # SEE:  Possible solution in a deleted answer, is this an instagram proxy?
-            #       https://rapidapi.com/restyler/api/instagram40
-            return flask_response
+        elif vrb == auth.lex.IDN.CONTRIBUTE:
+            lex_lines.append('contribute({idn}, {author}, {txt_json});'.format(
+                idn=w.get('idn', -1),
+                author=author,
+                txt_json=txt_json,
+            ))
+        elif vrb == auth.lex.IDN.EDIT:
+            lex_lines.append('edit({idn}, {author}, {txt_json}, {obj});'.format(
+                idn=w.get('idn', -1),
+                author=author,
+                txt_json=txt_json,
+                obj=obj_render,
+            ))
+        elif vrb in category_idns:
+            lex_lines.append('{category_name}({idn}, {author}, {obj}, {num_as_idn});'.format(
+                category_name=category_name_from_idn.get(vrb, "unknown"),
+                idn=w.get('idn', -1),
+                author=author,
+                obj=obj_render,
+                num_as_idn=idn_render(num),   # rare case where num was an idn
+            ))
+        elif vrb in interaction_idns:
+            if num is None:
+                comma_num = ''
+            elif is_whole(num):
+                comma_num = ", {:d}".format(num)
+            else:
+                comma_num = ", {:0.3f}".format(num)
+            lex_lines.append(
+                '{interaction_name}('
+                    '{idn}, '
+                    '{author}'
+                    '{comma_num}'
+                    '{comma_obj}'
+                    '{comma_txt}'
+                ');'.format(
+                    interaction_name=interaction_name_from_idn.get(vrb, "unknown"),
+                    idn=w.get('idn', -1),
+                    author=author,
+                    comma_num=comma_num,
+                    comma_obj=''   if obj_idn is None else   ', ' + obj_render,
+                    comma_txt=''   if len(txt) == 0   else   ', ' + txt_json,
+                )
+            )
+        else:
+            print("Unexpected verb, idn", vrb)
 
-    return "Please wait a bit..."   # TODO:  Never gets here.
+    the_javascript = (
+        '{before_file}\n'
+        '{before_assign}{lex_variable_name} = qiki.Lex("{me_idn}");\n'
+        '\n'
+        '{define_lines}\n'
+        '\n'
+        '{user_lines}\n'
+        '\n'
+        '{category_lines}\n'
+        '\n'
+        '{interaction_lines}\n'
+        '\n'
+        '{lex_lines}\n'
+        '\n'
+        'c.{FINISHER_METHOD_NAME}();\n'
+        '\n'
+        '{after_file}\n'
+    ).format(
+        before_file=before_file,
+        before_assign=before_assign,
+        lex_variable_name=lex_variable_name,
+        me_idn=monty_dict['me_idn'],
+        define_lines=joiner(define_lines, before_assign, '', '\n'),
+        user_lines=joiner(user_lines, before_assign, '', '\n'),
+        category_lines=joiner(category_lines, before_assign, '', '\n'),
+        interaction_lines=joiner(interaction_lines, before_assign, '', '\n'),
+        lex_lines="\n".join(lex_lines),
+        after_file=after_file,
+        FINISHER_METHOD_NAME=FINISHER_METHOD_NAME,
+    )
 
+    return flask.Response(the_javascript, mimetype='application/javascript')
+
+
+def joiner(things, prefix, suffix, between):
+    return between.join(prefix + thing + suffix for thing in things)
+assert "(a),(b)" == joiner(['a', 'b'], '(', ')', ',')
+assert "(a)"     == joiner(['a'],      '(', ')', ',')
+assert ""        == joiner([],         '(', ')', ',')
+
+
+def is_whole(x):
+    return x % 1 == .000
+assert     is_whole(42)
+assert not is_whole(42.1)
 
 # DONE:  Categories:
 #        my unslumping - what I've entered, or dragged here, and not deleted
@@ -1896,6 +2261,9 @@ def slam_test():
 
     with FlikiHTML('html') as html:
         html.header(title="Slam Test")
+        # TODO:  Is anything here dependent on the qoolbar?
+        #        head.css_stamped(web_path_qiki_javascript('qoolbar.css'))
+
         with html.body(class_='test-container', newlines=True) as body:
             body.button("go", id='go')
         with html.footer() as foot:
@@ -1951,6 +2319,11 @@ def meta_lex():
     qc_start = auth.lex.query_count
     with FlikiHTML('html') as html:
         with html.header("Lex") as head:
+            head.css_stamped(web_path_qiki_javascript('qoolbar.css'))
+            # TODO:  qoolbar.css sets the background color.
+            #        But that should move to meta_lex.css right?
+            #        Maybe not because that's the target-environment class.
+
             head.css_stamped(static_code_url('meta_lex.css'))
 
 
@@ -2630,7 +3003,7 @@ def ajax():
         elif action == 'qoolbar_list':
             verbs = list(auth.qoolbar.get_verb_dicts())
 
-            # print("qoolbar - " + " ".join(v[b'name'] + " " + str(v[b'qool_num']) for v in verbs))
+            # print("qoolbar - " + " ".join(v[b'name'] + " " + str(v[b'qool_num']) for v in verbs))   # spelling # noqa
             # EXAMPLE:  qoolbar delete 1 like 1
             # EXAMPLE:  qoolbar - like 1 delete 1 laugh 0 spam 1 laugh 1
 
@@ -2967,15 +3340,15 @@ JSON_SEPARATORS_NO_SPACES = (',', ':')
 
 
 def json_encode(x, **kwargs):
-    """ JSON encoding a dict, including custom objects with a .to_json() method. """
-    # TODO:  Support encoding list, etc.  ((WTF does this mean?))
+    """ JSON encode a dict, including custom objects with a .to_json() method. """
+    # TODO:  Support encoding list, etc.  ((WTF does this mean?  This works:  json.dumps([1,2,3])))
     json_almost = json.dumps(
         x,
         cls=WordEncoder,
         separators=JSON_SEPARATORS_NO_SPACES,
         allow_nan=False,
         **kwargs
-        # NOTE:  The output will have no newlines.
+        # NOTE:  The output may have no newlines.  (Unless indent=4 is in kwargs.)
         #        If there APPEAR to be newlines when viewed in a browser Ctrl-U page source,
         #        it may just be the browser wrapping on the commas.
     )
