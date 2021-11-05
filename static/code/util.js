@@ -64,7 +64,7 @@ function type_should_be(thing, expected_type) {
         });
         if ( ! is_thing_good) {
             console.error(
-                "Expecting either a", " or ".join(alternative_type_names),
+                "Expecting either a", alternative_type_names.join(" or "),
                 "type of thing, but got a", type_name(thing),
                 "of value", thing
             );
@@ -91,6 +91,12 @@ error_expected(function () {
     assert_equal(false, type_should_be(42, String));
 });
 
+assert_equal(true, type_should_be(42, [Number, String]));
+assert_equal(true, type_should_be('42', [Number, String]));
+error_expected(function () {
+    assert_equal(false, type_should_be(null, [Number, String]));
+});
+
 /**
  * Slightly more versatile alternative to instanceof or typeof operators.
  *
@@ -114,7 +120,7 @@ error_expected(function () {
  * @return {boolean}
  */
 // TODO:  Figure out if is_a() is some kind of obscure security risk with the way it casts a
-//        function into a Function.
+//        putative function into a Function.
 //        Ominous clues at
 //        https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Function
 //        "Calling the constructor directly can create functions dynamically but suffers from
@@ -123,6 +129,7 @@ error_expected(function () {
 //        global scope only."
 //        Certainly has nothing to do with is_a(string_from_user).
 //        So I'll let this marinate a bit but it's probably nothing.
+// CAUTION:  Don't is_a(x, null) or is_a(x, undefined).  Use is_defined() or is_specified() instead.
 function is_a(thing, expected_type) {
     return Object(thing) instanceof expected_type;
 }
@@ -198,7 +205,13 @@ assert_equal(false, is_array_like({length:99, 0:'alpha', 1:'bravo'}));
 })();
 
 /**
- * When the callback is expected to generate a console.error()
+ * The callback is expected to generate a console.error() -- but run to completely anyway.
+ *
+ * This does NOT detect an exception, and would not give an error if one were thrown.
+ * It merely detects whether console.error() were called by the callback.
+ *
+ * The error the callback generated is NOT displayed on the console. It is absorbed.
+ * Rather, an error is displayed on the console if the callback does NOT call console.error().
  *
  * @param callback
  */
@@ -339,7 +352,8 @@ assert_equal(42, random_element([42, 42, 42]));
  *                   `this` is each value, as it is in $.each())
  *                   key, value are the parameters to the callback function
  *                       key is the name of the property for { objects }
- *                       key is the index of the array for [ arrays ] -- and it's always a string
+ *                       key is the index of the array for [ arrays ] --
+ *                       CAUTION:  key is always a string!
  *                   return false (not just falsy) to prematurely terminate the looping
  * @return {*} - return the object, a convenience for chaining I guess.
  *               Seems as if $.each does this.
@@ -1097,6 +1111,15 @@ console.assert(42 === last_item([1,2,3,42]))
 console.assert("default" === last_item([], "default"))
 console.assert(undefined === last_item([]))
 
+/**
+ * Colorize a line in the JavaScript console.
+ *
+ * EXAMPLE:
+ *     console_log_styled("Robin", 'color: blue; background-color: cyan;');
+ *
+ * @param message - the whole message in one string, not comma-separated parts
+ * @param css - css style properties and values
+ */
 function console_log_styled(message, css) {
     console.log('%c' + message, css);
     // THANKS:  colors in DevTools, https://stackoverflow.com/a/13017382/673991

@@ -1,7 +1,7 @@
 (function (qiki) {
     var load_stage = 'qiki.js loaded';
     var load_call_count = 0;
-    var LOAD_STAGE_FINISHED = 'fin';
+    var LOAD_STAGE_FINISHED = 'finished';
     var FINISHER_METHOD_NAME = 'fin';
     // NOTE:  Name of a method on the lex-instance (the function-object returned by qiki.Lex()).
     //        This is a mechanism for knowing whether the loaded script executed to completion,
@@ -33,10 +33,19 @@
      *        handlers.init()
      *        handlers.done()
      *        handlers.fail()
+     *
+     * @param output - optional information accumulated from the stream
+     *        output.by_name - mapping from name to wordie, for all the lex's definitions in the stream
      */
-    qiki.lex_load = function (url, handlers) {
-        prepare_to_handle(handlers);
-        // NOTE:  Not sure how important it is that qiki.Lex be defined BEFORE $.getScript()
+    qiki.lex_load = function (url, handlers, output) {
+        output = output || {};
+        output.by_name = output.by_name || {};
+        output.me_idn  = output.me_idn  || null;
+        output.me_word = output.me_word || null;
+
+        prepare_to_handle(handlers, output);
+
+        // NOTE:  Not sure how importantly qiki.Lex be defined BEFORE $.getScript(), but we do.
         var load_promise = $.getScript(url);
         load_promise.done(function (script, textStatus) {
             if (load_stage === LOAD_STAGE_FINISHED) {
@@ -65,23 +74,29 @@
      *
      * Mainly this function serves to limit the scope.  But it's not that big of a deal,
      * perhaps only the url gets used and passes out of scope for garbage collection.
+     * Maybe instead the url could come from handlers?  So could output!
      *
      * @param handlers
+     * @param output
      */
-    function prepare_to_handle(handlers) {
+    function prepare_to_handle(handlers, output) {
+        if (is_specified(output)) {
+        }
 
         /**
-         * Kinda instantiate a Lex object.
+         * Instantiate a Lex -- which is itself a callable function.
          */
         qiki.Lex = function lex_constructor(me_idn_lineage) {
-            load_stage = 'qiki.Lex() instantiated';
+            load_stage = 'lex instantiated';
+
+            output.me_idn = me_idn_lineage;
 
             if (handlers.hasOwnProperty('init')) {
                 handlers.init(me_idn_lineage);
             }
 
             /**
-             * When the lex instantiation is called.
+             * When the lex instantiation object is called.
              */
             var instantiation_call = function _instantiation_call() {
                 load_call_count++;
@@ -131,7 +146,27 @@
          * @returns {function} - a callable thing that can define or set other words
          */
         function word_definition(w) {
+            // TODO:  This should become a Wordie.definition() method.
+
             type_should_be(w, qiki.Wordie);
+
+            if (w.name !== null && is_a(w.idn, Number)) {
+                // NOTE:  Definitions with a name and an idn in the main lex are accessible by name.
+                //        This doesn't include definitions in another lex like a google user.
+                //        This doesn't include unnamed words, though actually those never get here.
+                console.assert(
+                    ! output.by_name.hasOwnProperty(w.name),
+                    "Duplicate definition",
+                    w,
+                    "after",
+                    output.by_name[w.name]
+                );
+                output.by_name[w.name] = w;
+            }
+
+            if (w.idn === output.me_idn) {
+                output.me_word = w;
+            }
 
             if (handlers.hasOwnProperty('word_define')) {
                 handlers.word_define(w);
@@ -219,14 +254,20 @@
             var idn = parameters[0];
             var details;
 
-            // NOTE:  The following is a consequential (thus problematic) fork in the road.
+
+
+            var fork_definer_v_setter = is_a(parameters[1], String)
+            // NOTE:  This is a consequential (thus problematic) fork in the road.
             //        A call with the 2nd parameter a string is a word definition
             //        A call with the 2nd parameter anything else is a word setter (creator)
             //        Both create new words.
             //        A defined word has a name and can go on to create more words.
             //        A set word has no name and is a genealogical dead end.
+
+
+
             var child_wordie;
-            if (typeof parameters[1] === 'string') {
+            if (fork_definer_v_setter) {
                 var definition_name = parameters[1];
                 details = Array.prototype.slice.call(parameters, 2);
                 child_wordie = new qiki.Wordie(idn, definition_name, details, wordie);
@@ -282,7 +323,7 @@
          * and wishfully thinking, garbage collection will free them up soon after.
          *
          * @param idn
-         * @param name
+         * @param name - a lex-unique name, or null
          * @param details - array of verb-specific stuff, or [] - NOT optional
          * @param parent_word_if_any - optional - undefined or null if no parent
          * @constructor

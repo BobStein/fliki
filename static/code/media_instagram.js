@@ -16,30 +16,33 @@
             var pattern_match_object = cont.handler.match_object;
             console.assert(pattern_match_object.length === 2, cont.content, pattern_match_object);
             var media_id = pattern_match_object[1];
-            console.assert(is_valid_media_id(media_id));
-            var caption = cont.caption_text + " (" + that.description_short + ")";
-            cont.thumb_image(
-                image_url(media_id, THUMB_SIZE),
-                caption,
-                then,
-                function instagram_render_thumb_take_2() {
-                    cont.thumb_image(
-                        image_url(media_id, MEDIUM_SIZE),
-                        caption,
-                        then,
-                        function instagram_render_thumb_take_3() {
-                            cont.thumb_image(
-                                image_url(media_id, LARGE_SIZE),
-                                caption,
-                                then,
-                                function instagram_render_thumb_give_up() {
-                                    cont.render_error("Instagram image not found");
-                                }
-                            );
-                        }
-                    );
-                }
-            );
+            if (is_valid_media_id(media_id)) {
+                var caption = cont.caption_text + " (" + that.description_short + ")";
+                cont.thumb_image(
+                    image_url(media_id, THUMB_SIZE),
+                    caption,
+                    then,
+                    function instagram_render_thumb_take_2() {
+                        cont.thumb_image(
+                            image_url(media_id, MEDIUM_SIZE),
+                            caption,
+                            then,
+                            function instagram_render_thumb_take_3() {
+                                cont.thumb_image(
+                                    image_url(media_id, LARGE_SIZE),
+                                    caption,
+                                    then,
+                                    function instagram_render_thumb_give_up() {
+                                        cont.render_error("Instagram image not found");
+                                    }
+                                );
+                            }
+                        );
+                    }
+                );
+            } else {
+                cont.render_error(f("No media {id} in {idn}", {id:media_id, idn:cont.idn}));
+            }
         },
         can_play: function (cont) { return false; }
     };

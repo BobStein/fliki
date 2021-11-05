@@ -19,6 +19,7 @@ from __future__ import print_function
 
 import abc
 import functools
+import ipaddress
 import json
 import logging
 import os
@@ -28,7 +29,7 @@ import threading
 import time
 
 import traceback
-import uuid
+# import uuid
 
 import authomatic
 import authomatic.adapters
@@ -46,6 +47,8 @@ import werkzeug.utils
 
 import qiki
 from qiki.number import type_name
+import qiki.nit
+from qiki.nit import N
 import secure.credentials
 import to_be_released.web_html as web_html
 
@@ -72,24 +75,32 @@ SHOW_LOG_AJAX_NOEMBED_META = False
 CATCH_JS_ERRORS = False
 POPUP_ID_PREFIX = 'popup_'
 FINISHER_METHOD_NAME = 'fin'   # see qiki.js
-INTERACTION_VERBS = dict(
-    BOT='bot',         # |>  global play button
-    START='start',     # |>  individual media play
-    QUIT='quit',       # []  ARTIFICIAL, manual stop, skip, or pop-up close
-    END='end',         # ..  NATURAL, automatic end of the media
-    PAUSE='pause',     # ||  either the global pause or the pause within the iframe
-    RESUME='resume',   # |>
-    ERROR='error',     #     something went wrong, human-readable txt
-    UNBOT='unbot',     #     bot ended, naturally or artificially (but not crash)
-)
+JSON_SEPARATORS_NO_SPACES = (',', ':')
+INTERACT_VERBS = [
+    'bot',      # |>  global play button
+    'start',    # |>  individual media play
+    'quit',     # []  ARTIFICIAL, manual stop, skip, or pop-up close
+    'end',      # ..  NATURAL, automatic end of the media
+    'pause',    # ||  either the global pause or the pause within the iframe
+    'resume',   # |>
+    'error',    #     something went wrong, human-readable txt
+    'unbot',    #     bot ended, naturally or artificially (but not crash)
+]
 # NOTE:  The above dictionary maps JavaScript names to Lex names.  E.g.
 #            javascript:  interact.START(idn, media_seconds);
 #            lex:  [me](start)[contribution]
-#        It constrains the IDE editor to approved interaction verbs.
+#        It constrains the IDE editor to approved interact verbs.
 #        These are not yet among the "relevant" verbs in MONTY.IDN or MONTY.w.
 # TODO:  Move to WorkingIdns.__init__() yet still bunch together somehow?
 #        Problem is, I'd like to define new ones without necessarily generating words for them,
 #        until of course they are used.
+
+IDN_SEQUENCE = secure.credentials.Options.spare_idns[0]
+IDN_ADMIN_VERB = secure.credentials.Options.spare_idns[1]
+IDN_ADMIN_ASSIGNMENT = secure.credentials.Options.spare_idns[2]
+IDN_LOCUS = secure.credentials.Options.spare_idns[3]
+IDN_REARRANGE = secure.credentials.Options.spare_idns[4]
+IDN_URL = secure.credentials.Options.spare_idns[5]
 
 
 YOUTUBE_PATTERNS = [
@@ -143,20 +154,1529 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 log_handler = logging.StreamHandler(sys.stdout)
 log_handler.setLevel(logging.DEBUG)
-formatter = logging.Formatter('%(asc' 'time)s - %(name)s - %(level''name)s - %(message)s')
-log_handler.setFormatter(formatter)
+log_formatter = logging.Formatter('%(asc' 'time)s - %(name)s - %(level''name)s - %(message)s')
+log_handler.setFormatter(log_formatter)
 logger.addHandler(log_handler)
 # THANKS:  Log to stdout, http://stackoverflow.com/a/14058475/673991
+
+
+class NamedElements(object):
+    """A dictionary that can be de-referenced as properties:  d.foo instead of d['foo']."""
+    def __init__(self, starting_dict = None):
+        self._dict = dict()
+        if starting_dict is not None:
+            for name, value in starting_dict.items():
+                self.add(name, value)
+
+    def to_dict(self):
+        return self._dict
+        # CAUTION:  Not doing a deepcopy here means the caller can modify the internal _dict.
+        #           But copy.deepcopy() seemed to produce weird recursive error messages.
+        #           Or those were a red herring to some other bug, such as words pointing to
+        #           words in a cyclic loop.  (E.g. the noun definition is its own parent.)
+        #           Anyway it was never clear that a deepcopy fixed or caused any bugs.
+
+    def to_values(self):
+        return self._dict.values()
+
+    def len(self):
+        return len(self._dict)
+
+    def to_json(self):
+        return self.to_values()
+
+    def add(self, name, value):
+        self._dict[name] = value
+
+    def has(self, name):
+        return name in self._dict
+
+    def names(self):
+        return ",".join(name for name in self._dict.keys())
+
+    _UNSPECIFIED = object()
+
+    def get(self, name, default_value=_UNSPECIFIED):
+        if default_value is self._UNSPECIFIED:
+            return self._dict[name]   # may raise KeyError
+        else:
+            return self._dict.get(name, default_value)
+
+    def remove(self, name):
+        if name in self._dict:
+            return_value = self._dict[name]
+            del self._dict[name]
+            return return_value
+        else:
+            return None
+
+    def __getattr__(self, item):
+        if item in self._dict:
+            return self._dict[item]
+        else:
+            raise AttributeError(repr(self) + " has no attribute " + repr(item))
+
+
+class FlikiWord(qiki.nit.Nit):
+    """
+    Combines the word and lex roles for the nit-based Contribution class of applications.
+
+    So, wow this will need some refactoring but for now, just getting it to work.
+
+    FlikiWord class:
+
+        Write words to the lex file.  Be thread-safe.  A singleton (the class is the object).
+
+    FlikiWord instance:
+
+        A nit with named sub-nits.  This is a hint of a generic word, which could be
+        a container of named sub-words.  Or let's just say sub-nits.  Because whn
+        could be a Nit subclass for time, and user could be a Nit subclass for a user.
+
+    Interesting simplicity in this:  the class is the lex, instances are words.
+    Runs afoul of making the lex itself a nit -- you'd need bytes and nits class methods.
+
+    Holy crap, there's another confusion.  The word for the lex itself (idn zero) and the
+    lex itself.  What if they were the same thing?  If a word in the lex actually WAS the lex!
+    Another confusion, the user word and the word for 'user'.
+    There is a sbj=user word versus the sbj=lex word.  Very different rules for
+    creation and uses put to.  Then what if the word for users was itself the class
+    that allowed sbj=user words to be created.
+
+    Not sure what I'm saying here, but getting the inkling I'm on to something.
+    A collection of ridiculously broad things, could include a thing for creating
+    whole worlds of things.
+    This meshes with the confusion over whether sbj=user words and sbj=lex words should
+    be in different lexes, as in different nit-stream-files.
+    And the other confusion over whether exterior lexes could be integrated in,
+    such as the world of google users with their umpteen bit numbers.
+    And the other confusion over whether every user could have their own lex, which
+    could refer to other lexes and words in those lexes.
+
+    So anyway, I know, I get it, this class is a shit-show of object oriented crimes.
+    But it's also a stepping stone to something somehow better.
+    Better than it is now of course, but maybe just maybe better than OOP.
+    So I fall back on my procedural roots.
+    """
+
+    file_name = 'unslumping.lex.jsonl'
+    # NOTE:  This could kinda sorta be basis for the URL of the lex,
+    #        which is also the bytes part of the lex's nit.
+    # TODO:  Move this name to secure/credentials.py?
+
+    max_idn = None
+    lines_in_file = None
+    lock = None
+
+    # NOTE:  The following are fleshed out by FlikiWord.open_lex()
+    def_from_idn = dict()
+    idn_of = NamedElements()
+    _vrb_from_idn = None
+
+    MINIMUM_JSONL_ELEMENTS = 4   # Each word contains at a minimum:  idn, whn, sbj, vrb
+    MAXIMUM_JSONL_CHARACTERS = 10000   # No word JSON string should be longer than this
+    VERBS_USERS_MAY_USE = {'contribute', 'caption', 'edit', 'rearrange'}.union(INTERACT_VERBS)
+
+    @classmethod
+    def file_path(cls):
+        return os_path_data(cls.file_name)
+
+    @classmethod
+    def open_lex(cls):
+        """
+        Initialize at start of runtime.  Compute FlikiWord.max_idn from the lex jsonl file.
+        """
+        # DONE:  Alternatives for custom-named word properties:
+        #        word.obj_dict['property']
+        #        word.property
+        #        word.o.property
+        #        word.obj.property   <== this
+        p = Probe()
+        cls.lock = threading.Lock()
+
+        idn_lex = None
+        idn_define = None
+        # TODO:  There was a reason for storing these in local variables, not in
+        #        FlikiWord.idn_of.  What was it?
+        #        It wasn't just the brevity.  idn_lex versus cls.idn_of.lex
+        #        Oh right, it was because pass 2 triggered a duplicate definition error.
+        #        Was it??  Cannot find any duplicate detection.
+        #        But that goes away if we combine pass 1 and 2.
+        #        That requires insisting that the lex and define definitions come first.  Can do.
+        word = None
+        try:
+            for word in cls.all_words_unresolved():   # pass 1:  idn_lex, idn_define
+                if word.idn == word.sbj and word.obj_values[1] == 'lex':
+                    idn_lex = word.idn
+                if word.idn == word.vrb and word.obj_values[1] == 'define':
+                    idn_define = word.idn
+                need_more_early_definitions = idn_lex is None or idn_define is None
+                if not need_more_early_definitions:
+                    break
+
+            cls.max_idn = 0
+            cls.lines_in_file = 0
+            prev_idn = None
+            word = None
+            for word in cls.all_words_unresolved():   # pass 2:  idn_of, def_from_idn, max_idn, lines_in_file
+                cls.lines_in_file += 1
+                if word.sbj == idn_lex and word.vrb == idn_define:
+                    word.resolve_and_remember_definition()
+
+                if cls.max_idn < word.idn:
+                    cls.max_idn = word.idn
+                if prev_idn is not None and word.idn <= prev_idn:
+                    Auth.print(
+                        "IDN OUT OF ORDER:  after", prev_idn, "is", word.idn,
+                        "on line", word.line_number
+                    )
+                    # NOTE:  Out of order IDNs is not a fatal error.
+                    # TODO:  Duplicate IDNs (in any order) should be a fatal error.
+                prev_idn = word.idn
+
+            p.at("def")
+
+            word = None
+            for word in cls.def_from_idn.values():   # resolve lex-defined fields
+                word.resolve()
+
+            word = None
+            for word in cls.def_from_idn.values():   # validate lex-defined fields
+                word.validate_fields()   # TODO:  validate_field_definition...s()
+
+            p.at("DEF")
+
+            word = None
+            cls._vrb_from_idn = dict()
+            for word in cls.all_words_unresolved():   # pass 3:  Take a swing at resolving all user words
+                if not word.is_definition():
+                    cls._vrb_from_idn[word.idn] = word.vrb
+
+            p.at("ref")
+
+            word = None
+            for word in cls.all_words_unresolved():   # pass 4:  Take a swing at resolving all user words
+                if not word.is_definition():
+                    word.resolve()
+                    # word.validate_fields(lambda idn: cls._vrb_from_idn[idn])
+                    word.validate_fields(cls.vrb_from_idn)   # TODO:  validate_field_reference...s()
+
+            p.at("REF")
+
+        except (ValueError, KeyError, AttributeError, TypeError, IndexError) as e:
+            if word is None:
+                raise cls.OpenError("{file}\n    {e}".format(
+                    file=cls.file_name,
+                    e=str(e),
+                )) from e
+                # THANKS:  Amend exception, Py3, https://stackoverflow.com/a/29442282/673991
+            else:
+                raise cls.OpenError("{file} line {line_number}\n    {e}".format(
+                    file=cls.file_name,
+                    line_number=word.line_number,
+                    e=str(e),
+                )) from e
+        else:
+
+            # define_word.obj.add(
+            #     'parent',
+            #     cls.definition_from_idn[define_word.obj.remove('parent')]
+            # )
+            # # NOTE:  Now define_word.obj.parent is itself a define word.
+            # NOPE!
+
+            # if len(define_word.obj_values) == 0:
+            #     '''That's cool, this definition has no fields'''
+            # elif len(define_word.obj_values) == 1:
+            #     define_word.obj.add(
+            #         'fields',
+            #         # define_word.obj_values
+            #         define_word.obj_values[0]
+            #     )
+            #     define_word.obj_values = []
+            #
+            #
+            # else:
+            #     print(
+            #         "Definition idn",
+            #         define_word.idn,
+            #         "line",
+            #         define_word.line_number,
+            #         "should have 0 or 1 obj nits",
+            #         define_word.obj_values
+            #     )
+            #     return False
+
+            # NOTE:  Now each define_word.obj.fields SHOULD BE an array of field idns.
+
+            # if len(define_word.obj.fields) == 0:
+            #     parameter_report = ""
+            # else:
+            #     parameter_report = "(" + ", ".join(f.obj.name for f in define_word.obj.fields) + ")"
+            # print(
+            #     str(define_word.idn) + ".",
+            #     define_word.obj.parent.obj.name,
+            #     define_word.obj.name.upper() + parameter_report
+            # )
+            # EXAMPLE:  202. noun REARRANGE(contribute, category, locus)
+
+            # each_word = None
+            # try:
+            #     pass
+            #     # for each_word in cls.def_from_idn.values():   # resolve define_word fields
+            #     #     each_word.resolve()
+            #     # each_word = None
+            #     # for each_word in cls.def_from_idn.values():   # validate define_word fields
+            #     #     each_word.validate_fields()
+            #     # each_word = None
+            #     # for each_word in cls.all_words_unresolved():   # pass 3:  Take a swing at resolving all user words
+            #     #     if not each_word.is_definition():
+            #     #         each_word.resolve()
+            #     #         each_word.validate_fields()
+            # except ValueError as e:
+            #     if each_word is None:
+            #         raise
+            #     else:
+            #         raise cls.WordError("{file} line {line_number}".format(
+            #             file=cls.file_name,
+            #             line_number=each_word.line_number
+            #         )) from e
+
+            # print("idn_of", cls.idn_of)
+            # EXAMPLE:  idn_of {'lex': 0, 'define': 1, 'noun': 2, ..., 'unbot': 3714}
+            # print("definition_from_idn", json_pretty({k: v.to_dict() for k, v in cls.definition_from_idn.items()}))
+            # EXAMPLE:
+            #     definition_from_idn {
+            #         :
+            #         "202":{
+            #             "fields":[
+            #                 1408,
+            #                 1434,
+            #                 201
+            #             ],
+            #             "idn":202,
+            #             "name":"rearrange",
+            #             "parent":2,
+            #             "sbj":0,
+            #             "vrb":1,
+            #             "whn":1478212026436
+            #         },
+            #         :
+            #     }
+
+
+
+
+
+
+            #     with open(cls.file_path(), newline=None) as f:
+            #         # SEE:  (my answer) no newlines, https://stackoverflow.com/a/32589529/673991
+            #         cls.max_idn = 0
+            #         cls.lines_in_file = 0
+            #         prev_idn = None
+            #         for line_json in f:
+            #             cls.lines_in_file += 1
+            #             if len(line_json) > 0:
+            #                 try:
+            #                     line_list = json.loads(line_json)
+            #                 except json.JSONDecodeError:
+            #                     print("CANNOT DECODE LINE", cls.lines_in_file, "-", repr(line_json))
+            #                     return False
+            #                 else:
+            #                     if (
+            #                         isinstance(line_list, list) and
+            #                         len(line_list) > 1 and
+            #                         isinstance(line_list[0], int)
+            #                     ):
+            #                         line_idn = line_list[0]
+            #                         if cls.max_idn < line_idn:
+            #                             cls.max_idn = line_idn
+            #                         if prev_idn is not None and line_idn <= prev_idn:
+            #                             print(
+            #                                 "IDN OUT OF ORDER:  after", prev_idn, "is", line_idn,
+            #                                 "on line", cls.lines_in_file
+            #                             )
+            #                             # NOTE:  Out of order IDNs is not a fatal error.
+            #                             # TODO:  Duplicate IDNs should be a fatal error.
+            #                         prev_idn = line_idn
+            #                     else:
+            #                         print("MALFORMED LINE", cls.lines_in_file, "-", repr(line_json))
+            #                         return False
+            # except OSError:
+            #     print("CANNOT OPEN", cls.file_path())
+            #     return False
+
+
+
+
+
+
+            Auth.print(
+                "Scanned",
+                cls.lines_in_file, "lines,",
+                "max idn", cls.max_idn,
+                p.report(),
+                sys.getsizeof(cls._vrb_from_idn),
+            )
+
+    @classmethod
+    def vrb_from_idn(cls, idn):
+        if cls._vrb_from_idn is None:
+            raise cls.WordError("Cannot look up non-def verbs before they're tallied")
+        return cls._vrb_from_idn[idn]   # may raise a KeyError
+
+    @classmethod
+    def __sizeof__(cls):
+        return 1000000
+
+    @classmethod
+    def close_lex(cls):
+        pass
+
+    def resolve_and_remember_definition(self):
+        if len(self.obj_values) != 3:
+            raise self.FieldError(
+                "Definition {idn} should have 3 fields, not {actual_number}".format(
+                    idn=self.idn,
+                    actual_number=len(self.obj_values),
+                )
+            )
+        self.name_an_obj(0, 'parent')
+        self.name_an_obj(1, 'name')
+        self.name_an_obj(2, 'fields')
+        self.obj_values = []
+        assert isinstance(self.obj, NamedElements)
+        if not isinstance(self.obj.name, str):
+            raise self.FieldError(
+                "Definition {idn}, name should be a string, not {name}".format(
+                    idn=self.idn,
+                    name=repr(self.obj.name),
+                )
+            )
+        if not isinstance(self.obj.parent, int):
+            raise self.FieldError(
+                "Definition {idn}, parent should be an idn, not {parent}".format(
+                    idn=self.idn,
+                    parent=repr(self.obj.parent),
+                )
+            )
+        if not isinstance(self.obj.fields, list):
+            raise self.FieldError(
+                "Definition {idn}, fields should be a list, not {fields}".format(
+                    idn=self.idn,
+                    fields=repr(self.obj.fields),
+                )
+            )
+        if not all(isinstance(field, int) for field in self.obj.fields):
+            raise self.FieldError(
+                "Definition {idn}, fields should be a list of idns, not {fields}".format(
+                    idn=self.idn,
+                    fields=repr(self.obj.fields),
+                )
+            )
+        self.idn_of.add(self.obj.name, self.idn)
+        self.def_from_idn[self.idn] = self
+
+
+    @classmethod
+    def create_word_by_lex(cls, auth, vrb_idn, obj_dictionary):
+        """Instantiate and store a sbj=lex word.   (Not a define word.)"""
+        assert vrb_idn != cls.idn_of.define, "Definitions must not result from outside events."
+        assert int(auth.lex.IDN.LEX) == cls.idn_of.lex, repr(cls.idn_of.lex)
+        new_lex_word = cls(
+            sbj=cls.idn_of.lex,
+            vrb=vrb_idn,
+            **obj_dictionary
+        )
+        new_lex_word.stow()
+        return new_lex_word
+
+    @classmethod
+    def create_word_by_user(cls, auth, vrb_name, sub_nit_dict):
+        """
+        Instantiate and store a user word.  (Not a lex word.)
+
+        Its JSON is a line in the lex file.
+        .to_dict() gives named sub-nits
+
+        :param auth: - AuthFliki instance, representing an authenticated or anonymous user
+        :param vrb_name: - NAME of the verb, not it's idn.  Disallowed verb is a CreateError.
+        :param sub_nit_dict: - named sub-nits.  Wrong or missing names is a CreateError.
+        """
+
+
+
+
+
+
+        # try:
+        #     extractor_function = cls.sub_nit_extractor[vrb_name]
+        # except KeyError:
+        #     raise cls.CreateError("Cannot create a word with verb " + repr(vrb_name))
+        # else:
+        #     # vrb_idn = auth.idn_from_name(vrb_name)
+        #     unused_sub_nits = copy.deepcopy(sub_nit_dict)
+        #
+        #     def field_getter(field_name):
+        #         return unused_sub_nits.pop(field_name)
+        #
+        #     try:
+        #         obj_dictionary = extractor_function(field_getter)
+        #     except KeyError as e:
+        #         # NOTE:  This happens if the sub_nit_extractor[vrb_name] function asks for a
+        #         #        field_name that the browser didn't supply.
+        #         #        It could also happen if the extractor asked for the same field twice,
+        #         #        but we trust it not to do dumb stuff like that.
+        #         raise cls.CreateError(
+        #             "Underspecified {vrb_name} - {error_message}".format(
+        #                 vrb_name=vrb_name,
+        #                 error_message=str(e),
+        #             )
+        #         )
+        #     else:
+
+
+
+
+
+        # TODO:  The following code looks eerily similar to that of
+        #        .resolve() and .validate...() methods.  D.R.Y. somehow?
+        #        Maybe a better encapsulation of fields and resolving?
+        #        One difference is file-origin words come with unnamed obj fields (to save bytes)
+        #        but browser-origin words have named obj fields (to detect parameter mismatches).
+        #        So, different conversion and validation needs.
+        if vrb_name not in cls.VERBS_USERS_MAY_USE:
+            raise cls.CreateError("May not create a word with verb " + repr(vrb_name))
+        else:
+            try:
+                vrb_idn = cls.idn_of.get(vrb_name)
+                vrb = cls.def_from_idn[vrb_idn]
+            except KeyError as e:
+                raise cls.CreateError("Cannot create a word with verb " + repr(vrb_name)) from e
+            else:
+                unused = set(sub_nit_dict.keys())
+                obj_dict = dict()
+                for field_idn in vrb.obj.fields:
+                    field = cls.def_from_idn[field_idn]
+                    try:
+                        field_value = sub_nit_dict[field.obj.name]
+                    except KeyError as e:
+                        raise cls.CreateError(
+                            "Underspecified {vrb_name} - {error_message}".format(
+                                vrb_name=vrb_name,
+                                error_message=str(e),
+                            )
+                        ) from e
+                    else:
+                        unused.remove(field.obj.name)
+                        obj_dict[field.obj.name] = field_value
+                        # SEE:  Dictionary is ordered, https://stackoverflow.com/a/39537308/673991
+                if len(unused) > 0:
+                    raise cls.CreateError(
+                        "Overspecified {vrb_name} - {unused_fields}".format(
+                            vrb_name=vrb_name,
+                            unused_fields=", ".join(unused),
+                        )
+                    )
+                else:
+                    word = cls(
+                        sbj=auth.qiki_user.jsonl(),    # e.g. [167,"103620384189003122864"]
+                        vrb=vrb.idn,
+                        **obj_dict
+                    )
+                    word.vrb_name = vrb_name
+
+                    Auth.print("ABOUT TO VALIDATE", repr(word))
+                    word.validate_fields(cls.vrb_from_idn)
+                    # NOTE:  Browser-created words are already resolved.  That is, fields are named.
+                    # NOTE:  validate before stow, so invalid words don't get into the file.
+                    # NOTE:  idn-to-vrb mapping is used to validate user-word idns.
+
+                    word.stow()
+                    return word
+
+
+    # TODO:  Move that obj naming somewhere more general-purpose.
+    # TODO:  Populate a virgin .lex.jsonl with the definitions for the Contribution application.
+
+
+    def __init__(self, idn=None, whn=None, sbj=None, vrb=None, *obj_values, **obj_dict):
+        """
+        Assemble a nit for the word.  Stow its json as a new line in the lex file.  Threadsafe.
+
+        Generate the idn and whn parts of the nit.  The caller already supplied sbj (user), vrb,
+        and the other sub-nits when the word was instantiated.
+        """
+        # p = Probe()
+        self.idn = idn
+        self.whn = whn
+        self.sbj = sbj
+        self.vrb = vrb
+        self.obj_values = list(obj_values)
+        self.obj = NamedElements(obj_dict)
+        self.line_number = None
+
+        #     word_nit_json = json_encode(self)
+        #     try:
+        #         with open(self.file_path(), 'a') as f:
+        #             f.write(word_nit_json + '\n')
+        #     except OSError as e:
+        #         raise self.StorageError(str(e))
+        #     else:
+        #         # TODO:  Open file in open_lex().  Close in close_lex().  Flush here.
+        #         #        More efficient.
+        #         FlikiWord.max_idn = self.idn
+        #         FlikiWord.lines_in_file += 1
+        # # TODO:  Broadcast the new word to other users who are long-polling for it.
+
+        # print("Stowed nit", word_nit_json)
+        # EXAMPLE:  Stowed nit [7519,1633730345229,[167,"103620384189003122864"],202,1911,1435,7515]
+
+        # print("Stowed word", json_pretty(self.to_dict()))
+        # EXAMPLE:  Stowed word {"idn":7519,"whn":1633730345229,"sbj":[167,"103620384189003122864"],
+        #           "vrb":202,"c...(25 more characters)...":1435,"locus":7515}
+
+        # p.at("writ")
+        # print(str(self.idn) + ".", self.vrb_name, "stowed --", p.report())
+        # EXAMPLE:  7521. rearrange stowed writ .001s or .000s
+
+    def name_an_obj(self, field_index_0_based, name):
+        """Name an unresolved obj.  Move it from the .obj_values[] to the .obj named elements."""
+        try:
+            self.obj.add(name, self.obj_values[field_index_0_based])
+        except IndexError as e:
+            raise self.FieldError("Word {idn} is missing field {field_1}, named {name}".format(
+                idn=self.idn,
+                field_1=field_index_0_based + 1,
+                name=repr(name),
+            )) from e
+
+    def bytes(self):
+        if self.idn is None:
+            return bytes()
+        else:
+            return qiki.nit.Integer(self.idn).bytes
+
+    def nits(self):
+        return (
+            [N(self.whn), N(self.sbj), N(self.vrb)] +
+            [N(v) for v in self.obj_values] +
+            [N(v) for v in self.obj.to_values()]
+        )
+
+    def __repr__(self):
+        return repr(self.to_dict())
+
+    def to_dict(self):
+        """
+        Make this word into a Python dictionary.
+
+        Named obj's are still named in a sub-dictionary,
+        but each value that is itself a word is reduced to its idn.
+        This is why the example below has 'parent': 2,
+        instead of 'parent': {...another dictionary...}
+
+
+        EXAMPLE:  {
+            'idn': 133,
+            'whn': 1460029834816,
+            'sbj': 0,
+            'vrb': 1,
+            'obj_values': [],
+            'obj': {
+                'name': 'iconify',
+                'parent': 2,
+                'fields': [166, 203]
+            }
+        }
+        """
+        obj_dict = self.obj.to_dict()
+        assert all(not isinstance(v, FlikiWord) for v in obj_dict.values())
+        return dict(
+            idn=self.idn,
+            whn=self.whn,
+            sbj=self.sbj,
+            vrb=self.vrb,
+            obj_values=self.obj_values,
+            obj=obj_dict,
+        )
+
+    def to_dict_no_obj(self):
+        """
+        Make this word into a Python dictionary.
+        """
+        return dict(
+            idn=self.idn,
+            whn=self.whn,
+            sbj=self.sbj,
+            vrb=self.vrb,
+        )
+        # SEE:  Dictionary is ordered, https://stackoverflow.com/a/39537308/673991
+
+    def to_json(self):
+        """
+        Make this word into a list, so json_encode() could make it a line in a .lex.jsonl stream.
+
+        EXAMPLE:
+             [133,1460029834816,0,1,2,"iconify",166,203]
+             [882,1559479179156,[167,"103620384189003122864"],1408,"pithy"]
+        """
+
+        return list(self.to_dict_no_obj().values()) + list(self.obj.to_dict().values())
+    # FIXME:  Oops, the example doesn't work, does it.  Fields is a sub-array when it's resolved.
+    #         Is the answer to support fields that are arrays somehow?
+    #         Could be used for define (array of defines aka fields)
+    #         and for bot (array of contributes).
+
+    def jsonl(self):
+        """Return a JSON string of the word.  Ready to become a line in the .lex.jsonl file."""
+        word_as_json_array = json_encode(self)
+        if len(word_as_json_array) > self.MAXIMUM_JSONL_CHARACTERS:
+            raise self.StorageError("too long " + str(len(word_as_json_array)))
+        else:
+            return word_as_json_array
+
+    def stow(self):
+        """
+        Assemble a nit for the word.  Stow its json as a new line in the lex file.  Threadsafe.
+
+        Generate the idn and whn parts of the word and nit.
+        Caller already supplied sbj, vrb, and obj field sub-nits when the word was instantiated.
+        Update the following class variables:  (also threadsafe)
+            max_idn
+            lines_in_file
+            _vrb_from_idn
+        """
+        # p = Probe()
+        with FlikiWord.lock:
+            self.idn = FlikiWord.max_idn + 1
+            self.whn = self.milliseconds_since_1970_utc()
+            try:
+                word_jsonl = self.jsonl()
+            except ValueError as e:
+                raise self.StorageError("JSONL\n    {e}".format(e=str(e))) from e
+            else:
+                try:
+                    with open(self.file_path(), 'a') as f:
+                        f.write(word_jsonl + '\n')
+                except OSError as e:
+                    raise self.StorageError("Open {file}\n    {e}".format(
+                        file=self.file_name,
+                        e=str(e),
+                    )) from e
+                else:
+                    # TODO:  Open file in open_lex().  Close in close_lex().  Flush here.
+                    #        More efficient.
+                    self.line_number = FlikiWord.lines_in_file
+                    FlikiWord.max_idn = self.idn
+                    FlikiWord.lines_in_file += 1
+                    FlikiWord._vrb_from_idn[self.idn] = self.vrb
+
+        # TODO:  Broadcast the new word to other users who are long-polling for it.
+
+        # print("Stowed nit", word_nit_json)
+        # EXAMPLE:  Stowed nit [7519,1633730345229,[167,"103620384189003122864"],202,1911,1435,7515]
+
+        # print("Stowed word", json_pretty(self.to_dict()))
+        # EXAMPLE:  Stowed word {"idn":7519,"whn":1633730345229,"sbj":[167,"103620384189003122864"],
+        #           "vrb":202,"c...(25 more characters)...":1435,"locus":7515}
+
+        # p.at("writ")
+        # print(str(self.idn) + ".", self.vrb_name, "stowed --", p.report())
+        # EXAMPLE:  7521. rearrange stowed writ .001s or .000s
+
+    @staticmethod
+    def milliseconds_since_1970_utc():
+        return int(time_lex.now_word().num * 1000.0)
+
+    @classmethod
+    def all_words_unresolved(cls):
+        """
+        Iterate through all words in the lex.  Yield words with unnamed obj's in word.obj_values.
+
+        Raise ReadError if something goes wrong with reading or interpreting the file.
+        Every line in the lex file either yields a word or raises an exception.
+        Therefore the word count is the same as the line number.
+
+        CAUTION:  Do not stow a word until the iterator ends, due to the class lock being not
+                  an RLock - that is, not recursive.  Neither should you nest this function, e.g.:
+                      for word_1 in cls.all_words():
+                          for word_2 in cls.all_words():   # RACE CONDITION
+                              pass
+        :rtype: Iterator[:class:`FlikiWord`]
+        """
+
+        line_number = None
+        with cls.lock:
+            try:
+                with open(cls.file_path(), newline=None) as f:
+                    line_number = 0
+                    for word_json in f:
+                        line_number += 1
+                        if len(word_json) > cls.MAXIMUM_JSONL_CHARACTERS:
+                            raise cls.ReadError("Line {line_number} is too long: {length}".format(
+                                length = len(word_json),
+                                line_number=line_number,
+                            ))
+                        else:
+                            try:
+                                word_list = json.loads(word_json)
+                            except json.JSONDecodeError as e:
+                                raise cls.ReadError(
+                                    "Bad JSON, line {line_number}: {line}\n    {e}".format(
+                                        line_number=line_number,
+                                        line=word_json[ : 40],
+                                        e=str(e),
+                                    )
+                                ) from e
+                            else:
+                                if (
+                                    isinstance(word_list, list) and
+                                    len(word_list) >= cls.MINIMUM_JSONL_ELEMENTS and
+                                    isinstance(word_list[0], int) and
+                                    isinstance(word_list[1], int)
+                                ):
+                                    unresolved_word = cls(*word_list)
+                                    unresolved_word.line_number = line_number
+                                    yield unresolved_word
+                                else:
+                                    raise cls.ReadError(
+                                        "Malformed line {line_number} - {line}".format(
+                                            line_number=line_number,
+                                            line=cls.limited_repr(word_json)
+                                        )
+                                    )
+            except OSError as e:
+                raise cls.ReadError("OS {file} line {line}\n    {e}".format(
+                    file=cls.file_name,
+                    line=repr(line_number),
+                    e=str(e),
+                )) from e
+
+    @classmethod
+    def all_words(cls):
+        """
+        Yield each word resolved with named fields, e.g. word.obj.contribute, word.obj.text
+
+        :rtype: Iterator[:class:`FlikiWord`]
+        """
+        for each_word in cls.all_words_unresolved():
+            each_word.resolve()
+            yield each_word
+
+            # try:
+            #     each_word.resolve()
+            # except cls.FieldMismatch as e:
+            #     print("FIELD MISMATCH", str(e))
+
+
+
+    def is_definition(self):
+        return self.sbj == self.idn_of.lex and self.vrb == self.idn_of.define
+
+    def num_fields(self):
+        """
+        How many fields does this word actually have?  Works whether resolved (named) or not.
+
+        Call on a user-word, not a lex-definition-word.
+        """
+        return len(self.obj_values) + self.obj.len()
+
+    def is_resolved(self):
+        return len(self.obj_values) == 0
+
+    def resolve(self):
+        """
+        Turn .obj_values into named .obj fields.
+
+        Requires that .idn_of.lex and .idn_of.define have been set.
+        For a definition word
+        """
+        try:
+            vrb = self.def_from_idn[self.vrb]
+        except KeyError as e:
+            raise self.FieldError("Word {idn} has an undefined verb {vrb_idn}".format(
+                idn=self.idn,
+                vrb_idn=self.vrb,
+            )) from e
+        else:
+            if self.is_definition():
+                pass
+                # if len(self.obj_values) == 0:
+                #     '''That's cool, this definition has no fields.  Or it was resolved already.'''
+                #     # self.obj.add('fields', [])
+                # elif len(self.obj_values) == 1:
+                #     # list_of_field_definition_idns = self.obj_values[0]
+                #     # self.obj.add('fields', list_of_field_definition_idns)
+                #     # # TODO:  Should fields sub-nit have some special value for its .bytes?
+                #     # self.obj_values = []
+                # else:
+                #     raise self.FieldError(
+                #         "Definition idn {idn} should have 0 or 1 obj values, "
+                #         "not {obj_values}".format(
+                #             idn=self.idn,
+                #             obj_values=self.obj_values,
+                #         )
+                #     )
+            else:
+                num_fields_vrb_expected = len(vrb.obj.fields)
+                num_fields_obj_actual = len(self.obj_values)
+                if num_fields_obj_actual != num_fields_vrb_expected:
+                    raise self.FieldError(
+                        "Word {idn} has {n_obj} fields {obj_values}, "
+                        "but a {vrb_name} word is supposed to have "
+                        "{n_vrb} fields ({vrb_names})".format(
+                            idn=self.idn,
+                            n_obj=num_fields_obj_actual,
+                            obj_values=self.limited_repr(self.obj_values),
+                            n_vrb=num_fields_vrb_expected,
+                            vrb_names=",".join(self.def_from_idn[f].obj.name for f in vrb.obj.fields),
+                            vrb_name=vrb.obj.name,
+                        )
+                    )
+                for field_idn, field_value in zip(vrb.obj.fields, self.obj_values):
+                    field_definition = self.def_from_idn[field_idn]
+                    self.obj.add(field_definition.obj.name, field_value)
+                self.obj_values = []
+
+                # # print("unresolved", vrb.obj.name, vrb.to_dict())
+                # if vrb.obj.has('fields') and len(vrb.obj.fields) > 0:
+                #     # print("fields", vrb.obj.fields)
+                #     if len(vrb.obj.fields) == len(self.obj_values):
+                #         for field_index, (field_idn, field_value) in enumerate(
+                #             zip(vrb.obj.fields, self.obj_values)
+                #         ):
+                #             pass
+
+
+    def validate_fields(self, vrb_from_idn_lookup=None):
+        """Check field definitions and references for consistency in a resolved word."""
+
+
+        # NOTE:  self.idn was already validated in all_words_unresolved()
+        # NOTE:  self.whn was already validated in all_words_unresolved()
+        # NOTE:  self.sbj is validated below, after we know it's not a lex-definition word
+        # NOTE:  self.vrb was already validated in resolve()
+
+        if not self.is_resolved():
+            raise self.FieldError("Cannot validate unresolved word {word}".format(word=repr(self)))
+
+        if self.is_definition():
+            # NOTE:  A definition word always specifies a parent definition and a name.
+            #        A verb definition may also specify fields that derived words will have.
+            if isinstance(self.obj.fields, list):
+                for field_index, field_idn in enumerate(self.obj.fields):
+                    try:
+                        self.validate_field_definition(field_idn)
+                    except self.FieldError as e:
+                        field_ordinal = "field {i} of {n}".format(
+                            i=field_index + 1,
+                            n=len(self.obj.fields)
+                        )
+                        raise self.FieldError(
+                            "{name} definition (idn {idn}) "
+                            "{field_ordinal} in {fields}\n"
+                            "    {e}".format(
+                                name=self.obj.name,
+                                idn=self.idn,
+                                field_ordinal=field_ordinal,
+                                fields=repr(self.obj.fields),
+                                e=str(e),
+                            )
+                        ) from e
+                        # THANKS:  amend exception, https://stackoverflow.com/a/29442282/673991
+            else:
+                raise self.FieldError(
+                    "Definition {idn} fields should be a list, not {fields}".format(
+                        idn=self.idn,
+                        fields=repr(self.obj.fields),
+                    ))
+
+        else:
+            self.validate_sbj()
+            vrb = self.validated_vrb()
+
+            # NOTE:  The following rechecks for consistency between this word's actual named
+            #        (i.e. resolved) obj fields and what's expected by virtue of this word's vrb.
+            #        This was already done by .resolve() but is done also here for two reasons.
+            #        1. In case .resolve() didn't convert unnamed to named objs correctly.
+            #        2. Browser-origin words don't pass through .resolve().  They come through some
+            #           resolve-like code in .create_word_by_user() which has over-specify and
+            #           under-specify exceptions of its own, but we recheck them here.
+            #           That function whines about it's repetition of .resolve() code, so here's
+            #           some more whining about that.
+            num_fields_vrb_expected = len(vrb.obj.fields)
+            num_fields_obj_actual = len(self.obj.to_values())
+            if num_fields_obj_actual != num_fields_vrb_expected:
+                raise self.FieldError(
+                    "Word {idn} has {n_obj} fields {obj_names}, "
+                    "but a {vrb_name} word is supposed to have "
+                    "{n_vrb} fields ({vrb_names})".format(
+                        idn=self.idn,
+                        n_obj=num_fields_obj_actual,
+                        obj_names=self.obj.names(),
+                        n_vrb=num_fields_vrb_expected,
+                        vrb_names=",".join(self.def_from_idn[f].obj.name for f in vrb.obj.fields),
+                        vrb_name=vrb.obj.name,
+                    )
+                )
+
+            for field_index, (field_idn, field_value) in enumerate(
+                zip(vrb.obj.fields, self.obj.to_values())
+            ):
+                # NOTE:  field_index is the key to two arrays,
+                #            field definition array of idns pointing to definitions, and the
+                #            field reference array of values, e.g. idn pointing to a user word
+                #        field_idn is the value from the def array, which is the idn of the
+                #            definition that says what type the field value should be
+                #        field_value is the value from the ref array, could be idn, text, array
+                field_ordinal = "field {i} of {n}".format(
+                    i=field_index + 1,
+                    n=len(vrb.obj.fields)
+                )
+                try:
+                    self.validate_field_reference(field_idn, field_value, vrb_from_idn_lookup)
+                except self.FieldError as e:
+                    # raise self.FieldError("{name} definition {idn} {field_ordinal}".format(
+                    #     name=self.obj.name,
+                    #     idn=self.idn,
+                    #     field_ordinal=field_ordinal,
+                    #     # )).with_traceback(e.__traceback__)
+                    # )) from e
+                    raise self.FieldError("{name} word {idn}, {field_ordinal}\n    {e}".format(
+                        name=vrb.obj.name,
+                        idn=self.idn,
+                        field_ordinal=field_ordinal,
+                        e=str(e),
+                    )) from e
+
+    def validate_sbj(self):
+        if self.sbj == self.idn_of.lex:
+            '''
+            Ok, the sbj is the lex itself.
+            The lex could be:
+                defining something, e.g. that 'about' is a child of 'category', 
+                or declaring something, e.g. the icon or user agent of a user.
+            '''
+        elif self.is_user(self.sbj):
+            ''' This sbj is a user. '''
+        else:
+            raise self.FieldError("Malformed sbj {sbj}".format(sbj=self.limited_repr(self.sbj)))
+
+    @classmethod
+    def is_user(cls, maybe_user):
+        return (
+            isinstance(maybe_user, list) and
+            len(maybe_user) >= 2 and
+            isinstance(maybe_user[0], int) and
+            cls.Ancestry(maybe_user[0]).is_offspring_of(cls.idn_of.user)
+        )
+
+    @classmethod
+    def validate_field_definition(cls, field_idn):
+        """
+        From a lex-definition word, make sure a field idn points to another definition.
+
+        We assume anything from def_from_idn[] has proper attributes (parent, name, fields),
+        and they're the proper types (int, str, list),
+        because all that was checked by resolve_and_remember_definition() before it
+        remembered each definition word in def_from_idn[].
+        What we do check here is that the parent and fields refer to definitions that exist.
+        Because of forward references, that could not be checked by
+        resolve_and_remember_definition()
+        """
+        if isinstance(field_idn, int):
+            try:
+                field_def_word = cls.def_from_idn[field_idn]
+            except KeyError as e:
+                raise cls.FieldError("Field def {field_idn} is not defined".format(
+                    field_idn=field_idn,
+                )) from e
+            else:
+                try:
+                    _ = cls.def_from_idn[field_def_word.obj.parent]
+                except KeyError as e:
+                    raise cls.FieldError(
+                        "Field {field_idn} parent {parent_idn} is not defined".format(
+                            field_idn=field_idn,
+                            parent_idn=field_def_word.obj.parent,
+                        )
+                    ) from e
+                else:
+                    return field_def_word
+        else:
+            raise cls.FieldError("Field def {field_idn} should be an integer".format(
+                field_idn=repr(field_idn),
+            ))
+
+    def validated_vrb(self):
+        """Return the definition word that this vrb points to.  Or raise a WordError."""
+        try:
+            return self.def_from_idn[self.vrb]
+        except KeyError as e:
+            raise self.WordError("{vrb_idn} is not defined vrb".format(vrb_idn=self.vrb)) from e
+
+    @classmethod
+    def validate_field_reference(cls, field_idn, field_value, vrb_from_idn_lookup=None):
+        """
+        From a user word, make sure the value of a field is consistent with its definition.
+
+        The field value comes from a value in a user-word's .obj dictionary-like thing.
+
+        The field definition can be know via a word's vrb.  word.vrb is the idn of a lex-definition
+        word.  That vrb_word has a field named 'fields' in its .obj.  That is a list of
+        field_idn's which refer to other lex-definition words.
+
+        The founder ancestor of field_idn determines how to validate the field_value.
+
+        All field definitions (lex-define words) should be validated (by
+        .validate_field_definition()) before any field references are validated here.
+
+        :param field_idn: - idn of a definition word, specifies what type this field should be
+        :param field_value: - value of the field in the wild
+        :param vrb_from_idn_lookup: - optional function to convert user word idn to vrb idn
+        """
+        assert field_idn in cls.def_from_idn, field_idn
+        # NOTE:  We presume field_idn is a valid definition because it came from the
+        #        validated fields of a validated definition.
+        #        validate_field_definition() should have checked all that already.
+
+        field_ancestry = cls.Ancestry(field_idn)
+
+        if field_ancestry.founder().idn == cls.idn_of.integer:
+            if isinstance(field_value, int):
+                '''Ok, an integer field is an int.'''
+            else:
+                raise cls.FieldError("A {name} field should be an integer, not {value}".format(
+                    name=field_ancestry.child().obj.name,
+                    value=cls.limited_repr(field_value),
+                ))
+        elif field_ancestry.founder().idn == cls.idn_of.text:
+            if isinstance(field_value, str):
+                '''Ok, a text field is a str.'''
+            else:
+                raise cls.FieldError("A {name} field should be a string, not {value}".format(
+                    name=field_ancestry.child().obj.name,
+                    value=cls.limited_repr(field_value),
+                ))
+        elif field_ancestry.founder().idn == cls.idn_of.sequence:
+            if isinstance(field_value, list):
+                '''Ok, a sequence field is a list.'''
+                if all(isinstance(x, int) for x in field_value):
+                    '''Ok, a sequence of integers is all we expect and check for no.'''
+                else:
+                    raise cls.FieldError(
+                        "A {name} field should be a list of integers, not {value}".format(
+                            name=field_ancestry.child().obj.name,
+                            value=cls.limited_repr(field_value),
+                        )
+                    )
+            else:
+                raise cls.FieldError("A {name} field should be a list, not {value}".format(
+                    name=field_ancestry.child().obj.name,
+                    value=cls.limited_repr(field_value),
+                ))
+        elif field_ancestry.founder().idn == cls.idn_of.noun:
+            if isinstance(field_value, int):
+                if field_value in cls.def_from_idn:
+                    # NOTE:  This field is supposed to be an idn.
+                    #        (because the ancestral founder of field_idn is a noun)
+                    #        and the field value is the idn of a lex-definition.
+                    referent_ancestry = cls.Ancestry(field_value)
+                    if referent_ancestry.is_offspring_of(field_idn):
+                        '''Ok, field value is descended from the field definition'''
+                    else:
+                        raise cls.FieldError(
+                            "{ref_name} (idn {value}) "
+                            "is a {ref_parent} "
+                            "but it is not a {def_name}".format(
+                                value=cls.limited_repr(field_value),
+                                value_name=cls.limited_repr(field_value),
+                                ref_name=referent_ancestry.child().obj.name,
+                                ref_parent=referent_ancestry.parent().obj.name,
+                                def_name=field_ancestry.child().obj.name,
+                            )
+                        )
+
+                    # else:
+                    #     expected_vrb = cls.validate_field_definition(field_idn)
+                    #     # actual_vrb = cls.validate_field_definition(lex_referent)
+                    #     try:
+                    #         cls.validate_descent(lex_referent)
+                    #     raise cls.FieldError(
+                    #         "Field ref {field_value} "
+                    #         "should be the idn of a {expected_name} word,"
+                    #         "but it's a lex-defined {actual_name} word".format(
+                    #             field_value=field_value,
+                    #             actual_name=lex_referent.obj.name,
+                    #             expected_name=expected_vrb.obj.name
+                    #         )
+                    #     )
+                else:
+                    # NOTE:  The field is supposed to be an idn, but it's not that of a definition.
+                    #        Could it be the idn of a user word?
+                    if vrb_from_idn_lookup is None:
+                        '''
+                        Ok for now.
+                        An int might be a valid idn.
+                        Without a way to randomly access a user word's vrb via its idn, 
+                        give it the benefit of the doubt.
+                        '''
+                    else:
+                        try:
+                            user_word_vrb = vrb_from_idn_lookup(field_value)
+                        except KeyError as e:
+                            raise cls.FieldError(
+                                "Field ref {field_value} is not a {name} idn".format(
+                                    field_value=field_value,
+                                    name=field_ancestry.child().obj.name,
+                                )
+                            ) from e
+                        else:
+                            vrb_ancestry = cls.Ancestry(user_word_vrb)
+                            if vrb_ancestry.is_offspring_of_or_same_as(field_idn):
+                                '''
+                                Ok, the field value is the idn of a word whose vrb 
+                                is descended from the field definition idn.
+                                Or it IS the field definition idn!  That's okay too.
+                                '''
+                            else:
+                                raise cls.FieldError(
+                                    "{value} is the idn of a {vrb_name} word, "
+                                    # "which is a {vrb_parent}, "
+                                    "but it should be a {def_name} word".format(
+                                        value=cls.limited_repr(field_value),
+                                        value_name=cls.limited_repr(field_value),
+                                        vrb_name=vrb_ancestry.child().obj.name,
+                                        vrb_parent=vrb_ancestry.parent().obj.name,
+                                        def_name=field_ancestry.child().obj.name,
+                                    )
+                                )
+
+                            # cls.validate_descent(user_word_vrb, field_idn)
+
+                            # if user_referent == field_idn:
+                            #     '''This is good, the field refs the proper type of word.'''
+                            # else:
+                            #     expected_vrb = cls.validate_field_definition(field_idn)
+                            #     actual_vrb = cls.validate_field_definition(user_referent)
+                            #     raise cls.FieldError(
+                            #         "Field ref {field_value} "
+                            #         "should be the idn of a {expected_name} word,"
+                            #         "but it's a user-defined {actual_name} word".format(
+                            #             field_value=field_value,
+                            #             actual_name=actual_vrb.obj.name,
+                            #             expected_name=expected_vrb.obj.name
+                            #         )
+                            #     )
+            elif isinstance(field_value, list):
+                if len(field_value) == 0:
+                    raise cls.FieldError(
+                        "A {field_name} field should not be [] an empty list".format(
+                            field_name=cls.def_from_idn[field_idn].obj.name,
+                        )
+                    )
+                else:
+                    sub_idn = field_value[0]
+                    try:
+                        referent_ancestry = cls.Ancestry(sub_idn)
+                    except cls.FieldError as e:
+                        raise cls.FieldError(
+                            "Field value {field_value} "
+                            "is supposed to be a {def_name}\n"
+                            "    {e}".format(
+                                field_value=cls.limited_repr(field_value),
+                                def_name=field_ancestry.child().obj.name,
+                                e=str(e),
+                            )
+                        ) from e
+
+                    if referent_ancestry.is_offspring_of(field_idn):
+                        '''
+                        Yay, even though the field value is a complicated nit with sub-nits,
+                        its bytes part indicates that it's a descendent of the defined field type.
+                        '''
+                        # raise cls.FieldError(
+                        #     "Yay {field_value} is a {ref_name}, "
+                        #     "which is a {def_name}".format(
+                        #         field_value=cls.limited_repr(field_value),
+                        #         ref_name=referent_ancestry.child().obj.name,
+                        #         def_name=field_ancestry.child().obj.name,
+                        #     )
+                        # )
+                    else:
+                        raise cls.FieldError(
+                            "Field value {field_value} is a compound {ref_name}, "
+                            "which is not a {def_name}".format(
+                                field_value=cls.limited_repr(field_value),
+                                ref_name=referent_ancestry.child().obj.name,
+                                def_name=field_ancestry.child().obj.name,
+                            )
+                        )
+            else:
+                raise cls.FieldError(
+                    "Field value {field_value} "
+                    "should be a {field_name}".format(
+                        field_value=cls.limited_repr(field_value),
+                        field_name=cls.def_from_idn[field_idn].obj.name,
+                    )
+                )
+        else:
+            raise cls.FieldError("Unable to process a {names} field with value {value}".format(
+                names=field_ancestry.names(),
+                value=cls.limited_repr(field_value),
+            ))
+
+    @staticmethod
+    def limited_repr(x):
+        might_be_long = json_encode(x)
+        if len(repr(x)) > 60:
+            return might_be_long[0:50] + " ... ({} more)".format(len(might_be_long) - 30)
+        else:
+            return might_be_long
+
+    class Ancestry(object):
+        """Wrapper class for the procedural FlikiWord._ancestry() function, and its uses."""
+        def __init__(self, child_idn):
+            self.words = FlikiWord._ancestry(child_idn)
+
+        def founder(self):
+            """
+            A founder definition is its own parent.  It is at the top of the ancestry chain.
+
+            The original recursion in _ancestry() continued until it hit one of those.
+            A founder has behavior outside the scope of the lex, e.g. integer, text, sequence.
+            See the outermost if-tree in validate_field_reference() for the handling of all
+            founders.
+            """
+            return self.words[-1]
+
+        def child(self):
+            """Word for the original child_idn."""
+            return self.words[0]
+
+        def parent(self):
+            if len(self.words) < 2:
+                return self.founder()
+                # NOTE:  If there's only one word in the ancestry, then
+                #        child == parent == founder.
+            else:
+                return self.words[1]
+
+        def is_offspring_of_or_same_as(self, ancestral_idn):
+            """
+            Is the original child_idn a descendent of some ancestral_idn?  Or equal to it?
+
+            So the question:  is C descended from A?
+            is answered by first computing the entire family history of C,
+            then asking if A is among it.
+            """
+            return any(ancestral_idn == w.idn for w in self.words)
+
+        def is_offspring_of(self, ancestral_idn):
+            """
+            Is the original child_idn a descendent of some ancestral_idn?
+
+            (1) Being the same (ancestral_idn == self.child()) doesn't count.
+            (2) Except, if child_idn was a founder, then do include it.
+
+            Contingency (1) is reflected in the `words[1 : ]` slice.
+            Contingency (2) is reflected in the `or ancestral == founder`
+
+            So if a category is called for, any category descendent will suffice (my, their, etc.),
+            but not the idn for the definition word of category itself!
+            But if a noun is called for, any word will suffice, including noun itself.
+            Because noun is a founder definition, i.e. it's own parent.
+            """
+            return (
+                any(ancestral_idn == w.idn for w in self.words[1 : ]) or
+                ancestral_idn == self.founder().idn
+            )
+
+        def names(self):
+            return ",".join(f.obj.name for f in self.words)
+
+    MAX_ANCESTRAL_RECURSION = 10
+
+    @classmethod
+    def _ancestry(cls, child_idn, max_depth=MAX_ANCESTRAL_RECURSION):
+        """
+        Return a list of ancestor definition words, child first, founder last.  Recursive.
+        """
+        # child = cls.def_from_idn[child_idn]
+        if not isinstance(child_idn, int):
+            raise cls.FieldError("{child_idn} is not an idn".format(
+                child_idn=cls.limited_repr(child_idn),
+            ))
+        try:
+            child = cls.def_from_idn[child_idn]
+        except KeyError as e:
+            raise cls.FieldError("{child_idn} is not defined".format(
+                child_idn=child_idn,
+            )) from e
+        if child.obj.parent == child.idn or max_depth <= 1:
+            return [child]
+        else:
+            return [child] + cls._ancestry(child.obj.parent, max_depth - 1)
+
+
+    # @classmethod
+    # def validate_descent(cls, child_idn, ancestor_idn):
+    #     try:
+    #         child = cls.def_from_idn[child_idn]
+    #     except KeyError as e:
+    #         raise cls.FieldError("Child {child_idn} is undefined".format(
+    #             child_idn=child_idn,
+    #         )) from e
+    #     else:
+    #         try:
+    #             ancestor = cls.def_from_idn[ancestor_idn]
+    #         except KeyError as e:
+    #             raise cls.FieldError("Ancestor {ancestor_idn} is undefined".format(
+    #                 ancestor_idn=ancestor_idn,
+    #             )) from e
+    #         else:
+    #             intermediate_idn = child.obj.parent
+    #
+    #             # TODO:  check the ancestry chain for a match.  Maybe recurse.
+    #             #        Oh wait!  Check that child == ancestor, right??
+    #
+    #             # raise cls.FieldError("{child_name} is not a {ancestor_name}".format(
+    #             #     child_name=child.obj.name,
+    #             #     ancestor_name=ancestor.obj.name,
+    #             # ))
+
+
+    @classmethod
+    def user_stuff(cls, auth, ip_address_txt, user_agent_txt):
+        ip_int = int(auth.lex.IDN.IP_ADDRESS_TAG)
+        ua_int = int(auth.lex.IDN.USER_AGENT_TAG)
+        lex_int = int(auth.lex.IDN.LEX)
+        user_list = auth.qiki_user.jsonl()
+
+        assert ip_int == cls.idn_of.ip_address, repr(cls.idn_of.ip_address)
+        assert ua_int == cls.idn_of.user_agent
+        assert lex_int == cls.idn_of.lex
+
+        ip_latest = None
+        ua_latest = None
+
+        # TODO:  Instead of the following loop,
+        #        maintain latest ip and ua for (at least some) users in memory
+
+        for each_word in cls.all_words():
+            # print("WORD", each_word.idn, each_word.sbj, each_word.vrb, each_word.obj_values, each_word.obj.to_dict())
+            if each_word.sbj == lex_int and each_word.obj.has('user') and each_word.obj.user == user_list:
+                if each_word.vrb == ip_int:
+                    ip_latest = each_word.obj.text
+                elif each_word.vrb == ua_int:
+                    ua_latest = each_word.obj.text
+            # EXAMPLE:
+            #     :
+            #     unresolved iconify {'idn': 133, 'whn': 1460029834816, 'sbj': 0, 'vrb': 1, 'obj': {'name': 'iconify', 'parent': 2, 'fields': [166, 203]}}
+            #     fields [166, 203]
+            #     RESOLVED user [167, '103620384189003122864']
+            #     RESOLVED url https://lh3.googleusercontent.com/a-/AOh14GhrEooRaagQh246ncMAtBotUwcgFk3zwXTK0ZTvSQ=s96-c
+            #     WORD 6665 0 133 [[167, '103620384189003122864'], 'https://lh3.googleusercontent.com/a-/AOh14GhrEooRaagQh246ncMAtBotUwcgFk3zwXTK0ZTvSQ=s96-c'] {'user': [167, '103620384189003122864'], 'url': 'https://lh3.googleusercontent.com/a-/AOh14GhrEooRaagQh246ncMAtBotUwcgFk3zwXTK0ZTvSQ=s96-c'}
+            #     :
+            #     unresolved rearrange {'idn': 202, 'whn': 1478212026436, 'sbj': 0, 'vrb': 1, 'obj': {'name': 'rearrange', 'parent': 2, 'fields': [1408, 1434, 201]}}
+            #     fields [1408, 1434, 201]
+            #     RESOLVED contribute 4748
+            #     RESOLVED category 1435
+            #     RESOLVED locus 7126
+            #     WORD 7524 [167, '103620384189003122864'] 202 [4748, 1435, 7126] {'contribute': 4748, 'category': 1435, 'locus': 7126}
+
+
+
+        # with cls.lock:
+        #     with open(cls.file_path(), newline=None) as f:
+        #         for word_json in f:
+        #             word_list = json.loads(word_json)
+        #             if len(word_list) >= 6:
+        #                 # print("WORD", repr(word_list))
+        #                 if word_list[2] == lex_int and word_list[4] == user_list:
+        #                     if word_list[3] == ip_int:
+        #                         ip_latest = word_list[5]
+        #                     elif word_list[3] == ua_int:
+        #                         ua_latest = word_list[5]
+
+        # print("user_stuff", ip_address_txt == ip_latest, user_agent_txt == ua_latest, ip_address_txt, user_agent_txt)
+        if not auth.is_anonymous:
+            # NOTE:  Redundant to tag anonymous users with IP address
+            #        because it's part of their user idn.
+            if ip_address_txt != ip_latest:
+                Auth.print("Was", user_list, ip_latest)
+                ip_word = cls.create_word_by_lex(auth, ip_int, dict(user=user_list, text=ip_address_txt))
+                Auth.print(str(ip_word.idn) + ".", "User", ip_word.obj.user, "ip", ip_word.obj.text)
+        if user_agent_txt != ua_latest:
+            Auth.print("Was", user_list, ua_latest)
+            ua_word = cls.create_word_by_lex(auth, ua_int, dict(user=user_list, text=user_agent_txt))
+            Auth.print(str(ua_word.idn) + ".", "User", ua_word.obj.user, "ua", ua_word.obj.text)
+
+            # parsed = werkzeug.user_agent.UserAgent(w.obj['text'])
+            # print(
+            #     str(w.idn) + ".",
+            #     "User", w.obj['user'],
+            #     parsed.platform,
+            #     parsed.browser,
+            #     parsed.version,
+            # )
+            # NO THANKS:  https://tedboy.github.io/flask/generated/generated/werkzeug.UserAgent.html
+            # SEE:  No UA parsing, https://werkzeug.palletsprojects.com/en/2.0.x/utils/?highlight=user%20agent#useragent-parsing-deprecated   # noqa
+            # SEE:  UA parsing, https://github.com/ua-parser/uap-python
+
+    # @classmethod
+    # def create_lex_word(cls, *args):
+    #     word_list = list(args)
+    #     word_list[0] = cls.max_idn + 1
+    #     word_list[1] = cls.milliseconds_since_1970_utc()
+    #     print("CREATE", repr(word_list))
+
+    class CreateError(ValueError):
+        """Word inputs are missing or wrong.  Raised by create_word_by_user()"""
+
+    class StorageError(ValueError):
+        """Word could not be stored.  Raised by stow() and jsonl()"""
+
+    class OpenError(ValueError):
+        """Problem with startup.  Raised by open_lex()"""
+
+    class ReadError(ValueError):
+        """Problem with reading the lex stream.  Raised by all_words_unresolved()"""
+
+    class WordError(ValueError):
+        """Word object has something wrong with it."""
+
+    class FieldError(ValueError):
+        """Word object values do not agree with the fields specified by its verb."""
+
 
 flask_app = flask.Flask(
     __name__,
     static_url_path='/meta/static',
     static_folder='static'
 )
+# SEE:  "Ideally your web server is configured to serve [static files] for you"
+#       https://flask.palletsprojects.com/en/2.0.x/quickstart/#static-files
+# EXAMPLE:  Apache settings redundant to the above.  Except mistakenly for /static not /meta/static!
+#       Alias /static /var/www/unslumping.org/fliki/static
+#       <Directory /var/www/unslumping.org/fliki/static/>
+#           Order allow,deny
+#           Allow from all
+#           Options -Indexes
+#       </Directory>
+
 flask_app.config.update(
-    # SERVER_NAME=secure.credentials.Options.server_domain_port,
+    SERVER_NAME=secure.credentials.Options.server_domain_port,
     # NOTE:  setting SERVER_NAME has benefits:  url_for() can be used with app_context()
+    #                                           Otherwise this raises the exception:
+    #                                           RuntimeError: Application was not able to create a
+    #                                           URL adapter for request independent URL generation.
+    #                                           You might be able to fix this by setting the
+    #                                           SERVER_NAME config variable.
     #        setting SERVER_NAME has drawbacks:  alternate domain hits get 404
+    #                                            So if you want your site to work on example.com
+    #                                            and www.example.com, don't set SERVER_NAME.
 
     SESSION_COOKIE_DOMAIN=secure.credentials.Options.session_cookie_domain,
     # NOTE:  Without this, two different fliki servers running on different subdomains
@@ -186,7 +1706,7 @@ def before_request():
         # THANKS:  hostname and port substitution, https://stackoverflow.com/a/21629125/673991
 
         new_url = urllib.parse.urlunparse(new_parts)
-        print("REDIRECT from", parts.netloc, "to", new_url)
+        Auth.print("REDIRECT from", parts.netloc, "to", new_url)
         return flask.redirect(new_url, code=301)
         # THANKS:  Domain change with redirect, https://stackoverflow.com/a/10964868/673991
 
@@ -207,6 +1727,7 @@ class WorkingIdns(object):
             if lex is not None:
                 self.LEX               = lex.noun('lex').idn
                 self.DEFINE            = lex.verb('define').idn
+                self.NOUN              = lex.noun('noun').idn
                 self.VERB              = lex.noun('verb').idn
                 self.AGENT             = lex.noun('agent').idn   # added to repurpose
                 self.LISTING           = lex.noun('listing').idn
@@ -225,7 +1746,11 @@ class WorkingIdns(object):
                 self.ANONYMOUS_LISTING = lex.define(self.LISTING, 'anonymous').idn
                 self.GOOGLE_LISTING    = lex.define(self.LISTING, 'google user').idn
                 self.QOOL              = lex.verb('qool').idn
+
                 self.UNSLUMP_OBSOLETE  = lex.verb('unslump').idn
+                # CAUTION:  LUnslumping defined more than one of these obsolete 'unslump' verbs
+                #           (881 and 948).  And used both in intermingled ways.
+                #           Unslumping.org defined it once (21) but never used it.
 
                 self.RESOURCE          = lex.noun('resource').idn
                 self.QUOTE             = lex.define(self.RESOURCE, 'quote').idn
@@ -240,9 +1765,10 @@ class WorkingIdns(object):
                 self.CAT_TRASH         = lex.define(self.CATEGORY, 'trash').idn
                 self.CAT_ABOUT         = lex.define(self.CATEGORY, 'about').idn
                 self.FENCE_POST_RIGHT  = lex.noun('fence post right').idn
-                # TODO:  Rename FENCE_POST_END?
+                # TODO:  Rename FENCE_POST_END?  Or FENCEPOST_END?  Or FENCEPOST??
                 #        Because order could be vertical, e.g. categories,
                 #        not to mention right-to-left in arabic/hebrew.
+                #        Rename RIGHTMOST?  Or END?
 
                 # self.EDIT_TXT          = lex.verb('edit txt').idn
                 # self.CONTRIBUTE_EDIT   = lex.define(self.EDIT_TXT, 'contribute edit').idn
@@ -315,9 +1841,9 @@ class LexFliki(qiki.LexMySQL):
     _IDNS_READ_ONCE_AT_STARTUP = None
 
     _global_lock = threading.Lock()
-    # NOTE:  Redefining a singleton lock here, just for all the LexFliki instances,
-    #        has the effect of limiting the resolving of race conditions.
-    #        Other LexMySQL classes and instances are not involved.
+    # NOTE:  Redefining the LexSentence singleton lock here, for all the LexFliki instances
+    #        (that is, for all the browsing users) limits the resolving of race conditions.
+    #        Other LexMySQL classes and instances (if there ever are any) are not involved.
 
     def __init__(self):
         self.query_count = 0
@@ -332,12 +1858,14 @@ class LexFliki(qiki.LexMySQL):
                 # if isinstance(self.sbj, self.lex.word_anon_class):
                 if self.sbj.is_anonymous:
                     dictionary['was_submitted_anonymous'] = True
-                # dictionary['sbj_lineage'] = self.sbj.lineage()
-                dictionary['sbj'] = self.sbj.lineage()
-                # NOTE:  Drastic step of clobbering the (almost certain) qstring output of
-                #        Number.to_json(), replacing it with the new improved tentative guess at
-                #        a future syntax of:
-                #            local-idn   colon   remote-number-of-some-sort-opaque-to-us
+                dictionary['sbj_lineage'] = self.sbj.lineage()
+                # dictionary['sbj'] = self.sbj.lineage()
+                # # NOTE:  Drastic step of clobbering the (almost certain) qstring output of
+                # #        Number.to_json(), replacing it with the new improved tentative guess at
+                # #        a future syntax of:
+                # #            local-idn   colon   remote-number-of-some-sort-opaque-to-us
+                dictionary['sbj'] = self.sbj.jsonl()
+                dictionary['whn'] = float(self.whn)
                 return dictionary
 
             @property
@@ -345,7 +1873,12 @@ class LexFliki(qiki.LexMySQL):
                 if self.is_lex():
                     return "Lex"
                 else:
-                    raise NotImplementedError("WordFlikiSentence " + repr(self) + " has no name.")
+                    raise NotImplementedError(
+                        "WordFlikiSentence #{idn}, {word_repr} has no name.".format(
+                            word_repr=repr(self),
+                            idn=str(self.idn),
+                        )
+                    )
 
             @property
             def is_admin(self):
@@ -353,6 +1886,14 @@ class LexFliki(qiki.LexMySQL):
                     return False
                 else:
                     raise NotImplementedError("WordFlikiSentence " + repr(self) + " is neither admin nor not.")
+
+            # noinspection PyMethodMayBeStatic
+            def lineage(self):
+                return None
+
+            # noinspection PyMethodMayBeStatic
+            def jsonl(self):
+                return None
 
             # TODO:  @property is_anonymous() too ?
 
@@ -413,6 +1954,16 @@ class LexFliki(qiki.LexMySQL):
                     self.is_admin = False
                 # TODO:  Find a (much) better way to elevate user powers.
 
+            def jsonl(self):
+                # return [int(self.meta_idn), int(self.index)]
+                # return '{},{}'.format(int(self.meta_idn), int(self.index))
+                return [int(self.meta_idn), str(int(self.index))]
+                # NOTE:  A Google user id is bigger than 53 bits, hence encoded as a string.
+                # SEE:  JavaScript Number.MAX_SAFE_INTEGER,
+                #       https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Number/MAX_SAFE_INTEGER   # noqa
+                #       2**53 - 1 or 9007199254740991 is the maximum safe integer in JavaScript.
+                #       Anything bigger should be encoded as a string.
+
             def _from_idn(self, idn):
                 assert self.idn.is_suffixed()
                 assert isinstance(self.meta_idn, qiki.Number)
@@ -453,6 +2004,12 @@ class LexFliki(qiki.LexMySQL):
             def __init__(self, session_id):
                 assert self.lex.IDN is not None
                 super(WordAnon, self).__init__(session_id, self.lex.IDN.ANONYMOUS_LISTING)
+
+            def jsonl(self):
+                ip_address_number = self.index
+                ip_address_int = int(ip_address_number)
+                ip_address_txt = str(ipaddress.ip_address(ip_address_int))
+                return [int(self.meta_idn), ip_address_txt]
 
             def _from_idn(self, idn):
                 assert self.idn.is_suffixed()
@@ -498,6 +2055,7 @@ class LexFliki(qiki.LexMySQL):
                         # noinspection PyUnresolvedReferences
                         parts.append(user_agent_object.platform)   # "(platform?)")
 
+                # FIXME:  pip install ua-parser
                 # TODO:  Make ip address, user agent, browser, platform
                 #        separately available in anon and google word instances too.
 
@@ -580,7 +2138,7 @@ def connect_lex():
     try:
         lex = LexFliki()
     except LexFliki.ConnectError as e:
-        print("CANNOT CONNECT", str(e))
+        Auth.print("CANNOT CONNECT", str(e))
         return None
     else:
         return lex
@@ -638,7 +2196,7 @@ class UNICODE(object):
 
 def setup_application_context():
     if hasattr(flask.g, 'lex'):
-        print("WHOOPS, ALREADY SETUP WITH A LEX")
+        Auth.print("WHOOPS, ALREADY SETUP WITH A LEX")
 
     flask.g.lex = connect_lex()
     flask.g.is_online = flask.g.lex is not None
@@ -646,7 +2204,7 @@ def setup_application_context():
         lex = flask.g.lex
 
         def report_dup_def(_, message):
-            print("DUP DUP", message)
+            Auth.print("DUP DUP", message)
 
         lex.duplicate_definition_notify(report_dup_def)
 
@@ -657,8 +2215,9 @@ def teardown_application_context(exc=None):
         if flask.g.is_online:
             flask.g.lex.disconnect()
             flask.g.pop('lex')
+    FlikiWord.close_lex()
     if exc is not None:
-        print("teardown exception", type_name(exc), str(exc))
+        Auth.print("teardown exception", type_name(exc), str(exc))
 
 
 GOOGLE_PROVIDER = 'google'
@@ -696,9 +2255,26 @@ login_manager.init_app(flask_app)
 
 
 class Auth(object):
-    """Qiki generic logging in."""
+    """
+    Qiki on Flask, generic logging in.
+
+    THANKS:  "is_anonymous() and is_authenticated() are each other's inverse"
+             https://stackoverflow.com/a/19533025/673991
+    """
     # TODO:  Move to qiki/auth.py?
     # TODO:  Morph this into a Session lex?
+
+    _print_lock = threading.Lock()
+
+    @classmethod
+    def print(cls, *args, **kwargs):
+        """
+        Threadsafe print().  Otherwise Fliki console messages step all over each other.
+
+        SEE:  Alternative, no lock, one string, https://stackoverflow.com/a/33071625/673991
+        """
+        with cls._print_lock:
+            print(*args, **kwargs)
 
     def __init__(
         self,
@@ -712,66 +2288,76 @@ class Auth(object):
         self.is_authenticated = is_authenticated
         self.is_anonymous = is_anonymous
         self.ip_address_txt = ip_address_txt
+        self.user_agent_txt = user_agent_txt
+        # self.full_disclosure = False
 
-        if not self.has_session_qstring:
-            print("NEWBIE", user_agent_txt)   # NOTE:  Should be very common
-            self.session_new()
-            # TODO:  Instead of a new session, just record in session vars a few stats
-            #        Only record if they ever come back.
-            #        This in preparation to eliminate the torrent of boring anonymous session
-            #        words in the unslumping.org lex.  Presumably they're from digital ocean
-            #        monitoring.  But they could be malefactors.
-            #        Or find some other way to ignore the monitoring traffic.
-            #        E.g. see what's in access_log.
-            #        Maybe count newbie events, but don't log the details.
-        else:
-            try:
-                session_qstring = self.session_qstring
-            except (KeyError, IndexError, AttributeError) as e:
-                print("INACCESSIBLE QSTRING", type_name(e), str(e))
-                self.session_new()
-            else:
-                try:
-                    session_uuid = self.session_uuid
-                except (KeyError, IndexError, AttributeError) as e:
-                    print("BAD UUID SESSION VARIABLE", type_name(e), str(e))
-                    self.session_new()
-                else:
-                    try:
-                        session_idn = qiki.Number.from_qstring(session_qstring)
-                        self.session_verb = self.lex[session_idn]
-                    except ValueError:
-                        print("BAD SESSION IDENTIFIER", session_qstring)
-                        self.session_new()
-                    else:
-                        if not self.session_verb.exists():
-                            print("NO SUCH SESSION IDENTIFIER", session_qstring)
-                            self.session_new()
-                        elif (
-                            self.session_verb.sbj.idn != self.lex.IDN.LEX or
-                            self.session_verb.vrb.idn != self.lex.IDN.DEFINE or
-                            self.session_verb.obj.idn != self.lex.IDN.BROWSE
-                        ):
-                            print("NOT A SESSION IDENTIFIER", session_qstring)
-                            self.session_new()
-                        elif self.session_verb.txt != session_uuid:
-                            print(
-                                "NOT A RECOGNIZED SESSION",
-                                session_qstring,
-                                "is the idn, but",
-                                self.session_verb.txt,
-                                "!=",
-                                session_uuid
-                            )
-                            self.session_new()
-                        else:
-                            '''old session word is good, keep it'''
+        # self.print("COOKIES!", ",".join(flask.request.cookies.keys()))
+        # # EXAMPLE:  session
+
+        # if not self.has_session_qstring:
+        #     self.print("NEWBIE", user_agent_txt)   # NOTE:  Should be very common
+        #     self.session_new()
+        #     # TODO:  Instead of a new session, just record in session vars a few stats
+        #     #        Only record if they ever do anything worth recording in the lex.
+        #     #        This in preparation to eliminate the torrent of boring anonymous session
+        #     #        words in the unslumping.org lex.  Presumably they're from digital ocean
+        #     #        monitoring.  But they could be malefactors.
+        #     #        Or find some other way to ignore the monitoring traffic.
+        #     #        E.g. see what's in access_log.
+        #     #        Maybe count newbie events, but don't log the details.
+        # else:
+        #     try:
+        #         session_qstring = self.session_qstring
+        #     except (KeyError, IndexError, AttributeError) as e:
+        #         self.print("INACCESSIBLE QSTRING", type_name(e), str(e))
+        #         self.session_new()
+        #     else:
+        #         try:
+        #             session_uuid = self.session_uuid
+        #         except (KeyError, IndexError, AttributeError) as e:
+        #             self.print("BAD UUID SESSION VARIABLE", type_name(e), str(e))
+        #             self.session_new()
+        #         else:
+        #             try:
+        #                 session_idn = qiki.Number.from_qstring(session_qstring)
+        #                 self.session_verb = self.lex[session_idn]
+        #             except ValueError:
+        #                 self.print("BAD SESSION IDENTIFIER", session_qstring)
+        #                 self.session_new()
+        #             else:
+        #                 if not self.session_verb.exists():
+        #                     self.print("NO SUCH SESSION IDENTIFIER", session_qstring)
+        #                     self.session_new()
+        #                 elif (
+        #                     self.session_verb.sbj.idn != self.lex.IDN.LEX or
+        #                     self.session_verb.vrb.idn != self.lex.IDN.DEFINE or
+        #                     self.session_verb.obj.idn != self.lex.IDN.BROWSE
+        #                 ):
+        #                     self.print("NOT A SESSION IDENTIFIER", session_qstring)
+        #                     self.session_new()
+        #                 elif self.session_verb.txt != session_uuid:
+        #                     self.print(
+        #                         "NOT A RECOGNIZED SESSION",
+        #                         session_qstring,
+        #                         "is the idn, but",
+        #                         self.session_verb.txt,
+        #                         "!=",
+        #                         session_uuid
+        #                     )
+        #                     self.session_new()
+        #                 else:
+        #                     '''old session word is good, keep it'''
+        #                     self.print("old session", session_idn, session_qstring, session_uuid)
+        #                     # EXAMPLE:  0q83_1C15 0q83_1C15 5eb2298a-902b-446e-ad03-029d93cac76e
+        # NOTE:  Giving up on anonymous-contributed content.
+        #        So we no longer need to track anonymous users.  Much.
+        self.session_verb = None
 
         if self.is_authenticated:
             self.qiki_user = self.lex.word_google_class(self.authenticated_id())
 
             # if not self.qiki_user.is_named:
-            #     print("NOT A NAMED USER", self.qiki_user.idn)
+            #     self.print("NOT A NAMED USER", self.qiki_user.idn)
             #     self.is_authenticated = False
             #     flask_login.logout_user()
             # FIXME:  The above means the user NEVER gets their name.
@@ -782,99 +2368,115 @@ class Auth(object):
             #        or aren't the most recent pairing
             #        (or remove that last thing, could churn if user is on two devices at once)
         elif self.is_anonymous:
-            self.qiki_user = self.lex.word_anon_class(self.session_verb.idn)
+            # self.qiki_user = self.lex.word_anon_class(self.session_verb.idn)
+            ip_address_int = int(ipaddress.ip_address(ip_address_txt))
+            # THANKS:  ip address to 32-bit integer, https://stackoverflow.com/a/22272197/673991
+            self.qiki_user = self.lex.word_anon_class(ip_address_int)
             # TODO:  Tag the anonymous user with the session (like authenticated user)
             #        rather than embedding the session ID so prominently
             #        although, that session ID is the only way to identify anonymous users
             #        so maybe not
         else:
             self.qiki_user = None
-            print("User is neither authenticated nor anonymous.")
+            self.print("User is neither authenticated nor anonymous.")
             return
 
-        ip_words = self.lex.find_words(
-            sbj=self.qiki_user,
-            vrb=self.lex.IDN.IP_ADDRESS_TAG,
-            obj=self.session_verb,
-            idn_ascending=True,
-        )
-        if len(ip_words) == 0 or ip_words[-1].txt != ip_address_txt:
-            self.qiki_user(self.lex.IDN.IP_ADDRESS_TAG, use_already=False)[self.session_verb] = ip_address_txt
-            # TODO:  How could this get a duplicate key?
-            #        mysql.connector.errors.IntegrityError: 1062 (23000):
-            #        Duplicate entry '\x821' for key 'PRIMARY'
-            #        '\x821' === Number('0q82_31').raw, which is the idn for session_verb
-            #        (i.e. the obj=WORD.BROWSE word)
-            #        override_idn should have been None all the way down
-            #        So was this a race condition in word.py in lex.max_idn()??
-            #        That function does cause nested cursors.
+        # FlikiWord.user_stuff(self, ip_address_txt, user_agent_txt)
 
-        ua_words = self.lex.find_words(
-            sbj=self.qiki_user,
-            vrb=self.lex.IDN.USER_AGENT_TAG,
-            obj=self.session_verb,
-            idn_ascending=True,
-        )
-        if len(ua_words) == 0 or ua_words[-1].txt != user_agent_txt:
-            self.qiki_user(self.lex.IDN.USER_AGENT_TAG, use_already=False)[self.session_verb] = user_agent_txt
+        # ip_words = self.lex.find_words(
+        #     sbj=self.qiki_user,
+        #     vrb=self.lex.IDN.IP_ADDRESS_TAG,
+        #     obj=self.session_verb,
+        #     idn_ascending=True,
+        # )
+        # if len(ip_words) == 0 or ip_words[-1].txt != ip_address_txt:
+        #     self.qiki_user(self.lex.IDN.IP_ADDRESS_TAG, use_already=False)[self.session_verb] = ip_address_txt
+        #     # TODO:  How could this get a duplicate key?
+        #     #        mysql.connector.errors.IntegrityError: 1062 (23000):
+        #     #        Duplicate entry '\x821' for key 'PRIMARY'
+        #     #        '\x821' === Number('0q82_31').raw, which is the idn for session_verb
+        #     #        (i.e. the obj=WORD.BROWSE word)
+        #     #        override_idn should have been None all the way down
+        #     #        So was this a race condition in word.py in lex.max_idn()??
+        #     #        That function does cause nested cursors.
+        #     self.lex.create_word
+        #
+        # ua_words = self.lex.find_words(
+        #     sbj=self.qiki_user,
+        #     vrb=self.lex.IDN.USER_AGENT_TAG,
+        #     obj=self.session_verb,
+        #     idn_ascending=True,
+        # )
+        # if len(ua_words) == 0 or ua_words[-1].txt != user_agent_txt:
+        #     self.qiki_user(self.lex.IDN.USER_AGENT_TAG, use_already=False)[self.session_verb] = user_agent_txt
+        # NOTE:  Old way of tracking authenticated and anonymous users
 
-    def session_new(self):
-        self.session_uuid = self.unique_session_identifier()
-        self.session_verb = self.lex.create_word(
-            # sbj=self.qiki_user,
-            # NOTE:  Subject can't be user, when the user depends
-            #        on the about-to-be-created session word
-            #        (It's the payload in the suffix of the anon user idn.)
-            #        Or can it?!  That would be a feat.
-            #        Would require some shenanigans inside the max_idn_lock.
-            sbj=self.lex.IDN.LEX,
-            vrb=self.lex.IDN.DEFINE,
-            obj=self.lex.IDN.BROWSE,
-            txt=self.session_uuid,
-            use_already=False
-        )
-        self.session_qstring = self.session_verb.idn.qstring()
-        print("New session", self.session_verb.idn.qstring(), self.ip_address_txt)
 
-    @abc.abstractmethod
-    def unique_session_identifier(self):
-        """
-        These are never really used for anything,
-        but it's kind of a policy that each vrb=define word has a unique txt.
-        So you could return uuid.uuid4(), though '' might not break anything.
-        """
-        raise NotImplementedError
+
+    # def session_new(self):
+    #     self.session_uuid = self.unique_session_identifier()
+    #     self.session_verb = self.lex.create_word(
+    #         # sbj=self.qiki_user,
+    #         # NOTE:  Subject can't be user, when the user depends
+    #         #        on the about-to-be-created session word
+    #         #        (It's the payload in the suffix of the anon user idn.)
+    #         #        Or can it?!  That would be a feat.
+    #         #        Would require some shenanigans inside the max_idn_lock.
+    #         sbj=self.lex.IDN.LEX,
+    #         vrb=self.lex.IDN.DEFINE,
+    #         obj=self.lex.IDN.BROWSE,
+    #         txt=self.session_uuid,
+    #         use_already=False
+    #     )
+    #     self.session_qstring = self.session_verb.idn.qstring()
+    #     self.print("New session", self.session_verb.idn.qstring(), self.ip_address_txt)
+
+    # @abc.abstractmethod
+    # def unique_session_identifier(self):
+    #     """
+    #     These are never really used for anything,
+    #     but it's kind of a policy that each vrb=define word has a unique txt.
+    #     So you could return uuid.uuid4(), though '' might not break anything.
+    #     """
+    #     raise NotImplementedError
+
+
 
     @property
     def qoolbar(self):
         qoolbar = qiki.QoolbarSimple(self.lex)
         return qoolbar
 
-    @property
-    @abc.abstractmethod
-    def has_session_qstring(self):
-        raise NotImplementedError
-
-    @property
-    @abc.abstractmethod
-    def session_qstring(self):
-        raise NotImplementedError
-        # CAUTION:  May raise KeyError
-
-    @session_qstring.setter
-    @abc.abstractmethod
-    def session_qstring(self, qstring):
-        raise NotImplementedError
-
-    @property
-    @abc.abstractmethod
-    def session_uuid(self):
-        raise NotImplementedError
-
-    @session_uuid.setter
-    @abc.abstractmethod
-    def session_uuid(self, the_uuid):
-        raise NotImplementedError
+    # @property
+    # @abc.abstractmethod
+    # def session_qstring(self):
+    #     raise NotImplementedError
+    #     # CAUTION:  May raise KeyError
+    #
+    # @session_qstring.setter
+    # @abc.abstractmethod
+    # def session_qstring(self, qstring):
+    #     raise NotImplementedError
+    #
+    # @property
+    # @abc.abstractmethod
+    # def has_session_qstring(self):
+    #     raise NotImplementedError
+    #
+    # @property
+    # @abc.abstractmethod
+    # def session_uuid(self):
+    #     raise NotImplementedError
+    #
+    # @session_uuid.setter
+    # @abc.abstractmethod
+    # def session_uuid(self, the_uuid):
+    #     raise NotImplementedError
+    #
+    # @property
+    # @abc.abstractmethod
+    # def has_session_uuid(self):
+    #     raise NotImplementedError
 
     # def session_get(self):
     #     raise NotImplementedError
@@ -918,9 +2520,6 @@ class Auth(object):
     def then_url(self, new_url):
         raise NotImplementedError
 
-    # def static_url(self, relative_path):
-    #     raise NotImplementedError
-
     @abc.abstractmethod
     def form(self, variable_name):
         raise NotImplementedError
@@ -960,23 +2559,23 @@ class Auth(object):
             if self.qiki_user.is_admin:
                 display_name += " (admin)"
             return (
-                u"<a href='{logout_link}'>"
-                u"logout"
-                u"</a>"
-                u" "
-                u"{display_name}"
+                "<a href='{logout_link}'>"
+                    "logout"
+                "</a>"
+                " "
+                "{display_name}"
             ).format(
                 display_name=display_name,
                 logout_link=self.logout_url,
             )
         elif self.is_anonymous:
             return (
-                # u"<a href='{login_link}' title='{login_title}'>"
-                u"<a href='{login_link}'>"
-                u"login"
-                u"</a>"
+                # "<a href='{login_link}' title='{login_title}'>"
+                "<a href='{login_link}'>"
+                    "login"
+                "</a>"
             ).format(
-                login_title=u"You are " + self.qiki_user.txt,
+                # login_title=u"You are " + self.qiki_user.txt,
                 login_link=self.login_url,
             )
         else:
@@ -1018,6 +2617,8 @@ class Auth(object):
         if self.is_anonymous:
 
             def allowed_word(word):
+                # if self.full_disclosure:
+                #     return True
                 try:
                     is_logged_in = not word.sbj.is_anonymous
                 except AttributeError:
@@ -1027,15 +2628,15 @@ class Auth(object):
                     sbj = self.idn(word.sbj)
                     if sbj not in sbj_warnings:
                         sbj_warnings.add(sbj)
-                        print("sbj", sbj, "is neither user nor lex, starting with", repr(word))
+                        self.print("sbj", sbj, "is neither user nor lex, starting with", repr(word))
                     return False
-
-                return is_logged_in or word.sbj == self.qiki_user
+                else:
+                    return is_logged_in or word.sbj == self.qiki_user
 
             vetted_words = [w for w in words if allowed_word(w)]
             n_removed = len(words) - len(vetted_words)
             if n_removed > 0:
-                print("Vetting removed", n_removed, "words")
+                self.print("Vetting removed", n_removed, "words")
         else:
             vetted_words = words
         return vetted_words
@@ -1053,6 +2654,10 @@ class Auth(object):
         #        moved stuff, would want to see a lesser number in "(N)".
         """
         Generate dictionaries of relevant words and users from the lex.
+
+        The u sub-dictionary contains info on users that appear in the sbj of the vetted words.
+        So it does not care whether users visit or log in.  Only if they contribute, edit,
+        caption, rearrange, or interact.
 
         :param verbs:
         :return: e.g. dict(
@@ -1094,27 +2699,37 @@ class Auth(object):
         user_table = dict()
         for word in vetted_list:
             # user_qstring = word.sbj.idn.qstring()
-            user_lineage = word.sbj.lineage()
-            if user_lineage not in user_table:   # conserves number of queries
-                name_short = word.sbj.name
-                # meta_idn, index = qiki.Listing.split_compound_idn(word.sbj.idn)
-                # user_table[user_qstring] = dict(
-                user_table[user_lineage] = dict(
-                    name_short=name_short,
-                    name_long=word.sbj.txt,
-                    is_admin=word.sbj.is_admin,
-                    type_name=type_name(word.sbj),
-                    # listing_idn=meta_idn.qstring(),
-                    # listing_index=index,   # e.g. the 21-digit, 67-bit Google user number
-                    listing_txt=self.lex[word.sbj.idn.unsuffixed].txt,
-                    lineage=user_lineage,
-                    # idn_qstring=user_qstring,
-                )
+            # try:
+            #     user_lineage = word.sbj.lineage()
+            # except AttributeError:
+            #     self.print("Subject doesn't have a lineage", repr(word), repr(word.sbj), word.sbj)
+            # else:
+            if isinstance(word.sbj, word.sbj.lex.word_user_class):
+                # NOTE:  This test was != self.lex.IDN.LEX,
+                #        but that didn't exclude other non-user sbj words, e.g. LUnslumping #165
+                #        Now we include only user words in the w array.
+                sbj_lineage = word.sbj.lineage()
+                if sbj_lineage not in user_table:   # conserves number of queries
+                    name_short = word.sbj.name
+                    meta_idn, index = qiki.Listing.split_compound_idn(word.sbj.idn)
+                    # user_table[user_qstring] = dict(
+                    user_table[sbj_lineage] = dict(
+                        name_short=name_short,
+                        name_long=word.sbj.txt,
+                        is_admin=word.sbj.is_admin,
+                        type_name=type_name(word.sbj),
+                        listing_idn=int(meta_idn),
+                        listing_index=index,   # e.g. the 21-digit, 67-bit Google user number
+                        listing_txt=self.lex[word.sbj.idn.unsuffixed].txt,
+                        lineage=sbj_lineage,
+                        jsonl=word.sbj.jsonl(),
+                        # idn_qstring=user_qstring,
+                    )
         qc.append(self.lex.query_count)
-        qc_delta = [qc[i+1] - qc[i] for i in range(len(qc)-1)]
-        # TODO:  Bake this timing and query-counting into multi-inherited class
+        # qc_delta = [qc[i+1] - qc[i] for i in range(len(qc)-1)]
+        # TODO:  Bake this timing and query-counting into some kind of code monitoring class
+        # self.print("Vetted deltas", ",".join(str(x) for x in qc_delta))
 
-        print("Vetted deltas", ",".join(str(x) for x in qc_delta))
         return dict(
             u=user_table,
             w=vetted_list,
@@ -1132,13 +2747,97 @@ class Auth(object):
         return ok
 
 
+class Probe(object):
+    """
+    Time a series of events.  Optionally count some countable things along the way.
+
+    EXAMPLE:
+        p = Probe();
+
+        step1()
+        p.at("step1")
+
+        step2()
+        p.at("step2")
+
+        step3()
+        p.at("step3")
+
+        print("\n".join(p.report_lines()))
+    EXAMPLE OUTPUT:
+        step1 0.312 s
+        step2 4.806 s
+        step3 0.006 s
+        total 5.125 s
+    """
+    def __init__(self, countables_initial=None):
+        """
+        Begin the timing and counting.
+
+        .records is an array of triples:
+            unix timestamp (seconds since 1970)
+            event name, e.g. "authorization"
+            countables dictionary, e.g. dict(queries=3, records=333)
+
+        :param countables_initial: - a dictionary of name:count pairs, some measure other than time.
+        """
+        self.t_initial = time.time()
+        self.c_initial = countables_initial
+        self.records = []
+
+    def at(self, event_name="", **kwargs):
+        self.records.append((time.time(), event_name, kwargs))
+
+    def report_lines(self):
+
+        def report_line(_event_name, t_delta, countables_late, countables_early):
+
+            def countable_deltas():
+                for k, v in countables_late.items():
+                    # FALSE WARNING:  Cannot find reference 'get' in 'None'
+                    # noinspection PyUnresolvedReferences
+                    v_delta = v   if countables_early is None else   v - countables_early.get(k, 0)
+                    if v_delta != 0:
+                        yield "{v_delta} {k}".format(k=k, v_delta=v_delta)
+
+            times = ["{t_delta:.3f}s".format(t_delta=t_delta).lstrip('0')]
+            counts = list(countable_deltas())
+            return "{event_name} {commas}".format(
+                event_name=_event_name,
+                commas=" ".join(times + counts)
+            )
+
+        if len(self.records) == 0:
+            yield "(no events)"
+        else:
+            t_prev = self.t_initial
+            c_prev = self.c_initial
+            for t_event, event_name, countables in self.records:
+                yield report_line(event_name, t_event - t_prev, countables, c_prev)
+                c_prev = countables
+                t_prev = t_event
+            if len(self.records) > 1:
+                yield report_line("total", t_prev - self.t_initial, c_prev, self.c_initial)
+
+    def report(self):
+        return ";  ".join(self.report_lines())
+
+
 class AuthFliki(Auth):
-    """Fliki / Authomatic specific implementation of logging in"""
+    """
+    Fliki / Authomatic specific implementation of logging in
+
+    .is_online - Do we have a lex?  E.g. False if MySQL is down.
+
+    """
     def __init__(self, ok_to_print=True):
         setup_application_context()
-        self.is_online = flask.g.is_online
+        self.is_online = flask.g.is_online   # Do we have a lex?  False if MySQL is down.
         if self.is_online:
+
             self.flask_user = flask_login.current_user
+            # NOTE:  Apparently this is where the authomatic magic happens.
+
             super(AuthFliki, self).__init__(
                 this_lex=flask.g.lex,
                 is_authenticated=self.flask_user.is_authenticated,
@@ -1154,13 +2853,21 @@ class AuthFliki(Auth):
                 "anonymous" if self.is_anonymous else ""
             )
             if ok_to_print:
-                print(
+                self.print(
                     "AUTH",
                     # self.qiki_user.idn.qstring(),
-                    self.qiki_user.lineage(),
+                    self.qiki_user.jsonl(),
                     auth_anon,
-                    self.qiki_user.txt
+                    self.qiki_user.name,
+                    # flask.request.user_agent.platform,
+                    # flask.request.user_agent.browser,
+                    # flask.request.user_agent.version,
                 )
+                # EXAMPLE:  windows chrome 94.0.4606.81
+                #           DeprecationWarning: The built-in user agent parser is deprecated and
+                #           will be removed in Werkzeug 2.1. The 'platform' property will be 'None'.
+                #           Subclass 'werkzeug.user_agent.UserAgent' and set
+                #           'Request.user_agent_class' to use a different parser.
             self.path_word = None
             self.browse_word = None
 
@@ -1173,12 +2880,14 @@ class AuthFliki(Auth):
             self.lex.IDN.PATH,
             qiki.Text.decode_if_you_must(path_str)
         )
+        # TODO:  Nit incarnation -- sbj=lex, vrb=define, obj=[path-noun, path-url]
         self.browse_word = self.lex.create_word(
             sbj=self.qiki_user,
             vrb=self.session_verb,
             obj=self.path_word,
             use_already=False,
         )
+        # TODO:  Nit incarnation -- sbj=lex, vrb=hit, obj=[user, path idn]
         this_referrer = flask.request.referrer
         if this_referrer is not None:
             self.lex.create_word(
@@ -1191,33 +2900,40 @@ class AuthFliki(Auth):
 
     SESSION_QSTRING = 'qiki_session_qstring'   # where we store the session verb's idn
     SESSION_UUID = 'qiki_session_uuid'   # where we store the session verb's idn
+    SESSION_THEN_URL = 'then_url'
 
-    def unique_session_identifier(self):
-        return str(uuid.uuid4())
-        # NOTE:  Something that didn't work:  return flask.session['_id']
-        #        I only saw the '_id' variable after googly login anyway.
-        #        See https://stackoverflow.com/a/43505668/673991
+    # def unique_session_identifier(self):
+    #     return str(uuid.uuid4())
+    #     # NOTE:  Something that didn't work:  return flask.session['_id']
+    #     #        I only saw the '_id' variable after googly login anyway.
+    #     #        See https://stackoverflow.com/a/43505668/673991
+    #
+    # @property
+    # def session_qstring(self):
+    #     return flask.session[self.SESSION_QSTRING]
+    #     # CAUTION:  May raise KeyError
+    #
+    # @session_qstring.setter
+    # def session_qstring(self, qstring):
+    #     flask.session[self.SESSION_QSTRING] = qstring
+    #
+    # @property
+    # def has_session_qstring(self):
+    #     # FIXME:  Broken in Firefox?  Reloading forgets session variables, starts new session.
+    #     #         Final straw before abandoning anonymous tracking.
+    #     return self.SESSION_QSTRING in flask.session
+    #
+    # @property
+    # def session_uuid(self):
+    #     return flask.session[self.SESSION_UUID]
+    #
+    # @session_uuid.setter
+    # def session_uuid(self, the_uuid):
+    #     flask.session[self.SESSION_UUID] = the_uuid
 
     @property
-    def has_session_qstring(self):
-        return self.SESSION_QSTRING in flask.session
-
-    @property
-    def session_qstring(self):
-        return flask.session[self.SESSION_QSTRING]
-        # CAUTION:  May raise KeyError
-
-    @session_qstring.setter
-    def session_qstring(self, qstring):
-        flask.session[self.SESSION_QSTRING] = qstring
-
-    @property
-    def session_uuid(self):
-        return flask.session[self.SESSION_UUID]
-
-    @session_uuid.setter
-    def session_uuid(self, the_uuid):
-        flask.session[self.SESSION_UUID] = the_uuid
+    def has_session_uuid(self):
+        return self.SESSION_UUID in flask.session
 
     def authenticated_id(self):
         return self.flask_user.get_id()
@@ -1266,17 +2982,17 @@ class AuthFliki(Auth):
     def then_url(self):
         """Get next URL from session variable.  Default to home."""
         then_url_default = flask.url_for('home_or_root_directory')
-        then_url_actual = flask.session.get('then_url', then_url_default)
+        then_url_actual = flask.session.get(self.SESSION_THEN_URL, then_url_default)
         return then_url_actual
 
     @then_url.setter
     def then_url(self, new_url):
-        flask.session['then_url'] = new_url
+        flask.session[self.SESSION_THEN_URL] = new_url
 
     _not_specified = object()   # like None but more obscure, so None CAN be specified
 
     class FormVariableMissing(KeyError):
-        """auth.form('no such variable')"""
+        """E.g. auth.form('nonexistent variable')"""
 
     def form(self, variable_name, default=_not_specified):
         value = flask.request.form.get(variable_name, default)
@@ -1284,6 +3000,10 @@ class AuthFliki(Auth):
             raise self.FormVariableMissing("No form variable " + variable_name)
         else:
             return value
+
+    @classmethod
+    def form_keys(cls):
+        return flask.request.form.keys()
 
     def convert_unslump_words(self, words):
         """Account for an archaic verb in the lex:  make 'unslump' look like 'contribute'. """
@@ -1299,6 +3019,12 @@ class AuthFliki(Auth):
 
         converted_words = [convert(word) for word in words]
         return converted_words
+
+    def idn_from_name(self, vrb_name):
+        if vrb_name == 'rearrange':
+            return IDN_REARRANGE
+        else:
+            return int(self.lex[vrb_name].idn)
 
 
 def is_qiki_user_anonymous(user_word):
@@ -1335,16 +3061,16 @@ def logout():
 def get_then_url():
     """Get next URL from session variable.  Default to home."""
     then_url_default = flask.url_for('home_or_root_directory')
-    then_url_actual = flask.session.get('then_url', then_url_default)
+    then_url_actual = flask.session.get(AuthFliki.SESSION_THEN_URL, then_url_default)
     # TODO:  Make this work better if a user has multiple tabs open at once.
     #        sessionStorage?
     # SEE:  Tab-specific user data, https://stackoverflow.com/q/27137562/673991
     return then_url_actual
 
 
-def set_then_url(then_url):
-    flask.session['then_url'] = then_url
-
+# def set_then_url(then_url):
+#     flask.session[AuthFliki.SESSION_THEN_URL] = then_url
+# NOTE:  set_then_url() is never needed.  See instead AuthFliki.then_url property setter.
 
 # FALSE WARNING (several places):  Unresolved attribute reference 'name' for class 'str'
 # no noinspection PyUnresolvedReferences
@@ -1369,7 +3095,7 @@ def login():
     # print(repr(login_result))
     if login_result:
         if hasattr(login_result, 'error') and login_result.error is not None:
-            print("Login error:", str(login_result.error))
+            Auth.print("Login error:", str(login_result.error))
             # EXAMPLE:
             #     Failed to obtain OAuth 2.0 access token from https://accounts.google.com/o/oauth2/token!
             #     HTTP status: 400, message: {
@@ -1393,7 +3119,7 @@ def login():
             url_has_question_mark_parameters = flask.request.path != flask.request.full_path
             is_stale = str(login_result.error) == STALE_LOGIN_ERROR
             if is_stale and url_has_question_mark_parameters:
-                print(
+                Auth.print(
                     "Redirect from {from_}\n"
                     "           to {to_}".format(
                         from_=flask.escape(flask.request.full_path),
@@ -1402,7 +3128,7 @@ def login():
                 )
                 return flask.redirect(flask.request.path)  # Hopefully not a redirect loop.
             else:
-                print("Whoops")
+                Auth.print("Whoops")
                 # TODO:  WTF "Unexpected argument"?  It's supposed to take a string.
                 # noinspection PyArgumentList
                 response.set_data("Whoops")
@@ -1415,13 +3141,13 @@ def login():
                 #        using typing hints or annotations.  Then use e.g. login_result.user.name
 
                 if logged_in_user is None:
-                    print("None user!")
+                    Auth.print("None user!")
                 else:
                     if (
                         not hasattr(login_result.user, 'id'  ) or logged_in_user.id   is None or
                         not hasattr(login_result.user, 'name') or logged_in_user.name is None
                     ):                                                             # Try #1
-                        print(
+                        Auth.print(
                             "Fairly routine, user data needed updating",
                             repr_attr(logged_in_user, 'id'),
                             repr_attr(logged_in_user, 'name'),
@@ -1432,7 +3158,7 @@ def login():
                         #       http://authomatic.github.io/authomatic/#log-the-user-in
 
                     if logged_in_user.id is None or logged_in_user.name is None:   # Try #2
-                        print(
+                        Auth.print(
                             "Freakish!  "
                             "Updated, but something is STILL None, "
                             "user id:", repr(logged_in_user.id),
@@ -1495,7 +3221,7 @@ def login():
                         avatar_url = logged_in_user.picture or ''
                         display_name = logged_in_user.name or ''
 
-                        print("Logging in", qiki_user.index, qiki_user.lineage())
+                        Auth.print("Logging in", qiki_user.index, qiki_user.jsonl())
                         # EXAMPLE:   Logging in 0q8A_059E058E6A6308C8B0 0q82_15__8A059E058E6A6308C8B0_1D0B00
 
                         # lex[lex](lex.IDN.ICONIFY, use_already=True)[qiki_user.idn] = (
@@ -1528,13 +3254,13 @@ def login():
                         # SEE:  Fragment on redirect, https://stackoverflow.com/q/2286402/673991
                         # SEE:  Fragment of resource, https://stackoverflow.com/a/5283528/673991
             else:
-                print("No user!")
+                Auth.print("No user!")
             if hasattr(login_result, 'provider'):
-                print("Provider:", repr(login_result.provider))
+                Auth.print("Provider:", repr(login_result.provider))
     else:
         '''Is this where anonymous users go?'''
         pass
-        # print("not logged in", repr(login_result))
+        # Auth.print("not logged in", repr(login_result))
         # EXAMPLE:  None (e.g. with extraneous variable on request query, e.g. ?then_url=...)
 
     return response
@@ -1612,6 +3338,15 @@ def os_path_static(relative_url):
 def os_path_qiki_javascript(relative_url):
     return werkzeug.utils.safe_join(PARENT_DIRECTORY, 'qiki-javascript', relative_url)
     # NOTE:  Assume the fliki and qiki-javascript repos are in sibling directories.
+
+
+def os_path_data(file_name):
+    return os_path_static(werkzeug.utils.safe_join('data', file_name))
+    # return werkzeug.utils.safe_join(SCRIPT_DIRECTORY, 'data', file_name)
+
+
+def os_path_workshop(file_name):
+    return werkzeug.utils.safe_join(SCRIPT_DIRECTORY, 'workshop', file_name)
 
 
 def web_path_qiki_javascript(relative_url):
@@ -1729,11 +3464,17 @@ def unslumping_home(home_page_title):
     with FlikiHTML('html') as html:
         with html.header(home_page_title) as head:
             head.css_stamped(web_path_qiki_javascript('qoolbar.css'))
+
             head.css_stamped(static_code_url('contribution.css'))
+            # EXAMPLE:  net::ERR_TOO_MANY_RETRIES on this file.
+            #           Occasional (10%) of loads on LUnslumping
+            # SEE:  Self-signed cert, https://stackoverflow.com/a/58689370/673991
+
             head.css('https://fonts.googleapis.com/css?family=Literata&display=swap')
             head.css('https://fonts.googleapis.com/icon?family=Material+Icons')
             # noinspection SpellCheckingInspection
             head.raw_text('''
+                <link rel="shortcut icon" href="{path}/favicon.ico">
                 <link rel="apple-touch-icon" sizes="180x180" href="{path}/apple-touch-icon.png">
                 <link rel="icon" type="image/png" sizes="32x32" href="{path}/favicon-32x32.png">
                 <link rel="icon" type="image/png" sizes="16x16" href="{path}/favicon-16x16.png">
@@ -1741,8 +3482,9 @@ def unslumping_home(home_page_title):
                 <link rel="mask-icon" href="{path}/safari-pinned-tab.svg" color="#5bbad5">
                 <meta name="msapplication-TileColor" content="#da532c">
                 <meta name="theme-color" content="#ffffff">
-            \n'''.format(path='/meta/static/image/favicon'))
+            \n'''.format(path=static_url('image/favicon')))   # was path='/meta/static/image/favicon'
         # THANKS:  real favicon generator, https://realfavicongenerator.net/
+        # NOTE:  Hoping the "shortcut icon" will get browsers to stop hitting root /favicon.ico
         html.body("Loading . . .")
         with html.footer() as foot:
             foot.js('https://cdn.jsdelivr.net/npm/sortablejs@1.9.0/Sortable.js')
@@ -1789,6 +3531,8 @@ def unslumping_home(home_page_title):
                     ],
                     POPUP_ID_PREFIX=POPUP_ID_PREFIX,
                     STATIC_IMAGE=static_url('image'),
+                    me_idn=auth.qiki_user.jsonl(),
+                    INTERACT_VERBS=INTERACT_VERBS,
                 ))
                 script.raw_text('var MONTY = {json};\n'.format(json=json_pretty(monty)))
                 if CATCH_JS_ERRORS:
@@ -1850,12 +3594,18 @@ def unslumping_home(home_page_title):
                     script.raw_text('''
                         js_for_unslumping(window, jQuery, qoolbar, MONTY, window.talkify);
                     \n''')
+
+        t_stuff = time.time()
+        FlikiWord.user_stuff(auth, auth.ip_address_txt, auth.user_agent_txt)
         t_end = time.time()
         q_end = auth.lex.query_count
-        print("unslumping home {q:d} queries, {t:.3f} sec".format(
+        Auth.print("unslumping home {q:d} queries, {t1:.3f} {t2:.3f} sec".format(
             q=q_end - q_start,
-            t=t_end - t_start,
+            t1=t_stuff - t_start,
+            t2=t_end - t_stuff,
         ))
+        # TODO:  If t2 gets too big, start remembering latest user stuff.
+
         html_response = html.doctype_plus_html()
         flask_response = flask.Response(html_response)
         # flask_response.headers['Cross-Origin-Resource-Policy'] = 'cross-origin'
@@ -1889,8 +3639,11 @@ def contribution_dictionary(auth, more_verb_idns=None):
     if more_verb_idns is not None:
         verbs += more_verb_idns
 
+
+
     words_for_js = auth.vetted_find_by_verbs(verbs)
     words_for_js['w'] = auth.convert_unslump_words(words_for_js['w'])
+
 
 
     cat_words = [{
@@ -1905,14 +3658,12 @@ def contribution_dictionary(auth, more_verb_idns=None):
         # me_idn=auth.qiki_user.idn.qstring(),
         # me_lineage=auth.qiki_user.lineage(),
         me_idn=auth.qiki_user.lineage(),
-
-        me_txt=auth.qiki_user.txt,
+        me_txt=auth.qiki_user.name,
         is_anonymous=auth.is_anonymous,
         URL_HERE=auth.current_url,
         IDN=auth.lex.IDN.dictionary_of_ints(),
         NOW=float(time_lex.now_word().num),
         cat_words=cat_words,
-        INTERACTION=INTERACTION_VERBS,
     )
     monty.update(words_for_js)
     return monty
@@ -1921,140 +3672,648 @@ def contribution_dictionary(auth, more_verb_idns=None):
 @flask_app.route('/meta/contribution_json', methods=('GET', 'HEAD'))
 def meta_contribution_json():
     auth = AuthFliki()
+
+    if not auth.is_online:
+        return dict(error="lex database offline")
+    if not auth.is_authenticated:
+        return auth.login_html()   # anonymous viewing not allowed, just show "login" link
+
     monty = contribution_dictionary(auth)
     return flask.Response(json_pretty(monty), mimetype='application/json')
 
 
+# IDN_WHN_ABSOLUTE = -1
+# IDN_WHN_RELATIVE = -2
+# IDN_SEQUENCE = -3   # bot playlist sequence
+# IDN_ADMIN_ASSIGNMENT = -4
+# IDN_ADMIN_VERB = -5
+# IDN_STARTER_ALIAS = -6
+
+
+MIME_TYPE_TRIPLE = 'application/javascript'
+MIME_TYPE_NIX    = 'application/javascript'
+# MIME_TYPE_JSONL  = 'text/x.jsonl+json'
+# MIME_TYPE_JSONL  = 'application/jsonl'   # Chrome won't display, just downloads MULTIPLE TIMES!
+MIME_TYPE_JSONL  = 'application/jsonl+json'   # Chrome displays like text/plain
+# SEE:  MIME type for newline-terminated json, https://stackoverflow.com/q/51690624/673991
+#       text/plain; charset=utf8
+#       application/x-ndjson
+#       application/x-jsonlines
+#       application/jsonlines
+# SEE:  MIME type for newline-terminated json, https://stackoverflow.com/q/59938644/673991
+#       application/json-lines
+#       application/jsonl
+#       application/x-...
+# SEE:  x. versus x-, https://en.wikipedia.org/wiki/Media_type#Unregistered_tree
+#       including discouragement for using either one.
+# SEE:  +json suffix, https://en.wikipedia.org/wiki/Media_type#Suffix
+# SEE:  JSON Lines, .jsonl, https://jsonlines.org/
+# SEE:  Newline Delimited JSON, http://ndjson.org/
+# SEE:  Assigned mime types, iana.org/assignments/media-types/media-types.xhtml
+
+
 @flask_app.route('/meta/nits', methods=('GET', 'HEAD'))
 def meta_nits():
+    """
+    Recast the 7-tuple words in the LexMySQL into a new syntax, based on nits.
+
+    URL arguments:
+        before_file - THIS STRING SHOULD END WITH A NEWLINE
+        after_file
+        before_assign
+        argot=triple (default)
+        argot=nix
+        argot=jsonl
+        argot=nix,triple
+
+    Argot is the dialect of the output.
+        triple - JavaScript or Python or maybe C code
+        nix - also js/py but dict/associative array entries with nested calls to N()
+        jsonl - newline-separated JSON of nested arrays of integers and strings, sorted by idn
+
+    Examples:
+        triple
+            contribute = locus(1408, "contribute", user, text);
+            contribute(882, u0, "pithy");
+        nix
+            1408: N(1562335912940,201, 'contribute', 166, 4),
+            882: N(1559479179156,1408, N(167,103620384189003122864), 'pithy'),
+        jsonl
+            [882,1559479179156,[167,"103620384189003122864"], 1408,"pithy"]
+            [1408,1562335912940,0, 1,201,"contribute",4]
+
+    """
+    p = Probe()
+    # TODO:  AuthFliki.probe = Probe(overall_context=inspect.getouterframes()[1][3])
+    #        https://stackoverflow.com/a/2654130/673991
+
     before_file = flask.request.args.get('before_file', '')
     after_file = flask.request.args.get('after_file', '')
     before_assign = flask.request.args.get('before_assign', '')
+    # is_static_jsonl = flask.request.args.get('static_jsonl', False) is not False
+    is_mysql_jsonl = flask.request.args.get('mysql_jsonl', False) is not False
+
+    argot = flask.request.args.get('argot', 'triple').split(',')
+    is_argot_triple = 'triple' in argot
+    is_argot_nix    = 'nix'    in argot
+    is_argot_jsonl  = 'jsonl'  in argot
+    if not is_argot_triple and not is_argot_nix and not is_argot_jsonl:
+        return invalid_response("No known argot specified: " + repr(argot))
+
+    # is_hack_dour = flask.request.args.get('hack_dour', False) is not False
+    # # NOTE:  Allow anonymous browsing (e.g. from wget) to capture anonymous contributions.
+
+    is_code_py = flask.request.args.get('code_py', False) is not False
+    # NOTE:  This only matters for
+
+
+    p.at("req", queries=0)   # request has been parsed
+    if is_argot_jsonl and not is_mysql_jsonl:
+        Auth.print("nits STATIC json: ", p.report())
+        # return flask.send_file(os_path_workshop('luns.js'))   # noqa
+        return flask.send_file(FlikiWord.file_path(), mimetype=MIME_TYPE_JSONL)
+
+
 
     auth = AuthFliki()
 
     if not auth.is_online:
         return dict(error="lex database offline")
-    if not auth.is_enough_anonymous_patience(MINIMUM_SECONDS_BETWEEN_ANONYMOUS_QUESTIONS):
-        return dict(error="wait a bit")
+    # if not auth.is_authenticated and not is_hack_dour:   # only for porting to Nits
+    #     return auth.login_html()   # anonymous viewing not allowed, just show "login" link
 
-    interaction_idns = [int(auth.lex[n].idn) for n in INTERACTION_VERBS.values()]
-    interaction_name_from_idn = {int(idn): auth.lex[idn].txt for idn in interaction_idns}
+    p.at("auth", queries=auth.lex.query_count)
 
-    # monty_hybrid = contribution_dictionary(auth)
-    monty_hybrid = contribution_dictionary(auth, interaction_idns)
-    # NOTE:  This hybrid thingie is actually a mish-mash of dict()s and objects.
+
+    idn_lex = int(auth.lex['lex'].idn)
+    idn_define = int(auth.lex['define'].idn)
+    idn_bot = int(auth.lex['bot'].idn)
+    idn_iconify = int(auth.lex['iconify'].idn)
+
+
+    interact_idns = [int(auth.lex[n].idn) for n in INTERACT_VERBS]
+    interact_word_from_idn = {int(idn): auth.lex[idn] for idn in interact_idns}
+    extra_verb_idns = interact_idns + [
+        # idn_iconify,
+        # NOTE:  This didn't work out because LUnslumping #165 had an sbj idn of 9.
+        #        Which led to a cascade of unconventional problems.
+        #        Instead, we do a new find for iconify words below.
+    ]
+
+
+    # auth.full_disclosure = is_hack_dour -- only for porting to Nits via wget
+    # monty_hybrid = contribution_dictionary(auth)                    # \ pick
+    monty_hybrid = contribution_dictionary(auth, extra_verb_idns)   # / one
+    # auth.full_disclosure = False
+
+
+
+    # NOTE:  monty_hybrid is a mish-mash of dict()s and objects.
     #        Yet another curse on the seemingly honorable and versatile notion of making
     #        json_encode() treat a qiki.Word as a dictionary, aka a JavaScript associative array.
 
+    p.at("find", queries=auth.lex.query_count)
+
     monty_json = json_encode(monty_hybrid)
     monty_dict = json.loads(monty_json)
-    # NOTE:  Now its dictionaries, all the way down.
+    # NOTE:  monty_dict is dictionaries, all the way down.
 
-    lex_variable_name = 'c'
+    # triple_global = 'define'
+    # NOTE:  This would be better, but then there's that whole brain-busting chicken-and-egg-thing.
+
+    triple_global = 'c'
+    # nix_global = secure.credentials.Options.home_page_title + '_lex'
+    # nix_global = 'lex'
     user_variable_prefix = 'u'
 
     category_idns = auth.get_category_idns_in_order()
     category_name_from_idn = {int(idn): auth.lex[idn].txt for idn in category_idns}
 
-    define_lines = []
-    variable_name_from_idn = dict()
-    # NOTE:  In the following loop,
-    #            variable_name - name of each variable in the data stream.
-    #            symbol        - key in the MONTY.IDN dictionary.
-    for variable_name, symbol in (
-        ('category',    'CATEGORY'),
-        ('interaction', 'INTERACT'),
-        ('text',        'AGENT'),   # HACK:  AGENT was barely used, it was INTENDED for users but that didn't happen
-        # ('qstring',     'QUESTION_OBSOLETE'),   # HACK repurposed
-        ('user',        'LISTING'),   # HACK:  LISTING was only used for users, across all sites.
-        ('google_user', 'GOOGLE_LISTING'),
-        ('anonymous',   'ANONYMOUS_LISTING'),
-        ('locus',       'RESOURCE'),   # HACK:  Appropriating this too, for "base class" of contribute and rightmost
-        ('contribute',  'CONTRIBUTE'),
-        ('caption',     'CAPTION'),
-        ('edit',        'EDIT'),
-        ('rightmost',   'FENCE_POST_RIGHT'),
-    ):
-        # NOTE:  A 'user' word was defined in LUnslumping (idn 9, whn 2016), but not Unslumping.
-        idn = monty_dict['IDN'][symbol]
-        definer = lex_variable_name
-        etc = ''
-        if symbol in ('GOOGLE_LISTING', 'ANONYMOUS_LISTING'):   # HACK:  Oh come on
-            definer = 'user'
-            # etc = ', qstring, lineage'
-        elif symbol == 'FENCE_POST_RIGHT':
-            definer = 'locus'
-        elif symbol == 'CONTRIBUTE':
-            definer = 'locus'
-            etc = ', user, text'
-        elif symbol == 'CAPTION':
-            etc = ', user, text, contribute'
-        elif symbol == 'EDIT':
-            etc = ', user, text, contribute'
+    stream_lines = []
 
-        define_lines.append('{variable_name} = {definer}({idn}, "{variable_name}"{etc});'.format(
-            variable_name=variable_name,
-            symbol=symbol,
-            idn=idn,
-            definer=definer,
-            etc=etc,
-        ))
+    def render_string(thing):
+        """Render a string or list (of nits)"""
+        # NOTE:  The only reason Python might not like json.dumps() for its strings is that it would
+        #        have to convert the surrogate pairs that JavaScript, JSON, UTF-16 use to represent
+        #        unicode characters on the supplemental planes beyond U+FFFF.
+        # SEE:  convert surrogate pairs, https://stackoverflow.com/a/54549164/673991
+        if is_code_py:
+            # FALSE WARNING:  Python version 2.7 does not have method ascii
+            # noinspection PyCompatibility
+            return ascii(thing)   # double or single quotes, \U00088888
+        else:
+            return json_encode(thing)   # double quotes, \uD888\uDC88 surrogate UTF-16 pairs
+
+    def streamy(line):
+        stream_lines.append(line)
+
+    def triple(line=''):   # argot=triple
+        if is_argot_triple:
+            streamy(line)
+
+    def nix(line=''):
+        if is_argot_nix:
+            streamy(line)
+
+    def wold(idn, whn, name_if_any, vrb_int, **kwargs):   # argot=nix
+        # nix(
+        #     "    {idn}: N("
+        #         "{vrb_int}"
+        #         "{comma_name}"
+        #         "{comma_kwargs}"
+        #         ",N({idn_whn_absolute},{unix_ms})"
+        #     "),".format(
+        #         idn=int(idn),
+        #         vrb_int=vrb_int,
+        #         comma_name=''   if name is None else   ', ' + render_string(name),
+        #         idn_whn_absolute=IDN_WHN_ABSOLUTE,
+        #         unix_ms=int(whn*1000.0),
+        #         comma_kwargs=''.join(',' + v for v in kwargs.values()),
+        #     )
+        # )
+        nix(
+            "    "
+            "{idn}: "
+            "N("
+                "{unix_ms},"
+                "{vrb_int}"
+                "{comma_name}"
+                "{comma_kwargs}"
+            "),".format(
+                idn=idn,
+                unix_ms=int(whn*1000.0),
+                vrb_int=vrb_int,
+                comma_name=''   if name_if_any is None else ', ' + render_string(name_if_any),
+                comma_kwargs=''.join(', ' + str(v) for v in kwargs.values()),
+            )
+        )
+
+    jsonl_idn_line_pairs = []
+
+    def jsonl(idn, whn, sbj, vrb, **kwargs):
+        if is_argot_jsonl:
+            comma_kwargs = ''.join(',' + str(v) for v in kwargs.values())
+            # NOTE:  Only using object fields.  Names could theoretically be validated.
+            line = '[{idn},{unix_ms},{sbj}, {vrb_int}{comma_kwargs}]'.format(
+                idn=idn,
+                # unix_seconds=int(round(float(whn))),
+                unix_ms=int(whn*1000.0),
+                sbj=sbj,
+                vrb_int=int(vrb),
+                comma_kwargs=comma_kwargs,
+            )
+            jsonl_idn_line_pairs.append((idn, line))
+
+    triple('{before_assign}{triple_global} = qiki.Lex("{me_idn}");'.format(
+        # TODO:  Make the choice of the constructorificationalizer name "qiki.Lex" in one place.  # noqa
+        #        Probably closer to the other choice of that name currently in qiki.js.
+        before_assign=before_assign,
+        triple_global=triple_global,
+        me_idn=monty_dict['me_idn'],
+    ))
+    triple()
+    # nix('{before_assign}{nix_global} = qiki.Lex("{me_idn}",{{'.format(
+    #     before_assign=before_assign,
+    #     nix_global=nix_global,
+    #     me_idn=monty_dict['me_idn'],
+    # ))
+    # nix('{before_assign}{nix_global} = {{'.format(
+    #     before_assign=before_assign,
+    #     nix_global=nix_global,
+    # ))
+    natal_whn = int(auth.lex[0].whn)
+    # NOTE:  whn of first word in LexMySQL, assume that's as old as it gets.
+    # triple(''.format(IDN_WHN_ABSOLUTE, natal_whn, "whn", monty_dict['IDN']['DEFINE']))
+    # wold(IDN_WHN_ABSOLUTE, natal_whn, "whn", monty_dict['IDN']['DEFINE'])
+
+    def user_nit(user_lineage):
+        u = monty_dict['u'][user_lineage]
+        return "N({bytes},{nit})".format(bytes=u['listing_idn'], nit=u['listing_index'])
+
+    def user_jsonl(user_lineage):
+        u = monty_dict['u'][user_lineage]
+        # return "[{bytes},{nit}]".format(bytes=u['listing_idn'], nit=u['listing_index'])
+        # return '"{bytes},{nit}"'.format(bytes=u['listing_idn'], nit=u['listing_index'])
+        # return '[{bytes},"{nit}"]'.format(bytes=u['listing_idn'], nit=u['listing_index'])
+        return json_encode(u['jsonl'])
+
+    # NOTE:  In the following sequence of pairs,
+    #            variable_name - name of each variable in the data stream.
+    #            symbol        - key in the MONTY.IDN dictionary.  Or some value for the idn.
+    variable_name_idn = (
+        ('lex',         monty_dict['IDN']['LEX']),
+        ('define',      monty_dict['IDN']['DEFINE']),
+        ('noun',        monty_dict['IDN']['NOUN']),
+        ('admin',       IDN_ADMIN_VERB),
+        ('sequence',    IDN_SEQUENCE),
+        ('rearrange',   IDN_REARRANGE),
+        ('url',         IDN_URL),
+        # ('whn',         IDN_WHN_ABSOLUTE),
+        ('name',        monty_dict['IDN']['NAME']),
+        ('category',    monty_dict['IDN']['CATEGORY']),
+        ('interact',    monty_dict['IDN']['INTERACT']),
+        ('text',        monty_dict['IDN']['AGENT']),   # HACK:  AGENT was barely used, it was INTENDED for users but that didn't happen
+        # ('qstring',   monty_dict['IDN'][  'QUESTION_OBSOLETE'),   # HACK repurposed
+        ('user',        monty_dict['IDN']['LISTING']),   # HACK:  LISTING was only used for users, across all sites.
+        ('google_user', monty_dict['IDN']['GOOGLE_LISTING']),
+        ('anonymous',   monty_dict['IDN']['ANONYMOUS_LISTING']),
+        ('locus',       IDN_LOCUS),   # monty_dict['IDN']['RESOURCE']),   # HACK:  Appropriating this too, for "base class" of contribute and rightmost
+        ('contribute',  monty_dict['IDN']['CONTRIBUTE']),
+        ('caption',     monty_dict['IDN']['CAPTION']),
+        ('edit',        monty_dict['IDN']['EDIT']),
+        ('rightmost',   monty_dict['IDN']['FENCE_POST_RIGHT']),
+        ('iconify',     monty_dict['IDN']['ICONIFY']),
+        ('ip_address',  monty_dict['IDN']['IP_ADDRESS_TAG']),
+        ('user_agent',  monty_dict['IDN']['USER_AGENT_TAG']),
+    )
+
+    # category = lex.define(noun)
+    # my = lex.define(category)
+    # user_fred.my(contribution=1400, locus=1500)
+
+    variable_name_from_idn = dict()
+    idn_from_name = dict()
+    idn_from_name[triple_global] = monty_dict['IDN']['DEFINE']
+    for variable_name, idn in variable_name_idn:
         variable_name_from_idn[idn] = variable_name
+        idn_from_name[variable_name] = idn
+        # NOTE:  These are set in the first loop so the second loop may forward-reference
+
+    for variable_name, idn in variable_name_idn:
+
+        # NOTE:  A 'user' word was defined in LUnslumping (idn 9, whn 2016), but not Unslumping.
+        # definer = lex_variable_name
+        # definer = 'define'
+        definer = triple_global
+        define_obj_txt = 'noun'
+        etc = ''
+        etc_jsonl = tuple()
+        if idn in (monty_dict['IDN']['GOOGLE_LISTING'], monty_dict['IDN']['ANONYMOUS_LISTING']):   # HACK:  Oh come on
+            definer = 'user'
+            define_obj_txt = 'user'
+            # etc = ', qstring, lineage'
+        elif idn == monty_dict['IDN']['FENCE_POST_RIGHT']:
+            definer = 'locus'
+            define_obj_txt = 'locus'
+        elif idn == monty_dict['IDN']['CONTRIBUTE']:
+            definer = 'locus'
+            define_obj_txt = 'locus'
+            etc = ', user, text'
+            etc_jsonl = ('text',)
+        elif idn == monty_dict['IDN']['CAPTION']:
+            etc = ', user, text, contribute'
+            etc_jsonl = ('contribute', 'text',)
+        elif idn == IDN_REARRANGE:
+            etc = ', contribute, category, locus'
+            etc_jsonl = ('contribute', 'category', 'locus',)
+        elif idn == monty_dict['IDN']['EDIT']:
+            etc = ', user, text, contribute'
+            etc_jsonl = ('contribute', 'text',)
+        elif idn == IDN_URL:
+            definer = 'text'
+            define_obj_txt = 'text'
+        elif idn == monty_dict['IDN']['ICONIFY']:
+            etc = ', user, url'
+            etc_jsonl = ('user', 'url',)
+        elif idn == monty_dict['IDN']['IP_ADDRESS_TAG']:
+            etc = ', user, text'
+            etc_jsonl = ('user', 'text',)
+        elif idn == monty_dict['IDN']['USER_AGENT_TAG']:
+            etc = ', user, text'
+            etc_jsonl = ('user', 'text',)
+        # elif symbol == 'DEFINE':
+        #     etc = ', name'
+        # NOTE:  Oops this elegant circular reference forks itself:  the define word both
+        #        declares all uses of it will declare a name, and has a name itself.
+
+
+        triple(
+            '{before_assign}{variable_name} = {definer}('
+                '{idn}, '
+                '{variable_name_string}'
+                '{etc}'
+            ');'.format(
+                before_assign=before_assign,
+                variable_name=variable_name,
+                variable_name_string=render_string(variable_name),
+                idn=idn,
+                definer=definer,
+                etc=etc,
+            )
+        )
+        # vex = dict((
+        #     (triple_global, int(auth.lex.IDN.DEFINE)),
+        #     ('user', int(auth.lex.IDN.LISTING)),
+        #     ('locus', int(auth.lex.IDN.RESOURCE)),
+        # ))
+        # # TODO:  vex is almost so close to idn_from_variable_name -- use it instead somehow?
+
+        etc_keys = [e.strip() for e in etc.split(',') if e.strip() != '']
+        etc_dict = {k: render_string(idn_from_name[k]) for k in etc_keys}
+        wold(
+            idn,
+            auth.lex[idn].whn or natal_whn,
+            variable_name,
+            idn_from_name.get(definer, "UNK"),
+            **etc_dict
+        )
+        if len(etc_jsonl) == 0:
+            field_specification = dict()
+        else:
+            field_specification = dict(fields=render_string([idn_from_name[n] for n in etc_jsonl]))
+            # EXAMPLE:  dict(fields='[1408,1434,201]')
+        jsonl(
+            idn,
+            auth.lex[idn].whn or natal_whn,
+            idn_lex,
+            idn_define,
+            noun=idn_from_name.get(define_obj_txt, "UNK"),
+            name=render_string(variable_name),
+            # **{n: idn_from_name[n] for n in etc_jsonl}
+            **field_specification
+        )
+
 
     # TODO:  Some way to unify anonymous and google_user curried words, by defining both as a
     #        "user" curried word?  Need to make up some IDN for the "user" definition then I guess.
     #        Haha maybe commandeer the MONTY.IDN.LISTING definition?
     #        In desktop and unslumping, the only listings are google user and anonymous.
 
-    user_lines = []
+    triple()
     i_user_from_lineage = dict()
     for (i_user, (lineage, user_word)) in enumerate(monty_dict['u'].items()):
         # i_user_from_lineage[user_word['idn_qstring']] = i_user
         i_user_from_lineage[lineage] = i_user
-        user_lines.append(
-            '{user_variable_prefix}{i_user} = {user_type}('
+        user_variable_name = user_variable_prefix + str(i_user)
+        triple(
+            '{before_assign}{user_variable_name} = {user_type}('
                 '"{lineage}", '
                 '{name_json}'
             ');'.format(
-                user_variable_prefix=user_variable_prefix,
-                i_user=i_user,
+                before_assign=before_assign,
+                user_variable_name=user_variable_name,
                 user_type=user_word.get('listing_txt', "").replace(' ', '_'),
                 lineage=lineage,
-                name_json=json.dumps(user_word.get('name_short', "[no name]")),
-                # idn=json.dumps(idn),
+                name_json=render_string(user_word.get('name_short', "[no name]")),
+                # idn=render_string(idn),
                 # listing_index=user_word.get('listing_index', ""),
             )
         )
+        qiki_user = auth.lex.word_user_class(
+            user_word['listing_index'],
+            user_word['listing_idn'],
+        )
+        namings = auth.lex.find_words(
+            sbj=auth.lex.IDN.LEX,
+            vrb=auth.lex.IDN.NAME,
+            obj=qiki_user
+        )
+        if len(namings) > 0:
+            naming_word = namings[-1]
+            triple('name({idn}, {user_variable_name}, {quoted_name});'.format(
+                idn=int(naming_word.idn),
+                user_variable_name=user_variable_name,
+                quoted_name=json_encode(naming_word.txt),
+            ))
+            wold(
+                int(naming_word.idn),
+                naming_word.whn,
+                None,
+                int(naming_word.vrb.idn),
+                user=user_nit(lineage),
+                given_name=json_encode(naming_word.txt),
+            )
+            jsonl(
+                int(naming_word.idn),
+                naming_word.whn,
+                idn_lex,
+                int(naming_word.vrb.idn),
+                user=user_jsonl(lineage),
+                given_name=json_encode(naming_word.txt),
+            )
+            if user_word['is_admin']:
+                triple('admin({idn}, {user_variable_name});'.format(
+                    idn=IDN_ADMIN_ASSIGNMENT,   # there's only one
+                    user_variable_name=user_variable_name,
+                ))
+                wold(
+                    IDN_ADMIN_ASSIGNMENT,   # there's only one
+                    naming_word.whn,
+                    None,
+                    IDN_ADMIN_VERB,
+                    user=user_nit(lineage),
+                )
+                jsonl(
+                    IDN_ADMIN_ASSIGNMENT,   # there's only one
+                    naming_word.whn,
+                    idn_lex,
+                    IDN_ADMIN_VERB,
+                    user=user_jsonl(lineage),
+                )
 
-    category_lines = []
+    triple()
     category_txt_from_idn = dict()
-    for category_word in monty_dict['cat_words']:
+    for cat_word in monty_dict['cat_words']:
         # NOTE:  The definitive order of categories as they appear on the webpage.
-        category_lines.append(
-            '{name} = category('
+        triple(
+            '{before_assign}{name} = category('
                 '{idn}, '
                 '{name_json}, '
                 'user, '
                 'contribute, '
                 'locus'
             ');'.format(
-                idn=category_word['idn'],
-                name=category_word['txt'],
-                name_json=json.dumps(category_word['txt']),
+                before_assign=before_assign,
+                idn=cat_word['idn'],
+                name=cat_word['txt'],
+                name_json=render_string(cat_word['txt']),
             )
         )
-        category_txt_from_idn[category_word['idn']] = category_word['txt']
+        wold(
+            cat_word['idn'],
+            auth.lex[cat_word['idn']].whn,
+            cat_word['txt'],
+            monty_dict['IDN']['CATEGORY'],
+        )
+        jsonl(
+            cat_word['idn'],
+            auth.lex[cat_word['idn']].whn,
+            idn_lex,
+            idn_define,
+            category=monty_dict['IDN']['CATEGORY'],
+            name=render_string(cat_word['txt']),
+        )
 
-    interaction_lines = []
-    for interaction_name in monty_dict['INTERACTION'].values():
-        interaction_lines.append('{name} = interaction({idn}, {name_json});'.format(
-            idn=int(auth.lex[interaction_name].idn),
-            name=interaction_name,
-            name_json=json.dumps(interaction_name),
+        category_txt_from_idn[cat_word['idn']] = cat_word['txt']
+
+    triple()
+    # for interact_name in INTERACT_VERBS:
+    for interact_idn, interact_word in interact_word_from_idn.items():
+        triple('{before_assign}{name} = interact({idn}, {name_string});'.format(
+            before_assign=before_assign,
+            idn=interact_idn,
+            name=interact_word.txt,
+            name_string=render_string(interact_word.txt),
         ))
+        wold(
+            interact_idn,
+            interact_word.whn,
+            interact_word.txt,
+            monty_dict['IDN']['INTERACT'],
+        )
+        jsonl(
+            interact_idn,
+            interact_word.whn,
+            idn_lex,
+            idn_define,
+            interact=monty_dict['IDN']['INTERACT'],
+            name=render_string(interact_word.txt),
+        )
+    p.at("def", queries=auth.lex.query_count)
 
-    lex_lines = []
+    iconify_words = auth.lex.find_words(vrb=qiki.Number(idn_iconify))
+    iconify_counts = dict(reject=0, reject2=0, malformed=0, non_user=0, dup=0, passed=0)
+    iconify_users = set()
+    iconify_latest = dict()   # key is user idn, a qiki Number
+    for iconify_word in iconify_words:
+        if iconify_word.sbj.idn == idn_lex:
+            user_being_iconified = iconify_word.obj
+            if isinstance(user_being_iconified, auth.lex.word_user_class):
+                try:
+                    obj_jsonl = user_being_iconified.jsonl()
+                except ValueError:
+                    # Auth.print(
+                    #     "Malformed iconify user",
+                    #     int(iconify_word.idn),
+                    #     user_being_iconified.idn.qstring()
+                    # )
+                    # EXAMPLE:  LUnslumping #1799 where obj is 0q82_A7__1D0100
+                    #           which has a malformed LISTING suffix with an empty payload.
+                    iconify_counts['malformed'] += 1
+                else:
+                    if user_being_iconified.lineage() in i_user_from_lineage:
+                        # TODO:  triple() and wold()
+                        if user_being_iconified in iconify_latest and iconify_latest[user_being_iconified] == iconify_word.txt:
+                            iconify_counts['dup'] += 1
+                            # Auth.print("Duplicate icon", int(iconify_word.idn))
+                            # EXAMPLE:  Duplicate icon 298
+                        else:
+                            iconify_counts['passed'] += 1
+                            jsonl(
+                                int(iconify_word.idn),
+                                iconify_word.whn,
+                                int(iconify_word.sbj.idn),
+                                int(iconify_word.vrb.idn),
+                                user=render_string(obj_jsonl),
+                                url=render_string(iconify_word.txt),
+                            )
+                        iconify_latest[user_being_iconified] = iconify_word.txt
+                    else:
+                        if user_being_iconified.lineage() in iconify_users:
+                            iconify_counts['reject2'] += 1
+                        else:
+                            iconify_counts['reject'] += 1
+                        iconify_users.add(user_being_iconified.lineage())
+                        # NOTE:  User never contributed, so we won't remember their icon.
+            else:
+                # Auth.print("{idn_int}. iconify non-user {obj_qstring}. {obj_txt}".format(
+                #     idn_int=int(iconify_word.idn),
+                #     obj_qstring=str(user_being_iconified.idn.qstring()),
+                #     obj_txt=str(user_being_iconified.txt),
+                # ))
+                # EXAMPLE:  136. iconify non-user 0q82_86. like
+                iconify_counts['non_user'] += 1
+    # Auth.print("iconify", repr(iconify_counts), sum(iconify_counts.values()), "total")
+    # EXAMPLE:  {'reject': 0, 'reject2': 0, 'malformed': 1, 'non_user': 4, 'dup': 1, 'passed': 9}
+    #           15 total
+
+    tag_words = auth.lex.find_words(vrb=(
+        monty_dict['IDN']['IP_ADDRESS_TAG'],
+        monty_dict['IDN']['USER_AGENT_TAG'],
+    ))
+    tag_counts = dict(reject=0, reject2=0, malformed=0, non_user=0, dup=0, passed=0)
+    tag_users = set()
+    tag_latest = dict()   # key is (user idn,verb idn) tuple, where idns are legacy qiki Numbers
+    for tag_word in tag_words:
+        if isinstance(tag_word.sbj, auth.lex.word_user_class):
+            try:
+                sbj_jsonl = tag_word.sbj.jsonl()
+            except ValueError:
+                # Auth.print("Malformed tag user", int(tag_word.idn), tag_word.sbj.idn.qstring())
+                # EXAMPLE:  Malformed tag user 1801 0q82_A7__1D0100
+                tag_counts['malformed'] += 1
+            else:
+                if tag_word.sbj.lineage() in i_user_from_lineage:
+                    # TODO:  triple() and wold()
+                    sbj_vrb = (tag_word.sbj.idn, tag_word.vrb.idn)
+                    if sbj_vrb in tag_latest and tag_latest[sbj_vrb] == tag_word.txt:
+                        tag_counts['dup'] += 1
+                        # Auth.print("Duplicate tag", int(tag_word.vrb.idn), int(tag_word.idn))
+                    else:
+                        tag_counts['passed'] += 1
+                        jsonl(
+                            int(tag_word.idn),
+                            tag_word.whn,
+                            int(monty_dict['IDN']['LEX']),
+                            int(tag_word.vrb.idn),
+                            user=render_string(sbj_jsonl),
+                            text=render_string(tag_word.txt),
+                        )
+                    tag_latest[sbj_vrb] = tag_word.txt
+                else:
+                    if tag_word.sbj.lineage() in tag_users:
+                        tag_counts['reject2'] += 1
+                    else:
+                        tag_counts['reject'] += 1
+                    tag_users.add(tag_word.sbj.lineage())
+                    # NOTE:  User never contributed, so we won't remember their ip or user-agent.
+        else:
+            tag_counts['non_user'] += 1
+    # Auth.print("tag", repr(tag_counts), sum(tag_counts.values()), "total")
+    # EXAMPLE:  'reject': 554, 'reject2': 528, 'malformed': 2, 'non_user': 0, 'dup': 48,
+    #           'passed': 119} 1251 total
+
+    triple()
     for w in monty_dict['w']:
 
         def idn_render(idn):
@@ -2065,64 +4324,157 @@ def meta_nits():
                 #     idn=idn,
                 #     lex_variable_name=lex_variable_name
                 # )
-                return str(idn)
+                return render_string(idn)
 
-        vrb = w['vrb']
+        vrb_idn = w['vrb']
         txt = w.get('txt', "")
         num = w.get('num', None)
-        txt_json = json_encode(txt)
+        txt_json = render_string(txt)
         obj_idn = w.get('obj', None)
         obj_render = idn_render(obj_idn)
+        try:
+            i_user = i_user_from_lineage[w['sbj_lineage']]
+        except KeyError:
+            i_user = 9999
         author = "{user_variable_prefix}{i_user}".format(
             user_variable_prefix=user_variable_prefix,
-            # i_user=i_user_from_lineage[w['sbj_lineage']],
-            i_user=i_user_from_lineage[w['sbj']],
+            i_user=i_user,
         )
 
-        if vrb == auth.lex.IDN.CAPTION:
-            lex_lines.append('caption({idn}, {author}, {txt_json}, {obj});'.format(
+        if vrb_idn == monty_dict['IDN']['CONTRIBUTE']:
+            triple('contribute({idn}, {author}, {txt_json});'.format(
+                idn=w.get('idn', -1),
+                author=author,
+                txt_json=txt_json,
+            ))
+            wold(
+                w['idn'],
+                w['whn'],
+                None,
+                w['vrb'],
+                user=user_nit(w['sbj_lineage']),
+                text=txt_json,
+            )
+            jsonl(
+                w['idn'],
+                w['whn'],
+                user_jsonl(w['sbj_lineage']),
+                w['vrb'],
+                text=txt_json,
+            )
+        elif vrb_idn == monty_dict['IDN']['CAPTION']:
+            triple('caption({idn}, {author}, {txt_json}, {obj});'.format(
                 idn=w.get('idn', "IDN"),
                 author=author,
                 txt_json=txt_json,
                 obj=obj_render,
             ))
-        elif vrb == auth.lex.IDN.CONTRIBUTE:
-            lex_lines.append('contribute({idn}, {author}, {txt_json});'.format(
-                idn=w.get('idn', -1),
-                author=author,
-                txt_json=txt_json,
-            ))
-        elif vrb == auth.lex.IDN.EDIT:
-            lex_lines.append('edit({idn}, {author}, {txt_json}, {obj});'.format(
+            wold(
+                w['idn'],
+                w['whn'],
+                None,
+                w['vrb'],
+                user=user_nit(w['sbj_lineage']),
+                text=txt_json,
+                contribute=w['obj'],
+            )
+            jsonl(
+                w['idn'],
+                w['whn'],
+                user_jsonl(w['sbj_lineage']),
+                w['vrb'],
+                contribute=w['obj'],
+                text=txt_json,
+            )
+        elif vrb_idn == monty_dict['IDN']['EDIT']:
+            triple('edit({idn}, {author}, {txt_json}, {obj});'.format(
                 idn=w.get('idn', -1),
                 author=author,
                 txt_json=txt_json,
                 obj=obj_render,
             ))
-        elif vrb in category_idns:
-            lex_lines.append('{category_name}({idn}, {author}, {obj}, {num_as_idn});'.format(
-                category_name=category_name_from_idn.get(vrb, "unknown"),
+            wold(
+                w['idn'],
+                w['whn'],
+                None,
+                w['vrb'],
+                user=user_nit(w['sbj_lineage']),
+                text=txt_json,
+                contribute=render_string(w['obj']),
+            )
+            jsonl(
+                w['idn'],
+                w['whn'],
+                user_jsonl(w['sbj_lineage']),
+                w['vrb'],
+                contribute=w['obj'],
+                text=txt_json,
+            )
+        elif vrb_idn in category_idns:
+            triple('{category_name}({idn}, {author}, {obj}, {num_as_idn});'.format(
+                category_name=category_name_from_idn.get(vrb_idn, "unknown"),
                 idn=w.get('idn', -1),
                 author=author,
                 obj=obj_render,
                 num_as_idn=idn_render(num),   # rare case where num was an idn
             ))
-        elif vrb in interaction_idns:
+            wold(
+                w['idn'],
+                w['whn'],
+                None,
+                w['vrb'],
+                user=user_nit(w['sbj_lineage']),
+                contribute=render_string(w['obj']),
+                locus=render_string(w['num']),
+            )
+            # jsonl(
+            #     w['idn'],
+            #     w['whn'],
+            #     user_jsonl(w['sbj_lineage']),
+            #     w['vrb'],
+            #     contribute=render_string(w['obj']),
+            #     locus=render_string(w['num']),
+            # )
+            jsonl(
+                w['idn'],
+                w['whn'],
+                user_jsonl(w['sbj_lineage']),
+                IDN_REARRANGE,
+                contribute=render_string(w['obj']),
+                category=w['vrb'],
+                locus=render_string(w['num']),
+            )
+        elif vrb_idn in interact_idns:
+            interact_kwargs = dict()
+            if obj_idn is not None:
+                interact_kwargs['contribute'] = render_string(obj_idn)
             if num is None:
                 comma_num = ''
             elif is_whole(num):
                 comma_num = ", {:d}".format(num)
+                interact_kwargs['second'] = str(int(num))
             else:
                 comma_num = ", {:0.3f}".format(num)
-            lex_lines.append(
-                '{interaction_name}('
+                interact_kwargs['millisecond'] = str(int(round(num * 1000.0)))
+            if len(txt) != 0:
+                if vrb_idn == idn_bot:
+                    interact_kwargs['sequence'] = '[{idn_sequence},{idn_commas}]'.format(
+                        idn_sequence=IDN_SEQUENCE,
+                        idn_commas=txt,
+                    )
+                    # SEE:  sequence_nit() in unslumping.js where the sequence idn is also
+                    #       artificially prepended to the interact.bot sequence field.
+                else:
+                    interact_kwargs['text'] = render_string(txt)
+            triple(
+                '{interact_name}('
                     '{idn}, '
                     '{author}'
-                    '{comma_num}'
                     '{comma_obj}'
+                    '{comma_num}'
                     '{comma_txt}'
                 ');'.format(
-                    interaction_name=interaction_name_from_idn.get(vrb, "unknown"),
+                    interact_name=interact_word_from_idn.get(vrb_idn, {txt: "unknown"}).txt,
                     idn=w.get('idn', -1),
                     author=author,
                     comma_num=comma_num,
@@ -2130,41 +4482,88 @@ def meta_nits():
                     comma_txt=''   if len(txt) == 0   else   ', ' + txt_json,
                 )
             )
+            wold(
+                w['idn'],
+                w['whn'],
+                None,
+                w['vrb'],
+                user=user_nit(w['sbj_lineage']),
+                **interact_kwargs
+            )
+            jsonl(
+                w['idn'],
+                w['whn'],
+                user_jsonl(w['sbj_lineage']),
+                w['vrb'],
+                **interact_kwargs
+            )
+        elif vrb_idn == idn_iconify:
+            if w['sbj'] == idn_lex:
+                jsonl(
+                    w['idn'],
+                    w['whn'],
+                    w['sbj'],
+                    w['vrb'],
+                    url=w['txt'],
+                )
+            else:
+                '''Silently ignore other iconify words.'''
+                Auth.print("iconify", repr(w), repr(w['sbj_lineage']), repr(idn_lex))
         else:
-            print("Unexpected verb, idn", vrb)
+            Auth.print("Unexpected verb, idn", vrb_idn)
 
-    the_javascript = (
-        '{before_file}\n'
-        '{before_assign}{lex_variable_name} = qiki.Lex("{me_idn}");\n'
-        '\n'
-        '{define_lines}\n'
-        '\n'
-        '{user_lines}\n'
-        '\n'
-        '{category_lines}\n'
-        '\n'
-        '{interaction_lines}\n'
-        '\n'
-        '{lex_lines}\n'
-        '\n'
-        'c.{FINISHER_METHOD_NAME}();\n'
-        '\n'
-        '{after_file}\n'
-    ).format(
-        before_file=before_file,
-        before_assign=before_assign,
-        lex_variable_name=lex_variable_name,
-        me_idn=monty_dict['me_idn'],
-        define_lines=joiner(define_lines, before_assign, '', '\n'),
-        user_lines=joiner(user_lines, before_assign, '', '\n'),
-        category_lines=joiner(category_lines, before_assign, '', '\n'),
-        interaction_lines=joiner(interaction_lines, before_assign, '', '\n'),
-        lex_lines="\n".join(lex_lines),
-        after_file=after_file,
+    triple()
+    triple('{triple_global}.{FINISHER_METHOD_NAME}();'.format(
+        triple_global=triple_global,
         FINISHER_METHOD_NAME=FINISHER_METHOD_NAME,
-    )
+    ))
+    # nix('}')
 
-    return flask.Response(the_javascript, mimetype='application/javascript')
+    p.at("w", queries=auth.lex.query_count)
+
+    for _, one_word_json in sorted(jsonl_idn_line_pairs):
+        streamy(one_word_json)
+
+    p.at("sort", queries=auth.lex.query_count)
+
+    # the_javascript = (
+    #     '{before_file}\n'
+    #     '{stream_lines}\n'
+    #     '{after_file}\n'
+    # ).format(
+    #     before_file=before_file,
+    #     # before_assign=before_assign,
+    #     # lex_variable_name=lex_variable_name,
+    #     # me_idn=monty_dict['me_idn'],
+    #     # define_lines=joiner(define_lines, before_assign, '', '\n'),
+    #     # user_lines=joiner(user_lines, before_assign, '', '\n'),
+    #     # category_lines=joiner(category_lines, before_assign, '', '\n'),
+    #     # interact_lines=joiner(interact_lines, before_assign, '', '\n'),
+    #     # lex_lines="\n".join(lex_lines),
+    #     stream_lines='\n'.join(stream_lines),
+    #     after_file=after_file,
+    #     # FINISHER_METHOD_NAME=FINISHER_METHOD_NAME,
+    # )
+
+    the_javascript = before_file + ''.join(line + '\n' for line in stream_lines) + after_file
+
+    if is_argot_triple:
+        mimetype = MIME_TYPE_TRIPLE
+    elif is_argot_nix:
+        mimetype = MIME_TYPE_NIX
+    elif is_argot_jsonl:
+        mimetype = MIME_TYPE_JSONL
+    else:
+        mimetype = 'text/plain'
+    response = flask.Response(the_javascript, mimetype=mimetype)
+
+    p.at("resp", queries=auth.lex.query_count)
+    Auth.print("nits: ", p.report())
+    # EXAMPLE:  without interacts
+    #     meta nits auth .026s 5 queries;   find .296s 68 queries;   def .130s 13 queries;   w .056s;   resp .000s;   total .508s 86 queries
+    # EXAMPLE:  with interacts
+    #     meta nits auth .025s 5 queries;   find 1.203s 71 queries;   def .750s 13 queries;   w .760s;   resp .000s;   total 2.738s 89 queries
+    return response
 
 
 def joiner(things, prefix, suffix, between):
@@ -2196,9 +4595,10 @@ def meta_raw():
     auth = AuthFliki()
     if not auth.is_online:
         return "lex offline"
-    if auth.is_anonymous:
+    if not auth.is_authenticated:
         return auth.login_html()   # anonymous viewing not allowed, just show "login" link
-        # TODO:  Omit anonymous content for anonymous users (except their own).
+        # TODO:  Instead of rebuffing anonymous users, show them the content appropriate for
+        #        anonymous users:  i.e. exclude all anonymous content except their own.
 
     t_start = time.time()
     qc_start = auth.lex.query_count
@@ -2219,7 +4619,7 @@ def meta_raw():
     # response = valid_response('words', words)
     response_html = _valid_html_response('words', words)
     t_end = time.time()
-    print(
+    Auth.print(
         "RAW LEX,",
         auth.lex.query_count - qc_start, "queries,",
         len(words), "words,",
@@ -2254,7 +4654,7 @@ def slam_test():
     auth = AuthFliki()
     if not auth.is_online:
         return "lex offline"
-    if auth.is_anonymous:
+    if not auth.is_authenticated:
         return auth.login_html()   # anonymous viewing not allowed, just show "login" link
 
     slam_verb = auth.lex.verb('slam')
@@ -2404,6 +4804,7 @@ def meta_lex():
                     elif vrb_z == Z.USER_AGENT_TAG:
                         # ua = werkzeug.useragents.UserAgent(word.txt)
                         ua = werkzeug.user_agent.UserAgent(word.txt)
+                        # FIXME:  pip install ua-parser
                         # noinspection PyUnresolvedReferences
                         listing_log(
                             word.sbj,
@@ -2435,7 +4836,7 @@ def meta_lex():
     t_render = time.time()
     response = html.doctype_plus_html()
     t_end = time.time()
-    print(
+    Auth.print(
         "META LEX TIMING,",
         qc_find_words - qc_start,           # query count - find_words()
         qc_footer - qc_find_words,          # query count - word loop
@@ -2691,7 +5092,7 @@ if secure.credentials.Options.oembed_server_prefix is not None:
             else:
                 error = oembed_dict.get('error', "((for some reason))")
                 but_why = "Anyway noembed says: " + error
-            print("Unsupported", json.dumps(url), but_why)
+            Auth.print("Unsupported", json.dumps(url), but_why)
             return error_render(
                 message="{domain} - unsupported domain.  {but_why}".format(
                     domain=json.dumps(domain_from_url(url)),
@@ -2939,7 +5340,7 @@ def json_from_words(words):
     return json.dumps(
         dicts,
         allow_nan=False,
-        separators=(',', ':'),   # NOTE:  Less whitespace
+        separators=JSON_SEPARATORS_NO_SPACES,
     )
     # TODO:  try-except OverflowError if NaN or Infinity got into dicts somehow.
 
@@ -3096,32 +5497,50 @@ def ajax():
             return valid_response('oembed', oembed_dict)
 
         elif action == 'interact':
-            interaction_name = auth.form('name')   # e.g. MONTY.INTERACTION.PAUSE == 'pause'
-            interaction_obj = auth.form('obj')     # e.g. idn of a contribution
-            interaction_num = auth.form('num', default=1)     # e.g. 15 sec (video), 92 chars (text)
-            interaction_txt = auth.form('txt', default="")
-            interaction_verb = lex.define(lex.IDN.INTERACT, qiki.Text(interaction_name))
-            interaction_word = lex.create_word(
-                sbj=auth.qiki_user,
-                vrb=interaction_verb,
-                obj=qiki.Number(interaction_obj),
-                num=qiki.Number(interaction_num),
-                txt=qiki.Text(interaction_txt),
-                use_already=False,
-            )
-            etc = interaction_word.idn.qstring()
-            return valid_response()
+            interact_name = auth.form('name')   # e.g. MONTY.INTERACT.PAUSE == 'pause'
+            if interact_name in INTERACT_VERBS:
+                interact_obj = auth.form('obj')     # e.g. idn of a contribution
+                interact_num = auth.form('num', default=1)     # e.g. 15 sec (video), 92 chars (text)
+                interact_txt = auth.form('txt', default="")
+                interact_verb = lex.define(lex.IDN.INTERACT, qiki.Text(interact_name))
+                interact_word = lex.create_word(
+                    sbj=auth.qiki_user,
+                    vrb=interact_verb,
+                    obj=qiki.Number(interact_obj),
+                    num=qiki.Number(interact_num),
+                    txt=qiki.Text(interact_txt),
+                    use_already=False,
+                )
+                etc = interact_word.idn.qstring()
+                return valid_response()
+            else:
+                error_message = "Unrecognized interact " + repr(interact_name)
+                auth.print(error_message)
+                return invalid_response(error_message)
+
+        elif action == 'create_word':
+            vrb_name = auth.form('vrb_name')
+            sub_nits_json = auth.form('named_sub_nits')   # nits that follow idn,whn,user,vrb
+            sub_nits_dict = json.loads(sub_nits_json)
+            try:
+                word = FlikiWord.create_word_by_user(auth, vrb_name, sub_nits_dict)
+            except ValueError as e:
+                auth.print("CREATE WORD ERROR", type(e).__name__, auth.qiki_user.jsonl(), str(e))
+                return invalid_response("create_word error")
+            else:
+                return valid_response('jsonl', word.jsonl())
+
 
         else:
             return invalid_response("Unknown action " + action)
 
-    except (KeyError, IndexError, ValueError, qiki.word.LexMySQL.QueryError) as e:
+    except (KeyError, IndexError, ValueError, TypeError, qiki.word.LexMySQL.QueryError) as e:
         # EXAMPLE:  werkzeug.exceptions.BadRequestKeyError
         # EXAMPLE:  fliki.AuthFliki.FormVariableMissing
         # EXAMPLE:  qiki.word.LexSentence.CreateWordError
         # EXAMPLE:  qiki.word.LexMySQL.QueryError
 
-        print("AJAX ERROR", type_name(e), str(e))
+        auth.print("AJAX ERROR", type_name(e), str(e))
         traceback.print_exc()
         # EXAMPLE:  (request with no action, before Auth.form() was created)
         #     AJAX ERROR 400 Bad Request: The browser (or proxy) sent a request
@@ -3144,16 +5563,16 @@ def ajax():
         #     AuthFliki.FormVariableMissing: 'No form variable obj_idn'
         #     127.0.0.1 - - [17/Jun/2019 10:07:40] "POST /meta/ajax HTTP/1.1" 200 -
 
-        return invalid_response("request error")
+        return invalid_response("ajax error")
 
     finally:
         t_end = time.time()
         if auth is None or not auth.is_online:
-            print("AJAX CRASH, {t:.3f} sec".format(t=t_end - t_start))
+            Auth.print("AJAX CRASH, {t:.3f} sec".format(t=t_end - t_start))
         else:
             qc_end = auth.lex.query_count
             if ok_to_print:
-                print(
+                auth.print(
                     "Ajax {action}{etc}, {qc} queries, {t:.3f} sec".format(
                         action=repr(action),
                         etc=" " + etc   if etc is not None else   "",
@@ -3182,14 +5601,14 @@ def retry(exception_to_check, tries=4, delay=3, delay_multiplier=2):
     original from: https://wiki.python.org/moin/PythonDecoratorLibrary#Retry
 
     :param exception_to_check: the exception to check. may be a tuple of
-        exceptions to check
-    :type exception_to_check: Exception or tuple
+           exceptions to check
+     :type exception_to_check: Exception or tuple
     :param tries: number of times to try (not retry) before giving up
-    :type tries: int
+     :type tries: int
     :param delay: initial delay between retries in seconds
-    :type delay: int
+     :type delay: int
     :param delay_multiplier: delay multiplier e.g. 2 will double the delay each retry
-    :type delay_multiplier: int
+     :type delay_multiplier: int
     """
     # THANKS:  @retry use example, https://stackoverflow.com/a/9446765/673991
     def decorated_function(function_to_retry):
@@ -3201,7 +5620,7 @@ def retry(exception_to_check, tries=4, delay=3, delay_multiplier=2):
                 try:
                     return function_to_retry(*args, **kwargs)
                 except exception_to_check as e:
-                    print("{exception}, Retrying in {delay} seconds...".format(
+                    Auth.print("{exception}, Retrying in {delay} seconds...".format(
                         exception=str(e),
                         delay=delay_next,
                     ))
@@ -3248,7 +5667,7 @@ def json_get(url):
     try:
         response = _urlopen_with_retries(url)
     except urllib.error.URLError as e:
-        print("json_get gives up", str(e), url)
+        Auth.print("json_get gives up", str(e), url)
         return None
 
     with response:
@@ -3336,9 +5755,6 @@ def invalid_response(error_message):
     ))
 
 
-JSON_SEPARATORS_NO_SPACES = (',', ':')
-
-
 def json_encode(x, **kwargs):
     """ JSON encode a dict, including custom objects with a .to_json() method. """
     # TODO:  Support encoding list, etc.  ((WTF does this mean?  This works:  json.dumps([1,2,3])))
@@ -3408,7 +5824,7 @@ def fix_dict(thing):
 
 
 def version_report():
-    print((
+    Auth.print((
         "Fliki {yyyy_mmdd_hhmm_ss}" +
         " - " +
         "git {git_sha_10}" +
@@ -3432,9 +5848,15 @@ def version_report():
 
 
 if __name__ == '__main__':
-    '''Run locally, fliki.py spins up its own web server.'''
+    '''When fliki.py is run locally, it spins up its own web server.'''
+    FlikiWord.open_lex()
     flask_app.run(
         debug=True,
+
+        use_reloader=False,
+        # NOTE:  Disable automatic reload when code changes.
+        #        Also avoids running twice when clicking the re-run button.
+
         ssl_context=(
             secure.credentials.Options.path_public_key,
             secure.credentials.Options.path_private_key,
