@@ -284,7 +284,12 @@ class FlikiWord(qiki.nit.Nit):
     @classmethod
     def open_lex(cls):
         """
-        Initialize at start of runtime.  Compute FlikiWord.max_idn from the lex jsonl file.
+        Initialize at start of runtime.
+
+        Compute from the lex jsonl file:
+            FlikiWord.max_idn
+            FlikiWord.idn_of
+            FlikiWord.def_from_idn
         """
         # DONE:  Alternatives for custom-named word properties:
         #        word.obj_dict['property']
@@ -2135,6 +2140,8 @@ class LexFliki(qiki.LexMySQL):
 
 
 def connect_lex():
+
+
     try:
         lex = LexFliki()
     except LexFliki.ConnectError as e:
@@ -2152,7 +2159,7 @@ def static_code_url( relative_path, **kwargs):
     return static_url('code/' + relative_path, **kwargs)
 
 
-_ = WorkingIdns(connect_lex()).dictionary_of_ints()  # catch missing ".idn"
+_ = WorkingIdns(connect_lex()).dictionary_of_ints()   # catch missing ".idn"
 # TODO:  Remove this when nits rule.
 #        I think this was only done so the CANNOT CONNECT (to MySQL) error appeared
 #        when restarting.
@@ -2198,6 +2205,9 @@ class UNICODE(object):
 
 
 def setup_application_context():
+    FlikiWord.open_lex()
+
+
     if hasattr(flask.g, 'lex'):
         Auth.print("WHOOPS, ALREADY SETUP WITH A LEX")
 
@@ -5861,7 +5871,7 @@ def version_report():
 
 if __name__ == '__main__':
     '''When fliki.py is run locally, it spins up its own web server.'''
-    FlikiWord.open_lex()
+    # FlikiWord.open_lex()
     flask_app.run(
         debug=True,
 
