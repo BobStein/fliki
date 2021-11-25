@@ -261,7 +261,7 @@ class FlikiWord(qiki.nit.Nit):
 
     file_name = 'unslumping.lex.jsonl'
     # NOTE:  This could kinda sorta be basis for the URL of the lex,
-    #        which is also the bytes part of the lex's nit.
+    #        which is also the bytes part of the lex's "root" nit.
     # TODO:  Move this name to secure/credentials.py?
 
     max_idn = None
@@ -2138,7 +2138,7 @@ def connect_lex():
     try:
         lex = LexFliki()
     except LexFliki.ConnectError as e:
-        Auth.print("CANNOT CONNECT", str(e))
+        print("CANNOT CONNECT", str(e))
         return None
     else:
         return lex
@@ -2153,6 +2153,9 @@ def static_code_url( relative_path, **kwargs):
 
 
 _ = WorkingIdns(connect_lex()).dictionary_of_ints()  # catch missing ".idn"
+# TODO:  Remove this when nits rule.
+#        I think this was only done so the CANNOT CONNECT (to MySQL) error appeared
+#        when restarting.
 
 
 # IDN = WorkingIdns(connect_lex())   # TODO:  Call this only via WSGI, not test_fliki.py
@@ -3248,6 +3251,7 @@ def login():
                             obj=qiki_user,
                             txt=display_name,
                         )
+                        # TODO:  Nit record icon and name, only if they've changed
                         flask_login.login_user(flask_user)
                         return flask.redirect(get_then_url())
                         # TODO:  Why does Chrome put a # on the end of this URL (empty fragment)?
@@ -3289,9 +3293,9 @@ def url_var(url, key, default):
     If redundant values, gets the last.
 
     :param url: - e.g. 'https://example.com/?foo=bar'
-    :param key:                     - e.g. 'foo'
-    :param default:                     - e.g. 'bar'
-    :return:                            - e.g. 'bar'
+    :param key:                      - e.g. 'foo'
+    :param default:                      - e.g. 'bar'
+    :return:                             - e.g. 'bar'
     """
     # THANKS:  Parse URL query-string, http://stackoverflow.com/a/21584580/673991
     the_parts = urllib.parse.urlsplit(url)
@@ -3721,10 +3725,11 @@ def meta_nits():
         before_file - THIS STRING SHOULD END WITH A NEWLINE
         after_file
         before_assign
-        argot=triple (default)
+        argot=triple   (default)
         argot=nix
-        argot=jsonl
-        argot=nix,triple
+        argot=jsonl               (send file .lex.jsonl)
+        argot=jsonl&mysql_jsonl
+        argot=nix,triple   (example of multiple argots for comparison)
 
     Argot is the dialect of the output.
         triple - JavaScript or Python or maybe C code
@@ -5140,6 +5145,7 @@ def noembed_render(url, idn, matched_groups):
         html.body()
         # return html.doctype_plus_html()
         # HACK:  In case this helps instagram
+        #        (It didn't)
         html_response = html.doctype_plus_html()
         flask_response = flask.Response(html_response)
         # flask_response.headers['Cross-Origin-Resource-Policy'] = 'cross-origin'
@@ -5446,6 +5452,7 @@ def ajax():
             )
             if auth.may_create_word(new_word_kwargs):
                 new_word = lex.create_word(**new_word_kwargs)
+                # DONE:  Ported to nits, see action == 'create_word'
                 return valid_response('new_words', [new_word])
                 # TODO:  Maybe exclude txt form new_word to save bandwidth?
             else:
@@ -5467,8 +5474,10 @@ def ajax():
                 num=NUM_QOOL_VERB_NEW,
                 use_already=True,
             )
+            # TODO:  Nits for new qool verb.
             etc = new_verb.idn.qstring()
             return valid_response('idn', new_verb.idn.qstring())
+
 
         elif action == 'delete_verb':
             old_verb_idn = qiki.Number(auth.form('idn'))
@@ -5480,6 +5489,7 @@ def ajax():
                 num=NUM_QOOL_VERB_DELETE,
                 use_already=True,
             )
+            # TODO:  Nits for del qool verb.
             return valid_response('idn', old_verb_idn.qstring())
 
         # elif action == 'contribution_order':
@@ -5511,6 +5521,7 @@ def ajax():
                     txt=qiki.Text(interact_txt),
                     use_already=False,
                 )
+                # DONE:  Nit ported, see interact_new in js, and in py action == 'create_word'
                 etc = interact_word.idn.qstring()
                 return valid_response()
             else:
@@ -5741,6 +5752,7 @@ def _valid_html_response(name=None, value=None):
 
 def valid_response(name=None, value=None):
     # HACK:  In case this helps instagram
+    #        (It didn't)
     html_response = _valid_html_response(name, value)
     flask_response = flask.Response(html_response)
     # flask_response.headers['Cross-Origin-Resource-Policy'] = 'cross-origin'

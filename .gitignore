@@ -1,8 +1,14 @@
 # Local copies of CDN files only for PyCharm to be smarter.  (Mainly so Ctrl-B works.)
 local_cdn/
 
+# Server read/write data -- chown www-data or
+data/
+
 # Anachronistic code goes in the museum
 museum/
+
+# Experiments and one-off projects go in the workshop
+workshop/
 
 # Database credentials
 secure/

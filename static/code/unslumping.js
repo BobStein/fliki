@@ -2707,7 +2707,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
     }
 
     /**
-     * Convert user word's obj_values into named obj properties.
+     * Convert user word's obj_values into named obj properties.  Not specific to Contribution app.
      */
     ContributionsUnslump.prototype.word_resolve = function (w) {
         var that = this;
@@ -2727,14 +2727,10 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
             if (w.obj_values.length !== vrb_word.obj.fields.length) {
                 console.error(
                     w.idn.toString() + ".",
-                    "Field mismatch, verb",
-                    vrb_word.obj.name,
-                    "calls for",
-                    vrb_word.obj.fields,
-                    "but word",
-                    w.idn,
-                    "has",
-                    w.obj_values
+                    "Field mismatch, verb", vrb_word.obj.name,
+                    "calls for", vrb_word.obj.fields,
+                    "but word", w.idn,
+                    "has", w.obj_values
                 );
             } else {
                 w.obj = {};
@@ -2757,7 +2753,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
     }
 
     /**
-     * Pass consequences of a word into the DOM.  Specific to the Contribution application.
+     * Pass consequences of a (resolved) word into the DOM.  Specific to Contribution application.
      */
     ContributionsUnslump.prototype.word_handle = function (w) {
         var that = this;
