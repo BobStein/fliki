@@ -2204,8 +2204,14 @@ class UNICODE(object):
 # SEE:  http://stackoverflow.com/questions/3768895/how-to-make-a-class-json-serializable
 
 
+# very_first_request = True
+
+
 def setup_application_context():
-    FlikiWord.open_lex()
+    # global very_first_request
+    # if very_first_request:
+    #     very_first_request = False
+    #     FlikiWord.open_lex()
 
 
     if hasattr(flask.g, 'lex'):
@@ -2228,7 +2234,7 @@ def teardown_application_context(exc=None):
         if flask.g.is_online:
             flask.g.lex.disconnect()
             flask.g.pop('lex')
-    FlikiWord.close_lex()
+    # FlikiWord.close_lex()
     if exc is not None:
         Auth.print("teardown exception", type_name(exc), str(exc))
 
@@ -2759,6 +2765,95 @@ class Auth(object):
             ok = True
         return ok
 
+    def user_stuff(self):   # cls, auth, ip_address_txt, user_agent_txt):
+        ip_int = int(self.lex.IDN.IP_ADDRESS_TAG)
+        ua_int = int(self.lex.IDN.USER_AGENT_TAG)
+        lex_int = int(self.lex.IDN.LEX)
+        user_list = self.qiki_user.jsonl()
+
+        assert ip_int == FlikiWord.idn_of.ip_address, repr(FlikiWord.idn_of.ip_address)
+        assert ua_int == FlikiWord.idn_of.user_agent
+        assert lex_int == FlikiWord.idn_of.lex
+
+        ip_latest = None
+        ua_latest = None
+
+        # TODO:  Instead of the following loop,
+        #        maintain latest ip and ua for (at least some) users in memory
+
+        for each_word in FlikiWord.all_words():
+            # print("WORD", each_word.idn, each_word.sbj, each_word.vrb, each_word.obj_values, each_word.obj.to_dict())
+            if each_word.sbj == lex_int and each_word.obj.has('user') and each_word.obj.user == user_list:
+                if each_word.vrb == ip_int:
+                    ip_latest = each_word.obj.text
+                elif each_word.vrb == ua_int:
+                    ua_latest = each_word.obj.text
+            # EXAMPLE:
+            #     :
+            #     unresolved iconify {'idn': 133, 'whn': 1460029834816, 'sbj': 0, 'vrb': 1, 'obj': {'name': 'iconify', 'parent': 2, 'fields': [166, 203]}}
+            #     fields [166, 203]
+            #     RESOLVED user [167, '103620384189003122864']
+            #     RESOLVED url https://lh3.googleusercontent.com/a-/AOh14GhrEooRaagQh246ncMAtBotUwcgFk3zwXTK0ZTvSQ=s96-c
+            #     WORD 6665 0 133 [[167, '103620384189003122864'], 'https://lh3.googleusercontent.com/a-/AOh14GhrEooRaagQh246ncMAtBotUwcgFk3zwXTK0ZTvSQ=s96-c'] {'user': [167, '103620384189003122864'], 'url': 'https://lh3.googleusercontent.com/a-/AOh14GhrEooRaagQh246ncMAtBotUwcgFk3zwXTK0ZTvSQ=s96-c'}
+            #     :
+            #     unresolved rearrange {'idn': 202, 'whn': 1478212026436, 'sbj': 0, 'vrb': 1, 'obj': {'name': 'rearrange', 'parent': 2, 'fields': [1408, 1434, 201]}}
+            #     fields [1408, 1434, 201]
+            #     RESOLVED contribute 4748
+            #     RESOLVED category 1435
+            #     RESOLVED locus 7126
+            #     WORD 7524 [167, '103620384189003122864'] 202 [4748, 1435, 7126] {'contribute': 4748, 'category': 1435, 'locus': 7126}
+
+
+
+        # with cls.lock:
+        #     with open(cls.file_path(), newline=None) as f:
+        #         for word_json in f:
+        #             word_list = json.loads(word_json)
+        #             if len(word_list) >= 6:
+        #                 # print("WORD", repr(word_list))
+        #                 if word_list[2] == lex_int and word_list[4] == user_list:
+        #                     if word_list[3] == ip_int:
+        #                         ip_latest = word_list[5]
+        #                     elif word_list[3] == ua_int:
+        #                         ua_latest = word_list[5]
+
+        # print("user_stuff", ip_address_txt == ip_latest, user_agent_txt == ua_latest, ip_address_txt, user_agent_txt)
+        if not self.is_anonymous:
+            # NOTE:  Redundant to tag anonymous users with IP address
+            #        because it's part of their user idn.
+            if self.ip_address_txt != ip_latest:
+                Auth.print("Was", user_list, ip_latest)
+                ip_word = self.create_word_by_lex(ip_int, dict(user=user_list, text=self.ip_address_txt))
+                Auth.print(str(ip_word.idn) + ".", "User", ip_word.obj.user, "ip", ip_word.obj.text)
+        if self.user_agent_txt != ua_latest:
+            Auth.print("Was", user_list, ua_latest)
+            ua_word = self.create_word_by_lex(ua_int, dict(user=user_list, text=self.user_agent_txt))
+            Auth.print(str(ua_word.idn) + ".", "User", ua_word.obj.user, "ua", ua_word.obj.text)
+
+            # parsed = werkzeug.user_agent.UserAgent(w.obj['text'])
+            # print(
+            #     str(w.idn) + ".",
+            #     "User", w.obj['user'],
+            #     parsed.platform,
+            #     parsed.browser,
+            #     parsed.version,
+            # )
+            # NO THANKS:  https://tedboy.github.io/flask/generated/generated/werkzeug.UserAgent.html
+            # SEE:  No UA parsing, https://werkzeug.palletsprojects.com/en/2.0.x/utils/?highlight=user%20agent#useragent-parsing-deprecated   # noqa
+            # SEE:  UA parsing, https://github.com/ua-parser/uap-python
+
+    def create_word_by_lex(self, vrb_idn, obj_dictionary):
+        """Instantiate and store a sbj=lex word.   (Not a define word.)"""
+        assert vrb_idn != FlikiWord.idn_of.define, "Definitions must not result from outside events."
+        assert int(self.lex.IDN.LEX) == FlikiWord.idn_of.lex, repr(FlikiWord.idn_of.lex)
+        new_lex_word = FlikiWord(
+            sbj=FlikiWord.idn_of.lex,
+            vrb=vrb_idn,
+            **obj_dictionary
+        )
+        new_lex_word.stow()
+        return new_lex_word
+
 
 class Probe(object):
     """
@@ -2885,31 +2980,35 @@ class AuthFliki(Auth):
             self.browse_word = None
 
     def hit(self, path_str):
+        self.user_stuff()
+        self.create_word_by_lex(FlikiWord.idn_of.browse, dict(url=path_str))
+
         # path_str = flask.request.full_path
         # if path_str.startswith('/'):
         #     path_str = path_str[1 : ]
         #     # NOTE:  Strip leading slash so old hits still count
-        self.path_word = self.lex.define(
-            self.lex.IDN.PATH,
-            qiki.Text.decode_if_you_must(path_str)
-        )
-        # TODO:  Nit incarnation -- sbj=lex, vrb=define, obj=[path-noun, path-url]
-        self.browse_word = self.lex.create_word(
-            sbj=self.qiki_user,
-            vrb=self.session_verb,
-            obj=self.path_word,
-            use_already=False,
-        )
-        # TODO:  Nit incarnation -- sbj=lex, vrb=hit, obj=[user, path idn]
-        this_referrer = flask.request.referrer
-        if this_referrer is not None:
-            self.lex.create_word(
-                sbj=self.qiki_user,
-                vrb=self.lex.IDN.REFERRER,
-                obj=self.browse_word,
-                txt=qiki.Text.decode_if_you_must(this_referrer),
-                use_already=False,   # TODO:  Could be True?  obj should be unique.
-            )
+        #
+        # self.path_word = self.lex.define(
+        #     self.lex.IDN.PATH,
+        #     qiki.Text.decode_if_you_must(path_str)
+        # )
+        # # TODO:  Nit incarnation -- sbj=lex, vrb=define, obj=[path-noun, path-url]
+        # self.browse_word = self.lex.create_word(
+        #     sbj=self.qiki_user,
+        #     vrb=self.session_verb,
+        #     obj=self.path_word,
+        #     use_already=False,
+        # )
+        # # TODO:  Nit incarnation -- sbj=lex, vrb=hit, obj=[user, path idn]
+        # this_referrer = flask.request.referrer
+        # if this_referrer is not None:
+        #     self.lex.create_word(
+        #         sbj=self.qiki_user,
+        #         vrb=self.lex.IDN.REFERRER,
+        #         obj=self.browse_word,
+        #         txt=qiki.Text.decode_if_you_must(this_referrer),
+        #         use_already=False,   # TODO:  Could be True?  obj should be unique.
+        #     )
 
     SESSION_QSTRING = 'qiki_session_qstring'   # where we store the session verb's idn
     SESSION_UUID = 'qiki_session_uuid'   # where we store the session verb's idn
@@ -3610,7 +3709,15 @@ def unslumping_home(home_page_title):
                     \n''')
 
         t_stuff = time.time()
-        FlikiWord.user_stuff(auth, auth.ip_address_txt, auth.user_agent_txt)
+        # FlikiWord.user_stuff(auth, auth.ip_address_txt, auth.user_agent_txt)
+
+        if not auth.is_anonymous:
+            # NOTE:  Only record page hits for logged-in users.  This avoids all the bot hits
+            #        that I assume are doing happy benevolent DigitalOcean monitoring.
+            relative_url = flask.request.full_path.rstrip('?')
+            # THANKS:  Request url with query, https://stackoverflow.com/a/52131059/673991
+            auth.hit(relative_url)
+
         t_end = time.time()
         q_end = auth.lex.query_count
         Auth.print("unslumping home {q:d} queries, {t1:.3f} {t2:.3f} sec".format(
@@ -5561,7 +5668,7 @@ def ajax():
         # EXAMPLE:  qiki.word.LexSentence.CreateWordError
         # EXAMPLE:  qiki.word.LexMySQL.QueryError
 
-        auth.print("AJAX ERROR", type_name(e), str(e))
+        Auth.print("AJAX ERROR", type_name(e), str(e))
         traceback.print_exc()
         # EXAMPLE:  (request with no action, before Auth.form() was created)
         #     AJAX ERROR 400 Bad Request: The browser (or proxy) sent a request
@@ -5867,6 +5974,9 @@ def version_report():
     #     Fliki 2019.0603.1144.11, git e74a46d9ed, Python 2.7.15.candidate.1, Flask 1.0.3, qiki 0.0.1.2019.0603.0012.15
     #     Fliki 2019.0603.1133.40, git a34d72cdc6, Python 2.7.16.final.0, Flask 1.0.2, qiki 0.0.1.2019.0603.0012.15
     #     Fliki 2019.0822.0932.33 - git 379d8bcd48 - Python 3.7.3.final.0 - Flask 1.1.1 - qiki 0.0.1.2019.0728.1919.04
+
+
+FlikiWord.open_lex()
 
 
 if __name__ == '__main__':
