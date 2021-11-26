@@ -275,7 +275,7 @@ class FlikiWord(qiki.nit.Nit):
 
     MINIMUM_JSONL_ELEMENTS = 4   # Each word contains at a minimum:  idn, whn, sbj, vrb
     MAXIMUM_JSONL_CHARACTERS = 10000   # No word JSON string should be longer than this
-    VERBS_USERS_MAY_USE = {'contribute', 'caption', 'edit', 'rearrange'}.union(INTERACT_VERBS)
+    VERBS_USERS_MAY_USE = {'contribute', 'caption', 'edit', 'rearrange', 'browse'}.union(INTERACT_VERBS)
 
     @classmethod
     def file_path(cls):
@@ -675,6 +675,7 @@ class FlikiWord(qiki.nit.Nit):
                     else:
                         unused.remove(field.obj.name)
                         obj_dict[field.obj.name] = field_value
+                        # NOTE:  Dictionary is in vrb definition order, not caller-specified order.
                         # SEE:  Dictionary is ordered, https://stackoverflow.com/a/39537308/673991
                 if len(unused) > 0:
                     raise cls.CreateError(
@@ -2842,6 +2843,10 @@ class Auth(object):
             # SEE:  No UA parsing, https://werkzeug.palletsprojects.com/en/2.0.x/utils/?highlight=user%20agent#useragent-parsing-deprecated   # noqa
             # SEE:  UA parsing, https://github.com/ua-parser/uap-python
 
+    def create_word_by_user(self, vrb_name, obj_dictionary):
+        self.user_stuff()
+        return FlikiWord.create_word_by_user(self, vrb_name, obj_dictionary)
+
     def create_word_by_lex(self, vrb_idn, obj_dictionary):
         """Instantiate and store a sbj=lex word.   (Not a define word.)"""
         assert vrb_idn != FlikiWord.idn_of.define, "Definitions must not result from outside events."
@@ -2980,8 +2985,7 @@ class AuthFliki(Auth):
             self.browse_word = None
 
     def hit(self, path_str):
-        self.user_stuff()
-        self.create_word_by_lex(FlikiWord.idn_of.browse, dict(url=path_str))
+        self.create_word_by_user('browse', dict(url=path_str))
 
         # path_str = flask.request.full_path
         # if path_str.startswith('/'):
@@ -5651,7 +5655,8 @@ def ajax():
             sub_nits_json = auth.form('named_sub_nits')   # nits that follow idn,whn,user,vrb
             sub_nits_dict = json.loads(sub_nits_json)
             try:
-                word = FlikiWord.create_word_by_user(auth, vrb_name, sub_nits_dict)
+                # word = FlikiWord.create_word_by_user(auth, vrb_name, sub_nits_dict)
+                word = auth.create_word_by_user(vrb_name, sub_nits_dict)
             except ValueError as e:
                 auth.print("CREATE WORD ERROR", type(e).__name__, auth.qiki_user.jsonl(), str(e))
                 return invalid_response("create_word error")
