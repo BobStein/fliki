@@ -3925,7 +3925,8 @@ def meta_nits():
             return None
 
     # interact_idns = [int(auth.lex[n].idn) for n in INTERACT_VERBS]
-    interact_idns = [int_from_name(n) for n in INTERACT_VERBS]
+    interact_idns_and_nones = [int_from_name(n) for n in INTERACT_VERBS]
+    interact_idns = [i for i in interact_idns_and_nones if i is not None]
     interact_word_from_idn = {int(idn): auth.lex[idn] for idn in interact_idns}
     extra_verb_idns = interact_idns + [
         # idn_iconify,
