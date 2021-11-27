@@ -955,7 +955,7 @@ class FlikiWord(qiki.nit.Nit):
             except OSError as e:
                 raise cls.ReadError("OS {file} line {line}\n    {e}".format(
                     file=cls.file_name,
-                    line=repr(line_number),
+                    line=repr(line_number),   # may be None
                     e=str(e),
                 )) from e
 
@@ -3720,6 +3720,7 @@ def unslumping_home(home_page_title):
             #        that I assume are doing happy benevolent DigitalOcean monitoring.
             relative_url = flask.request.full_path.rstrip('?')
             # THANKS:  Request url with query, https://stackoverflow.com/a/52131059/673991
+            # THANKS:  Parts of request url, https://stackoverflow.com/a/15975041/673991
             auth.hit(relative_url)
 
         t_end = time.time()
@@ -3916,8 +3917,15 @@ def meta_nits():
     idn_bot = int(auth.lex['bot'].idn)
     idn_iconify = int(auth.lex['iconify'].idn)
 
+    def int_from_name(name):
+        """Safe conversion because fun.unslumping.org never defined 'pause'."""
+        try:
+            return int(auth.lex[name].idn)
+        except ValueError:
+            return None
 
-    interact_idns = [int(auth.lex[n].idn) for n in INTERACT_VERBS]
+    # interact_idns = [int(auth.lex[n].idn) for n in INTERACT_VERBS]
+    interact_idns = [int_from_name(n) for n in INTERACT_VERBS]
     interact_word_from_idn = {int(idn): auth.lex[idn] for idn in interact_idns}
     extra_verb_idns = interact_idns + [
         # idn_iconify,
