@@ -269,12 +269,12 @@ class FlikiWord(qiki.nit.Nit):
     lock = None
 
     # NOTE:  The following are fleshed out by FlikiWord.open_lex()
-    def_from_idn = dict()
+    by_idn = dict()
     idn_of = NamedElements()
     _vrb_from_idn = None
 
     MINIMUM_JSONL_ELEMENTS = 4   # Each word contains at a minimum:  idn, whn, sbj, vrb
-    MAXIMUM_JSONL_CHARACTERS = 10000   # No word JSON string should be longer than this
+    MAXIMUM_JSONL_CHARACTERS = 10000   # No word's JSON string should be longer than this
     VERBS_USERS_MAY_USE = {'contribute', 'caption', 'edit', 'rearrange', 'browse'}.union(INTERACT_VERBS)
 
     @classmethod
@@ -289,13 +289,8 @@ class FlikiWord(qiki.nit.Nit):
         Compute from the lex jsonl file:
             FlikiWord.max_idn
             FlikiWord.idn_of
-            FlikiWord.def_from_idn
+            FlikiWord.by_idn
         """
-        # DONE:  Alternatives for custom-named word properties:
-        #        word.obj_dict['property']
-        #        word.property
-        #        word.o.property
-        #        word.obj.property   <== this
         p = Probe()
         cls.lock = threading.Lock()
 
@@ -323,7 +318,7 @@ class FlikiWord(qiki.nit.Nit):
             cls.lines_in_file = 0
             prev_idn = None
             word = None
-            for word in cls.all_words_unresolved():   # pass 2:  idn_of, def_from_idn, max_idn, lines_in_file
+            for word in cls.all_words_unresolved():   # pass 2:  idn_of, by_idn, max_idn, lines_in_file
                 cls.lines_in_file += 1
                 if word.sbj == idn_lex and word.vrb == idn_define:
                     word.resolve_and_remember_definition()
@@ -342,12 +337,12 @@ class FlikiWord(qiki.nit.Nit):
             p.at("def")
 
             word = None
-            for word in cls.def_from_idn.values():   # resolve lex-defined fields
+            for word in cls.by_idn.values():   # resolve lex-defined fields
                 word.resolve()
 
             word = None
-            for word in cls.def_from_idn.values():   # validate lex-defined fields
-                word.validate_fields()   # TODO:  validate_field_definition...s()
+            for word in cls.by_idn.values():   # validate lex-defined fields
+                word.validate_lex_definition()
 
             p.at("DEF")
 
@@ -363,8 +358,7 @@ class FlikiWord(qiki.nit.Nit):
             for word in cls.all_words_unresolved():   # pass 4:  Take a swing at resolving all user words
                 if not word.is_definition():
                     word.resolve()
-                    # word.validate_fields(lambda idn: cls._vrb_from_idn[idn])
-                    word.validate_fields(cls.vrb_from_idn)   # TODO:  validate_field_reference...s()
+                    word.validate_not_lex_definition(cls.vrb_from_idn)
 
             p.at("REF")
 
@@ -382,140 +376,6 @@ class FlikiWord(qiki.nit.Nit):
                     e=str(e),
                 )) from e
         else:
-
-            # define_word.obj.add(
-            #     'parent',
-            #     cls.definition_from_idn[define_word.obj.remove('parent')]
-            # )
-            # # NOTE:  Now define_word.obj.parent is itself a define word.
-            # NOPE!
-
-            # if len(define_word.obj_values) == 0:
-            #     '''That's cool, this definition has no fields'''
-            # elif len(define_word.obj_values) == 1:
-            #     define_word.obj.add(
-            #         'fields',
-            #         # define_word.obj_values
-            #         define_word.obj_values[0]
-            #     )
-            #     define_word.obj_values = []
-            #
-            #
-            # else:
-            #     print(
-            #         "Definition idn",
-            #         define_word.idn,
-            #         "line",
-            #         define_word.line_number,
-            #         "should have 0 or 1 obj nits",
-            #         define_word.obj_values
-            #     )
-            #     return False
-
-            # NOTE:  Now each define_word.obj.fields SHOULD BE an array of field idns.
-
-            # if len(define_word.obj.fields) == 0:
-            #     parameter_report = ""
-            # else:
-            #     parameter_report = "(" + ", ".join(f.obj.name for f in define_word.obj.fields) + ")"
-            # print(
-            #     str(define_word.idn) + ".",
-            #     define_word.obj.parent.obj.name,
-            #     define_word.obj.name.upper() + parameter_report
-            # )
-            # EXAMPLE:  202. noun REARRANGE(contribute, category, locus)
-
-            # each_word = None
-            # try:
-            #     pass
-            #     # for each_word in cls.def_from_idn.values():   # resolve define_word fields
-            #     #     each_word.resolve()
-            #     # each_word = None
-            #     # for each_word in cls.def_from_idn.values():   # validate define_word fields
-            #     #     each_word.validate_fields()
-            #     # each_word = None
-            #     # for each_word in cls.all_words_unresolved():   # pass 3:  Take a swing at resolving all user words
-            #     #     if not each_word.is_definition():
-            #     #         each_word.resolve()
-            #     #         each_word.validate_fields()
-            # except ValueError as e:
-            #     if each_word is None:
-            #         raise
-            #     else:
-            #         raise cls.WordError("{file} line {line_number}".format(
-            #             file=cls.file_name,
-            #             line_number=each_word.line_number
-            #         )) from e
-
-            # print("idn_of", cls.idn_of)
-            # EXAMPLE:  idn_of {'lex': 0, 'define': 1, 'noun': 2, ..., 'unbot': 3714}
-            # print("definition_from_idn", json_pretty({k: v.to_dict() for k, v in cls.definition_from_idn.items()}))
-            # EXAMPLE:
-            #     definition_from_idn {
-            #         :
-            #         "202":{
-            #             "fields":[
-            #                 1408,
-            #                 1434,
-            #                 201
-            #             ],
-            #             "idn":202,
-            #             "name":"rearrange",
-            #             "parent":2,
-            #             "sbj":0,
-            #             "vrb":1,
-            #             "whn":1478212026436
-            #         },
-            #         :
-            #     }
-
-
-
-
-
-
-            #     with open(cls.file_path(), newline=None) as f:
-            #         # SEE:  (my answer) no newlines, https://stackoverflow.com/a/32589529/673991
-            #         cls.max_idn = 0
-            #         cls.lines_in_file = 0
-            #         prev_idn = None
-            #         for line_json in f:
-            #             cls.lines_in_file += 1
-            #             if len(line_json) > 0:
-            #                 try:
-            #                     line_list = json.loads(line_json)
-            #                 except json.JSONDecodeError:
-            #                     print("CANNOT DECODE LINE", cls.lines_in_file, "-", repr(line_json))
-            #                     return False
-            #                 else:
-            #                     if (
-            #                         isinstance(line_list, list) and
-            #                         len(line_list) > 1 and
-            #                         isinstance(line_list[0], int)
-            #                     ):
-            #                         line_idn = line_list[0]
-            #                         if cls.max_idn < line_idn:
-            #                             cls.max_idn = line_idn
-            #                         if prev_idn is not None and line_idn <= prev_idn:
-            #                             print(
-            #                                 "IDN OUT OF ORDER:  after", prev_idn, "is", line_idn,
-            #                                 "on line", cls.lines_in_file
-            #                             )
-            #                             # NOTE:  Out of order IDNs is not a fatal error.
-            #                             # TODO:  Duplicate IDNs should be a fatal error.
-            #                         prev_idn = line_idn
-            #                     else:
-            #                         print("MALFORMED LINE", cls.lines_in_file, "-", repr(line_json))
-            #                         return False
-            # except OSError:
-            #     print("CANNOT OPEN", cls.file_path())
-            #     return False
-
-
-
-
-
-
             Auth.print(
                 "Scanned",
                 cls.lines_in_file, "lines,",
@@ -580,13 +440,53 @@ class FlikiWord(qiki.nit.Nit):
                 )
             )
         self.idn_of.add(self.obj.name, self.idn)
-        self.def_from_idn[self.idn] = self
+        self.by_idn[self.idn] = self
+        self.check_forward_definition()
 
+    def check_forward_definition(self):
+        self.check_forward_referent(self.obj.parent, "parent")
+        for index_field_1_based, idn_field in enumerate(self.obj.fields, start=1):
+            # THANKS:  1-based enumeration, https://stackoverflow.com/a/28072982/673991
+            self.check_forward_referent(idn_field, "field {index_field}/{num_field}".format(
+                index_field=index_field_1_based,
+                num_field=len(self.obj.fields),
+            ))
+
+    def check_forward_referent(self, idn_referent, description):
+        if idn_referent == self.idn:
+            '''
+            A word may refer to itself.  Fundamental definitions do this:  
+            lex, define, noun, text, integer, sequence.
+            '''
+            # print(
+            #     "Self reference:  "
+            #     "{name_defined} (word {idn_defined}) -- "
+            #     "{description} refers to itself".format(
+            #         idn_defined=self.idn,
+            #         name_defined=self.obj.name,
+            #         description=description,
+            #     )
+            # )
+            # EXAMPLE:  Self reference:  sequence (word 198) -- parent refers to itself
+        elif idn_referent > self.idn:
+            print(
+                "Forward definition:  "
+                "{name_defined} (word {idn_defined}) -- "
+                "{description} refers to word {idn_referent}".format(
+                    idn_defined=self.idn,
+                    name_defined=self.obj.name,
+                    idn_referent=idn_referent,
+                    description=description,
+                )
+            )
 
     @classmethod
     def create_word_by_lex(cls, auth, vrb_idn, obj_dictionary):
         """Instantiate and store a sbj=lex word.   (Not a define word.)"""
-        assert vrb_idn != cls.idn_of.define, "Definitions must not result from outside events."
+        assert vrb_idn != cls.idn_of.define, (
+            "Definitions must not result from outside events. " +
+            cls.repr_limited(obj_dictionary)
+        )
         assert int(auth.lex.IDN.LEX) == cls.idn_of.lex, repr(cls.idn_of.lex)
         new_lex_word = cls(
             sbj=cls.idn_of.lex,
@@ -608,42 +508,6 @@ class FlikiWord(qiki.nit.Nit):
         :param vrb_name: - NAME of the verb, not it's idn.  Disallowed verb is a CreateError.
         :param sub_nit_dict: - named sub-nits.  Wrong or missing names is a CreateError.
         """
-
-
-
-
-
-
-        # try:
-        #     extractor_function = cls.sub_nit_extractor[vrb_name]
-        # except KeyError:
-        #     raise cls.CreateError("Cannot create a word with verb " + repr(vrb_name))
-        # else:
-        #     # vrb_idn = auth.idn_from_name(vrb_name)
-        #     unused_sub_nits = copy.deepcopy(sub_nit_dict)
-        #
-        #     def field_getter(field_name):
-        #         return unused_sub_nits.pop(field_name)
-        #
-        #     try:
-        #         obj_dictionary = extractor_function(field_getter)
-        #     except KeyError as e:
-        #         # NOTE:  This happens if the sub_nit_extractor[vrb_name] function asks for a
-        #         #        field_name that the browser didn't supply.
-        #         #        It could also happen if the extractor asked for the same field twice,
-        #         #        but we trust it not to do dumb stuff like that.
-        #         raise cls.CreateError(
-        #             "Underspecified {vrb_name} - {error_message}".format(
-        #                 vrb_name=vrb_name,
-        #                 error_message=str(e),
-        #             )
-        #         )
-        #     else:
-
-
-
-
-
         # TODO:  The following code looks eerily similar to that of
         #        .resolve() and .validate...() methods.  D.R.Y. somehow?
         #        Maybe a better encapsulation of fields and resolving?
@@ -655,14 +519,14 @@ class FlikiWord(qiki.nit.Nit):
         else:
             try:
                 vrb_idn = cls.idn_of.get(vrb_name)
-                vrb = cls.def_from_idn[vrb_idn]
+                vrb = cls.by_idn[vrb_idn]
             except KeyError as e:
                 raise cls.CreateError("Cannot create a word with verb " + repr(vrb_name)) from e
             else:
                 unused = set(sub_nit_dict.keys())
                 obj_dict = dict()
                 for field_idn in vrb.obj.fields:
-                    field = cls.def_from_idn[field_idn]
+                    field = cls.by_idn[field_idn]
                     try:
                         field_value = sub_nit_dict[field.obj.name]
                     except KeyError as e:
@@ -692,8 +556,8 @@ class FlikiWord(qiki.nit.Nit):
                     )
                     word.vrb_name = vrb_name
 
-                    Auth.print("ABOUT TO VALIDATE", repr(word))
-                    word.validate_fields(cls.vrb_from_idn)
+                    # Auth.print("ABOUT TO VALIDATE", repr(word))
+                    word.validate_not_lex_definition(cls.vrb_from_idn)
                     # NOTE:  Browser-created words are already resolved.  That is, fields are named.
                     # NOTE:  validate before stow, so invalid words don't get into the file.
                     # NOTE:  idn-to-vrb mapping is used to validate user-word idns.
@@ -713,7 +577,6 @@ class FlikiWord(qiki.nit.Nit):
         Generate the idn and whn parts of the nit.  The caller already supplied sbj (user), vrb,
         and the other sub-nits when the word was instantiated.
         """
-        # p = Probe()
         self.idn = idn
         self.whn = whn
         self.sbj = sbj
@@ -722,32 +585,12 @@ class FlikiWord(qiki.nit.Nit):
         self.obj = NamedElements(obj_dict)
         self.line_number = None
 
-        #     word_nit_json = json_encode(self)
-        #     try:
-        #         with open(self.file_path(), 'a') as f:
-        #             f.write(word_nit_json + '\n')
-        #     except OSError as e:
-        #         raise self.StorageError(str(e))
-        #     else:
-        #         # TODO:  Open file in open_lex().  Close in close_lex().  Flush here.
-        #         #        More efficient.
-        #         FlikiWord.max_idn = self.idn
-        #         FlikiWord.lines_in_file += 1
-        # # TODO:  Broadcast the new word to other users who are long-polling for it.
-
-        # print("Stowed nit", word_nit_json)
-        # EXAMPLE:  Stowed nit [7519,1633730345229,[167,"103620384189003122864"],202,1911,1435,7515]
-
-        # print("Stowed word", json_pretty(self.to_dict()))
-        # EXAMPLE:  Stowed word {"idn":7519,"whn":1633730345229,"sbj":[167,"103620384189003122864"],
-        #           "vrb":202,"c...(25 more characters)...":1435,"locus":7515}
-
-        # p.at("writ")
-        # print(str(self.idn) + ".", self.vrb_name, "stowed --", p.report())
-        # EXAMPLE:  7521. rearrange stowed writ .001s or .000s
-
     def name_an_obj(self, field_index_0_based, name):
-        """Name an unresolved obj.  Move it from the .obj_values[] to the .obj named elements."""
+        """
+        Name an unresolved obj.
+
+        Copy it from the numbered .obj_values array, to the named .obj associative array.
+        """
         try:
             self.obj.add(name, self.obj_values[field_index_0_based])
         except IndexError as e:
@@ -853,7 +696,6 @@ class FlikiWord(qiki.nit.Nit):
             lines_in_file
             _vrb_from_idn
         """
-        # p = Probe()
         with FlikiWord.lock:
             self.idn = FlikiWord.max_idn + 1
             self.whn = self.milliseconds_since_1970_utc()
@@ -949,7 +791,7 @@ class FlikiWord(qiki.nit.Nit):
                                     raise cls.ReadError(
                                         "Malformed line {line_number} - {line}".format(
                                             line_number=line_number,
-                                            line=cls.limited_repr(word_json)
+                                            line=cls.repr_limited(word_json)
                                         )
                                     )
             except OSError as e:
@@ -969,13 +811,6 @@ class FlikiWord(qiki.nit.Nit):
         for each_word in cls.all_words_unresolved():
             each_word.resolve()
             yield each_word
-
-            # try:
-            #     each_word.resolve()
-            # except cls.FieldMismatch as e:
-            #     print("FIELD MISMATCH", str(e))
-
-
 
     def is_definition(self):
         return self.sbj == self.idn_of.lex and self.vrb == self.idn_of.define
@@ -999,7 +834,7 @@ class FlikiWord(qiki.nit.Nit):
         For a definition word
         """
         try:
-            vrb = self.def_from_idn[self.vrb]
+            vrb = self.by_idn[self.vrb]
         except KeyError as e:
             raise self.FieldError("Word {idn} has an undefined verb {vrb_idn}".format(
                 idn=self.idn,
@@ -1007,23 +842,7 @@ class FlikiWord(qiki.nit.Nit):
             )) from e
         else:
             if self.is_definition():
-                pass
-                # if len(self.obj_values) == 0:
-                #     '''That's cool, this definition has no fields.  Or it was resolved already.'''
-                #     # self.obj.add('fields', [])
-                # elif len(self.obj_values) == 1:
-                #     # list_of_field_definition_idns = self.obj_values[0]
-                #     # self.obj.add('fields', list_of_field_definition_idns)
-                #     # # TODO:  Should fields sub-nit have some special value for its .bytes?
-                #     # self.obj_values = []
-                # else:
-                #     raise self.FieldError(
-                #         "Definition idn {idn} should have 0 or 1 obj values, "
-                #         "not {obj_values}".format(
-                #             idn=self.idn,
-                #             obj_values=self.obj_values,
-                #         )
-                #     )
+                '''Definition words don't need resolving.  For one thing they have no fields.'''
             else:
                 num_fields_vrb_expected = len(vrb.obj.fields)
                 num_fields_obj_actual = len(self.obj_values)
@@ -1034,127 +853,126 @@ class FlikiWord(qiki.nit.Nit):
                         "{n_vrb} fields ({vrb_names})".format(
                             idn=self.idn,
                             n_obj=num_fields_obj_actual,
-                            obj_values=self.limited_repr(self.obj_values),
+                            obj_values=self.repr_limited(self.obj_values),
                             n_vrb=num_fields_vrb_expected,
-                            vrb_names=",".join(self.def_from_idn[f].obj.name for f in vrb.obj.fields),
+                            vrb_names=",".join(self.by_idn[f].obj.name for f in vrb.obj.fields),
                             vrb_name=vrb.obj.name,
                         )
                     )
                 for field_idn, field_value in zip(vrb.obj.fields, self.obj_values):
-                    field_definition = self.def_from_idn[field_idn]
+                    field_definition = self.by_idn[field_idn]
                     self.obj.add(field_definition.obj.name, field_value)
+                    # TODO:  Use .name_an_obj().  Or D.R.Y. up the call to self.obj.add() there.
                 self.obj_values = []
 
-                # # print("unresolved", vrb.obj.name, vrb.to_dict())
-                # if vrb.obj.has('fields') and len(vrb.obj.fields) > 0:
-                #     # print("fields", vrb.obj.fields)
-                #     if len(vrb.obj.fields) == len(self.obj_values):
-                #         for field_index, (field_idn, field_value) in enumerate(
-                #             zip(vrb.obj.fields, self.obj_values)
-                #         ):
-                #             pass
 
+    def validate_lex_definition(self):
+        """
+        Check resolved lex definition for consistency.
 
-    def validate_fields(self, vrb_from_idn_lookup=None):
-        """Check field definitions and references for consistency in a resolved word."""
-
-
+        Expect this word to have:  parent, name, fields.
+        """
         # NOTE:  self.idn was already validated in all_words_unresolved()
         # NOTE:  self.whn was already validated in all_words_unresolved()
         # NOTE:  self.sbj is validated below, after we know it's not a lex-definition word
         # NOTE:  self.vrb was already validated in resolve()
 
+        if isinstance(self.obj.fields, list):
+            for field_index_1_based, field_idn in enumerate(self.obj.fields, start=1):
+                try:
+                    self.validate_field_definition(field_idn)
+                except self.FieldError as e:
+                    field_ordinal = "field {i} of {n}".format(
+                        i=field_index_1_based,
+                        n=len(self.obj.fields)
+                    )
+                    raise self.FieldError(
+                        "{name} definition (idn {idn}) "
+                        "{field_ordinal} in {fields}\n"
+                        "    {e}".format(
+                            name=self.obj.name,
+                            idn=self.idn,
+                            field_ordinal=field_ordinal,
+                            fields=repr(self.obj.fields),
+                            e=str(e),
+                        )
+                    ) from e
+                    # THANKS:  amend exception, https://stackoverflow.com/a/29442282/673991
+                    #          (In this case the definition name and idn and field index
+                    #          are known here, but they won't be known to
+                    #          validate_field_definition() if it raises an exception.)
+        else:
+            raise self.FieldError(
+                "Definition {idn} fields should be a list, not {fields}".format(
+                    idn=self.idn,
+                    fields=repr(self.obj.fields),
+                ))
+
+    def validate_not_lex_definition(self, vrb_from_idn_lookup=None):
+        """
+        Check a resolved word parts for consistency, especially field references.
+
+        Checks user words.
+        Checks lex words that are not definitions,
+            e.g. when the lex tags a user with their latest user agent.
+        Not for checking lex definitions.
+        """
+
         if not self.is_resolved():
             raise self.FieldError("Cannot validate unresolved word {word}".format(word=repr(self)))
 
-        if self.is_definition():
-            # NOTE:  A definition word always specifies a parent definition and a name.
-            #        A verb definition may also specify fields that derived words will have.
-            if isinstance(self.obj.fields, list):
-                for field_index, field_idn in enumerate(self.obj.fields):
-                    try:
-                        self.validate_field_definition(field_idn)
-                    except self.FieldError as e:
-                        field_ordinal = "field {i} of {n}".format(
-                            i=field_index + 1,
-                            n=len(self.obj.fields)
-                        )
-                        raise self.FieldError(
-                            "{name} definition (idn {idn}) "
-                            "{field_ordinal} in {fields}\n"
-                            "    {e}".format(
-                                name=self.obj.name,
-                                idn=self.idn,
-                                field_ordinal=field_ordinal,
-                                fields=repr(self.obj.fields),
-                                e=str(e),
-                            )
-                        ) from e
-                        # THANKS:  amend exception, https://stackoverflow.com/a/29442282/673991
-            else:
-                raise self.FieldError(
-                    "Definition {idn} fields should be a list, not {fields}".format(
-                        idn=self.idn,
-                        fields=repr(self.obj.fields),
-                    ))
+        self.validate_sbj()
+        vrb = self.validated_vrb()
 
-        else:
-            self.validate_sbj()
-            vrb = self.validated_vrb()
-
-            # NOTE:  The following rechecks for consistency between this word's actual named
-            #        (i.e. resolved) obj fields and what's expected by virtue of this word's vrb.
-            #        This was already done by .resolve() but is done also here for two reasons.
-            #        1. In case .resolve() didn't convert unnamed to named objs correctly.
-            #        2. Browser-origin words don't pass through .resolve().  They come through some
-            #           resolve-like code in .create_word_by_user() which has over-specify and
-            #           under-specify exceptions of its own, but we recheck them here.
-            #           That function whines about it's repetition of .resolve() code, so here's
-            #           some more whining about that.
-            num_fields_vrb_expected = len(vrb.obj.fields)
-            num_fields_obj_actual = len(self.obj.to_values())
-            if num_fields_obj_actual != num_fields_vrb_expected:
-                raise self.FieldError(
-                    "Word {idn} has {n_obj} fields {obj_names}, "
-                    "but a {vrb_name} word is supposed to have "
-                    "{n_vrb} fields ({vrb_names})".format(
-                        idn=self.idn,
-                        n_obj=num_fields_obj_actual,
-                        obj_names=self.obj.names(),
-                        n_vrb=num_fields_vrb_expected,
-                        vrb_names=",".join(self.def_from_idn[f].obj.name for f in vrb.obj.fields),
-                        vrb_name=vrb.obj.name,
-                    )
+        # NOTE:  The following rechecks for consistency between this word's actual named
+        #        (i.e. resolved) obj fields and what's expected by virtue of this word's vrb.
+        #        This was already done by .resolve() but is done also here for two reasons.
+        #        1. In case .resolve() didn't convert unnamed to named objs correctly.
+        #        2. Browser-origin words don't pass through .resolve().  They come through some
+        #           resolve-like code in .create_word_by_user() which has over-specify and
+        #           under-specify exceptions of its own, but we recheck them here.
+        #           That function whines about it's repetition of .resolve() code, so here's
+        #           some more whining about that.
+        num_fields_vrb_expected = len(vrb.obj.fields)
+        num_fields_obj_actual = len(self.obj.to_values())
+        if num_fields_obj_actual != num_fields_vrb_expected:
+            raise self.FieldError(
+                "Word {idn} has {n_obj} fields {obj_names}, "
+                "but a {vrb_name} word is supposed to have "
+                "{n_vrb} fields ({vrb_names})".format(
+                    idn=self.idn,
+                    n_obj=num_fields_obj_actual,
+                    obj_names=self.obj.names(),
+                    n_vrb=num_fields_vrb_expected,
+                    vrb_names=",".join(self.by_idn[f].obj.name for f in vrb.obj.fields),
+                    vrb_name=vrb.obj.name,
                 )
+            )
 
-            for field_index, (field_idn, field_value) in enumerate(
-                zip(vrb.obj.fields, self.obj.to_values())
-            ):
-                # NOTE:  field_index is the key to two arrays,
-                #            field definition array of idns pointing to definitions, and the
-                #            field reference array of values, e.g. idn pointing to a user word
-                #        field_idn is the value from the def array, which is the idn of the
-                #            definition that says what type the field value should be
-                #        field_value is the value from the ref array, could be idn, text, array
-                field_ordinal = "field {i} of {n}".format(
-                    i=field_index + 1,
-                    n=len(vrb.obj.fields)
-                )
-                try:
-                    self.validate_field_reference(field_idn, field_value, vrb_from_idn_lookup)
-                except self.FieldError as e:
-                    # raise self.FieldError("{name} definition {idn} {field_ordinal}".format(
-                    #     name=self.obj.name,
-                    #     idn=self.idn,
-                    #     field_ordinal=field_ordinal,
-                    #     # )).with_traceback(e.__traceback__)
-                    # )) from e
-                    raise self.FieldError("{name} word {idn}, {field_ordinal}\n    {e}".format(
-                        name=vrb.obj.name,
-                        idn=self.idn,
-                        field_ordinal=field_ordinal,
-                        e=str(e),
-                    )) from e
+        for (field_index_1_based, (field_idn, field_value)) in (
+            enumerate(zip(vrb.obj.fields, self.obj.to_values()), start=1)
+        ):
+            # NOTE:  field_index 0-based is the key to two arrays,
+            #            field definition - array of idns pointing to definitions
+            #                               This array is in the definition for the verb,
+            #                               and specified the type of each field.
+            #            field reference - array of unresolved (unnamed) obj parts of each word.
+            #        field_idn is the value from the def array, which is the idn of the
+            #            definition that says what type the field value should be
+            #        field_value is the value from the ref array, could be idn, text, array
+            field_ordinal = "field {i} of {n}".format(
+                i=field_index_1_based,
+                n=len(vrb.obj.fields)
+            )
+            try:
+                self.validate_field_reference(field_idn, field_value, vrb_from_idn_lookup)
+            except self.FieldError as e:
+                raise self.FieldError("{name} word {idn}, {field_ordinal}\n    {e}".format(
+                    name=vrb.obj.name,
+                    idn=self.idn,
+                    field_ordinal=field_ordinal,
+                    e=str(e),
+                )) from e
 
     def validate_sbj(self):
         if self.sbj == self.idn_of.lex:
@@ -1167,7 +985,7 @@ class FlikiWord(qiki.nit.Nit):
         elif self.is_user(self.sbj):
             ''' This sbj is a user. '''
         else:
-            raise self.FieldError("Malformed sbj {sbj}".format(sbj=self.limited_repr(self.sbj)))
+            raise self.FieldError("Malformed sbj {sbj}".format(sbj=self.repr_limited(self.sbj)))
 
     @classmethod
     def is_user(cls, maybe_user):
@@ -1183,24 +1001,24 @@ class FlikiWord(qiki.nit.Nit):
         """
         From a lex-definition word, make sure a field idn points to another definition.
 
-        We assume anything from def_from_idn[] has proper attributes (parent, name, fields),
+        We assume anything from by_idn[] has proper attributes (parent, name, fields),
         and they're the proper types (int, str, list),
         because all that was checked by resolve_and_remember_definition() before it
-        remembered each definition word in def_from_idn[].
+        remembered each definition word in by_idn[].
         What we do check here is that the parent and fields refer to definitions that exist.
         Because of forward references, that could not be checked by
         resolve_and_remember_definition()
         """
         if isinstance(field_idn, int):
             try:
-                field_def_word = cls.def_from_idn[field_idn]
+                field_def_word = cls.by_idn[field_idn]
             except KeyError as e:
                 raise cls.FieldError("Field def {field_idn} is not defined".format(
                     field_idn=field_idn,
                 )) from e
             else:
                 try:
-                    _ = cls.def_from_idn[field_def_word.obj.parent]
+                    _ = cls.by_idn[field_def_word.obj.parent]
                 except KeyError as e:
                     raise cls.FieldError(
                         "Field {field_idn} parent {parent_idn} is not defined".format(
@@ -1218,7 +1036,7 @@ class FlikiWord(qiki.nit.Nit):
     def validated_vrb(self):
         """Return the definition word that this vrb points to.  Or raise a WordError."""
         try:
-            return self.def_from_idn[self.vrb]
+            return self.by_idn[self.vrb]
         except KeyError as e:
             raise self.WordError("{vrb_idn} is not defined vrb".format(vrb_idn=self.vrb)) from e
 
@@ -1242,7 +1060,7 @@ class FlikiWord(qiki.nit.Nit):
         :param field_value: - value of the field in the wild
         :param vrb_from_idn_lookup: - optional function to convert user word idn to vrb idn
         """
-        assert field_idn in cls.def_from_idn, field_idn
+        assert field_idn in cls.by_idn, field_idn
         # NOTE:  We presume field_idn is a valid definition because it came from the
         #        validated fields of a validated definition.
         #        validate_field_definition() should have checked all that already.
@@ -1255,7 +1073,7 @@ class FlikiWord(qiki.nit.Nit):
             else:
                 raise cls.FieldError("A {name} field should be an integer, not {value}".format(
                     name=field_ancestry.child().obj.name,
-                    value=cls.limited_repr(field_value),
+                    value=cls.repr_limited(field_value),
                 ))
         elif field_ancestry.founder().idn == cls.idn_of.text:
             if isinstance(field_value, str):
@@ -1263,7 +1081,7 @@ class FlikiWord(qiki.nit.Nit):
             else:
                 raise cls.FieldError("A {name} field should be a string, not {value}".format(
                     name=field_ancestry.child().obj.name,
-                    value=cls.limited_repr(field_value),
+                    value=cls.repr_limited(field_value),
                 ))
         elif field_ancestry.founder().idn == cls.idn_of.sequence:
             if isinstance(field_value, list):
@@ -1274,17 +1092,17 @@ class FlikiWord(qiki.nit.Nit):
                     raise cls.FieldError(
                         "A {name} field should be a list of integers, not {value}".format(
                             name=field_ancestry.child().obj.name,
-                            value=cls.limited_repr(field_value),
+                            value=cls.repr_limited(field_value),
                         )
                     )
             else:
                 raise cls.FieldError("A {name} field should be a list, not {value}".format(
                     name=field_ancestry.child().obj.name,
-                    value=cls.limited_repr(field_value),
+                    value=cls.repr_limited(field_value),
                 ))
         elif field_ancestry.founder().idn == cls.idn_of.noun:
             if isinstance(field_value, int):
-                if field_value in cls.def_from_idn:
+                if field_value in cls.by_idn:
                     # NOTE:  This field is supposed to be an idn.
                     #        (because the ancestral founder of field_idn is a noun)
                     #        and the field value is the idn of a lex-definition.
@@ -1296,28 +1114,13 @@ class FlikiWord(qiki.nit.Nit):
                             "{ref_name} (idn {value}) "
                             "is a {ref_parent} "
                             "but it is not a {def_name}".format(
-                                value=cls.limited_repr(field_value),
-                                value_name=cls.limited_repr(field_value),
+                                value=cls.repr_limited(field_value),
+                                value_name=cls.repr_limited(field_value),
                                 ref_name=referent_ancestry.child().obj.name,
                                 ref_parent=referent_ancestry.parent().obj.name,
                                 def_name=field_ancestry.child().obj.name,
                             )
                         )
-
-                    # else:
-                    #     expected_vrb = cls.validate_field_definition(field_idn)
-                    #     # actual_vrb = cls.validate_field_definition(lex_referent)
-                    #     try:
-                    #         cls.validate_descent(lex_referent)
-                    #     raise cls.FieldError(
-                    #         "Field ref {field_value} "
-                    #         "should be the idn of a {expected_name} word,"
-                    #         "but it's a lex-defined {actual_name} word".format(
-                    #             field_value=field_value,
-                    #             actual_name=lex_referent.obj.name,
-                    #             expected_name=expected_vrb.obj.name
-                    #         )
-                    #     )
                 else:
                     # NOTE:  The field is supposed to be an idn, but it's not that of a definition.
                     #        Could it be the idn of a user word?
@@ -1351,35 +1154,19 @@ class FlikiWord(qiki.nit.Nit):
                                     "{value} is the idn of a {vrb_name} word, "
                                     # "which is a {vrb_parent}, "
                                     "but it should be a {def_name} word".format(
-                                        value=cls.limited_repr(field_value),
-                                        value_name=cls.limited_repr(field_value),
+                                        value=cls.repr_limited(field_value),
+                                        value_name=cls.repr_limited(field_value),
                                         vrb_name=vrb_ancestry.child().obj.name,
                                         vrb_parent=vrb_ancestry.parent().obj.name,
                                         def_name=field_ancestry.child().obj.name,
                                     )
                                 )
 
-                            # cls.validate_descent(user_word_vrb, field_idn)
-
-                            # if user_referent == field_idn:
-                            #     '''This is good, the field refs the proper type of word.'''
-                            # else:
-                            #     expected_vrb = cls.validate_field_definition(field_idn)
-                            #     actual_vrb = cls.validate_field_definition(user_referent)
-                            #     raise cls.FieldError(
-                            #         "Field ref {field_value} "
-                            #         "should be the idn of a {expected_name} word,"
-                            #         "but it's a user-defined {actual_name} word".format(
-                            #             field_value=field_value,
-                            #             actual_name=actual_vrb.obj.name,
-                            #             expected_name=expected_vrb.obj.name
-                            #         )
-                            #     )
             elif isinstance(field_value, list):
                 if len(field_value) == 0:
                     raise cls.FieldError(
                         "A {field_name} field should not be [] an empty list".format(
-                            field_name=cls.def_from_idn[field_idn].obj.name,
+                            field_name=cls.by_idn[field_idn].obj.name,
                         )
                     )
                 else:
@@ -1391,7 +1178,7 @@ class FlikiWord(qiki.nit.Nit):
                             "Field value {field_value} "
                             "is supposed to be a {def_name}\n"
                             "    {e}".format(
-                                field_value=cls.limited_repr(field_value),
+                                field_value=cls.repr_limited(field_value),
                                 def_name=field_ancestry.child().obj.name,
                                 e=str(e),
                             )
@@ -1402,19 +1189,11 @@ class FlikiWord(qiki.nit.Nit):
                         Yay, even though the field value is a complicated nit with sub-nits,
                         its bytes part indicates that it's a descendent of the defined field type.
                         '''
-                        # raise cls.FieldError(
-                        #     "Yay {field_value} is a {ref_name}, "
-                        #     "which is a {def_name}".format(
-                        #         field_value=cls.limited_repr(field_value),
-                        #         ref_name=referent_ancestry.child().obj.name,
-                        #         def_name=field_ancestry.child().obj.name,
-                        #     )
-                        # )
                     else:
                         raise cls.FieldError(
                             "Field value {field_value} is a compound {ref_name}, "
                             "which is not a {def_name}".format(
-                                field_value=cls.limited_repr(field_value),
+                                field_value=cls.repr_limited(field_value),
                                 ref_name=referent_ancestry.child().obj.name,
                                 def_name=field_ancestry.child().obj.name,
                             )
@@ -1423,21 +1202,27 @@ class FlikiWord(qiki.nit.Nit):
                 raise cls.FieldError(
                     "Field value {field_value} "
                     "should be a {field_name}".format(
-                        field_value=cls.limited_repr(field_value),
-                        field_name=cls.def_from_idn[field_idn].obj.name,
+                        field_value=cls.repr_limited(field_value),
+                        field_name=cls.by_idn[field_idn].obj.name,
                     )
                 )
         else:
             raise cls.FieldError("Unable to process a {names} field with value {value}".format(
                 names=field_ancestry.names(),
-                value=cls.limited_repr(field_value),
+                value=cls.repr_limited(field_value),
             ))
 
     @staticmethod
-    def limited_repr(x):
+    def repr_limited(x):
+        """ Like repr() but the output is JSON, compact, and the length is limited. """
         might_be_long = json_encode(x)
-        if len(repr(x)) > 60:
-            return might_be_long[0:50] + " ... ({} more)".format(len(might_be_long) - 30)
+        how_long = len(might_be_long)
+        max_out = 60
+        overhead = 15
+        if how_long > max_out:
+            show_this_many = max_out - overhead
+            omit_this_many = how_long - show_this_many
+            return might_be_long[0 : show_this_many] + " ... ({} more)".format(omit_this_many)
         else:
             return might_be_long
 
@@ -1506,16 +1291,13 @@ class FlikiWord(qiki.nit.Nit):
 
     @classmethod
     def _ancestry(cls, child_idn, max_depth=MAX_ANCESTRAL_RECURSION):
-        """
-        Return a list of ancestor definition words, child first, founder last.  Recursive.
-        """
-        # child = cls.def_from_idn[child_idn]
+        """ Return a list of ancestor definition words, child first, founder last.  Recursive. """
         if not isinstance(child_idn, int):
             raise cls.FieldError("{child_idn} is not an idn".format(
-                child_idn=cls.limited_repr(child_idn),
+                child_idn=cls.repr_limited(child_idn),
             ))
         try:
-            child = cls.def_from_idn[child_idn]
+            child = cls.by_idn[child_idn]
         except KeyError as e:
             raise cls.FieldError("{child_idn} is not defined".format(
                 child_idn=child_idn,
@@ -1524,119 +1306,6 @@ class FlikiWord(qiki.nit.Nit):
             return [child]
         else:
             return [child] + cls._ancestry(child.obj.parent, max_depth - 1)
-
-
-    # @classmethod
-    # def validate_descent(cls, child_idn, ancestor_idn):
-    #     try:
-    #         child = cls.def_from_idn[child_idn]
-    #     except KeyError as e:
-    #         raise cls.FieldError("Child {child_idn} is undefined".format(
-    #             child_idn=child_idn,
-    #         )) from e
-    #     else:
-    #         try:
-    #             ancestor = cls.def_from_idn[ancestor_idn]
-    #         except KeyError as e:
-    #             raise cls.FieldError("Ancestor {ancestor_idn} is undefined".format(
-    #                 ancestor_idn=ancestor_idn,
-    #             )) from e
-    #         else:
-    #             intermediate_idn = child.obj.parent
-    #
-    #             # TODO:  check the ancestry chain for a match.  Maybe recurse.
-    #             #        Oh wait!  Check that child == ancestor, right??
-    #
-    #             # raise cls.FieldError("{child_name} is not a {ancestor_name}".format(
-    #             #     child_name=child.obj.name,
-    #             #     ancestor_name=ancestor.obj.name,
-    #             # ))
-
-
-    @classmethod
-    def user_stuff(cls, auth, ip_address_txt, user_agent_txt):
-        ip_int = int(auth.lex.IDN.IP_ADDRESS_TAG)
-        ua_int = int(auth.lex.IDN.USER_AGENT_TAG)
-        lex_int = int(auth.lex.IDN.LEX)
-        user_list = auth.qiki_user.jsonl()
-
-        assert ip_int == cls.idn_of.ip_address, repr(cls.idn_of.ip_address)
-        assert ua_int == cls.idn_of.user_agent
-        assert lex_int == cls.idn_of.lex
-
-        ip_latest = None
-        ua_latest = None
-
-        # TODO:  Instead of the following loop,
-        #        maintain latest ip and ua for (at least some) users in memory
-
-        for each_word in cls.all_words():
-            # print("WORD", each_word.idn, each_word.sbj, each_word.vrb, each_word.obj_values, each_word.obj.to_dict())
-            if each_word.sbj == lex_int and each_word.obj.has('user') and each_word.obj.user == user_list:
-                if each_word.vrb == ip_int:
-                    ip_latest = each_word.obj.text
-                elif each_word.vrb == ua_int:
-                    ua_latest = each_word.obj.text
-            # EXAMPLE:
-            #     :
-            #     unresolved iconify {'idn': 133, 'whn': 1460029834816, 'sbj': 0, 'vrb': 1, 'obj': {'name': 'iconify', 'parent': 2, 'fields': [166, 203]}}
-            #     fields [166, 203]
-            #     RESOLVED user [167, '103620384189003122864']
-            #     RESOLVED url https://lh3.googleusercontent.com/a-/AOh14GhrEooRaagQh246ncMAtBotUwcgFk3zwXTK0ZTvSQ=s96-c
-            #     WORD 6665 0 133 [[167, '103620384189003122864'], 'https://lh3.googleusercontent.com/a-/AOh14GhrEooRaagQh246ncMAtBotUwcgFk3zwXTK0ZTvSQ=s96-c'] {'user': [167, '103620384189003122864'], 'url': 'https://lh3.googleusercontent.com/a-/AOh14GhrEooRaagQh246ncMAtBotUwcgFk3zwXTK0ZTvSQ=s96-c'}
-            #     :
-            #     unresolved rearrange {'idn': 202, 'whn': 1478212026436, 'sbj': 0, 'vrb': 1, 'obj': {'name': 'rearrange', 'parent': 2, 'fields': [1408, 1434, 201]}}
-            #     fields [1408, 1434, 201]
-            #     RESOLVED contribute 4748
-            #     RESOLVED category 1435
-            #     RESOLVED locus 7126
-            #     WORD 7524 [167, '103620384189003122864'] 202 [4748, 1435, 7126] {'contribute': 4748, 'category': 1435, 'locus': 7126}
-
-
-
-        # with cls.lock:
-        #     with open(cls.file_path(), newline=None) as f:
-        #         for word_json in f:
-        #             word_list = json.loads(word_json)
-        #             if len(word_list) >= 6:
-        #                 # print("WORD", repr(word_list))
-        #                 if word_list[2] == lex_int and word_list[4] == user_list:
-        #                     if word_list[3] == ip_int:
-        #                         ip_latest = word_list[5]
-        #                     elif word_list[3] == ua_int:
-        #                         ua_latest = word_list[5]
-
-        # print("user_stuff", ip_address_txt == ip_latest, user_agent_txt == ua_latest, ip_address_txt, user_agent_txt)
-        if not auth.is_anonymous:
-            # NOTE:  Redundant to tag anonymous users with IP address
-            #        because it's part of their user idn.
-            if ip_address_txt != ip_latest:
-                Auth.print("Was", user_list, ip_latest)
-                ip_word = cls.create_word_by_lex(auth, ip_int, dict(user=user_list, text=ip_address_txt))
-                Auth.print(str(ip_word.idn) + ".", "User", ip_word.obj.user, "ip", ip_word.obj.text)
-        if user_agent_txt != ua_latest:
-            Auth.print("Was", user_list, ua_latest)
-            ua_word = cls.create_word_by_lex(auth, ua_int, dict(user=user_list, text=user_agent_txt))
-            Auth.print(str(ua_word.idn) + ".", "User", ua_word.obj.user, "ua", ua_word.obj.text)
-
-            # parsed = werkzeug.user_agent.UserAgent(w.obj['text'])
-            # print(
-            #     str(w.idn) + ".",
-            #     "User", w.obj['user'],
-            #     parsed.platform,
-            #     parsed.browser,
-            #     parsed.version,
-            # )
-            # NO THANKS:  https://tedboy.github.io/flask/generated/generated/werkzeug.UserAgent.html
-            # SEE:  No UA parsing, https://werkzeug.palletsprojects.com/en/2.0.x/utils/?highlight=user%20agent#useragent-parsing-deprecated   # noqa
-            # SEE:  UA parsing, https://github.com/ua-parser/uap-python
-
-    # @classmethod
-    # def create_lex_word(cls, *args):
-    #     word_list = list(args)
-    #     word_list[0] = cls.max_idn + 1
-    #     word_list[1] = cls.milliseconds_since_1970_utc()
-    #     print("CREATE", repr(word_list))
 
     class CreateError(ValueError):
         """Word inputs are missing or wrong.  Raised by create_word_by_user()"""
@@ -2401,108 +2070,11 @@ class Auth(object):
             self.print("User is neither authenticated nor anonymous.")
             return
 
-        # FlikiWord.user_stuff(self, ip_address_txt, user_agent_txt)
-
-        # ip_words = self.lex.find_words(
-        #     sbj=self.qiki_user,
-        #     vrb=self.lex.IDN.IP_ADDRESS_TAG,
-        #     obj=self.session_verb,
-        #     idn_ascending=True,
-        # )
-        # if len(ip_words) == 0 or ip_words[-1].txt != ip_address_txt:
-        #     self.qiki_user(self.lex.IDN.IP_ADDRESS_TAG, use_already=False)[self.session_verb] = ip_address_txt
-        #     # TODO:  How could this get a duplicate key?
-        #     #        mysql.connector.errors.IntegrityError: 1062 (23000):
-        #     #        Duplicate entry '\x821' for key 'PRIMARY'
-        #     #        '\x821' === Number('0q82_31').raw, which is the idn for session_verb
-        #     #        (i.e. the obj=WORD.BROWSE word)
-        #     #        override_idn should have been None all the way down
-        #     #        So was this a race condition in word.py in lex.max_idn()??
-        #     #        That function does cause nested cursors.
-        #     self.lex.create_word
-        #
-        # ua_words = self.lex.find_words(
-        #     sbj=self.qiki_user,
-        #     vrb=self.lex.IDN.USER_AGENT_TAG,
-        #     obj=self.session_verb,
-        #     idn_ascending=True,
-        # )
-        # if len(ua_words) == 0 or ua_words[-1].txt != user_agent_txt:
-        #     self.qiki_user(self.lex.IDN.USER_AGENT_TAG, use_already=False)[self.session_verb] = user_agent_txt
-        # NOTE:  Old way of tracking authenticated and anonymous users
-
-
-
-    # def session_new(self):
-    #     self.session_uuid = self.unique_session_identifier()
-    #     self.session_verb = self.lex.create_word(
-    #         # sbj=self.qiki_user,
-    #         # NOTE:  Subject can't be user, when the user depends
-    #         #        on the about-to-be-created session word
-    #         #        (It's the payload in the suffix of the anon user idn.)
-    #         #        Or can it?!  That would be a feat.
-    #         #        Would require some shenanigans inside the max_idn_lock.
-    #         sbj=self.lex.IDN.LEX,
-    #         vrb=self.lex.IDN.DEFINE,
-    #         obj=self.lex.IDN.BROWSE,
-    #         txt=self.session_uuid,
-    #         use_already=False
-    #     )
-    #     self.session_qstring = self.session_verb.idn.qstring()
-    #     self.print("New session", self.session_verb.idn.qstring(), self.ip_address_txt)
-
-    # @abc.abstractmethod
-    # def unique_session_identifier(self):
-    #     """
-    #     These are never really used for anything,
-    #     but it's kind of a policy that each vrb=define word has a unique txt.
-    #     So you could return uuid.uuid4(), though '' might not break anything.
-    #     """
-    #     raise NotImplementedError
-
-
 
     @property
     def qoolbar(self):
         qoolbar = qiki.QoolbarSimple(self.lex)
         return qoolbar
-
-    # @property
-    # @abc.abstractmethod
-    # def session_qstring(self):
-    #     raise NotImplementedError
-    #     # CAUTION:  May raise KeyError
-    #
-    # @session_qstring.setter
-    # @abc.abstractmethod
-    # def session_qstring(self, qstring):
-    #     raise NotImplementedError
-    #
-    # @property
-    # @abc.abstractmethod
-    # def has_session_qstring(self):
-    #     raise NotImplementedError
-    #
-    # @property
-    # @abc.abstractmethod
-    # def session_uuid(self):
-    #     raise NotImplementedError
-    #
-    # @session_uuid.setter
-    # @abc.abstractmethod
-    # def session_uuid(self, the_uuid):
-    #     raise NotImplementedError
-    #
-    # @property
-    # @abc.abstractmethod
-    # def has_session_uuid(self):
-    #     raise NotImplementedError
-
-    # def session_get(self):
-    #     raise NotImplementedError
-    #
-    # def session_set(self, session_string):
-    #     raise NotImplementedError
 
     def authenticated_id(self):
         raise NotImplementedError
@@ -2789,36 +2361,7 @@ class Auth(object):
                     ip_latest = each_word.obj.text
                 elif each_word.vrb == ua_int:
                     ua_latest = each_word.obj.text
-            # EXAMPLE:
-            #     :
-            #     unresolved iconify {'idn': 133, 'whn': 1460029834816, 'sbj': 0, 'vrb': 1, 'obj': {'name': 'iconify', 'parent': 2, 'fields': [166, 203]}}
-            #     fields [166, 203]
-            #     RESOLVED user [167, '103620384189003122864']
-            #     RESOLVED url https://lh3.googleusercontent.com/a-/AOh14GhrEooRaagQh246ncMAtBotUwcgFk3zwXTK0ZTvSQ=s96-c
-            #     WORD 6665 0 133 [[167, '103620384189003122864'], 'https://lh3.googleusercontent.com/a-/AOh14GhrEooRaagQh246ncMAtBotUwcgFk3zwXTK0ZTvSQ=s96-c'] {'user': [167, '103620384189003122864'], 'url': 'https://lh3.googleusercontent.com/a-/AOh14GhrEooRaagQh246ncMAtBotUwcgFk3zwXTK0ZTvSQ=s96-c'}
-            #     :
-            #     unresolved rearrange {'idn': 202, 'whn': 1478212026436, 'sbj': 0, 'vrb': 1, 'obj': {'name': 'rearrange', 'parent': 2, 'fields': [1408, 1434, 201]}}
-            #     fields [1408, 1434, 201]
-            #     RESOLVED contribute 4748
-            #     RESOLVED category 1435
-            #     RESOLVED locus 7126
-            #     WORD 7524 [167, '103620384189003122864'] 202 [4748, 1435, 7126] {'contribute': 4748, 'category': 1435, 'locus': 7126}
 
-
-
-        # with cls.lock:
-        #     with open(cls.file_path(), newline=None) as f:
-        #         for word_json in f:
-        #             word_list = json.loads(word_json)
-        #             if len(word_list) >= 6:
-        #                 # print("WORD", repr(word_list))
-        #                 if word_list[2] == lex_int and word_list[4] == user_list:
-        #                     if word_list[3] == ip_int:
-        #                         ip_latest = word_list[5]
-        #                     elif word_list[3] == ua_int:
-        #                         ua_latest = word_list[5]
-
-        # print("user_stuff", ip_address_txt == ip_latest, user_agent_txt == ua_latest, ip_address_txt, user_agent_txt)
         if not self.is_anonymous:
             # NOTE:  Redundant to tag anonymous users with IP address
             #        because it's part of their user idn.
@@ -3268,6 +2811,7 @@ def login():
                             repr_attr(logged_in_user, 'id'),
                             repr_attr(logged_in_user, 'name'),
                         )
+                        # EXAMPLE:  Fairly routine, user data needed updating None ''
 
                         logged_in_user.update()
                         # SEE:  about calling user.update() only if id or name is missing,
@@ -3338,7 +2882,7 @@ def login():
                         display_name = logged_in_user.name or ''
 
                         Auth.print("Logging in", qiki_user.index, qiki_user.jsonl())
-                        # EXAMPLE:   Logging in 0q8A_059E058E6A6308C8B0 0q82_15__8A059E058E6A6308C8B0_1D0B00
+                        # EXAMPLE:   Logging in 0q8A_059E058E6A6308C8B0 [167, '103620384189003122864']
 
                         # lex[lex](lex.IDN.ICONIFY, use_already=True)[qiki_user.idn] = (
                         #     avatar_width,
@@ -3346,7 +2890,7 @@ def login():
                         # )
                         # lex[lex](lex.IDN.NAME, use_already=True)[qiki_user.idn] = display_name
                         # NOTE:  Above bracket notation is falling out of my favor,
-                        #        in spite of how clever and visionary and creative it made me look.
+                        #        in spite of how clever and visionary and creative it made me feel.
                         #        I may be procedural down to my ever-loving soul.
 
                         lex.create_word(
@@ -3713,7 +3257,10 @@ def unslumping_home(home_page_title):
                     \n''')
 
         t_stuff = time.time()
-        # FlikiWord.user_stuff(auth, auth.ip_address_txt, auth.user_agent_txt)
+
+        # NOTE:  NOT calling auth.user_stuff() here, waiting for user to do something important,
+        #        such as rearrange or submit.  This prevents the geological accumulation of
+        #        fake bot users for hits to the home page.
 
         if not auth.is_anonymous:
             # NOTE:  Only record page hits for logged-in users.  This avoids all the bot hits

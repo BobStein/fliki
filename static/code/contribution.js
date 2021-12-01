@@ -5,6 +5,7 @@
  *     Category
  *     Contribution
  *     Caption
+ *     User
  *     Lexi
  *     CategoryLexi
  *     ContributionLexi
@@ -32,6 +33,8 @@ function Category(idn) {
     that.idn = idn;
     that.cont_sequence = new IdnSequence();   // Contributions in each Category
     that.txt = "";
+    // TODO:  Rename category object cat.txt to cat.name.
+    //        And you know, otherwise make it look like a word from the lex, but with DOM features.
 }
 
 // noinspection JSUnusedGlobalSymbols
@@ -723,7 +726,7 @@ ContributionLexi.prototype.is_authorized = function ContributionLexi_is_authoriz
     var let_owner_change = ! did_i_change_last && ! did_admin_change_last && is_same_owner;
 
     var ok;
-    if (that.is_verb_guardrailed(change_vrb)) {
+    if (that.is_word_guardrailed(word)) {
         ok = is_change_mine;
     } else {
         ok = is_change_mine || let_admin_change || let_owner_change;
@@ -782,8 +785,8 @@ ContributionLexi.prototype.starting_cat = function ContributionLexi_starting_cat
  *
  * In other words, ignore the action if merely the owner or administrator did it.
  */
-ContributionLexi.prototype.is_verb_guardrailed = function ContributionLexi_is_verb_guardrailed(_verb_idn_) {
-    throw Error("You should override the .is_verb_guardrailed() method.");
+ContributionLexi.prototype.is_word_guardrailed = function ContributionLexi_is_word_guardrailed(_verb_idn_) {
+    throw Error("You should override the .is_word_guardrailed() method.");
 }
 ContributionLexi.prototype.user_name_short = function ContributionLexi_user_name_short(_user_idn_) {
     throw Error("You should override the .user_name_short() method.");
