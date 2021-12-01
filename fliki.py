@@ -317,6 +317,7 @@ class FlikiWord(qiki.nit.Nit):
             cls.max_idn = 0
             cls.lines_in_file = 0
             prev_idn = None
+            prev_whn = None
             word = None
             for word in cls.all_words_unresolved():   # pass 2:  idn_of, by_idn, max_idn, lines_in_file
                 cls.lines_in_file += 1
@@ -333,6 +334,13 @@ class FlikiWord(qiki.nit.Nit):
                     # NOTE:  Out of order IDNs is not a fatal error.
                     # TODO:  Duplicate IDNs (in any order) should be a fatal error.
                 prev_idn = word.idn
+
+                if prev_whn is not None and word.whn < prev_whn:
+                    Auth.print(
+                        "WHN OUT OF ORDER:  after", prev_whn, "is", word.whn,
+                        "on line", word.line_number
+                    )
+                prev_whn = word.whn
 
             p.at("def")
 

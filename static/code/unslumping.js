@@ -1862,13 +1862,15 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                     //        Assume the sbj is lex.
                     definition_resolve(w);
                 } else {
-                    console.error("Before lex-word or define-word there shouldn't be", w);
+                    console.error("Before lex-word or define-word there shouldn't be this word:", w);
                     error_free = false;
                     return false;
                 }
             });
-            console.assert(is_idn_defined(clex.idn_of.lex));
-            console.assert(is_idn_defined(clex.idn_of.define));
+            if (error_free) {
+                console.assert(is_idn_defined(clex.idn_of.lex));
+                console.assert(is_idn_defined(clex.idn_of.define));
+            }
 
             response_pass(function pass_2_lex_words(w) {
                 var user_idn;
