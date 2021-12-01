@@ -1823,7 +1823,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                             error_free = false;
                             return false;   // abort -- low level word decoding error
                         } else if (false === callback(w)) {
-                            return false;   // abort -- high level caller is done
+                            return false;   // abort -- high level caller is done (maybe error)
                         }
                     }
                 });
@@ -1862,7 +1862,9 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                     //        Assume the sbj is lex.
                     definition_resolve(w);
                 } else {
-                    console.warn("Before lex-word or define-word there shouldn't be", w);
+                    console.error("Before lex-word or define-word there shouldn't be", w);
+                    error_free = false;
+                    return false;
                 }
             });
             console.assert(is_idn_defined(clex.idn_of.lex));
