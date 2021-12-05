@@ -1716,12 +1716,13 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
     function scan_lex_jsonl(clex, then) {
         // var is_static_jsonl = query_get('static_jsonl', false) !== false;
         // // var jsonl_url = '/meta/nits?argot=jsonl';
-        var jsonl_url;
+        // var jsonl_url;
         // if (is_static_jsonl) {
         //     jsonl_url = '/meta/nits?argot=jsonl&static_jsonl'
         // } else {
-            jsonl_url = '/meta/nits?argot=jsonl'
+        //     jsonl_url = '/meta/nits?argot=jsonl'
         // }
+        var jsonl_url = '/meta/static/data/unslumping.lex.jsonl'
         var promise_jsonl = $.get({url: jsonl_url, dataType:'text'});
 
         promise_jsonl.done(function (response_body) {
@@ -1885,7 +1886,6 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                         case clex.idn_of.define:
                             if (definition_resolve(w)) {
                                 if (w.obj.parent === clex.idn_of.category) {
-                                    console.debug("category definition", w.obj.name);
                                     clex.category_lexi.add_cat(w.idn, w.obj.name);
                                 }
                             }
@@ -6520,8 +6520,12 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                     buttee_idn = to_cat.cont_sequence.fence_post_right;   // this means the empty place to the right of them all
                     buttee_txt_excerpt = "[right edge]";
                 } else {
-                    buttee_idn = $buttee.find('.contribution').attr('id');
-                    buttee_txt_excerpt = $buttee.find('.contribution').text().substr(0, 20) + "...";
+                    // FALSE WARNING:  Argument type string is not assignable to parameter type
+                    //                 (this:void, value: any, index: number, obj: any[]) => boolean
+                    // noinspection JSCheckFunctionSignatures
+                    var $cont_buttee = $buttee.find('.contribution');
+                    buttee_idn = $cont_buttee.attr('id');
+                    buttee_txt_excerpt = $cont_buttee.text().substr(0, 20) + "...";
                 }
                 console.log(
                     "rearranged contribution", movee_cont.idn,

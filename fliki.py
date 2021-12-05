@@ -350,7 +350,7 @@ class FlikiWord(qiki.nit.Nit):
 
             word = None
             for word in cls.by_idn.values():   # validate lex-defined fields
-                word.validate_lex_definition()
+                word.validate_definition_word()
 
             p.at("DEF")
 
@@ -366,7 +366,7 @@ class FlikiWord(qiki.nit.Nit):
             for word in cls.all_words_unresolved():   # pass 4:  Take a swing at resolving all user words
                 if not word.is_definition():
                     word.resolve()
-                    word.validate_not_lex_definition(cls.vrb_from_idn)
+                    word.validate_reference_word(cls.vrb_from_idn)
 
             p.at("REF")
 
@@ -449,18 +449,79 @@ class FlikiWord(qiki.nit.Nit):
             )
         self.idn_of.add(self.obj.name, self.idn)
         self.by_idn[self.idn] = self
-        self.check_forward_definition()
+        self.check_forref_in_definition_word()
 
-    def check_forward_definition(self):
-        self.check_forward_referent(self.obj.parent, "parent")
+    def check_forref_in_definition_word(self):
+        """Report a definition-word with a forward-reference."""
+        word_description = "'{name_defined}' (word {idn_defined})".format(
+            name_defined=self.obj.name,
+            idn_defined=self.idn,
+        )
+        self.check_forref(self.vrb, word_description, "verb")
+        # EXAMPLE:  Forward reference in 'lex' (word 0) -- verb refers to word 1
+        self.check_forref(self.obj.parent, word_description, "parent")
         for index_field_1_based, idn_field in enumerate(self.obj.fields, start=1):
             # THANKS:  1-based enumeration, https://stackoverflow.com/a/28072982/673991
-            self.check_forward_referent(idn_field, "field {index_field}/{num_field}".format(
+            field_description = "field {index_field}/{num_field}".format(
                 index_field=index_field_1_based,
                 num_field=len(self.obj.fields),
-            ))
+            )
+            self.check_forref(idn_field, word_description, field_description)
 
-    def check_forward_referent(self, idn_referent, description):
+    def check_forref_in_reference_word(self):
+        """Report a reference-word with a forward-reference."""
+        vrb = self.validated_vrb()
+        word_description = "{vrb_name} word {idn}".format(
+            vrb_name=vrb.obj.name,
+            idn=self.idn,
+        )
+        self.check_forref(self.vrb, word_description, "verb")
+        # EXAMPLE:  Forward reference in contribute word 882 --
+        #           verb refers to contribute, whose idn is 1408
+        for (field_index_1_based, (field_idn, field_value)) in (
+            enumerate(zip(vrb.obj.fields, self.obj.to_values()), start=1)
+        ):
+            field_ancestry = self.Ancestry(field_idn)
+            if field_ancestry.founder().idn == self.idn_of.noun:
+                '''Field is noun-founded, meaning its value is an idn (or has an idn).'''
+                field_description = "field ref {index_field}/{num_field}".format(
+                    index_field=field_index_1_based,
+                    num_field=len(vrb.obj.fields),
+                )
+                # print(
+                #     vrb.obj.name.upper(), "WORD", self.idn,
+                #     "FIELD", field_index_1_based,
+                #     "IS", field_ancestry.child().obj.name, field_value
+                # )
+                # EXAMPLE:  ICONIFY WORD 516 FIELD 1 IS user [167, '103620384189003122864']
+                if isinstance(field_value, int):
+                    '''Field should be an idn.  Make sure it's not bigger than self.idn'''
+                    self.check_forref(field_value, word_description, field_description)
+                    # EXAMPLE:  Forward reference in caption word 1433 --
+                    #           field ref 1/2 refers to word 1450
+                elif isinstance(field_value, list):
+                    '''Field should have an idn in a sub-nit.  Shouldn't be bigger than self.idn.'''
+                    # NOTE:  A noun-founded field has already been validated as either int or list.
+                    #        If it's list, it's already been checked that the first element
+                    #        (nit.bytes) is DESCENDED from the field-definition idn.  We still need
+                    #        to check that this descendent not a forward reference.
+                    complex_description = "complex " + field_description
+                    self.check_forref(field_value[0], word_description, complex_description)
+
+            else:
+                '''
+                Field is not noun-founded.  That is, its value is not an idn.
+                So this is not a forward reference because it's not a reference to any word at all.
+                '''
+                # print(
+                #     vrb.obj.name, "word", self.idn,
+                #     "field", field_index_1_based,
+                #     "is a", field_ancestry.child().obj.name
+                # )
+                # EXAMPLE:  iconify word 516 field 2 is a url
+
+    def check_forref(self, idn_referent, word_description, part_description):
+        """Report a reference if it is a forward-reference."""
         if idn_referent == self.idn:
             '''
             A word may refer to itself.  Fundamental definitions do this:  
@@ -477,14 +538,24 @@ class FlikiWord(qiki.nit.Nit):
             # )
             # EXAMPLE:  Self reference:  sequence (word 198) -- parent refers to itself
         elif idn_referent > self.idn:
+            try:
+                referent_description = "{def_name}, whose idn is {def_idn}".format(
+                    def_name=self.by_idn[idn_referent].obj.name,
+                    def_idn=idn_referent,
+                )
+            except KeyError:
+                referent_description = "word {not_a_def_idn}".format(
+                    not_a_def_idn=idn_referent,
+                )
             print(
-                "Forward definition:  "
-                "{name_defined} (word {idn_defined}) -- "
-                "{description} refers to word {idn_referent}".format(
-                    idn_defined=self.idn,
-                    name_defined=self.obj.name,
+                "Forward reference in "
+                "{word_description} -- "
+                "{part_description} refers to "
+                "{referent_description}".format(
+                    word_description=word_description,
+                    part_description=part_description,
+                    referent_description=referent_description,
                     idn_referent=idn_referent,
-                    description=description,
                 )
             )
 
@@ -565,7 +636,7 @@ class FlikiWord(qiki.nit.Nit):
                     word.vrb_name = vrb_name
 
                     # Auth.print("ABOUT TO VALIDATE", repr(word))
-                    word.validate_not_lex_definition(cls.vrb_from_idn)
+                    word.validate_reference_word(cls.vrb_from_idn)
                     # NOTE:  Browser-created words are already resolved.  That is, fields are named.
                     # NOTE:  validate before stow, so invalid words don't get into the file.
                     # NOTE:  idn-to-vrb mapping is used to validate user-word idns.
@@ -874,7 +945,7 @@ class FlikiWord(qiki.nit.Nit):
                 self.obj_values = []
 
 
-    def validate_lex_definition(self):
+    def validate_definition_word(self):
         """
         Check resolved lex definition for consistency.
 
@@ -916,14 +987,16 @@ class FlikiWord(qiki.nit.Nit):
                     fields=repr(self.obj.fields),
                 ))
 
-    def validate_not_lex_definition(self, vrb_from_idn_lookup=None):
+    def validate_reference_word(self, vrb_from_idn_lookup=None):
         """
         Check a resolved word parts for consistency, especially field references.
 
-        Checks user words.
-        Checks lex words that are not definitions,
-            e.g. when the lex tags a user with their latest user agent.
-        Not for checking lex definitions.
+        Checks reference words.  A reference word includes:
+            - user word
+            - lex word that is not a definition
+              e.g. when the lex tags a user with their latest user agent
+
+        Not for checking lex definition-words.
         """
 
         if not self.is_resolved():
@@ -982,6 +1055,8 @@ class FlikiWord(qiki.nit.Nit):
                     e=str(e),
                 )) from e
 
+        self.check_forref_in_reference_word()
+
     def validate_sbj(self):
         if self.sbj == self.idn_of.lex:
             '''
@@ -1017,6 +1092,7 @@ class FlikiWord(qiki.nit.Nit):
         Because of forward references, that could not be checked by
         resolve_and_remember_definition()
         """
+        # TODO:  Call out forward references.
         if isinstance(field_idn, int):
             try:
                 field_def_word = cls.by_idn[field_idn]
@@ -1051,7 +1127,7 @@ class FlikiWord(qiki.nit.Nit):
     @classmethod
     def validate_field_reference(cls, field_idn, field_value, vrb_from_idn_lookup=None):
         """
-        From a user word, make sure the value of a field is consistent with its definition.
+        Anything fishy with this field from a reference-word?  Raise FieldError if so.
 
         The field value comes from a value in a user-word's .obj dictionary-like thing.
 
@@ -1109,6 +1185,13 @@ class FlikiWord(qiki.nit.Nit):
                     value=cls.repr_limited(field_value),
                 ))
         elif field_ancestry.founder().idn == cls.idn_of.noun:
+            '''
+            The value of a field, whose field-definition is descended from noun, is either:
+                the idn of a word whose vrb is the field definition idn
+                a list (nit) whose first element (nit.bytes) is the field definition idn
+                         and whose second element is an appropriate value
+                         But haven't worked out what's appropriate, e.g. google-user value.
+            '''
             if isinstance(field_value, int):
                 if field_value in cls.by_idn:
                     # NOTE:  This field is supposed to be an idn.
@@ -1207,6 +1290,7 @@ class FlikiWord(qiki.nit.Nit):
                             )
                         )
             else:
+                # A noun-founded field was not an int or list.
                 raise cls.FieldError(
                     "Field value {field_value} "
                     "should be a {field_name}".format(
@@ -4402,6 +4486,43 @@ def meta_lex():
         return "lex offline"
     if not auth.is_authenticated:
         return auth.login_html()   # anonymous viewing not allowed, just show "login" link
+
+    with FlikiHTML('html') as html:
+        with html.header(title="Lex") as head:
+            head.css_stamped(static_code_url('meta_lex.css'))
+
+
+        with html.body(class_='target-environment', newlines=True) as body:
+
+            with body.footer() as foot:
+                foot.js_stamped(static_code_url('d3.js'))
+                foot.js_stamped(static_code_url('util.js'))
+                foot.js_stamped(static_code_url('lex.js'))
+                foot.js_stamped(static_code_url('meta_lex.js'))
+
+                with foot.script() as script:
+                    script.raw_text('\n')
+                    monty = dict(
+                        IDN=auth.lex.IDN.dictionary_of_qstrings(),
+                        NOW=float(time_lex.now_word().num),
+                        URL_HERE=auth.current_url,
+                        LEX_URL='/meta/static/data/' + FlikiWord.file_name,
+                    )
+                    script.raw_text('var MONTY = {json};\n'.format(json=json_pretty(monty)))
+                    script.raw_text('js_for_meta_lex(window, window.$, MONTY);\n')
+
+        response = html.doctype_plus_html()
+    return response
+
+
+@flask_app.route('/meta/lex/classic', methods=('GET', 'HEAD'))
+def meta_lex_classic():
+
+    auth = AuthFliki()
+    if not auth.is_online:
+        return "lex offline"
+    if not auth.is_authenticated:
+        return auth.login_html()   # anonymous viewing not allowed, just show "login" link
         # TODO:  Omit anonymous content for anonymous users (except their own).
         #        I.e. show anonymous user only their own words, logged-in user words, and lex words.
 
@@ -4411,10 +4532,10 @@ def meta_lex():
         with html.header("Lex") as head:
             head.css_stamped(web_path_qiki_javascript('qoolbar.css'))
             # TODO:  qoolbar.css sets the background color.
-            #        But that should move to meta_lex.css right?
+            #        But that should move to meta_lex_classic.css right?
             #        Maybe not because that's the target-environment class.
 
-            head.css_stamped(static_code_url('meta_lex.css'))
+            head.css_stamped(static_code_url('meta_lex_classic.css'))
 
 
         with html.body(class_='target-environment', newlines=True) as body:
@@ -4511,7 +4632,7 @@ def meta_lex():
                 #        Or use it for cool stuff.
                 #        Like better drawn words or links between words!
                 foot.js_stamped(static_code_url('util.js'))
-                foot.js_stamped(static_code_url('meta_lex.js'))
+                foot.js_stamped(static_code_url('meta_lex_classic.js'))
                 with foot.script() as script:
                     script.raw_text('\n')
                     monty = dict(
@@ -4522,7 +4643,7 @@ def meta_lex():
                         URL_PREFIX_QUESTION=url_from_question(''),
                     )
                     script.raw_text('var MONTY = {json};\n'.format(json=json_pretty(monty)))
-                    script.raw_text('js_for_meta_lex(window, window.$, MONTY);\n')
+                    script.raw_text('js_for_meta_lex_classic(window, window.$, MONTY);\n')
     t_render = time.time()
     response = html.doctype_plus_html()
     t_end = time.time()

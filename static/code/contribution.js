@@ -185,9 +185,8 @@ Lexi.prototype.has = function Lexi_has(idn) {
  *                     or default_word if no such idn,
  *                     or null if no such idn and no default_word specified
  */
-Lexi.prototype.get = function Lexi_get(idn, default_word) {
+Lexi.prototype.get = function Lexi_get(idn, default_word=null) {
     var that = this;
-    default_word = default_word || null;
     if (that.has(idn)) {
         return that._word_from_idn[idn];
     } else {
@@ -291,7 +290,7 @@ CategoryLexi.prototype.add_cat = function CategoryLexi_add_cat(idn, category_int
     // NOTE:  This step allows
     //            categories.by_name.about
     //        as a shorthand to
-    //            categories.get(IDN_FOR_ABOUT)
+    //            categorise.get(IDN_FOR_ABOUT)
     // NOTE:  In anticipation of future user-defined categories, this trick was moved to the
     //        by_name sub-property, so it could not e.g. conflict with other category object
     //        properties.  Hmm, not sure we'd need this trick for those exotic things anyway.
@@ -711,7 +710,6 @@ ContributionLexi.prototype.is_authorized = function ContributionLexi_is_authoriz
     // var target = word.obj;
     var change_idn = word.idn;
     var new_owner = word.sbj;
-    var change_vrb = word.vrb;
     var target = word.obj.contribute || word.idn;
 
     // First stage of decision-making:
@@ -906,9 +904,12 @@ IdnSequence.prototype.has = function IdnSequence_has(idn) {
  * @param idn_new
  * @param {function(string)} error_callback
  */
-IdnSequence.prototype.renumber = function IdnSequence_renumber(idn_old, idn_new, error_callback) {
+IdnSequence.prototype.renumber = function IdnSequence_renumber(
+    idn_old,
+    idn_new,
+    error_callback=function () {}
+) {
     var that = this;
-    error_callback = error_callback || function () {};
     var index = that._sequence.indexOf(idn_old);
     if (index === -1) {
         error_callback(f("Can't renumber {idn_old} to {idn_new} in:\n{idns}", {
