@@ -367,6 +367,7 @@ class FlikiWord(qiki.nit.Nit):
                 if not word.is_definition():
                     word.resolve()
                     word.validate_reference_word(cls.vrb_from_idn)
+                    word.check_forref_in_reference_word()
 
             p.at("REF")
 
@@ -453,12 +454,14 @@ class FlikiWord(qiki.nit.Nit):
 
     def check_forref_in_definition_word(self):
         """Report a definition-word with a forward-reference."""
-        word_description = "'{name_defined}' (word {idn_defined})".format(
+        word_description = "'{name_defined}' define word {idn_defined}".format(
             name_defined=self.obj.name,
             idn_defined=self.idn,
         )
         self.check_forref(self.vrb, word_description, "verb")
-        # EXAMPLE:  Forward reference in 'lex' (word 0) -- verb refers to word 1
+        # EXAMPLE:  Forward reference in 'lex' define word 0 -- verb refers to word 1
+        #           Can't figure out how to avoid this one forward reference.
+        #           Expect one day I'll just suppress it.
         self.check_forref(self.obj.parent, word_description, "parent")
         for index_field_1_based, idn_field in enumerate(self.obj.fields, start=1):
             # THANKS:  1-based enumeration, https://stackoverflow.com/a/28072982/673991
@@ -642,6 +645,10 @@ class FlikiWord(qiki.nit.Nit):
                     # NOTE:  idn-to-vrb mapping is used to validate user-word idns.
 
                     word.stow()
+
+                    word.check_forref_in_reference_word()
+                    # NOTE:  Forward reference is near impossible, but anyway it must be checked
+                    #        after stowed because only then is word.idn known.
                     return word
 
 
@@ -1054,8 +1061,6 @@ class FlikiWord(qiki.nit.Nit):
                     field_ordinal=field_ordinal,
                     e=str(e),
                 )) from e
-
-        self.check_forref_in_reference_word()
 
     def validate_sbj(self):
         if self.sbj == self.idn_of.lex:
