@@ -472,7 +472,13 @@ class FlikiWord(qiki.nit.Nit):
             self.check_forref(idn_field, word_description, field_description)
 
     def check_forref_in_reference_word(self):
-        """Report a reference-word with a forward-reference."""
+        """
+        Report a reference-word with a forward-reference.
+
+        This can be done either on an existing word scanned from the lex,
+        or on a new word that has just been stowed into the lex.
+        It cannot be performed BEFORE a new word is stowed, because it has no idn yet.
+        """
         vrb = self.validated_vrb()
         word_description = "{vrb_name} word {idn}".format(
             vrb_name=vrb.obj.name,
@@ -1004,6 +1010,9 @@ class FlikiWord(qiki.nit.Nit):
               e.g. when the lex tags a user with their latest user agent
 
         Not for checking lex definition-words.
+
+        This can be done either on an existing word scanned from the lex,
+        or on a new word about to be stowed into the lex.  (self.idn is not needed.)
         """
 
         if not self.is_resolved():
@@ -4508,7 +4517,6 @@ def meta_lex():
                 with foot.script() as script:
                     script.raw_text('\n')
                     monty = dict(
-                        IDN=auth.lex.IDN.dictionary_of_qstrings(),
                         NOW=float(time_lex.now_word().num),
                         URL_HERE=auth.current_url,
                         LEX_URL='/meta/static/data/' + FlikiWord.file_name,

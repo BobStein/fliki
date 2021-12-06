@@ -9,6 +9,17 @@ class Lex {
         that.idn_of = null;
         that.by_idn = null;
         that.line_number = null;
+        console.debug(
+            "CONSTRUCTOR",
+            word_class.prototype instanceof Word,
+            word_class === Word,
+            word_class.name
+        );
+        if (word_class === Word) {
+            console.error("Derive your own Word class.");
+        } else if ( ! is_strict_subclass(word_class, Word)) {
+            console.error("A lex word class should be a subclass of Word:", word_class);
+        }
     }
     scan(done, fail) {
         var that = this;
@@ -29,6 +40,8 @@ class Lex {
                 var word = that.word_from_json(word_json);
                 that.each_word(word);
             });
+            that.num_lines = that.line_number;
+            that.line_number = null;
             that.error_message ? fail(that.error_message) : done();
         });
     }
@@ -74,6 +87,8 @@ class Lex {
         } catch (e) {
             if (e instanceof Lex.ScanFail) {
                 that.error_message = e.toString();
+            } else {
+                throw e;
             }
         }
     }
@@ -86,6 +101,7 @@ class Lex {
         word.obj.parent = word.obj_values.shift();   // parent or definition-definer (may be self)
         word.obj.name = word.obj_values.shift();
         word.obj.fields = word.obj_values.shift();   // array of type specifications
+
         // NOTE:  There are definition words and reference words.  A reference word has a vrb
         //        containing the idn of its definition word.  All words have multiple named obj
         //        parts.  The named obj parts of a definition word are:  parent, name, fields.
@@ -117,6 +133,42 @@ class Lex {
         that.by_idn[word.idn] = word;
     }
     each_reference_word(word) {
+        var that = this;
+        if ( ! has(that.by_idn, word.vrb)) {
+            that.scan_fail("Word", word.idn, "vrb", word.vrb, "is not defined yet");
+        }
+        var vrb = that.by_idn[word.vrb];
+        if (word.obj_values.length !== vrb.obj.fields.length) {
+            that.scan_fail(
+                "Field mismatch, verb", vrb.obj.name,
+                "calls for", vrb.obj.fields,
+                "but word", word.idn,
+                "has", word.obj_values
+            );
+        }
+        word.obj = {};
+        looper(word.obj_values, function (field_index_0_based, field_value) {
+            var field_idn = vrb.obj.fields[field_index_0_based];
+            var field_definition_word = that.by_idn[field_idn];
+            if (is_specified(field_definition_word)) {
+                var field_name = field_definition_word.obj.name;
+                word.obj[field_name] = field_value;
+            } else {
+                that.scan_fail(
+                    "Word", word.idn,
+                    "verb", vrb.obj.name,
+                    "field", field_idn,
+                    "not defined"
+                );
+            }
+        });
+        delete word.obj_values
+    }
+    word_factory(...args) {
+        var that = this;
+        var shiny_new_word = new that.word_class(...args);
+        shiny_new_word.lex = that;
+        return shiny_new_word;
     }
     word_from_json(word_json) {
         var that = this;
@@ -131,20 +183,25 @@ class Lex {
         if (word_array.length < 4) {
             that.scan_fail("Word JSONL too few sub-nits", word_array, word_json);
         }
-        var word = new that.word_class(
+        var word = that.word_factory(
             word_array[0],
             word_array[1],
             word_array[2],
-            word_array[3],
-            null
+            word_array[3]
         );
         word.obj_values = word_array.slice(4);
         return word;
     }
+
+    /**
+     * Raise a ScanFail exception -- only called by each_word() or subordinates.
+     *
+     * @param args - text and variables to be passed to console.error().
+     */
     scan_fail(...args) {
         var that = this;
         var name_line = f("{name}:{line}", {name:that.short_name, line:that.line_number})
-        var more_args = [name_line, "-"].concat(args)
+        var more_args = [name_line, "-", ...args]
         console.error.apply(null, more_args);
         // THANKS:  Pass along arguments, https://stackoverflow.com/a/3914600/673991
         // NOTE:  This console error provides the most relevant stack trace.
@@ -173,12 +230,30 @@ console.assert("foo.txt" === extract_file_name('https://example.com/dir/foo.txt?
 console.assert("foo.txt" === extract_file_name('C:\\program\\barrel\\foo.txt'));
 
 class Word {
-    constructor(idn,whn,sbj,vrb,obj) {
+    lex = null;
+    // NOTE:  Maybe someday to save memory make the lex instance a static property of the derived
+    //        Word class.  That way each word instance will know its lex instance but won't be
+    //        burdened with storing it in every word instance.  But not today.
+    constructor(idn,whn,sbj,vrb,obj=null) {
         var that = this;
         that.idn = idn;
         that.whn = whn;
         that.sbj = sbj;
         that.vrb = vrb;
         that.obj = obj;
+    }
+    vrb_name() {
+        var that = this;
+        if ( ! (that.lex instanceof Lex)) {
+            return "LEX NOT DEFINED";
+            // NOTE:  Only Lex.word_factory() should instantiate words.
+        }
+        if ( ! is_specified(that.lex.by_idn)) {
+            return "LEX NOT SCANNED";
+        }
+        if ( ! has(that.lex.by_idn, that.vrb)) {
+            return f("VRB {vrb} NOT DEFINED", {vrb: that.vrb})
+        }
+        return that.lex.by_idn[that.vrb].obj.name;
     }
 }

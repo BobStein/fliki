@@ -1124,3 +1124,13 @@ function console_log_styled(message, css) {
     console.log('%c' + message, css);
     // THANKS:  colors in DevTools, https://stackoverflow.com/a/13017382/673991
 }
+
+function is_strict_subclass(class_child, class_parent) {
+    return class_child.prototype instanceof class_parent;
+    // THANKS:  JavaScript subclass test, https://stackoverflow.com/a/18939541/673991
+    //          ES6 too, https://stackoverflow.com/a/30993541/673991
+}
+
+function is_subclass_or_same(class_child, class_parent) {
+    return is_strict_subclass(class_child, class_parent) || class_child === class_parent
+}
