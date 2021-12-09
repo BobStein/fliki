@@ -4505,6 +4505,9 @@ def meta_lex():
         with html.header(title="Lex") as head:
             head.css_stamped(static_code_url('meta_lex.css'))
 
+            head.css('//fonts.googleapis.com/css?family=Source+Sans+Pro&display=swap')
+            # THANKS: link better than import, https://stackoverflow.com/a/12380004/673991
+            # Thanks:  Source Sans Pro, https://fonts.google.com/specimen/Source+Sans+Pro
 
         with html.body(class_='target-environment', newlines=True) as body:
 
@@ -4518,11 +4521,13 @@ def meta_lex():
                     script.raw_text('\n')
                     monty = dict(
                         NOW=float(time_lex.now_word().num),
-                        URL_HERE=auth.current_url,
                         LEX_URL='/meta/static/data/' + FlikiWord.file_name,
                     )
-                    script.raw_text('var MONTY = {json};\n'.format(json=json_pretty(monty)))
-                    script.raw_text('js_for_meta_lex(window, window.$, MONTY);\n')
+                    # script.raw_text('var MONTY = {json};\n'.format(json=json_pretty(monty)))
+                    # script.raw_text('js_for_meta_lex(window, window.$, MONTY);\n')
+                    script.raw_text('js_for_meta_lex(window, window.$, {json});\n'.format(
+                        json=json_pretty(monty)
+                    ))
 
         response = html.doctype_plus_html()
     return response

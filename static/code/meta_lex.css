@@ -1,1 +1,141 @@
+
 /**/
+
+/*noinspection CssUnknownTarget*/
+/*@import url('https://fonts.googleapis.com/css?family=Source+Sans+Pro&display=swap');*/
+/*THANKS: link better than import, https://stackoverflow.com/a/12380004/673991 */
+
+.obj {
+    word-wrap:break-word;
+    /* allow wrap on comma */
+}
+.definition-word,
+.reference-word {
+    font-family: 'Source Sans Pro', sans-serif;
+}
+/*.definition-word .name + .amble,*/
+/*.definition-word .amble + .fields {*/
+/*    margin-left: 1ch;*/
+/*}*/
+/*.definition-word .name + .amble::before,*/
+/*.definition-word .amble + .fields::before {*/
+/*    content: " -moo- ";*/
+/*}*/
+/*.reference-word .sbj + .vrb,*/
+/*.reference-word .vrb + .obj,*/
+/*.reference-word .obj + .whn {*/
+/*    margin-left: 1ch;*/
+/*}*/
+/*.reference-word.sbj-lex .sbj + .vrb {*/
+/*    margin-left: 0;*/
+/*}*/
+.definition-word .name {
+    font-weight: bold;
+    font-size: 125%;
+    line-height: 0.15em;
+}
+.definition-word .field-name {
+    font-weight: bold;
+    color: #666666;
+}
+/*.definition-word.reflexive .name {*/
+/*    color: #0066CC;*/
+/*}*/
+
+.sbj .anonymous-nits {
+    color: #006600;
+}
+.sbj .lex {
+    border: 1px solid silver;
+    display: inline-block;
+    padding: 0 0.1em 0 0.1em;
+}
+.reference-word.sbj-unnamed,
+.reference-word.sbj-unnamed-anonymous,
+.reference-word.sbj-unnamed-google,
+.reference-word.sbj-unknown {
+    background-color: #FFBBBB;
+}
+.reference-word.anonymous {
+    background-color: #FFDDFF;
+}
+.user-icon {
+    height: 1.2em;
+    margin: -1em 0 -1em 0;
+    vertical-align: middle;
+}
+.obj {
+    font: status-bar;
+}
+.reference-word.sbj-lex .sbj {
+    display: none;
+}
+.definition-word,
+.reference-word.sbj-lex {
+    background-color: #EEFFEE;
+}
+.whn {
+    font: status-bar;
+    color: white;
+    background-color: #BBBBBB;
+    display: inline-block;
+    padding: 0 0.2em 0 0.1em;
+}
+.whn:hover {
+    background-color: #999999;
+}
+.whn.seconds,
+.whn.minutes,
+.whn.hours {
+  -webkit-border-radius: 0.6em;
+     -moz-border-radius: 0.6em;   /*noinspection CssUnknownProperty*/
+       -o-border-radius: 0.6em;
+          border-radius: 0.6em;
+
+    border-bottom-width: 0.2em;  /* like a clock face */
+}
+
+.whn.days,
+.whn.months,
+.whn.years {
+    border-top-width: 0.2em;   /* like a day calendar page */
+}
+
+
+
+
+body {
+    margin: 8px;
+}
+.word-rendering {
+    position: relative;
+}
+ol.lex-list {
+    padding-inline-start: 48px;
+}
+.whn-delta {
+    position: absolute;
+    left: -56px;
+    top: +0.60em;
+    height: 1.20em;
+    width: 52px;
+}
+.whn-label {
+    font-family: 'Arial Narrow', sans-serif;
+    font-size: 0.6em;
+}
+
+.word-rendering { border-top: 1px solid transparent; }
+/* Supports the borders between words to indicate delta time.
+Because a border with no style will never render. */
+
+                      .whn-hide { display: none; }
+svg:hover             .whn-hide { display: block; }
+svg:hover + svg       .whn-hide { display: block; }
+svg:hover + svg:hover .whn-hide { display: block; }   /* \ Why don't either of    */
+svg       + svg:hover .whn-hide { display: block; }   /* / these have any effect? */
+/* Ah because they're not adjacent siblings, nor are they in the same parent! */
+
+.srend.whn-scrunch {
+    margin-bottom: -.3em;
+}

@@ -58,7 +58,9 @@ function js_for_meta_lex_classic(window, $, MONTY) {
     var $sentence_elements = $('.srend');   // all sentence renderings
     var SREND_FONT_SIZE = parseFloat($sentence_elements.css('font-size'));
     var session_list = [];   // helps identify session words when used as the vrb or obj
-    var whn_delta = [];   // Built by sub_whn(), consumed by whn_delta_render().
+    var whn_delta = [];   // Array of delta_format() objects, eg
+                          // {description_short:'2M', description_long:'1.7 months',...}
+                          // Built by sub_whn(), consumed by whn_delta_render().
 
     var now_date = new Date();
     var now_seconds = now_date.getTime() / 1000.0;

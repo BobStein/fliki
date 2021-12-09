@@ -796,10 +796,12 @@ missing_parameters_are_undefined(undefined);
  * @param {function} opt.then - callback after done
  * @param {boolean=} opt.do_early - true=get started with a chunk right away
  *                                  false=wait delay_ms before starting the first chunk
+ *
  * @return {number} - something to pass to clearInterval() to stop iteration prematurely.
  *                    If this value is saved, it must be passed to clearInterval()
- *                    before then() is called. If the value is null, no interval was started,
- *                    and so there's no need to call clearInterval().
+ *                    before then() is called.
+ *                    If the value is null, no interval was started, and so there's no need to call
+ *                    clearInterval().
  *                    Typically whatever variable stores this value, is nulled by then().
  */
 function iterate(opt) {
