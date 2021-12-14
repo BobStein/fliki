@@ -139,3 +139,8 @@ svg       + svg:hover .whn-hide { display: block; }   /* / these have any effect
 .srend.whn-scrunch {
     margin-bottom: -.3em;
 }
+.scan-fail {
+    font-family: monospace;
+    white-space: pre;
+    color: #CC0000;
+}

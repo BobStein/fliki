@@ -180,12 +180,11 @@ class WebHTML(richard_jones_html.HTML):
     @classmethod
     def url_stamp(cls, url):
         """
-        Append a query-parameter to a URL so that changes to the file will bust through the browser
-        cache and always get loaded.
+        Append a query-parameter to a URL so that changes to the file will bust the browser cache
+        and the file will get loaded. Helps during development when editing a .js or .css file.
 
-        This default implementation appends a time-stamp from the file modification time. Or if the
-        file can't be found it appends a random stamp. So if os_path_from_url() is broken, then the
-        browser will never cache the file.
+        This default implementation appends a hash from the file modification time.
+        So if os_path_from_url() is broken, then the browser may never cache the file.
 
         A subclass may override this method to stamp in some other way, e.g. git commit hash.
         """
@@ -196,26 +195,41 @@ class WebHTML(richard_jones_html.HTML):
     @classmethod
     def _mtime_suffix(cls, os_path):
         """
-        Create a name=value parameter based on a file's modification time.
+        Create a m=hash parameter based on a file's modification time.
 
-        Or if the file can't be found create a random value.
+        Hash will change if the file is modified.  It will stay the same if not.
+        Or if the file can't be found, create a random value, so the browser cache is never used.
+        About 1:billion chance a file change will be eclipsed by the cache, or 26**6
         """
         try:
             mtime_float = os.path.getmtime(os_path)
         except OSError:
-            # NOTE:  e.g. FileNotFoundError
-            return 'random={:s}'.format(cls.hex_from_bytes(os.urandom(4)))
+            # EXAMPLE:  FileNotFoundError
+            # return 'random={:s}'.format(cls.hex_from_bytes(os.urandom(4)))
+            return 'm=' + cls._brief_hash(os.urandom(6))
         else:
-            return 'mtime={:.3f}'.format(mtime_float)
+            # return 'mtime={:.3f}'.format(mtime_float)
+            return 'm=' + cls._brief_hash(mtime_float)
+            # NOTE:  Briefer and no-digits for better appearance of JavaScript file names
+            #        on DevTools JavaScript console
 
     @classmethod
-    def hex_from_bytes(cls, some_bytes):
-        if six.PY2:
-            return some_bytes.encode('hex')
-            # THANKS:  Python 2 hex from bytes, https://stackoverflow.com/a/16033232/673991
-        else:
-            return some_bytes.hex()
-            # THANKS:  Python 3.5 hex from bytes, https://stackoverflow.com/a/36149089/673991
+    def _brief_hash(cls, thing):
+        """ Make a 6-lower-case-letter hash out of a number or string. """
+        num_letters = 6
+        deck = hash(thing)
+        integers = [int((deck/26**i) % 26) for i in range(num_letters)]
+        letters = [chr(c+97) for c in integers]
+        return ''.join(letters)
+
+    # @classmethod
+    # def hex_from_bytes(cls, some_bytes):
+    #     if six.PY2:
+    #         return some_bytes.encode('hex')
+    #         # THANKS:  Python 2 hex from bytes, https://stackoverflow.com/a/16033232/673991
+    #     else:
+    #         return some_bytes.hex()
+    #         # THANKS:  Python 3.5 hex from bytes, https://stackoverflow.com/a/36149089/673991
 
     class MissingMethod(NotImplementedError):
         """os_path_from_url() must be implemented to use js_stamped() or css_stamped()."""

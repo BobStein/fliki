@@ -21,9 +21,10 @@ function js_for_meta_lex(window, $, MONTY) {
 
     $(function document_ready() {
         // FALSE WARNING:  Invalid number of arguments, expected 0
-        //                 because PyCharm doesn't see qiki.Lex in lex.js
+        //                 because PyCharm doesn't see th qiki.Lex class in lex.js
         // noinspection JSCheckFunctionSignatures
         var lex = new LexUnslumping(MONTY.LEX_URL, WordUnslumping, {});
+        lex.short_name = extract_file_name(lex.url);
         lex.$ol = $('<ol>', {class: 'lex-list'});
         lex.$ol.hide();
         lex.$progress = $('<div>', {id: 'progress'});
@@ -49,8 +50,8 @@ function js_for_meta_lex(window, $, MONTY) {
                 }, 100);
             }, function (error_message) {
                 lex.$ol.show();
-                lex.$progress.text("Failed.");
-                console.error(error_message);
+                lex.$progress.text(error_message);
+                lex.$progress.addClass('scan-fail');
             });
         }, 100);
     });
@@ -72,7 +73,6 @@ function js_for_meta_lex(window, $, MONTY) {
 
         $progress = null;
         $ol = null;
-        from_user = {};
 
         scan(done, fail) {
             var that = this;
@@ -98,13 +98,6 @@ function js_for_meta_lex(window, $, MONTY) {
             that.num_def++;
             // that.say(word.idn, word.obj.name.toUpperCase(), word.obj.fields.join(","));
         }
-        user_remember(user, property_name, property_value) {
-            var that = this;
-            if ( ! has(that.from_user, user)) {
-                that.from_user[user] = {};
-            }
-            that.from_user[user][property_name] = property_value;
-        }
         // FALSE WARNING:  Unused method each_reference_word
         //                 because PyCharm doesn't see qiki.Lex in lex.js
         // noinspection JSUnusedGlobalSymbols
@@ -113,33 +106,10 @@ function js_for_meta_lex(window, $, MONTY) {
             super.each_reference_word(word);
             that.num_ref++;
             // that.say(word.idn, word.vrb_name(), JSON.stringify(word.obj));
-            switch (word.vrb) {
-            case that.idn_of.name:
-                that.user_remember(word.obj.user, 'name', word.obj.text);
-                break;
-            case that.idn_of.iconify:
-                that.user_remember(word.obj.user, 'icon', word.obj.url);
-                break;
-            default:
-                break;
-            }
-        }
-        is_a(idn_child, idn_parent) {
-            if (idn_child === idn_parent) {
-                return true;
-            }
-            // FALSE WARNING:  'if' statement can be simplified
-            if (is_a(idn_child, Array) && idn_child.length >= 1 && idn_child[0] === idn_parent) {
-                return true;
-                // TODO:  Get an ancestry of idn_child and see if parent is anywhere in it.
-            }
-            return false;
         }
     }
 
     class WordUnslumping extends qiki.Word {
-        $li = null;
-        $whn_delta = null;
 
         render(word_prev) {
             var that = this;
@@ -339,12 +309,6 @@ function js_for_meta_lex(window, $, MONTY) {
             that.$li.html(that.$li.html());
             // THANKS:  Crude way to construct SVG with jQuery, by "refreshing" the source,
             //          https://stackoverflow.com/a/13654655/673991
-        }
-        is_sbj_anonymous() {
-            return this.lex.is_a(this.sbj, this.lex.idn_of.anonymous);
-        }
-        is_sbj_google_user() {
-            return this.lex.is_a(this.sbj, this.lex.idn_of.google_user);
         }
     }
 
@@ -575,4 +539,10 @@ function js_for_meta_lex(window, $, MONTY) {
     }
     console.assert("01" === hex_2_digits(1));
     console.assert("ff" === hex_2_digits(255));
+
+    function extract_file_name(path_or_url) {
+        return path_or_url.split('/').pop().split('\\').pop().split('#')[0].split('?')[0];
+    }
+    console.assert("foo.txt" === extract_file_name('https://example.com/dir/foo.txt?q=p#anchor'));
+    console.assert("foo.txt" === extract_file_name('C:\\program\\barrel\\foo.txt'));
 }

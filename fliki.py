@@ -453,7 +453,7 @@ class FlikiWord(qiki.nit.Nit):
         self.check_forref_in_definition_word()
 
     def check_forref_in_definition_word(self):
-        """Report a definition-word with a forward-reference."""
+        """Report (nonfatal) a definition-word with a forward-reference."""
         word_description = "'{name_defined}' define word {idn_defined}".format(
             name_defined=self.obj.name,
             idn_defined=self.idn,
@@ -473,7 +473,7 @@ class FlikiWord(qiki.nit.Nit):
 
     def check_forref_in_reference_word(self):
         """
-        Report a reference-word with a forward-reference.
+        Report (nonfatal) a reference-word with a forward-reference.
 
         This can be done either on an existing word scanned from the lex,
         or on a new word that has just been stowed into the lex.
@@ -3271,7 +3271,8 @@ def unslumping_home(home_page_title):
             #        because talkify voices seemed better than the standard browser voices.
 
             foot.js_stamped(static_code_url('util.js'))
-            foot.js_stamped(static_code_url('qiki.js'))
+            # foot.js_stamped(static_code_url('qiki.js'))
+            foot.js_stamped(static_code_url('lex.js'))
             foot.js_stamped(static_code_url('contribution.js'))
             foot.js_stamped(static_code_url('unslumping.js'))
 
@@ -5705,6 +5706,17 @@ if __name__ == '__main__':
     # NOTE:  A mostly functional local https server.
     #        You still get "Your connection is not private" in Chrome, and have to use the
     #        Advanced option:  Proceed to localhost ... (unsafe)
+    # EXAMPLE:  (when internet is down)
+    #       File "C:\Program Files\Python39\lib\socketserver.py", line 452, in __init__
+    #         self.server_bind()
+    #       File "C:\Program Files\Python39\lib\http\server.py", line 138, in server_bind
+    #         socketserver.TCPServer.server_bind(self)
+    #       File "C:\Program Files\Python39\lib\socketserver.py", line 466, in server_bind
+    #         self.socket.bind(self.server_address)
+    #     socket.gaierror: [Errno 11001] getaddrinfo failed
+    #
+    #     Process finished with exit code 1
+    #     (I think this means flask_app.config.update(SERVER_NAME,...) can't be DNS resolved.)
 
 
 # TODO:  CSRF Protection

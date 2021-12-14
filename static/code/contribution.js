@@ -120,14 +120,14 @@ function User(idn) {
     that.num_references = 0;
 }
 
-User.prototype.possessive = function User_possessive() {
-    var that = this;
-    if (that.name === "") {
-        return "my";
-    } else {
-        return that.name + "'s";
-    }
-}
+// User.prototype.possessive = function User_possessive() {
+//     var that = this;
+//     if (that.name === "") {
+//         return "my";
+//     } else {
+//         return that.name + "'s";
+//     }
+// }
 
 /**
  /* //// Lexi //// Freakish name for a thing that stores idn-referenced stuff.
@@ -206,14 +206,14 @@ Lexi.prototype.add = function Lexi_add(idn) {
     return that._word_from_idn[idn];
 };
 
-Lexi.prototype.add_if_new = function Lexi_add_if_new(idn) {
-    var that = this;
-    if (that.has(idn)) {
-        return that.get(idn);
-    } else {
-        return that.add(idn);
-    }
-};
+// Lexi.prototype.add_if_new = function Lexi_add_if_new(idn) {
+//     var that = this;
+//     if (that.has(idn)) {
+//         return that.get(idn);
+//     } else {
+//         return that.add(idn);
+//     }
+// };
 
 /**
  * Iterate through all idns and words in this lex.
@@ -231,20 +231,20 @@ Lexi.prototype.loop = function Lexi_loop(callback) {
     });
 }
 
-/**
- * //// UserLexi //// Know about all Users.
- *
- * @return {UserLexi}
- * @constructor
- */
-function UserLexi(word_class) {
-    var that = this;
-    type_should_be(that, UserLexi);
-    Lexi.call(that, word_class);
-    // that.by_name = {};
-}
-UserLexi.prototype = Object.create(Lexi.prototype);
-UserLexi.prototype.constructor = UserLexi;
+// /**
+//  * //// UserLexi //// Know about all Users.
+//  *
+//  * @return {UserLexi}
+//  * @constructor
+//  */
+// function UserLexi(word_class) {
+//     var that = this;
+//     type_should_be(that, UserLexi);
+//     Lexi.call(that, word_class);
+//     // that.by_name = {};
+// }
+// UserLexi.prototype = Object.create(Lexi.prototype);
+// UserLexi.prototype.constructor = UserLexi;
 
 /**
  * //// CategoryLexi //// Know about all Categories.  A container of Category objects.
@@ -391,7 +391,7 @@ ContributionLexi.prototype.contribute_word = function (word) {
         //        But editing by a logged-in user removes it.
     }
     cont.cat = that.starting_cat(word);
-    console.assert(cont.cat instanceof Category, "Not a category", cont.cat);
+
     cont.cat.cont_sequence.sequence_left(new_cont_idn);   // insert LEFT end, nothing ever goes wrong with that
     cont.owner = new_cont_owner;
     cont.unrendered_content = the_text;
@@ -718,17 +718,19 @@ ContributionLexi.prototype.is_authorized = function ContributionLexi_is_authoriz
     var is_change_admin = that.is_user_admin(new_owner);
     var did_admin_change_last = that.is_user_admin(old_owner);
     var is_same_owner = is_equal_idn(new_owner, old_owner);
+    var is_guardrailed = that.is_word_guardrailed(word);
 
     // Second stage of decision making:
-    var let_admin_change = ! did_i_change_last                            && is_change_admin;
-    var let_owner_change = ! did_i_change_last && ! did_admin_change_last && is_same_owner;
+    var let_admin_change = ! is_guardrailed && ! did_i_change_last                            && is_change_admin;
+    var let_owner_change = ! is_guardrailed && ! did_i_change_last && ! did_admin_change_last && is_same_owner;
 
-    var ok;
-    if (that.is_word_guardrailed(word)) {
-        ok = is_change_mine;
-    } else {
-        ok = is_change_mine || let_admin_change || let_owner_change;
-    }
+    // var ok;
+    // if (that.is_word_guardrailed(word)) {
+    //     ok = is_change_mine;
+    // } else {
+    //     ok = is_change_mine || let_admin_change || let_owner_change;
+    // }
+    var ok = is_change_mine || let_admin_change || let_owner_change;
 
     // Decision:
     if (ok) {
@@ -741,7 +743,7 @@ ContributionLexi.prototype.is_authorized = function ContributionLexi_is_authoriz
             " " +
             target +
             ", work of " +
-            that.user_name_short(old_owner),
+            that.user_name_short(old_owner)
         );
     } else {
         that.notify(
@@ -755,12 +757,16 @@ ContributionLexi.prototype.is_authorized = function ContributionLexi_is_authoriz
             ", work of " +
             that.user_name_short(old_owner)
         );
-        if (let_owner_change) {
-            that.notify("     ...because only owner can recategorize like this.");
-            // TODO:  Misleading because admin might be able to change too?
-        } else if (let_admin_change) {
-            that.notify("     ...because only admin can recategorize like this.");
-        }
+
+        // Obsolete:
+        // if (let_owner_change) {
+        //     that.notify("     ...because only owner can recategorize like this.");
+        //     // TODO:  Misleading because admin might be able to change too?
+        // } else if (let_admin_change) {
+        //     that.notify("     ...because only admin can recategorize like this.");
+        //     // TODO:  Wny don't rearrange-about words show up here?
+        // }
+
         // TODO:  Display more thorough explanations on why or why not ok.
         //        This might be a big idea:
         //        Explain reasons by seeing which boolean inputs were critical,
