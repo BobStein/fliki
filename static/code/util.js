@@ -139,6 +139,8 @@ assert_equal(true, is_a("X", String));
 assert_equal(true, is_a([], Array));
 assert_equal(true, is_a(function () {}, Function));
 assert_equal(true, is_a(function () {}, Object));
+assert_equal(true, is_a(undefined, Object));
+assert_equal(true, is_a(null, Object));
 
 function should_be_array_like(putative_array) {
     if (is_array_like(putative_array)) {
@@ -490,8 +492,8 @@ Timing.prototype.moment = function Timing_moment(what) {
  *
  * THANKS:  https://stackoverflow.com/a/50756253/673991
  */
-(function (w) {
-    w.URLSearchParams = w.URLSearchParams || function (searchString) {
+(function (window) {
+    window.URLSearchParams = window.URLSearchParams || function (searchString) {
         var self = this;
         self.searchString = searchString;
         self.get = function (name) {
@@ -1135,4 +1137,185 @@ function is_strict_subclass(class_child, class_parent) {
 
 function is_subclass_or_same(class_child, class_parent) {
     return is_strict_subclass(class_child, class_parent) || class_child === class_parent
+}
+
+function extract_file_name(path_or_url) {
+    return path_or_url.split('/').pop().split('\\').pop().split('#')[0].split('?')[0];
+}
+console.assert("foo.txt" === extract_file_name('https://example.com/dir/foo.txt?q=p#anchor'));
+console.assert("foo.txt" === extract_file_name('C:\\program\\barrel\\foo.txt'));
+
+(function (window) {
+
+    var MILLISECOND = 0.001;
+    var SECOND = 1;
+    var MINUTE = 60*SECOND;
+    var HOUR = 60*MINUTE;
+    var DAY = 24*HOUR;
+    var MONTH = 30*DAY;
+    var YEAR = 365*DAY;
+
+    // The following are thresholds.
+    //    at and below which, we display this ---vvvv    vvvv--- above which, we display this
+    var EXACTLY_ZERO    = 0.0000000000000;    //    z -> 0ms ___ <-- at exactly zero, display z
+    var UP_TO_MILLI     = 95*MILLISECOND;     // 95ms -> .01s _ `--- between these -- 1ms to 95ms
+    var UP_TO_FRACTION  = 0.95*SECOND;        // .95s -> 1s __ `---- between these - .01s to .95s
+    var UP_TO_SECOND    = 99.4*SECOND;        //  99s -> 2m _ `----- between these --- 1s to 99s
+    var UP_TO_MINUTE    = 99.4*MINUTE;        //  99m -> 2h  `------ between these --- 2m to 99m
+    var UP_TO_HOUR      = 48.4*HOUR;          //  48h -> 2d ___                        2h to 48h
+    var UP_TO_DAY       = 99.4*DAY;           //  99d -> 3M __ `---- between these --- 2d to 99d
+    var UP_TO_MONTH     = 24.4*MONTH;         //  24M -> 2Y _ `----- between these --- 3M to 24M
+                                              //             `--------- above this --- 2Y to 999Y...
+
+    // CAUTION:  Because these "constants" are defined here,
+    //           delta_format() can be called before it works.
+    //           If called above this line (not inside a function)
+    //           it will return a bunch of NaNs.
+    // SEE:  const unavailable in IE10, etc., https://stackoverflow.com/a/130399/673991
+
+    /**
+     * Format a period of time in multiple human-readable formats.
+     *
+     *
+     *
+     * EXAMPLE:  delta_format(1) == {
+     *     "num": 1,
+     *     "amount_short":      "1",
+     *     "amount_long":       "1.0",
+     *     "units_short":       "s",
+     *     "units_long":        "seconds",
+     *     "description_short": "1s",
+     *     "description_long":  "1.0 seconds"
+     * }
+     * EXAMPLE:  delta_format(3628800) == {
+     *     "num": 3628800,
+     *     "amount_short":      "42",
+     *     "amount_long":       "42.0",
+     *     "units_short":       "d",
+     *     "units_long":        "days",
+     *     "description_short": "42d",
+     *     "description_long":  "42.0 days"
+     * }
+     *
+     * @param sec - number of seconds
+     * @return {{}}
+     *     amount_short        0-2 characters
+     *     amount_long         0-4 characters
+     *     units_short           1 character
+     *     units_long         1-12 characters
+     *     description_short   2-3 characters - e.g. "z", "99Y"
+     *     description_long   1-15 characters
+     */
+    // TODO:  Candidate short descriptions for 0-1 second:
+    //          0.05 - 0.94    ...  ".1s" - ".9s"
+    //        0.0094 - 0.0500             ?          10ms,99ms,.01s,.05s,.09s are too long
+    //                                               9-90 milliseconds - NOMINAL problem range
+    //                                               10-50 milliseconds - REAL problem range
+    //                                               Because .1s is KINDA close to 90 milliseconds,
+    //                                               and to 80,70,60ms.  But it's too big for 50ms.
+    //                                               can't be "50m"!
+    //                                               Xms-Lms Roman Numerals???
+    //        0.0005 - 0.0094  ...  "1ms" - "9ms"
+    //        9.4e-6 - 500e-6             ?          10-500 microseconds
+    //                                               10us,99us,.1ms,.5ms,.9ms   4-char-rule fits!
+    //         .5e-6 - 9.4e-6  ...  "1us" - "9us"
+    //        9.4e-9 - 500e-9
+    //         .5e-9 - 9.4e-9  ...  "1ns" - "9ns"
+    //
+    //        3.5 characters would work 1ms,9ms,.01s,.05s,.1s
+    //          4 characters is needed for 30 microseconds:  .1ms is too big, 9us is too small
+    //                       Oh wait!  30u would be fine! So would 30n, 30p, 30f, 30a, 30z, 30y
+    //        So the real problem is 30 milliseconds.  That bloody versatile letter m!
+    //            .1s is 3.3x too big
+    //            9ms is 3.3x too small
+    //            30m is ambiguous (looks like 30 minutes)
+    //            .03s might be a worthy compromise,
+    //                 similarly for .01s to .05s
+    //                 and it would slightly improve .06s to .09s
+    //            .1s is maybe good enough for 60 milliseconds,
+    //                   definitely good enough for 95 milliseconds
+    //        So there'd be 3.5 characters 9.5 to 95 milliseconds ONLY, shown as .01s to .09s
+    //            Wow, we could REALLY afford squeeze that decimal in close to the zero,
+    //            because nowhere else is a digit preceded by a zero.
+    //        Immediately outside the range .01s to .09s are
+    //                                  9ms      and     .1s
+    //        0 to 1 microsecond could be represented as "<1u"
+    function delta_format(sec) {
+        function div(n, d) {
+            return (n/d).toFixed(0);
+        }
+        function div1(n, d) {
+            return (n/d).toFixed(1);
+        }
+        function div2(n, d) {
+            return (n/d).toFixed(2);
+        }
+
+        var word = {num: sec};
+        if (sec === EXACTLY_ZERO) {
+            word.amount_short = "";
+            word.amount_long = "";
+            word.units_short = "z";
+            word.units_long = "zero";
+        } else if (sec <=          UP_TO_MILLI) {
+            word.amount_short = div(sec, MILLISECOND);
+            word.amount_long = div1(sec, MILLISECOND);
+            word.units_short = "ms";
+            word.units_long = "milliseconds";
+        } else if (sec <=          UP_TO_FRACTION) {
+            word.amount_short = strip_leading_zeros(div1(sec, SECOND));
+            word.amount_long = div2(sec, SECOND);
+            word.units_short = "s";
+            word.units_long = "seconds";
+        } else if (sec <=          UP_TO_SECOND) {
+            word.amount_short = div(sec, SECOND);
+            word.amount_long = div1(sec, SECOND);
+            word.units_short = "s";
+            word.units_long = "seconds";
+        } else if (sec <=          UP_TO_MINUTE) {
+            word.amount_short = div(sec, MINUTE);
+            word.amount_long = div1(sec, MINUTE);
+            word.units_short = "m";
+            word.units_long = "minutes";
+        } else if (sec <=          UP_TO_HOUR) {
+            word.amount_short = div(sec, HOUR);
+            word.amount_long = div1(sec, HOUR);
+            word.units_short = "h";
+            word.units_long = "hours";
+        } else if (sec <=          UP_TO_DAY) {
+            word.amount_short = div(sec, DAY);
+            word.amount_long = div1(sec, DAY);
+            word.units_short = "d";
+            word.units_long = "days";
+        } else if (sec <=          UP_TO_MONTH) {
+            word.amount_short = div(sec, MONTH);
+            word.amount_long = div1(sec, MONTH);
+            word.units_short = "M";
+            word.units_long = "months";
+       } else {
+            word.amount_short = div(sec, YEAR);
+            word.amount_long = div1(sec, YEAR);
+            word.units_short = "Y";
+            word.units_long = "years";
+        }
+        word.description_short = word.amount_short + word.units_short;
+        word.description_long = word.amount_long + " " + word.units_long;
+
+        return word;
+    }
+    console.assert("1s" === delta_format(1).description_short);
+    console.assert("42.0 days" === delta_format(42*24*3600).description_long);
+
+    window.delta_format = delta_format;
+})(window);
+
+function strip_leading_zeros(s) {
+    return s.replace(/^0+/, '');
+    // THANKS:  aggressive zero-stripping, https://stackoverflow.com/a/6676498/673991
+}
+console.assert('.425' === strip_leading_zeros('0.425'));
+console.assert('' === strip_leading_zeros('0'));
+
+function seconds_1970() {
+    return (new Date()).getTime() / 1000.0;
 }

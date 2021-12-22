@@ -86,6 +86,9 @@
  *
  * @property js_for_unslumping.utter - so JS console has access to SpeechSynthesisUtterance object
  */
+
+// TODO:  window.qiki --> qiki (either the global, or an explicitly passed parameter)
+
 function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
     type_should_be(window, Window);
     type_should_be($, Function);
@@ -93,6 +96,8 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
     type_should_be($().jquery, String);
     type_should_be(qoolbar, Object);
     type_should_be(MONTY, Object);
+
+    var DO_REPORT_EDIT_HISTORIES = true;
 
     var DO_LONG_PRESS_EDIT = false;
     // NOTE:  Long press seems like too easy a way to trigger an edit.
@@ -210,6 +215,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
 
     var categories;
     var contribution_lexi = null;
+    var lex;
 
     var popup_cont;
     set_popup_cont(null);
@@ -369,8 +375,9 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
     var MORE_CAT_CONT_SHIFT = 5 * MORE_CAT_CONT;  // Shift-click renders THIS many
     var DO_WHOLE_UNRENDERED_PIECES = true;  // Show a few more than INITIAL_CAT_CONT initially,
                                             // to make unrendered count an even multiple of
-                                            // MORE_CAT_CONT.  This way in the "N more" label,
-                                            // N is always a multiple of MORE_CAT_CONT.
+                                            // MORE_CAT_CONT.  This way the "N more" label
+                                            // So up to this many are displayed initially:
+                                            // INITIAL_CAT_CONT + MORE_CAT_CONT + 1
 
     var MIN_OPEN_CATEGORY_VIEW = 200;   // When opening a category, if fewer pixels than this
                                         // are in view, scroll up.
@@ -400,6 +407,17 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
         qoolbar.ajax_url(MONTY.AJAX_URL);
 
         category_and_contribution_instantiations(function () {
+
+            categories.loop(function (_, cat) {
+                cat.thumb_specs = {
+                    for_width: WIDTH_MAX_EM,
+                    for_height: HEIGHT_MAX_EM
+                };
+            });
+            categories.by_name.about.thumb_specs = {
+                for_width: WIDTH_MAX_EM_ABOUT,
+                for_height: HEIGHT_MAX_EM_ABOUT
+            };
 
             build_body_dom();
 
@@ -555,7 +573,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                     console.log(
                         which_way,
                         "full screen",
-                        window.innerWidth.toString() + "x" + window.innerHeight.toString()
+                        String(window.innerWidth) + "x" + String(window.innerHeight)
                     );
                     if (is_exiting) {
                         bot.on_exit_full_screen();
@@ -957,7 +975,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
         if (has(states, that.state)) {
             return true;
         } else {
-            var context_if_any = is_defined(context) ? " - " + context.toString() : "";
+            var context_if_any = is_defined(context) ? " - " + String(context) : "";
             console.error(
                 "Expected state",
                 that.State.describe(states, " or "),
@@ -1275,7 +1293,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
             if (that.ticks_this_state === 2) {   // Warn once
                 var n_characters;
                 try {
-                    n_characters = utter.text.length.toString() + " characters";
+                    n_characters = String(utter.text.length) + " characters";
                 } catch (e) {
                     n_characters = "((" + e.message + "))";
                 }
@@ -1620,7 +1638,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
      *       prepend all interact.bot sequence fields.
      */
     function sequence_nit(list_of_contribution_idns) {
-        var sequence_idn = contribution_lexi.lex.idn_of.sequence;
+        var sequence_idn = lex.idn_of.sequence;
         var nit_array = [sequence_idn].concat(list_of_contribution_idns)
         return nit_array;
     }
@@ -1718,71 +1736,84 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
         // FALSE WARNING:  Invalid number of arguments, expected 0
         //                 because PyCharm doesn't see the qiki.Lex class in lex.js
         // noinspection JSCheckFunctionSignatures
-        var lex = new LexContribution('/meta/static/data/unslumping.lex.jsonl', WordContribution);
-        lex.short_name = "LexContribution";
+        lex = new LexContribution('/meta/static/data/unslumping.lex.jsonl');
+
+        qiki.lex = lex;
+        // NOTE:  Make the lex instance available for debugging.
+
         lex.clex = contribution_lexi;
-        contribution_lexi.lex = lex;
-        console.debug("Lex", lex);
         lex.scan(function () {
-            console.debug("done scan");
             lex.clex.assert_consistent();
-            categories.loop(function (_, cat) {
-                cat.thumb_specs = {
-                    for_width: WIDTH_MAX_EM,
-                    for_height: HEIGHT_MAX_EM
-                };
-            });
-            categories.by_name.about.thumb_specs = {
-                for_width: WIDTH_MAX_EM_ABOUT,
-                for_height: HEIGHT_MAX_EM_ABOUT
-            };
+            console.debug("Lex", lex);
+            if (DO_REPORT_EDIT_HISTORIES) {
+                lex.editing_history_report();
+            }
             then();
         }, function (error_message) {
-
+            console.error("Lex scan fail:", error_message);
         });
     }
 
-    class LexContribution extends qiki.Lex {
+    class LexContribution extends qiki.LexCloud {
 
         constructor(...args) {
             super(...args)
             var that = this;
             $.extend(that.idn_of, {   // mapping name ==> idn for lex-defined words
-                lex: IDN_UNDEFINED,
-                define: IDN_UNDEFINED,
-                name: IDN_UNDEFINED,
-                admin: IDN_UNDEFINED,
-                google_user: IDN_UNDEFINED,
-                anonymous: IDN_UNDEFINED,
 
-                category: IDN_UNDEFINED,
-                locus: IDN_UNDEFINED,
-                contribute: IDN_UNDEFINED,
-                caption: IDN_UNDEFINED,
-                edit: IDN_UNDEFINED,
-                rearrange: IDN_UNDEFINED,
-                rightmost: IDN_UNDEFINED,
-                interact: IDN_UNDEFINED,
+                category: qiki.Lex.IDN_UNDEFINED,
+                locus: qiki.Lex.IDN_UNDEFINED,
+                contribute: qiki.Lex.IDN_UNDEFINED,
+                caption: qiki.Lex.IDN_UNDEFINED,
+                edit: qiki.Lex.IDN_UNDEFINED,
+                rearrange: qiki.Lex.IDN_UNDEFINED,
+                rightmost: qiki.Lex.IDN_UNDEFINED,
+                interact: qiki.Lex.IDN_UNDEFINED,
 
-                ip_address: IDN_UNDEFINED,
-                user_agent: IDN_UNDEFINED,
-
-                browse: IDN_UNDEFINED
+                // ip_address: IDN_UNDEFINED,
+                // user_agent: IDN_UNDEFINED,
+                // browse: IDN_UNDEFINED
 
                 // NOTE:  The categories are not here (my, their, trash, etc.).
-                //        Those idns are available as e.g. categories.by_name.my.idn
+                //        Those idns are available as e.g. lex.cats.by_name.my.idn
                 // NOTE:  The interact verbs are not here.
                 //        They are not defined until and unless they're used.
                 //        And we allow new ones to come and go without complaint.
+                //        And they are referred to only by name in this code, not idn.
             });
-
+            that.cats = new qiki.Bunch();
+            that.me_idn = MONTY.me_idn;
         }
-
+        notify(message) {
+            var that = this;
+            if (console_verbose) {
+                console.warn(message);   // HACK:  warn, for a different color
+            }
+            that.last_notify_message = message;
+        }
+        // word_factory(idn, whn, sbj, vrb, ...obj_values) {
+        //     var that = this;
+        //     if (sbj === that.idn_of.lex && vrb === that.idn_of.define && obj_values[0] === that.idn_of.category) {
+        //         that.word_class = CategoryWord;
+        //     } else if (vrb === that.idn_of.contribute || vrb === that.idn_of.edit) {
+        //         that.word_class = ContributionWord;
+        //     // } else if (is_specified(that.by_idn[vrb]) && that.by_idn[vrb].obj.parent === that.idn_of.interact) {
+        //     //     that.word_class = InteractWord;
+        //     } else {
+        //         that.word_class = OtherWord;
+        //     }
+        //     var word = super.word_factory(idn, whn, sbj, vrb, ...obj_values);
+        //     return word;
+        // }
         each_definition_word(word) {
             var that = this;
             super.each_definition_word(word);
-            if (word.is_category_def()) {
+            if (word.obj.parent === this.idn_of.category) {
                 that.clex.category_lexi.add_cat(word.idn, word.obj.name);
+
+                word.conts = new qiki.Bunch();
+                that.cats.add_rightmost(word);
+
                 that.category_rightmost_resolve();   // in case rightmost is defined first
             }
             if (word.idn === that.idn_of.rightmost) {
@@ -1814,29 +1845,29 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                 that.contribute_word(word);
                 break;
             case that.idn_of.edit:
-                that.clex.edit_word(word);
+                that.edit_word(word);
                 break;
             case that.idn_of.caption:
-                that.clex.caption_word(word);
+                that.caption_word(word);
                 break;
             case that.idn_of.rearrange:
                 that.rearrange_word(word);
                 break;
-            case that.idn_of.iconify:
-            case that.idn_of.name:
-            case that.idn_of.browse:
-            case that.idn_of.admin:
-            case that.idn_of.ip_address:
-            case that.idn_of.user_agent:
-                break;
-            default:
-                if (word.is_interact_ref()) {
-                    // TODO:  Someday do something with all the interacts the
-                    //        contribution has had.
-                } else {
-                    console.warn("Unrecognized reference word", word.idn, "verb", word.vrb);
-                }
-                break;
+            // case that.idn_of.iconify:
+            // case that.idn_of.name:
+            // case that.idn_of.browse:
+            // case that.idn_of.admin:
+            // case that.idn_of.ip_address:
+            // case that.idn_of.user_agent:
+            //     break;
+            // default:
+            //     if (word instanceof InteractWord) {
+            //         // TODO:  Someday do something with all the interacts the
+            //         //        contribution has had.
+            //     } else {
+            //         console.warn("Unrecognized reference word", word.idn, "verb", word.vrb);
+            //     }
+            //     break;
             }
         }
         contribute_word(word) {
@@ -1851,26 +1882,168 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                 );
             }
             if ( ! (
-                is_specified(that.clex.category_lexi.by_name.my) &&
-                is_specified(that.clex.category_lexi.by_name.anon) &&
-                is_specified(that.clex.category_lexi.by_name.their)
+                is_specified(that.cats.by_name.my) &&
+                is_specified(that.cats.by_name.anon) &&
+                is_specified(that.cats.by_name.their)
             )) {
                 that.scan_fail(
                     "Contribution word", word.idn,
-                    "before categories defined", that.clex.category_lexi.by_name
+                    "before categories defined", that.cats.by_name
                 );
             }
+
+
+
             that.clex.contribute_word(word);
+
+
+
+            word.cat = that.starting_cat(word);
+            word.cat.conts.add_leftmost(word);
+
+            if ( ! that.is_authenticated(word.sbj)) {
+                word.was_submitted_anonymous = true;
+                // NOTE:  Pink is the color of anonymous contributions.
+                //        Captioning or moving a contribution retains its .was_submitted_anonymous
+                //        But editing by a logged-in user removes it.
+            }
+
+            // NOTE:  Captioning does not change a contribution's owner.
+            //        (It does change the caption's owner.)
+            //        Moving and editing do change the contribution's owner.
+            //        (They do not change the caption's owner.  One way this could be weird:
+            //        if I move an anonymous contribution to "my" category, then that user
+            //        edits the caption, I will see the new caption too.  So this is a possible
+            //        leak between anonymous users.)
+            that.notify(f("{idn}. {owner} contributes {n} bytes to {cat}", {
+                idn: word.idn,
+                owner: that.user_name_short(word.sbj),
+                cat: word.cat.obj.name,
+                n: word.obj.text.length
+            }));
+
+
+            that.affirm_notifies_match();
         }
-        // TODO:  Validate other app-specific words:  edit, caption, interact.
-        //        (More basic stuff has theoretically already been validated, e.g. if
-        //        word.obj.text were not a string, the server would have raised a FieldError.)
+        caption_word(word) {
+            var that = this;
+
+
+
+            that.clex.caption_word(word);
+
+
+
+            // var cont_idn = word.obj.contribute;   // word.contribute || word.obj;
+            // var new_capt_idn = word.idn;
+            // var new_capt_txt = word.obj.text;   // is_defined(word.text) ? word.text : word.txt;
+            // var new_capt_owner = word.sbj;
+
+            var cont = that.cont_from_idn(word.obj.contribute);
+            if (cont === null) {
+                that.notify(f("{capt_idn}. (Can't caption {cont_idn})", {
+                    cont_idn: word.obj.contribute,
+                    capt_idn: word.idn
+                }));
+            } else {
+                var old_capt_owner;
+                if (is_specified(cont.capt)) {
+                    old_capt_owner = cont.capt.sbj;
+                } else {
+                    old_capt_owner = cont.sbj;
+                }
+                if (that.is_authorized(word, old_capt_owner, "caption")) {
+                    cont.capt = word;
+                }
+            }
+            that.affirm_notifies_match();
+        }
+        edit_word(word) {
+            var that = this;
+
+
+            that.clex.edit_word(word);
+
+
+
+            // var old_cont_idn = word.obj.contribute;   // word.contribute || word.obj;
+            // var new_cont_idn = word.idn;
+            // var new_cont_owner = word.sbj;
+            // var edit_text = word.obj.text;   // is_defined(word.text) ? word.text : word.txt;
+            // var new_cont;
+
+            var old_cont = that.cont_from_idn(word.obj.contribute);
+            if (old_cont === null) {
+                if (that.is_me(word.sbj)) {
+                    // NOTE:  Weird situation:  I did this edit, but for some reason the old contribution
+                    //        that this edit displaces was not in my view.  Oh well, treat the edit itself
+                    //        as a new contribution from me.  This is problematic of course if I was merely
+                    //        edited some contribution somewhere that was subsequently lost.  I don't
+                    //        necessarily want it elevated to my category.  But I guess it's better than
+                    //        not seeing it at all.
+                    word.cat = that.starting_cat(word);
+                    word.cat.conts.add_leftmost(word);
+                    // word.supersedes_idn = word.obj.contribute;
+                    that.notify(f("{new_cont_idn}. Resurrecting my edit of ghostly #{old_cont_idn})", {
+                        new_cont_idn: word.idn,
+                        old_cont_idn: word.obj.contribute
+                    }));
+                } else {
+                    that.notify(f("{new_cont_idn}. (Can't edit {old_cont_idn})", {
+                        new_cont_idn: word.idn,
+                        old_cont_idn: word.obj.contribute
+                    }));
+                }
+            } else {
+                if (that.is_authorized(word, old_cont.sbj, "edit")) {
+                    old_cont.cat.conts.replace(word.obj.contribute, word);
+                    word.cat = old_cont.cat;
+                    word.capt = old_cont.capt;
+                    // TODO:  Should a lesser-privileged caption owner
+                    //        be replaced by new_cont_owner?
+                    //        Maybe always do this here:
+                    //            word.capt.owner = word.sbj;
+                    //        Is there a downside?
+                    //        What does it mean to "own" a contribution or caption??
+                    //        It's certainly not equivalent to being permitted to edit it.
+                    // if (is_specified(old_cont.superseded_by_idn)) {
+                    //     console.warn(
+                    //         "Edit fork:",
+                    //         old_cont.idn,
+                    //         "was edited twice, first by",
+                    //         old_cont.superseded_by_idn,
+                    //         "now by",
+                    //         word.idn
+                    //     );
+                    //     // Probably harmless.  Different non-admin users, editing the same cont?
+                    //     // TODO:  Chronicle the sequence of owners too?
+                    //     // NOTE:  This is probably not the only fork.
+                    // }
+                    // old_cont.superseded_by = word;
+                    if (DO_REPORT_EDIT_HISTORIES) {
+                        word.supersedes = old_cont;
+                        // NOTE:  This maintains a reference to the older, superseded contribute
+                        //        word (or edit word).  There is a theoretical memory penalty to
+                        //        doing this.  If not (if this option is false), and garbage
+                        //        collection actually happens, then the memory used by the old
+                        //        word could be recovered.
+                    }
+                    // that.superseded_cont_idns.push(old_cont.idn);
+                    // old_cont.cat = null;
+                    console.assert( ! word.cat.conts.has(old_cont.idn), "WTF it should be gone from cat", word.cat.obj.name, old_cont);
+                    console.assert(that.cont_from_idn(old_cont.idn) === null, "WTF it should be gone from all cats", old_cont);
+                    // TODO:  Maybe superseded contributions can be destroyed:
+                    //        old_cont.destroy()
+                }
+            }
+            that.affirm_notifies_match();
+        }
         rearrange_word(word) {
             var that = this;
             if ( ! is_specified(that.idn_of.rightmost)) {
                 that.scan_fail("Rearrange before 'rightmost' definition", word.idn);
             }
-            if ( ! that.clex.category_lexi.has(word.obj.category)) {
+            if ( ! that.cats.has(word.obj.category)) {
                 that.scan_fail("Rearrange before category definition", word.idn, word.obj.category);
             }
             if ( ! is_specified(that.clex.category_lexi.get(word.obj.category).cont_sequence.fence_post_right)) {
@@ -1880,9 +2053,283 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                     word.obj.category
                 );
             }
-            that.clex.rearrange_word(word);
-        }
 
+
+
+            that.clex.rearrange_word(word);
+
+
+
+
+            var cont = that.cont_from_idn(word.obj.contribute);
+            if (cont === null) {
+                that.notify(f("{reordering_idn}. (Can't find contribution {cont_idn} to rearrange)", {
+                    reordering_idn: word.idn,
+                    cont_idn: word.obj.contribute
+                }));
+            } else {
+                var new_cat = that.cats.get(word.obj.category);
+                var is_far_right = is_equal_idn(word.obj.locus, that.idn_of.rightmost);
+                var old_cat = cont.cat;
+                var old_cont_owner = cont.sbj;
+                var action_template = is_far_right
+                    ? "rearrange to right end of {cat},"
+                    : "rearrange to the left of #{idn} in {cat},";
+                var action = f(action_template, {
+                    cat: new_cat.obj.name,
+                    idn: word.obj.locus
+                });
+                if (that.is_authorized(word, old_cont_owner, action)) {
+                    if (is_specified(old_cat)) {
+                        old_cat.conts.delete(word.obj.contribute);
+                    } else {
+                        console.error("Why didn't contribution have a category?", cont);
+                    }
+                    if (is_far_right) {
+                        new_cat.conts.add_rightmost(cont);
+                    } else {
+                        if ( ! new_cat.conts.add_left_of(cont, word.obj.locus)) {
+                            new_cat.conts.add_leftmost(cont);
+                            // NOTE:  locus can't be found, insert leftmost instead.
+                        }
+                    }
+                    cont.sbj = word.sbj;   // HACK:  Does this leave things as they were with sql?
+                    cont.cat = new_cat;
+                    // NOTE:  This used to transfer ownership from the original author to
+                    //        the person who rearranged it:
+                    //            cont.owner = word.sbj;
+                    //        What was the rationale for that?
+                    //        If we don't have to do that, we don't have to keep a separate owner
+                    //        property for each contribution -- the original sbj property is fine.
+                    // TODO:  Commandeer the caption ownership too?
+                    //        cont.capt.owner = new_cont_owner;
+                }
+            }
+
+            that.affirm_notifies_match();
+        }
+        /**
+         * Should we let this reference-word affect our rendering?
+         *
+         * The hierarchy of changes to a contribution are:
+         *     original contributor < system admin < me (browsing user)
+         *
+         * So once I (a logged-in user) changes a contribution, I will ignore changes by others.
+         * Before that, admin changes similarly stop original author changes.
+         *
+         * @param word - the word causing a change (e.g. edit or re-categorization or rearrangement)
+         *               word.idn is the idn number of the word
+         *               word.sbj is the idn qstring of the user who initiated this change.
+         *               word.vrb is the idn number of the verb
+         *               word.obj is the idn number of the object
+         * @param old_owner - tricky - id of the last person we authorized to change this contribution.
+         *                It starts off as the original contributor.
+         *                But then if I (the browsing user) moved it or edited it, then I'm the owner.
+         *                But before that if the system admin moved or edited it,
+         *                then they became the owner.
+         *                This field comes from the data-owner attribute.  BUT if we return true,
+         *                then we expect data-owner to be overridden by whoever initiated THIS change!
+         * @param action - text describing the change.
+         *                 (This may be briefly word.vrb.txt, as if that were accessible in JS,
+         *                 or it may be longer, e.g. "drop on right end of my")
+         * @return {boolean}
+         */
+        is_authorized(
+            word,
+            old_owner,
+            action
+        ) {
+            var that = this;
+
+            // DONE:  Don't let owner or admin "drag to my.*"  (not even before I do)
+            //            Shame that removes the Seuss quote, and the top will be empty for new users.
+            //        Nor other.* nor anon.*
+            //            (It's weird that we allow recategorizations to there at all,
+            //            less weird that we allow rearrangements within those categories,
+            //            but it would be weirder if we allowed anyone ELSE do those FOR me.)
+            //            But this eliminates admin rearranging the "other" category.
+            //            Which would be problematic anyway, as different users already have
+            //            different stuff there.  So admin placing X to the left of Y would
+            //            already be unusable to the user who created Y (or moved it to category 'my')
+            //            because it wouldn't then be in category 'other'.
+            //        But do allow owner or admin to "drag to trash.*"
+            //            And that affects everyone else, unless of course I drag it elsewhere later.
+            //            A little weird that owner or admin rearrangements WITHIN trash affect
+            //            everyone.
+            //        Do allow admin to "drag to about.*" (Only admin can create those words anyway.)
+            //            And those actions rightly affect everyone.
+            // TODO:  The confusion above is a symptom of the deeper confusion:
+            //            Are categories user-interest partitions, or user-origin partitions?
+            //            IOW are we separating things by where they came from?
+            //                (anonymous users, me, other logged-in users)
+            //            or by what we want to do with them?
+            //                (my unslumping, others, trash)
+
+            // var change_idn = word.idn;
+            // var new_owner = word.sbj;
+            // var change_vrb = word.vrb;
+            // var target = word.obj;
+            var change_idn = word.idn;
+            var new_owner = word.sbj;
+            var target = word.obj.contribute || word.idn;
+
+            // First stage of decision-making:
+            var is_change_mine = that.is_me(new_owner);
+            var did_i_change_last = that.is_me(old_owner);
+            var is_change_admin = that.is_user_admin(new_owner);
+            var did_admin_change_last = that.is_user_admin(old_owner);
+            var is_same_owner = qiki.Lex.is_equal_idn(new_owner, old_owner);
+            var is_guardrailed = that.is_word_guardrailed(word);
+
+            // Second stage of decision making:
+            var let_admin_change = ! is_guardrailed && ! did_i_change_last                            && is_change_admin;
+            var let_owner_change = ! is_guardrailed && ! did_i_change_last && ! did_admin_change_last && is_same_owner;
+
+            // var ok;
+            // if (that.is_word_guardrailed(word)) {
+            //     ok = is_change_mine;
+            // } else {
+            //     ok = is_change_mine || let_admin_change || let_owner_change;
+            // }
+            var ok = is_change_mine || let_admin_change || let_owner_change;
+
+            // Decision:
+            if (ok) {
+                that.notify(
+                    change_idn +
+                    ". Yes " +
+                    that.user_name_short(new_owner) +
+                    " may " +
+                    action +
+                    " " +
+                    target +
+                    ", work of " +
+                    that.user_name_short(old_owner)
+                );
+            } else {
+                that.notify(
+                    change_idn +
+                    ". Nope " +
+                    that.user_name_short(new_owner) +
+                    " won't " +
+                    action +
+                    " " +
+                    target +
+                    ", work of " +
+                    that.user_name_short(old_owner)
+                );
+
+                // Obsolete:
+                // if (let_owner_change) {
+                //     that.notify("     ...because only owner can recategorize like this.");
+                //     // TODO:  Misleading because admin might be able to change too?
+                // } else if (let_admin_change) {
+                //     that.notify("     ...because only admin can recategorize like this.");
+                //     // TODO:  Wny don't rearrange-about words show up here?
+                // }
+
+                // TODO:  Display more thorough explanations on why or why not ok.
+                //        This might be a big idea:
+                //        Explain reasons by seeing which boolean inputs were critical,
+                //        that is, which if flipped, would have changed the "ok" output.
+                //        Would this really be interesting and complete?
+                //        What about pairs of inputs that together change the output
+                //        but don't individually?  Are there any such pairs?  Or triples?
+                //        How to compose the human-readable explanations once we know which
+                //        inputs were critical?
+            }
+            return ok;
+        }
+        affirm_notifies_match() {
+            var that = this;
+            if (that.last_notify_message !== that.clex.last_notify_message) {
+                if (console_verbose) {
+                    console.error("NOTIFY MISMATCH");
+                } else {
+                    console.error(
+                        "NOTIFY MISMATCH\n" +
+                        "\t" + that.clex.last_notify_message + "\n" +
+                        "\t" + that.last_notify_message
+                    );
+                }
+            }
+        }
+        starting_cat(word) {
+            var that = this;
+            console.assert(
+                (
+                    is_specified(that.cats.by_name.my) &&
+                    is_specified(that.cats.by_name.anon) &&
+                    is_specified(that.cats.by_name.their)
+                ),
+                "Categories not defined yet:",
+                that.cats.by_name,
+                "\nidns defined:",
+                that.idn_of
+            );
+            if (that.is_me(word.sbj)) {
+                return that.cats.by_name.my;
+            } else if ( ! that.is_authenticated(word.sbj)) {
+                return that.cats.by_name.anon;
+            } else {
+                return that.cats.by_name.their;
+            }
+        }
+        cont_from_idn(cont_idn) {
+            var that = this;
+            var cont_answer = null;
+            that.cats.loop(function (cat) {
+                // FALSE WARNING:  Unresolved variable conts
+                // noinspection JSUnresolvedVariable
+                cont_answer = cat.conts.get(cont_idn);
+                if (cont_answer !== null) {
+                    return false;
+                }
+            });
+            return cont_answer;
+        }
+        is_me(user_idn) {
+            return qiki.Lex.is_equal_idn(user_idn, this.me_idn);
+        }
+        is_user_admin(user_idn) {
+            var that = this;
+            var user = that.from_user[user_idn];
+            if (is_specified(user)) {
+                return user.is_admin;
+            } else {
+                return false;
+            }
+        };
+        is_word_guardrailed(word) {
+            var that = this;
+            var guardrailed_categories = [
+                that.cats.by_name.my.idn,
+                that.cats.by_name.their.idn,
+                that.cats.by_name.anon.idn
+            ];
+            return word.vrb === that.idn_of.rearrange && has(guardrailed_categories, word.obj.category);
+        }
+        user_name_short(user_idn) {
+            var that = this;
+            if (is_defined(user_idn)) {
+                var user_word = that.from_user[user_idn];
+                if (
+                    is_specified(user_word) &&
+                    is_specified(user_word.name) &&
+                    user_word.name !== ''
+                ) {
+                    if (user_word.name.length > 20) {
+                        return user_word.name.substring(0,15) + "...";
+                    } else {
+                        return user_word.name;
+                    }
+                } else {
+                    return "#" + String(user_idn);
+                }
+            } else {
+                return "(unowned)";
+            }
+        };
         create_word(vrb_name, named_sub_nits, done_callback, fail_callback) {
             var that = this;
             done_callback = done_callback || function () {};
@@ -1901,7 +2348,6 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                  */
                 function create_word_maybe_done(response_object) {
                     var word_json = response_object.jsonl;
-                    // var word_decoded = word_decode(word_jsonl);
                     var word_created = that.each_word_json(word_json);
                     if (word_created === null) {
                         fail_callback("JSONL error");
@@ -1912,19 +2358,123 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                 fail_callback
             );
         }
+
+        /**
+         * Report all contribution edit histories in the console.
+         *
+         * Only edits that were "authorized" (e.g. we made them, etc.)
+         *
+         * EXAMPLE:
+         *     2.2Y     1911. e "From this day to the ending of the world, \nWe in (420)
+         *         5d   1891. c "From this day to the ending of the world,\n...we  (422)
+         *
+         * Meaning 2.2 years ago a contribution was edited (to 420 characters),
+         * and 5 days before that, the original was submitted (422 characters long).
+         */
+        editing_history_report() {
+            var that = this;
+            that.cats.loop(function (cat) {
+                // noinspection JSUnresolvedVariable
+                cat.conts.loop(function (cont) {
+                    // noinspection JSUnresolvedVariable
+                    if (cont.vrb !== that.idn_of.contribute) {
+                        var this_cont = cont;
+                        var later_cont = null;
+                        console.debug("");
+                        do {
+                            var delta, whn;
+                            if (later_cont === null) {
+                                delta = delta_format(seconds_1970() - this_cont.whn_seconds());
+                                whn = delta.amount_long + delta.units_short;
+                            } else {
+                                delta = delta_format(
+                                    later_cont.whn_seconds() - this_cont.whn_seconds()
+                                );
+                                whn = "    " + delta.amount_short + delta.units_short;
+                            }
+                            whn = whn.padEnd(4 + 2 + 1);
+                            var report = f("{whn} {idn}. {vrb} {text} ({len})", {
+                                whn: whn,
+                                idn: String(this_cont.idn).padStart(5),
+                                vrb: that.by_idn[this_cont.vrb].obj.name.substring(0,1),
+                                text: JSON.stringify(this_cont.obj.text).substring(0,50),
+                                len: this_cont.obj.text.length
+                            });
+                            var is_earliest_truly = this_cont.vrb === that.idn_of.contribute;
+                            var is_earliest_we_know_of = ! is_specified(this_cont.supersedes);
+                            if (is_earliest_truly && ! is_earliest_we_know_of) {
+                                console.debug("%c\t" + report, 'color:magenta;');
+                            } else if ( ! is_earliest_truly && is_earliest_we_know_of) {
+                                console.debug("%c\t" + report, 'color:red;');
+                                var guessed_next = f("{whn} {idn}. ???", {
+                                    whn: "       ",
+                                    idn: String(this_cont.obj.contribute).padStart(5)
+                                });
+                                console.debug("%c\t" + guessed_next, 'color:red;');
+                            } else {
+                                console.debug("\t" + report);
+                            }
+                            later_cont = this_cont;
+                            this_cont = this_cont.supersedes;
+                        } while (is_specified(this_cont))
+                    }
+                });
+            });
+        }
     }
 
-    class WordContribution extends qiki.Word {
-        is_interact_ref() {
-            var that = this;
-            var vrb_definition_word = that.lex.by_idn[that.vrb];
-            var vrb_parent = vrb_definition_word.obj.parent;
-            return vrb_parent === that.lex.idn_of.interact;
-        }
-        is_category_def() {
-            return this.obj.parent === this.lex.idn_of.category;
-        }
-    }
+    // class CategoryWord extends qiki.Word {
+    //     when_resolved() {
+    //         var that = this;
+    //         super.when_resolved();
+    //         that.conts = new qiki.LexMemory();
+    //         that.lex.cats.add(that);
+    //     }
+    // }
+    // class ContributionWord extends qiki.Word {
+    //     starting_cat() {
+    //         var that = this;
+    //         console.assert(
+    //             (
+    //                 is_specified(that.lex.cats.by_name.my) &&
+    //                 is_specified(that.lex.cats.by_name.anon) &&
+    //                 is_specified(that.lex.cats.by_name.their)
+    //             ),
+    //             "Categories not defined yet:",
+    //             that.lex.cats.by_name, "\n",
+    //             "idns defined:",
+    //             lex.idn_of
+    //         );
+    //         if (that.lex.is_me(that.sbj)) {
+    //             return that.lex.cats.by_name.my;
+    //         } else if ( ! that.lex.is_authenticated(that.sbj)) {
+    //             return that.lex.cats.by_name.anon;
+    //         } else {
+    //             return that.lex.cats.by_name.their;
+    //         }
+    //     }
+    //     when_resolved() {
+    //         var that = this;
+    //         super.when_resolved();
+    //         that.cat = that.starting_cat();
+    //         console.assert(that.lex.cats.has(that.cat.idn), that.cat, that.lex.cats);
+    //         that.cat.conts.add(that);
+    //     }
+    // }
+    // // class InteractWord extends qiki.Word {
+    // //
+    // // }
+    // class OtherWord extends qiki.Word {
+    //     // is_interact_ref() {
+    //     //     var that = this;
+    //     //     var vrb_definition_word = that.lex.by_idn[that.vrb];
+    //     //     var vrb_parent = vrb_definition_word.obj.parent;
+    //     //     return vrb_parent === that.lex.idn_of.interact;
+    //     // }
+    //     // is_category_def() {
+    //     //     return this.obj.parent === this.lex.idn_of.category;
+    //     // }
+    // }
 
     // /**
     //  * Fill the JavaScript Lexi collections by scanning the lex jsonl.
@@ -2614,15 +3164,15 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
         //        These strings appear next to the triangle valves at the top of each category.
         // NOTE:  Sneaky code in the CategoryLexi() constructor enables the category objects to be
         //        referred to by internal name above, e.g. categories.by_name.their
-        //        These internal names are in the lex. They are the txt parts of each category word.
-        //        They don't show up on the website.
+        //        These internal names are in the lex. They are the .obj.name parts of each
+        //        category word. They don't show up on the website.
         //        I'm sure this duplicate naming spread across code and data won't foncuse anyone.
 
         categories.by_name.my.$sup.addClass('sup-category-first');
     }
 
     // var IDN_UNDEFINED = {IDN_UNDEFINED: 'IDN_UNDEFINED'};
-    var IDN_UNDEFINED = ['IDN_UNDEFINED'];
+    // var IDN_UNDEFINED = ['IDN_UNDEFINED'];
 
     /**
      * //// ContributionsUnslump //// - collection of all contributions for unslumping.org
@@ -2678,15 +3228,20 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
         //     // me: me_idn_lineage   // oops, too early, put off until load_nits ... init().
         // });
 
-        if (console_verbose) {
-            that.notify = console.log.bind(console);   // should come before words are processed
-            // EXAMPLE:
-            //     1918. Yes Bob Stein may caption 1917, work of Bob Stein
-            //     1919. Nope Horatio won't edit 956, work of Bob Stein
-            //     1920. (Can't caption 1919)
-            //     1921. Nope Horatio won't drag to 1871 in their, 1849, work of Horatio
-            //          ...because only admin can recategorize like this.
-        }
+
+        that.notify = function (message) {
+            if (console_verbose) {
+                console.log(message);
+            }
+            that.last_notify_message = message;
+        };   // should come before words are processed
+        // EXAMPLE:
+        //     1918. Yes Bob Stein may caption 1917, work of Bob Stein
+        //     1919. Nope Horatio won't edit 956, work of Bob Stein
+        //     1920. (Can't caption 1919)
+        //     1921. Nope Horatio won't drag to 1871 in their, 1849, work of Horatio
+        //          ...because only admin can recategorize like this.
+
         //
         // looper(MONTY.w, function (_, word) {
         //     that.word_pass(word);
@@ -2702,7 +3257,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
 
 
         // that.user_lexi = new UserLexi(User);
-        that.lex = null;
+        // that.lex = null;
     }
     ContributionsUnslump.prototype = Object.create(ContributionLexi.prototype);
     ContributionsUnslump.prototype.constructor = ContributionsUnslump;
@@ -2726,7 +3281,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
             "Categories not defined yet:",
             that.category_lexi.by_name,
             "\nidns defined:",
-            that.lex.idn_of
+            lex.idn_of
         );
         if (that.is_me(word.sbj)) {
             return that.category_lexi.by_name.my;
@@ -2738,7 +3293,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
     }
 
     ContributionsUnslump.prototype.is_user_authenticated = function ContributionsUnslump_is_user_authenticated(user_idn) {
-        return this.lex.is_authenticated(user_idn);
+        return lex.is_authenticated(user_idn);
         // var that = this;
         // // if (that.user_lexi.has(user_idn)) {
         // if (has(that.lex.from_user, user_idn)) {
@@ -2787,7 +3342,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
     // };
 
     function extract_user_type(user_idn) {
-        var parts = user_idn.toString().split(',');
+        var parts = String(user_idn).split(',');
         console.assert(parts.length === 2, "Malformed user idn", user_idn);
         return parseInt(parts[0]);
     }
@@ -2808,13 +3363,13 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
      * @param word
      */
     ContributionsUnslump.prototype.is_word_guardrailed = function ContributionsUnslump_is_word_guardrailed(word) {
-        var that = this;
+        // var that = this;
         var guardrailed_categories = [
             categories.by_name.my.idn,
             categories.by_name.their.idn,
             categories.by_name.anon.idn
         ];
-        return word.vrb === that.lex.idn_of.rearrange && has(guardrailed_categories, word.obj.category);
+        return word.vrb === lex.idn_of.rearrange && has(guardrailed_categories, word.obj.category);
     }
 
     // FALSE WARNING:  Unused definition user_name_short
@@ -2823,10 +3378,10 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
     //                 calling an overridden derived-class method.
     // noinspection JSUnusedGlobalSymbols
     ContributionsUnslump.prototype.user_name_short = function ContributionsUnslump_user_name_short(user_idn) {
-        var that = this;
+        // var that = this;
         if (is_defined(user_idn)) {
             // var user_word = that.user_lexi.get(user_idn, UNKNOWN_USER);
-            var user_word = that.lex.from_user[user_idn];
+            var user_word = lex.from_user[user_idn];
             if (
                 is_specified(user_word) &&
                 is_specified(user_word.name) &&
@@ -2838,7 +3393,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                     return user_word.name;
                 }
             } else {
-                return "#" + user_idn.toString();
+                return "#" + String(user_idn);
             }
         } else {
             return "(unowned)";
@@ -2851,9 +3406,9 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
     }
 
     ContributionsUnslump.prototype.am_i_admin = function ContributionsUnslump_am_i_admin() {
-        var that = this;
+        // var that = this;
         // return that.me_user_word().is_admin;
-        return that.lex.is_admin(MONTY.me_idn);
+        return lex.is_admin(MONTY.me_idn);
     };
 
     // ContributionsUnslump.prototype.am_i_anonymous = function ContributionsUnslump_am_i_anonymous() {
@@ -2862,9 +3417,9 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
     // };
 
     ContributionsUnslump.prototype.am_i_authenticated = function ContributionsUnslump_am_i_authenticated() {
-        var that = this;
+        // var that = this;
         // return that.me_user_word().is_authenticated;
-        return that.lex.is_authenticated(MONTY.me_idn);
+        return lex.is_authenticated(MONTY.me_idn);
     };
 
     // var UNKNOWN_USER = new User([-1,-1]);
@@ -2883,16 +3438,16 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
      * Title for the "my" category.
      */
     ContributionsUnslump.prototype.me_title = function ContributionsUnslump_me_user() {
-        var that = this;
+        // var that = this;
         // return that.me_user_word().possessive() + " " + MONTY.WHAT_IS_THIS_THING;
-        return that.lex.possessive(MONTY.me_idn) + " " + MONTY.WHAT_IS_THIS_THING;
+        return lex.possessive(MONTY.me_idn) + " " + MONTY.WHAT_IS_THIS_THING;
     };
 
     ContributionsUnslump.prototype.is_user_admin = function ContributionsUnslump_is_user_admin(user_idn) {
-        var that = this;
+        // var that = this;
 
         // var user = that.user_lexi.get(user_idn);
-        var user = that.lex.from_user[user_idn];
+        var user = lex.from_user[user_idn];
         if (is_specified(user)) {
             return user.is_admin;
         } else {
@@ -3184,11 +3739,29 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                     // NOTE:  Prevent false alarms at the beginning, when contributions objects are
                     //        instantiated but not rendered yet.  And so the $unrendered count
                     //        has not been computed either.
+
+                    // NOTE:  What follows is a three-way comparison to make sure the sequence
+                    //        of contributions in each category are in agreement.
+                    //        1.sql - the words from LexMySQL, that built:  Category.cont_sequence
+                    //        2.dom - the order of appearance of rendered contributions,
+                    //                the rendered ones only
+                    //        3.nit - the words from lex.js stored in lex.cats...conts
+
                     num_unrendered += num_unrendered_this_category;
-                    assert_equal(
+                    assert_equal(   // 1.sql vs 2.dom -- compare quantity
                         num_current_this_category,
-                        rendered_idn_strings.length + num_unrendered_this_category
+                        rendered_idn_strings.length + num_unrendered_this_category,
+                        "sql vs dom"
                     );
+
+                    var nit_conts = lex.cats.by_name[category.txt].conts;
+                    var num_nits_this_category = nit_conts.num_words();
+                    assert_equal(   // 1.sql vs 3.nit -- compare quantity
+                        num_current_this_category,
+                        num_nits_this_category,
+                        "sql vs nits"
+                    );
+
                     var current_idns = category.cont_sequence.idn_array();
                     var idn_mismatch;
                     if (any_query_string_limitations) {
@@ -3199,8 +3772,8 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                         idn_mismatch = false;
                         looper(rendered_idn_strings, function (index, rendered_idn_string) {
                             var current_idn = current_idns[index];
-                            var current_idn_string = current_idn.toString();
-                            if (current_idn_string !== rendered_idn_string) {
+                            var current_idn_string = String(current_idn);
+                            if (current_idn_string !== rendered_idn_string) {   // 1.sql vs 2.dom
                                 idn_mismatch = true;
                             }
                         });
@@ -3211,18 +3784,25 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                     } else {
                         plus_n_more = f(" + {n} more", {n: num_unrendered_this_category});
                     }
-                    var rendered_idns = rendered_idn_strings.join(" ") || "(none rendered)";
+                    var current_idn_string = stringify_array(current_idns).join(" ");
+                    var rendered_idn_string = rendered_idn_strings.join(" ") || "(none rendered)";
+                    var nits_idn_string = nit_conts.idn_array().join(" ");
+                    if (nits_idn_string !== current_idn_string) {   // 1.sql vs 3.nit
+                        idn_mismatch = true;
+                    }
                     var vars = {
                         cat: category.txt,
-                        rendered_idns: rendered_idns,
+                        rendered_idns: rendered_idn_string,
                         plus_n_more: plus_n_more,
                         num_current: num_current_this_category,
-                        current_idns: stringify_array(current_idns).join(" ")
+                        current_idns: stringify_array(current_idns).join(" "),
+                        nits_idns: nits_idn_string
                     };
                     if (idn_mismatch) {
                         console.error(f("RENDERING MISMATCH {cat}:\n" +
                             "    rendered: {rendered_idns}{plus_n_more} = {num_current}\n" +
-                            "     current: {current_idns}", vars));
+                            "     current: {current_idns}\n" +
+                            "        nits: {nits_idns}", vars));
                     } else {
                         console.log(f("Rendered {cat}: " +
                             "{rendered_idns}{plus_n_more} = {num_current}", vars));
@@ -3419,7 +3999,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                                get: function () {return this._id_prefix || '';},
                                set: function (new_prefix) {return this._id_prefix = new_prefix;}
                           },
-        idn_string:       { get: function () {return this.idn.toString();}},
+        idn_string:       { get: function () {return String(this.idn);}},
         $cont:            { get: function () {return this.$sup.find('.contribution');}},
         $render_bar:      { get: function () {return this.$sup.find('.render-bar');}},
         $save_bar:        { get: function () {return this.$sup.find('.save-bar');}},
@@ -4010,7 +4590,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
     function interact_new(interact_name, obj) {
        type_should_be(interact_name, String);
        type_should_be(obj, Object);
-       contribution_lexi.lex.create_word(interact_name, obj, function done_interact(word) {
+       lex.create_word(interact_name, obj, function done_interact(word) {
            // contribution_lexi.word_resolve(word);
            // contribution_lexi.word_handle(word);
        });
@@ -4888,25 +5468,18 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                                 var $new_dom_almost = old_cont.$sup;
                                 new_cont.dom_link($new_dom_almost);   // new cont becomes rendered
 
-                                console.assert(
-                                    old_cont.superseded_by_idn === new_cont.idn,
-                                    "Huh, the following is not redundant after all.",
-                                    old_cont,
-                                    new_cont
-                                );
-                                console.assert(
-                                    old_cont.supersedes_idn === old_cont.idn,
-                                    "Huh, the next two lines may not be redundant after all.",
-                                    old_cont,
-                                    new_cont
-                                );
-                                // TODO:  Make sure the preceding twin asserts always pass.
-                                //        That is, .create_word() via .each_word_jsonl()
-                                //        has already done the superseding.  And if so, delete
-                                //        the following .superseded_by() and .supersedes() calls.
-                                //        Not that it hurts to do it twice.  It's just dumb.
-                                old_cont.superseded_by(new_cont);     // old cont becomes superseded
-                                new_cont.supersedes(old_cont.idn);
+                                // console.assert(
+                                //     old_cont.superseded_by_idn === new_cont.idn,
+                                //     "Huh, the following is not redundant after all.",
+                                //     old_cont,
+                                //     new_cont
+                                // );
+                                // console.assert(
+                                //     old_cont.supersedes_idn === old_cont.idn,
+                                //     "Huh, the next two lines may not be redundant after all.",
+                                //     old_cont,
+                                //     new_cont
+                                // );
 
                                 old_cont.dom_removal();               // old cont disappears
                                 // TODO:  Encapsulate this code into some kind of new method
@@ -5371,7 +5944,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                     id_attribute: popup_cont.id_attribute,   // idn is a misnomer, it may include popup_prefix
                     url: popup_cont.media_url,
                     is_pop_up: true,
-                    auto_play: auto_play.toString(),
+                    auto_play: String(auto_play),
                     width:  max_live_width,
                     height: max_live_height,
                     duration: POP_UP_ANIMATE_MS,
@@ -5679,8 +6252,8 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                     width: r.width,
                     style: (
                         'position:absolute;color:red;font: 16px Literata,serif;' +
-                        'top:'+svg_top.toString()+'px;' +
-                        'left:'+svg_left.toString()+'px;'
+                        'top:'+String(svg_top)+'px;' +
+                        'left:'+String(svg_left)+'px;'
                     )
                 }).append($('<text>', { fill: 'red !important' }).append(the_word));
                 that.$sup.append($svg);
@@ -6264,13 +6837,12 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
      */
     function edit_submit($div, what, /*vrb,*/ vrb_name, obj, then, fail) {
         var new_text = text_from_$($div);   // was $div.text();
-        new_text = new_text.trim();
         // TODO:  Why doesn't this remove leading or trailing newlines from an edited caption?
         if ($div.data('unedited_text') === new_text) {
             console.log("(skipping", what, "save,", new_text.length, "characters unchanged)");
             then(null);
         } else {
-            contribution_lexi.lex.create_word(
+            lex.create_word(
                 vrb_name,
                 {
                     contribute: obj,
@@ -6301,7 +6873,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
     }
 
     /**
-     * Extract text from a jQuery object or selector.  Honor <p> and <br> as \n, etc.
+     * Extract text from a jQuery object or selector.  Honor <br> as \n and <p> as \n\n, etc.
      *
      * Helps when pasting text into a contribution being edited.
      * For example, pasting from poem-a-day email turned foo<br>bar into foobar using .text().
@@ -6313,16 +6885,22 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
      */
     function text_from_$(selector) {
         var html = $(selector).html();
-        html = html.replace(/<td/g,    "\n<td");
+        html = html.replace(/<br/g,    "\n<br");
         html = html.replace(/<table/g, "\n<table");
         html = html.replace(/<tr/g,    "\n<tr");
+        html = html.replace(/<td/g,    "\n<td");
         html = html.replace(/<p/g,     "\n\n<p");
         html = html.replace(/<div/g,   "\n\n<div");
         html = html.replace(/<h/g,     "\n\n<h");
-        html = html.replace(/<br/g,    "\n<br");
+
+        // TODO:  Possibly briefer version:
+        //        html = html.replace(/<(br|table|tr|td)\b/g, "\n<$1");
+        //        html = html.replace(/<(p|div|h)\b/g,      "\n\n<$1");
+
         var html_document = '<!doctype html><body>' + html;
-        var dom_object = (new DOMParser()).parseFromString(html_document, 'text/html');
-        var text = dom_object.body.textContent;
+        var dom_document = (new DOMParser()).parseFromString(html_document, 'text/html');
+        var text = dom_document.body.textContent;
+        text = text.trim();
         return text;
     }
     assert_equal("foo\nbar", text_from_$("<span>foo<br>bar</span>"));
@@ -6498,7 +7076,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                 var items = data.items;
                 if (is_laden(items)) {
                     looper(items, function (index, item) {
-                        console.log(index.toString() + ".", item.kind, item.type);
+                        console.log(String(index) + ".", item.kind, item.type);
                         item.getAsString(function (s) {
                             console.log("...", index, JSON.stringify(s));
                         });
@@ -6816,8 +7394,8 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                 }
                 console.log(
                     "rearranged contribution", movee_cont.idn,
-                    "from", from_cat.txt + "#" + evt.oldDraggableIndex.toString(),
-                    "to", to_cat.txt + "#" + evt.newDraggableIndex.toString(),
+                    "from", from_cat.txt + "#" + String(evt.oldDraggableIndex),
+                    "to", to_cat.txt + "#" + String(evt.newDraggableIndex),
                     "butting in before", buttee_idn, buttee_txt_excerpt
                 );
                 var is_same_category = from_cat.idn === to_cat.idn;
@@ -6825,7 +7403,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                 if (is_same_category && is_same_contribution) {
                     console.log("(put back where it came from)");
                 } else {
-                    contribution_lexi.lex.create_word('rearrange', {
+                    lex.create_word('rearrange', {
                         category: to_cat.idn,
                         contribute: movee_cont.idn,
                         locus: parseInt(buttee_idn)
@@ -7195,7 +7773,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
             benefit_of_the_doubt_post();
 
             // TODO:  Use edit_submit() or something like it here?
-            contribution_lexi.lex.create_word(
+            lex.create_word(
                 'contribute',
                 {
                     text: text
@@ -7205,7 +7783,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                     if (caption_text.length === 0) {
                         build_posted_contribution(cont_word);
                     } else {
-                        contribution_lexi.lex.create_word(
+                        lex.create_word(
                             'caption',
                             {
                                 contribute: cont_word.idn,
@@ -7533,9 +8111,9 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
             });
             var console_reporter = all_ok ? console.log : console.warn;
             console_reporter(
-                num_loaded.toString(),
+                String(num_loaded),
                 "of",
-                Object.keys(media_handlers).length.toString(),
+                String(Object.keys(media_handlers).length),
                 "media handlers loaded,",
                 num_failed, "failed,",
                 num_registered, "registered"
@@ -7561,6 +8139,8 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
 
     /**
      * Regenerate the two option texts for the drop-down menu #play_bot_from.
+     *
+     * So they show the latest quantities.
      */
     function refresh_labels_in_play_bot_from() {
         var $select = $('#play_bot_from');
@@ -7568,7 +8148,8 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
             var $option = $select.find('[value=' + $.escapeSelector(stuff.option_value) + ']');
             // var cat_idn = MONTY.IDN[stuff.option_value];
             // var cat_idn = contribution_lexi.category_lexi.idn[stuff.option_value];
-            var cat_idn = contribution_lexi.category_lexi.by_name[stuff.option_value].idn;
+            // var cat_idn = contribution_lexi.category_lexi.by_name[stuff.option_value].idn;
+            var cat_idn = lex.cats.by_name[stuff.option_value].idn;
             var cat = categories.get(cat_idn);
             var num_cont = cat.cont_sequence.len();
             var formatted_label = f(stuff.label, {number: num_cont});
@@ -7620,7 +8201,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
         var conts_were_limited_to = cont_array_from_query_string();
         if (conts_were_limited_to === null) {
             return true;
-        } else if (has(conts_were_limited_to, cont_idn.toString())) {
+        } else if (has(conts_were_limited_to, String(cont_idn))) {
             return true;
         } else {
             console.log(f("Not rendering {cont_idn} - query-string has cont={conts_limited_to}", {
@@ -7875,7 +8456,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
         //     if (num_cont_int === 0) {
         //         num_cont_string = "";
         //     } else {
-        //         num_cont_string = " (" + num_cont_int.toString() + ")";
+        //         num_cont_string = " (" + String(num_cont_int) + ")";
         //     }
         //     $sup_categories[cat].find('.how-many').text(num_cont_string);
         // });

@@ -5,64 +5,192 @@
 
 (function (qiki, jQuery) {
 
+    /**
+     * Lex - a collection of Words
+     */
+
+    qiki.Nit = class Nit {
+        get bytes() {
+            throw new Error("Nit subclass " + this.constructor.name + " should implement bytes()");
+        }
+        get nits() {
+            throw new Error("Nit subclass " + this.constructor.name + " should implement nits()");
+        }
+    }
+
+    // qiki.Nit = class {
+    //     constructor() {
+    //         var that = this;
+    //         that.tree = [];
+    //     }
+    // }
     qiki.Lex = class Lex {
-        constructor(url, word_class, context={}) {
+        constructor() {
             var that = this;
-            that.url = url;
-            that.short_name = url;
-            that.word_class = word_class;
-            that.context = context;
-            that.error_message = null;
-            that.idn_of = null;
-            that.by_idn = null;
-            that.line_number = null;
-            that.from_user = {};
-            that.num_lines = null;
-            if (word_class === qiki.Word) {
-                console.error("Derive your own Word class.");
-            } else if ( ! is_strict_subclass(word_class, qiki.Word)) {
-                console.error("A lex word class should be a subclass of Word:", word_class);
-            }
+            that.short_name = that.constructor.name;
+            that.word_class = qiki.Word;
         }
         word_factory(...args) {
-            var that = this;
-            var shiny_new_word_instance = new that.word_class(...args);
-            shiny_new_word_instance.lex = that;
-            return shiny_new_word_instance;
+            return new this.word_class(this, ...args);
         }
-        word_from_json(word_json) {
+
+        /**
+         * Are these idns equal?
+         *
+         * THANKS:  Compare arrays as strings, https://stackoverflow.com/a/42186143/673991
+         *
+         * A bonus of comparing idns by comparing their strings is that numbers and decimal strings
+         * are equivalent.  Because google ids are bigger than JavaScript numbers (67 vs 53 bits),
+         * JavaScript stores them as decimal strings.
+         */
+        static is_equal_idn(idn1, idn2) {
+            console.assert(idn1 !== null, idn1);
+            console.assert(idn2 !== null, idn2);
+            return String(idn1) === String(idn2);
+        }
+        static is_a(idn_child, idn_parent) {
+            if (idn_child === idn_parent) {
+                return true;
+            }
+            // FALSE WARNING:  'if' statement can be simplified
+            // noinspection RedundantIfStatementJS
+            if (is_a(idn_child, Array) && idn_child.length >= 1 && idn_child[0] === idn_parent) {
+                return true;
+                // TODO:  Get an ancestry of idn_child and see if parent is anywhere in it.
+                //        Right now this will NOT work:  if (lex.is_a(w.sbj, lex.idn_of.user)
+            }
+            // TODO:  Less alarming name collision between Lex.is_a() and window.is_a().
+            return false;
+        }
+        static IDN_UNDEFINED = ['IDN_UNDEFINED'];
+    }
+    console.assert(true === qiki.Lex.is_equal_idn([11,"22"], [11,"22"]));
+
+    qiki.Bunch = class Bunch extends qiki.Nit {
+        constructor(...args) {
+            super(...args);
             var that = this;
-            try {
-                var word_array = JSON.parse(word_json);
-            } catch (e) {
-                that.scan_fail("Word JSONL error", e, word_json);
+            that._words = [];
+            that.by_name = {};
+            that.notify = console.warn.bind(console);
+        }
+        num_words() {
+            return this._words.length;
+        }
+        add_rightmost(word) {
+            var that = this;
+            that._words.push(word);
+            that._remember_name_if_any(word, word.obj.name);
+        }
+        add_leftmost(word) {
+            var that = this;
+            that._words.unshift(word);
+            that._remember_name_if_any(word, word.obj.name);
+        }
+        add_left_of(word, idn_locus) {
+            var that = this;
+            var [word_locus, index_locus] = that._get_word_and_index(idn_locus);
+            if (word_locus === null) {
+                that.notify("Cannot add_left_of", word, idn_locus, that);
+                return false;
+            } else {
+                that._words.splice(index_locus, 0, word);
+                return true;
             }
-            if ( ! is_a(word_array, Array)) {
-                that.scan_fail("Word JSONL expecting array, not", word_array, word_json);
+        }
+        delete(idn_locus) {
+            var that = this;
+            var [word_locus, index_locus] = that._get_word_and_index(idn_locus);
+            if (word_locus === null) {
+                that.notify("Cannot delete", idn_locus, that);
+                return false;
+            } else {
+                that._words.splice(index_locus, 1);
+                return true;
             }
-            if (word_array.length < 4) {
-                that.scan_fail("Word JSONL too few sub-nits", word_array, word_json);
+        }
+        _remember_name_if_any(word, name) {
+            var that = this;
+            if (is_specified(name)) {
+                that.by_name[name] = word;
             }
-            var word = that.word_factory(
-                word_array[0],
-                word_array[1],
-                word_array[2],
-                word_array[3]
-            );
-            word.obj_values = word_array.slice(4);
-            return word;
+        }
+        has(idn) {
+            return this.get(idn) !== null;
+        }
+        _get_word_and_index(idn) {
+            var that = this;
+            var word_and_index = [null, null];
+            looper(that._words, function (index, word) {
+                if (word.idn === idn) {
+                    word_and_index = [word, index];
+                    return false;
+                }
+            });
+            return word_and_index;
+        }
+        get(idn) {
+            return this._get_word_and_index(idn)[0];
+        }
+        replace(idn_old, word_new) {
+            var that = this;
+            var [word_old, index_old] = that._get_word_and_index(idn_old);
+            if (word_old === null) {
+                that.notify("Cannot replace", idn_old, word_old, that);
+                return false;
+            } else {
+                that._words[index_old] = word_new;
+                return true;
+            }
+        }
+        loop(callback) {
+            var that = this;
+            looper(that._words, function (index, word) {
+                return callback(word);
+            });
+        }
+        idn_array() {
+            var that = this;
+            var array_answer = [];
+            that.loop(function (word) {
+                array_answer.push(word.idn);
+            });
+            return array_answer;
+        }
+    }
+
+    qiki.LexCloud = class LexCloud extends qiki.Lex {
+        constructor(url) {
+            super()
+            var that = this;
+            that.url = url;
         }
         scan(done, fail) {   // derived classes call this to traverse the lex
             var that = this;
-            that.idn_of = {};
-            that.by_idn = {};
             var promise_jsonl = jQuery.get({url: that.url, dataType:'text'});
             promise_jsonl.fail(function (jqxhr, settings, exception) {
-                console.error("fail loading nits", jqxhr.readyState, jqxhr.status, exception);
+                console.error("Lex.scan, ajax get:", jqxhr, settings, exception);
+                fail("Failure to get lex for scan: " + jqxhr.responseText);
+                // THANKS:  responseText is the needle in the fail callback haystack,
+                //          https://stackoverflow.com/a/12116790/673991
+                // SEE:  jqXHR, https://api.jquery.com/jQuery.Ajax/#jqXHR
             });
             promise_jsonl.done(function (response_body) {
                 var response_lines = response_body.split('\n');
                 response_lines.pop();   // Remove trailing empty string, from file ending in a newline.
+
+                that.idn_of = {
+                    lex: qiki.Lex.IDN_UNDEFINED,
+                    define: qiki.Lex.IDN_UNDEFINED,
+                    iconify: qiki.Lex.IDN_UNDEFINED,
+                    name: qiki.Lex.IDN_UNDEFINED,
+                    admin: qiki.Lex.IDN_UNDEFINED,
+                    google_user: qiki.Lex.IDN_UNDEFINED,
+                    anonymous: qiki.Lex.IDN_UNDEFINED,
+
+                };
+                that.by_idn = {};
+                that.from_user = {};
                 that.error_message = null;
                 that.line_number = 0;
                 that.num_lines = null;
@@ -79,6 +207,7 @@
                 });
                 that.num_lines = that.line_number;
                 that.line_number = null;
+
                 if (is_specified(that.error_message)) {
                     fail(that.error_message);
                 } else {
@@ -103,9 +232,9 @@
                     //        (since we got here) an additional line has been added to the lex.
                 }
             } catch (e) {
-                if (e instanceof qiki.Lex.ScanFail) {
+                if (e instanceof qiki.LexCloud.ScanFail) {
                     // NOTE:  All calls to scan_fail() should end up here.
-                    that.error_message = e.toString();
+                    that.error_message = String(e);
                     word_to_return = null;
                 } else {
                     // NOTE:  Something else went wrong, perhaps a data error that should have been
@@ -114,6 +243,22 @@
                 }
             }
             return word_to_return;
+        }
+        word_from_json(word_json) {
+            var that = this;
+            try {
+                var word_array = JSON.parse(word_json);
+            } catch (e) {
+                that.scan_fail("Word JSONL error", e, word_json);
+            }
+            if ( ! is_a(word_array, Array)) {
+                that.scan_fail("Word JSONL expecting array, not", word_array, word_json);
+            }
+            if (word_array.length < 4) {
+                that.scan_fail("Word JSONL too few sub-nits", word_array, word_json);
+            }
+            var word = that.word_factory(...word_array);
+            return word;
         }
         each_word(word) {   // callback for derived class
             var that = this;
@@ -129,10 +274,20 @@
                 } else {
                     that.each_reference_word(word);
                 }
+                word.when_resolved();
             }
         }
         is_early_in_the_scan() {
-            return ! is_defined(this.idn_of.lex) || ! is_defined(this.idn_of.define)
+            // return ! is_defined(this.idn_of.lex) || ! is_defined(this.idn_of.define)
+            return ! this.is_name_defined('lex') || ! this.is_name_defined('define');
+        }
+        is_name_defined(name) {
+            var that = this;
+            type_should_be(name, String);
+            return that.is_idn_defined(that.idn_of[name]);
+        }
+        is_idn_defined(idn) {
+            return is_defined(idn) && idn !==   qiki.Lex.IDN_UNDEFINED;
         }
         each_definition_word(word) {
             var that = this;
@@ -182,7 +337,7 @@
             //        Then there's the possibility of defining and naming ALL word parts somewhere in
             //        some definition:  idn, whn, sbj, vrb.
 
-            if (is_defined(that.idn_of[word.obj.name])) {
+            if (that.is_name_defined(word.obj.name)) {
                 that.scan_fail("Duplicate define", that.by_idn[that.idn_of[word.obj.name]], word);
             }
             that.idn_of[word.obj.name] = word.idn;
@@ -261,7 +416,7 @@
             //        Okay appearance:  console.error(args)
             //        Poor appearance:  console.error(args.join(" "))
 
-            throw new qiki.Lex.ScanFail(more_args.join(" "));
+            throw new qiki.LexCloud.ScanFail(more_args.join(" "));
             // NOTE:  This error message will get passed also to the scan() function fail() callback.
             //        But since that message is a string, it may be less informative than what
             //        console.error() produced above.
@@ -289,24 +444,6 @@
          * So far this is only done for google or anonymous users.
          * This is different from the parent-child relationship created by vrb definitions.
          */
-        static is_a(idn_child, idn_parent) {
-            if (idn_child === idn_parent) {
-                return true;
-            }
-            // FALSE WARNING:  'if' statement can be simplified
-            // noinspection RedundantIfStatementJS
-            if (is_a(idn_child, Array) && idn_child.length >= 1 && idn_child[0] === idn_parent) {
-                return true;
-                // TODO:  Get an ancestry of idn_child and see if parent is anywhere in it.
-                //        Right now this will NOT work:  if (lex.is_a(w.sbj, lex.idn_of.user)
-            }
-            // TODO:  Less alarming name collision between Lex.is_a() and window.is_a().
-            return false;
-        }
-        static is_equal_idn(idn1, idn2) {
-            return idn1.toString() === idn2.toString();
-            // THANKS:  Compare arrays as strings, https://stackoverflow.com/a/42186143/673991
-        }
 
         is_anonymous(user_idn) {
             return qiki.Lex.is_a(user_idn, this.idn_of.anonymous);
@@ -331,29 +468,27 @@
         }
 
     }
-    console.assert(true === qiki.Lex.is_equal_idn([11,"22"], [11,"22"]));
 
     qiki.Word = class Word {
-        lex = null;
         static MILLISECONDS_PER_WHN = 1.0;   // whn is milliseconds since 1970
         static SECONDS_PER_WHN = 0.001;   // whn is milliseconds since 1970
         // NOTE:  Maybe someday to save memory make the lex instance a static property of the derived
         //        Word class.  That way each word instance will know its lex instance but won't be
         //        burdened with storing it in every word instance.  But not today.
-        constructor(idn,whn,sbj,vrb,obj=null) {
+        constructor(lex, idn, whn, sbj, vrb, ...obj_values) {
             var that = this;
+            that.lex = lex;
             that.idn = idn;
             that.whn = whn;
             that.sbj = sbj;
             that.vrb = vrb;
-            that.obj = obj;   // named object values (after word is resolved)
-            that.obj_values = null;   // indexed object values (after nit json decoded, before resolved)
+            that.obj = null;   // named object values (after word is resolved)
+            that.obj_values = obj_values;   // indexed object values (after nit json decoded, before resolved)
         }
         vrb_name() {
             var that = this;
             if ( ! (that.lex instanceof qiki.Lex)) {
                 return "LEX NOT DEFINED";
-                // NOTE:  Only Lex.word_factory() should instantiate words.
             }
             if ( ! is_specified(that.lex.by_idn)) {
                 return "LEX NOT SCANNED";
@@ -381,9 +516,12 @@
                 this.vrb === this.lex.idn_of.define
             );
         }
+        /**
+         * Is this word the definition of 'lex' itself?  Works before 'lex' has been defined.
+         */
         is_lex_definition() {
             var that = this;
-            if (is_defined(that.lex.idn_of.lex)) {
+            if (that.lex.is_name_defined('lex')) {
                 return that.idn === that.lex.idn_of.lex;
             } else {
                 return (
@@ -393,14 +531,20 @@
                 );
             }
         }
+        /**
+         * Is this word the definition of 'define' itself?  Works before 'define' has been defined.
+         */
         is_define_definition() {
             var that = this;
-            if (is_defined(that.lex.idn_of.define)) {
+            if (that.lex.is_name_defined('define')) {
                 return that.idn === that.lex.idn_of.define;
             } else {
-                // NOTE:  The following works even when .is_defined() can't be used yet,
+                // NOTE:  The following fall-back works early in the scan,
+                //        when .is_name_defined() can't be used yet,
                 //        because idn_of.define hasn't been set yet,
-                //        because the 'define' definition-word hasn't been scanned yet.
+                //        because the 'define' definition-word hasn't been scanned yet,
+                //        because we are scanning the 'lex' or 'define' definition but
+                //        we haven't resolved them in .each_definition_word() yet.
                 return (
                     that.vrb === that.idn &&
                     that.obj_values[0] === that.idn &&
@@ -422,6 +566,8 @@
         }
         is_sbj_google_user() {
             return this.lex.is_google_user(this.sbj);
+        }
+        when_resolved() {
         }
     }
 

@@ -47,8 +47,8 @@ import werkzeug.utils
 
 import qiki
 from qiki.number import type_name
-import qiki.nit
-from qiki.nit import N
+# import qiki.nit
+# from qiki.nit import N
 import secure.credentials
 import to_be_released.web_html as web_html
 
@@ -217,7 +217,7 @@ class NamedElements(object):
             raise AttributeError(repr(self) + " has no attribute " + repr(item))
 
 
-class FlikiWord(qiki.nit.Nit):
+class FlikiWord(object):   # qiki.nit.Nit):   # pity, all that work in nit.py for nought
     """
     Combines the word and lex roles for the nit-based Contribution class of applications.
 
@@ -692,18 +692,18 @@ class FlikiWord(qiki.nit.Nit):
                 name=repr(name),
             )) from e
 
-    def bytes(self):
-        if self.idn is None:
-            return bytes()
-        else:
-            return qiki.nit.Integer(self.idn).bytes
-
-    def nits(self):
-        return (
-            [N(self.whn), N(self.sbj), N(self.vrb)] +
-            [N(v) for v in self.obj_values] +
-            [N(v) for v in self.obj.to_values()]
-        )
+    # def bytes(self):
+    #     if self.idn is None:
+    #         return bytes()
+    #     else:
+    #         return qiki.nit.Integer(self.idn).bytes
+    #
+    # def nits(self):
+    #     return (
+    #         [N(self.whn), N(self.sbj), N(self.vrb)] +
+    #         [N(v) for v in self.obj_values] +
+    #         [N(v) for v in self.obj.to_values()]
+    #     )
 
     def __repr__(self):
         return repr(self.to_dict())
@@ -2070,6 +2070,10 @@ class Auth(object):
         """
         with cls._print_lock:
             print(*args, **kwargs)
+            # EXAMPLE:  OSError: [Errno 22] Invalid argument
+            #           A real WTF error message.  Turns out it was coming from a ghost Flask server
+            #           I thought I'd already shut down when I closed PyCharm, but I guess I didn't.
+            # THANKS:  Shut down a ghost Flask server, https://stackoverflow.com/a/57231562/673991
 
     def __init__(
         self,

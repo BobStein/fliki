@@ -43,9 +43,15 @@
 /*}*/
 
 .sbj .anonymous-nits {
-    color: #006600;
+    color: #660066;
+    background-color: #FFEEFF;
+    border: 1px solid silver;
+    display: inline-block;
+    padding: 0 0.1em 0 0.1em;
 }
 .sbj .lex {
+    color: #006600;
+    background-color: #EEFFEE;
     border: 1px solid silver;
     display: inline-block;
     padding: 0 0.1em 0 0.1em;

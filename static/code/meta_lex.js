@@ -23,8 +23,9 @@ function js_for_meta_lex(window, $, MONTY) {
         // FALSE WARNING:  Invalid number of arguments, expected 0
         //                 because PyCharm doesn't see th qiki.Lex class in lex.js
         // noinspection JSCheckFunctionSignatures
-        var lex = new LexUnslumping(MONTY.LEX_URL, WordUnslumping, {});
-        lex.short_name = extract_file_name(lex.url);
+        var lex = new LexUnslumping(MONTY.LEX_URL);
+        // lex.short_name = extract_file_name(MONTY.LEX_URL);
+        lex.word_class = WordUnslumping;
         lex.$ol = $('<ol>', {class: 'lex-list'});
         lex.$ol.hide();
         lex.$progress = $('<div>', {id: 'progress'});
@@ -65,25 +66,22 @@ function js_for_meta_lex(window, $, MONTY) {
         return " " + since_seconds.toFixed(1) + "sec ";
     }
 
-    function seconds_1970() {
-        return (new Date()).getTime() / 1000.0;
-    }
-
-    class LexUnslumping extends qiki.Lex {
+    class LexUnslumping extends qiki.LexCloud {
 
         $progress = null;
         $ol = null;
 
-        scan(done, fail) {
+        scan(url, done, fail) {
             var that = this;
             that.num_def = 0;
             that.num_ref = 0;
             that.word_rendered_previously = null;
-            super.scan(function () {
+            super.scan(url, function () {
                 that.word_rendered_previously.render_whn_delta(null);
                 // NOTE:  Show the triangle below the last word, indicating time since browsing.
                 done();
             }, fail);
+
         }
         each_word(word) {
             var that = this;
@@ -248,9 +246,9 @@ function js_for_meta_lex(window, $, MONTY) {
             var that = this;
             var next_whn_seconds = is_specified(word_next) ? word_next.whn_seconds() : browse_time;
             var between = delta_format(next_whn_seconds - that.whn_seconds());
-            if (is_specified(word_next) && between.num >= HOUR) {
+            if (is_specified(word_next) && between.num >= 60*60) {
                 word_next.$li.css('border-top-color', gray_scale(log_time_scale(between.num, 333, 0)));
-                if (between.num >= WEEK) {
+                if (between.num >= 7*24*60*60) {
                     word_next.$li.css('border-top-width', log_time_scale(between.num, -150, 100));
                     // XXX:  Not sure why -150 ended up here.  I think if the output is nonpositive
                     //       css ignores it and the border is 1 pixel high.  This and the if-clause
@@ -312,160 +310,6 @@ function js_for_meta_lex(window, $, MONTY) {
         }
     }
 
-    var MILLISECOND = 0.001;
-    var SECOND = 1;
-    var MINUTE = 60*SECOND;
-    var HOUR = 60*MINUTE;
-    var DAY = 24*HOUR;
-    var WEEK = 7*DAY;
-    var MONTH = 30*DAY;
-    var YEAR = 365*DAY;
-
-    // The following are thresholds.
-    //    at and below which, we display this ---vvvv    vvvv--- above which, we display this
-    var EXACTLY_ZERO    = 0.0000000000000;    //    z -> 0ms ___ <-- at exactly zero, display z
-    var UP_TO_MILLI     = 95*MILLISECOND;     // 95ms -> .01s _ `--- between these -- 1ms to 95ms
-    var UP_TO_FRACTION  = 0.95*SECOND;        // .95s -> 1s __ `---- between these - .01s to .95s
-    var UP_TO_SECOND    = 99.4*SECOND;        //  99s -> 2m _ `----- between these --- 1s to 99s
-    var UP_TO_MINUTE    = 99.4*MINUTE;        //  99m -> 2h  `------ between these --- 2m to 99m
-    var UP_TO_HOUR      = 48.4*HOUR;          //  48h -> 2d ___                        2h to 48h
-    var UP_TO_DAY       = 99.4*DAY;           //  99d -> 3M __ `---- between these --- 2d to 99d
-    var UP_TO_MONTH     = 24.4*MONTH;         //  24M -> 2Y _ `----- between these --- 3M to 24M
-                                              //             `--------- above this --- 2Y to 999Y...
-
-    // CAUTION:  Because these "constants" are defined here,
-    //           delta_format() can be called before it works.
-    //           If called above this line (not inside a function)
-    //           it will return a bunch of NaNs.
-    // SEE:  const unavailable in IE10, etc., https://stackoverflow.com/a/130399/673991
-
-    /**
-     * Format a period of time in multiple human-readable formats.
-     *
-     * description_short is guaranteed 2-3 characters from 0 time (z) to 99.5 years (99Y).
-     *
-     * EXAMPLE:  delta_format(1) == {
-     *     "num": 1,
-     *     "amount_short":      "1",
-     *     "amount_long":       "1.0",
-     *     "units_short":       "s",
-     *     "units_long":        "seconds",
-     *     "description_short": "1s",
-     *     "description_long":  "1.0 seconds"
-     * }
-     * EXAMPLE:  delta_format(3628800) == {
-     *     "num": 3628800,
-     *     "amount_short":      "42",
-     *     "amount_long":       "42.0",
-     *     "units_short":       "d",
-     *     "units_long":        "days",
-     *     "description_short": "42d",
-     *     "description_long":  "42.0 days"
-     * }
-     *
-     * @param sec - number of seconds
-     * @return {{}}
-     */
-    // TODO:  Candidate short descriptions for 0-1 second:
-    //          0.05 - 0.94    ...  ".1s" - ".9s"
-    //        0.0094 - 0.0500             ?          10ms,99ms,.01s,.05s,.09s are too long
-    //                                               9-90 milliseconds - NOMINAL problem range
-    //                                               10-50 milliseconds - REAL problem range
-    //                                               Because .1s is KINDA close to 90 milliseconds,
-    //                                               and to 80,70,60ms.  But it's too big for 50ms.
-    //                                               can't be "50m"!
-    //                                               Xms-Lms Roman Numerals???
-    //        0.0005 - 0.0094  ...  "1ms" - "9ms"
-    //        9.4e-6 - 500e-6             ?          10-500 microseconds
-    //                                               10us,99us,.1ms,.5ms,.9ms   4-char-rule fits!
-    //         .5e-6 - 9.4e-6  ...  "1us" - "9us"
-    //        9.4e-9 - 500e-9
-    //         .5e-9 - 9.4e-9  ...  "1ns" - "9ns"
-    //
-    //        3.5 characters would work 1ms,9ms,.01s,.05s,.1s
-    //          4 characters is needed for 30 microseconds:  .1ms is too big, 9us is too small
-    //                       Oh wait!  30u would be fine! So would 30n, 30p, 30f, 30a, 30z, 30y
-    //        So the real problem is 30 milliseconds.  That bloody versatile letter m!
-    //            .1s is 3.3x too big
-    //            9ms is 3.3x too small
-    //            30m is ambiguous (looks like 30 minutes)
-    //            .03s might be a worthy compromise,
-    //                 similarly for .01s to .05s
-    //                 and it would slightly improve .06s to .09s
-    //            .1s is maybe good enough for 60 milliseconds,
-    //                   definitely good enough for 95 milliseconds
-    //        So there'd be 3.5 characters 9.5 to 95 milliseconds ONLY, shown as .01s to .09s
-    //            Wow, we could REALLY afford squeeze that decimal in close to the zero,
-    //            because nowhere else is a digit preceded by a zero.
-    //        Immediately outside the range .01s to .09s are
-    //                                  9ms      and     .1s
-    //        0 to 1 microsecond could be represented as "<1u"
-    function delta_format(sec) {
-        function div(n, d) {
-            return (n/d).toFixed(0);
-        }
-        function div1(n, d) {
-            return (n/d).toFixed(1);
-        }
-        function div2(n, d) {
-            return (n/d).toFixed(2);
-        }
-
-        var word = {num: sec};
-        if (sec === EXACTLY_ZERO) {
-            word.amount_short = "";
-            word.amount_long = "";
-            word.units_short = "z";
-            word.units_long = "zero";
-        } else if (sec <=          UP_TO_MILLI) {
-            word.amount_short = div(sec, MILLISECOND);
-            word.amount_long = div1(sec, MILLISECOND);
-            word.units_short = "ms";
-            word.units_long = "milliseconds";
-        } else if (sec <=          UP_TO_FRACTION) {
-            word.amount_short = strip_leading_zeros(div1(sec, SECOND));
-            word.amount_long = div2(sec, SECOND);
-            word.units_short = "s";
-            word.units_long = "seconds";
-        } else if (sec <=          UP_TO_SECOND) {
-            word.amount_short = div(sec, SECOND);
-            word.amount_long = div1(sec, SECOND);
-            word.units_short = "s";
-            word.units_long = "seconds";
-        } else if (sec <=          UP_TO_MINUTE) {
-            word.amount_short = div(sec, MINUTE);
-            word.amount_long = div1(sec, MINUTE);
-            word.units_short = "m";
-            word.units_long = "minutes";
-        } else if (sec <=          UP_TO_HOUR) {
-            word.amount_short = div(sec, HOUR);
-            word.amount_long = div1(sec, HOUR);
-            word.units_short = "h";
-            word.units_long = "hours";
-        } else if (sec <=          UP_TO_DAY) {
-            word.amount_short = div(sec, DAY);
-            word.amount_long = div1(sec, DAY);
-            word.units_short = "d";
-            word.units_long = "days";
-        } else if (sec <=          UP_TO_MONTH) {
-            word.amount_short = div(sec, MONTH);
-            word.amount_long = div1(sec, MONTH);
-            word.units_short = "M";
-            word.units_long = "months";
-       } else {
-            word.amount_short = div(sec, YEAR);
-            word.amount_long = div1(sec, YEAR);
-            word.units_short = "Y";
-            word.units_long = "years";
-        }
-        word.description_short = word.amount_short + word.units_short;
-        word.description_long = word.amount_long + " " + word.units_long;
-
-        return word;
-    }
-    console.assert("1s" === delta_format(1).description_short);
-    console.assert("42.0 days" === delta_format(42*24*3600).description_long);
-
     /**
      * Convert x from an input range to an output range.  Interpolation if between.
      *
@@ -496,13 +340,6 @@ function js_for_meta_lex(window, $, MONTY) {
         'Sat, 23 Nov 2019 16:30:44.388 GMT' === amend_fractional_seconds(
         'Sat, 23 Nov 2019 16:30:44 GMT', 0.388)
     );
-
-    function strip_leading_zeros(s) {
-        return s.replace(/^0+/, '');
-        // THANKS:  aggressive zero-stripping, https://stackoverflow.com/a/6676498/673991
-    }
-    console.assert('.425' === strip_leading_zeros('0.425'));
-    console.assert('' === strip_leading_zeros('0'));
 
     var MINIMUM_RENDERED_SECONDS = 0.1;   // tenth of a second
     var MAXIMUM_RENDERED_SECONDS = 3600*24*365*100;   // century
@@ -539,10 +376,4 @@ function js_for_meta_lex(window, $, MONTY) {
     }
     console.assert("01" === hex_2_digits(1));
     console.assert("ff" === hex_2_digits(255));
-
-    function extract_file_name(path_or_url) {
-        return path_or_url.split('/').pop().split('\\').pop().split('#')[0].split('?')[0];
-    }
-    console.assert("foo.txt" === extract_file_name('https://example.com/dir/foo.txt?q=p#anchor'));
-    console.assert("foo.txt" === extract_file_name('C:\\program\\barrel\\foo.txt'));
 }
