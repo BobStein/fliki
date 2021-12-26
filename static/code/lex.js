@@ -18,35 +18,22 @@
         }
     }
 
-    // qiki.Nit = class {
-    //     constructor() {
-    //         var that = this;
-    //         that.tree = [];
-    //     }
-    // }
     qiki.Lex = class Lex {
         constructor() {
             var that = this;
-            that.short_name = that.constructor.name;
             that.word_class = qiki.Word;
         }
         word_factory(...args) {
             return new this.word_class(this, ...args);
         }
-
-        /**
-         * Are these idns equal?
-         *
-         * THANKS:  Compare arrays as strings, https://stackoverflow.com/a/42186143/673991
-         *
-         * A bonus of comparing idns by comparing their strings is that numbers and decimal strings
-         * are equivalent.  Because google ids are bigger than JavaScript numbers (67 vs 53 bits),
-         * JavaScript stores them as decimal strings.
-         */
         static is_equal_idn(idn1, idn2) {
-            console.assert(idn1 !== null, idn1);
-            console.assert(idn2 !== null, idn2);
-            return String(idn1) === String(idn2);
+            console.assert(qiki.Lex.is_idn_defined(idn1));
+            console.assert(qiki.Lex.is_idn_defined(idn2));
+            return (
+                qiki.Lex.is_idn_defined(idn1) &&
+                qiki.Lex.is_idn_defined(idn2) &&
+                String(idn1) === String(idn2)
+            );
         }
         static is_a(idn_child, idn_parent) {
             if (idn_child === idn_parent) {
@@ -63,12 +50,14 @@
             return false;
         }
         static IDN_UNDEFINED = ['IDN_UNDEFINED'];
+        static is_idn_defined(idn) {
+            return is_defined(idn) && idn !==   qiki.Lex.IDN_UNDEFINED;
+        }
     }
     console.assert(true === qiki.Lex.is_equal_idn([11,"22"], [11,"22"]));
 
-    qiki.Bunch = class Bunch extends qiki.Nit {
-        constructor(...args) {
-            super(...args);
+    qiki.Bunch = class Bunch {
+        constructor() {
             var that = this;
             that._words = [];
             that.by_name = {};
@@ -274,20 +263,15 @@
                 } else {
                     that.each_reference_word(word);
                 }
-                word.when_resolved();
             }
         }
         is_early_in_the_scan() {
-            // return ! is_defined(this.idn_of.lex) || ! is_defined(this.idn_of.define)
             return ! this.is_name_defined('lex') || ! this.is_name_defined('define');
         }
         is_name_defined(name) {
             var that = this;
             type_should_be(name, String);
-            return that.is_idn_defined(that.idn_of[name]);
-        }
-        is_idn_defined(idn) {
-            return is_defined(idn) && idn !==   qiki.Lex.IDN_UNDEFINED;
+            return qiki.Lex.is_idn_defined(that.idn_of[name]);
         }
         each_definition_word(word) {
             var that = this;
@@ -406,7 +390,10 @@
          */
         scan_fail(...args) {
             var that = this;
-            var name_line = f("{name} line {line}", {name:that.short_name, line:that.line_number})
+            var name_line = f("{name} line {line}", {
+                name:that.constructor.name,
+                line:that.line_number
+            });
             var more_args = [...args, "\nScan failed on " + name_line +":\n", that.current_word_json]
 
             console.error.apply(null, more_args);
@@ -484,6 +471,9 @@
             that.vrb = vrb;
             that.obj = null;   // named object values (after word is resolved)
             that.obj_values = obj_values;   // indexed object values (after nit json decoded, before resolved)
+        }
+        parent_name() {
+            return this.lex.by_idn[this.obj.parent].obj.name;
         }
         vrb_name() {
             var that = this;
@@ -567,7 +557,36 @@
         is_sbj_google_user() {
             return this.lex.is_google_user(this.sbj);
         }
-        when_resolved() {
+
+        /**
+         * Change this word's class.  Turn it into an instance of a subclass of qiki.Word
+         *
+         * This heretical method untangles a conundrum.  Different words have different behaviors.
+         * Those behaviors should be encapsulated in class methods.  But the differences are based
+         * on the word's content.  Therefore a word's class can only be known after it has been
+         * processed a little.
+         *
+         * An alternative might be overriding Lex.word_factory to pre-process the raw inputs to the
+         * Word constructor before they are used to construct an instance.
+         *
+         * THANKS:  https://stackoverflow.com/a/3168082/673991
+         */
+        transmogrify_class(subclass) {
+            var that = this;
+            console.assert( ! (that instanceof subclass));
+            console.assert(
+                subclass && (subclass.prototype instanceof qiki.Word),
+                "Expecting", subclass && subclass.name, "to be a subclass of", type_name(qiki.Word)
+            );
+            // THANKS:  Subclass test, https://stackoverflow.com/a/18939541/673991
+            assert_equal(type_name(that), qiki.Word.name);
+            assert_equal(that.constructor.name, qiki.Word.name);
+
+            that.__proto__ = subclass.prototype;
+
+            assert_equal(type_name(that), subclass.name);
+            assert_equal(that.constructor.name, subclass.name);
+            console.assert(that instanceof subclass);
         }
     }
 

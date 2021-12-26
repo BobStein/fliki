@@ -1313,9 +1313,23 @@ function strip_leading_zeros(s) {
     return s.replace(/^0+/, '');
     // THANKS:  aggressive zero-stripping, https://stackoverflow.com/a/6676498/673991
 }
-console.assert('.425' === strip_leading_zeros('0.425'));
-console.assert('' === strip_leading_zeros('0'));
+assert_equal('.425', strip_leading_zeros('0.425'));
+assert_equal('', strip_leading_zeros('0'));
 
-function seconds_1970() {
+function seconds_since_1970() {
     return (new Date()).getTime() / 1000.0;
 }
+
+/**
+ * Extract elements from array that appear more than once.
+ *
+ * THANKS:  https://stackoverflow.com/a/57928932/673991
+ *
+ * @param array - an array of things.  Elements are compared using === not ==.
+ * @returns array - duplicates reported once, triplets reported twice, etc.
+ */
+function find_duplicates(array) {
+    return array.filter((element, index) => array.indexOf(element) !== index);
+}
+assert_equal("2,3,3", find_duplicates([1, 2,2, 3,3,3]).join(","))
+

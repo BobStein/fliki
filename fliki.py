@@ -3277,7 +3277,7 @@ def unslumping_home(home_page_title):
             foot.js_stamped(static_code_url('util.js'))
             # foot.js_stamped(static_code_url('qiki.js'))
             foot.js_stamped(static_code_url('lex.js'))
-            foot.js_stamped(static_code_url('contribution.js'))
+            # foot.js_stamped(static_code_url('contribution.js'))
             foot.js_stamped(static_code_url('unslumping.js'))
 
             with foot.script() as script:

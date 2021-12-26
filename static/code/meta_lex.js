@@ -24,7 +24,6 @@ function js_for_meta_lex(window, $, MONTY) {
         //                 because PyCharm doesn't see th qiki.Lex class in lex.js
         // noinspection JSCheckFunctionSignatures
         var lex = new LexUnslumping(MONTY.LEX_URL);
-        // lex.short_name = extract_file_name(MONTY.LEX_URL);
         lex.word_class = WordUnslumping;
         lex.$ol = $('<ol>', {class: 'lex-list'});
         lex.$ol.hide();
@@ -41,7 +40,7 @@ function js_for_meta_lex(window, $, MONTY) {
                     window.setTimeout(function () {
                         lex.$progress.text("");
                         console.log(
-                            lex.short_name, "has",
+                            lex.constructor.name, "has",
                             lex.num_lines, "lines,",
                             lex.num_def, "definition-words,",
                             lex.num_ref, "reference-words",
@@ -57,10 +56,10 @@ function js_for_meta_lex(window, $, MONTY) {
         }, 100);
     });
 
-    var browse_time = seconds_1970();
+    var browse_time = seconds_since_1970();
     var since_last = browse_time;
     function since() {   // How long since since() was called?  E.g. " 2.9sec "
-        var now = seconds_1970();
+        var now = seconds_since_1970();
         var since_seconds = now - since_last;
         since_last = now;
         return " " + since_seconds.toFixed(1) + "sec ";
