@@ -110,8 +110,11 @@ select#thumb-res option { direction: rtl; }
 
 .category {
     padding: 0.9em 0.5em 0.9em 0.5em;
-    display: flex;
-    flex-wrap: wrap;
+    /*display: flex;*/
+    /*flex-wrap: wrap;*/
+    /* NOTE:  The only benefit I could find to flex wrapping over display inline-block was that the
+              unrendered div assumed the full height of its line.  The penalty though is I can't
+              force a wrap by making a popped up contribution display block.  */
 }
 
 #enter_some_text,
@@ -190,24 +193,28 @@ select#thumb-res option { direction: rtl; }
 
     display: inline-block;
 }
-
 .sup-contribution                                .contribution { display:block; }
+.sup-contribution.pop-up                         .contribution { display:inline-block; }
 .sup-contribution.render-media                   .contribution { display:none; }
 .sup-contribution.contribution-edit              .contribution { display:inline-block; }
 .sup-contribution.contribution-edit.render-media .contribution { display:inline-block; }
-
-    /* THANKS:  Avoid Chrome LF-to-div conversion,
-                https://stackoverflow.com/a/24689420/673991 */
-    /* NOTE:  The above inline-block setting prevents Chrome's dumb reaction to hard returns,
-              creating <div> elements when there are two consecutive, as if making paragraphs.
-              to represent hard returns.
-              Minor side effect, an unsightly gap between contribution and caption.
-       TODO:  Major side effect, it causes the whole (outer) <div> to creep up and down
-              across the screen, as if position-relative top were changing.
-              Both side effects may be a reaction to overflow: auto
-       SEE:  work_around_jumpy_contenteditable_chrome_bug()
-     */
-    /* SEE:  More Chrome contenteditable issues, https://stackoverflow.com/q/6023307/673991 */
+/* THANKS:  Avoid Chrome LF-to-div conversion,
+            https://stackoverflow.com/a/24689420/673991 */
+/* NOTE:  The above inline-block setting prevents Chrome's dumb reaction to hard returns,
+          creating <div> elements when there are two consecutive, as if making paragraphs.
+          to represent hard returns.
+          Minor side effect, an unsightly gap between contribution and caption.
+   TODO:  Major side effect, it causes the whole (outer) <div> to creep up and down
+          across the screen, as if position-relative top were changing.
+          Both side effects may be a reaction to overflow: auto
+   SEE:  work_around_jumpy_contenteditable_chrome_bug()
+ */
+/* SEE:  More Chrome contenteditable issues, https://stackoverflow.com/q/6023307/673991 */
+/* NOTE:  The .pop-up case fixes when popping up a quote, where the whole thing has to move left so
+          .sup-contribution became display:block to sit on its own line.  Without this, text
+          stretches to the right margin. Not sure why .contribution needs to be display:block
+          otherwise.
+ */
 
 .sup-contribution                                .render-bar { display:none; }
 .sup-contribution.render-media                   .render-bar { display:block; }
@@ -511,8 +518,16 @@ iframe { display:block; }
     -webkit-border-radius: 0.7em;
        -moz-border-radius: 0.7em;
             border-radius: 0.7em;
-    padding: 0.5em;
+    padding: 2em 1em 2em 1em;
     cursor: pointer;
+    display: inline-block;
+    text-align: center;
+}
+.unrendered-count {
+    padding-bottom: 1em;
+}
+.unrendered-arrow {
+    color: #888888;
 }
 .unrendered.zero {
     display:none;
@@ -521,9 +536,6 @@ iframe { display:block; }
 .talkify-sentence-highlight {
 }
 
-.pop-up .contribution {
-    /*transition: font-size 1s;*/
-}
 #popup-screen {
     position: fixed;
     z-index: 1;
@@ -552,4 +564,7 @@ iframe { display:block; }
 #talkify-audio {
     position: fixed;
     bottom: 0;
+}
+.pop-up-block {
+    display: block;
 }
