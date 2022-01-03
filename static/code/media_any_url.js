@@ -23,7 +23,7 @@
              * @param oembed_response.oembed.url
              */
             qoolbar.post('noembed_meta', {
-                url: cont.content
+                url: cont.obj.text
             }, function any_noembed_done(oembed_response) {
                 var oembed = oembed_response.oembed;
                 if (is_laden(oembed.error)) {

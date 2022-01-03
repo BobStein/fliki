@@ -140,7 +140,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
     //            does not match the recipient window’s origin (‘http://yyy’).
 
     const IFRAME_RECOVERY_CHECK_MS = 5.000 * 1000;
-    // TODO:  3 seconds seemed to brief, lots of churn.
+    // TODO:  3 seconds seemed too brief, lots of churn.
 
     const MEDIA_HANDLER_LOAD_CHECK_MS = 10.000 * 1000;
 
@@ -572,6 +572,8 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                    'mozfullscreenchange ' +
                       'fullscreenchange',
                 function full_screen_change() {
+                    // FALSE WARNING:  Unresolved variable fullScreen
+                    // noinspection JSUnresolvedVariable
                     isFullScreen = window.document.fullScreen ||
                                    window.document.mozFullScreen ||
                                    window.document.webkitIsFullScreen;
@@ -1119,24 +1121,22 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
             }
             var idn_string = list_play_bot[index_play_bot];
             that.cont = lex.cont_from_idn(idn_string);
-            if ( ! that.cont.is_dom_rendered()) {
-                throw Error("Not yet implemented - popping up an unrendered contribution such as " + String(that.cont.idn));
-            }
             if (that.cont.media_domain === 'no_domain') {
                 // NOTE:  A badly formatted URL should not be popped up at all.
                 console.log("Zero time for", that.cont.id_attribute);
                 that.end_one_begin_another(SECONDS_BREATHER_AFTER_ZERO_TIME, true);
-            // } else if (that.cont.is_noembed_error) {
-            //     // NOTE:  This may miss errors, if they are in unrendered conts.
-            //     console.log(
-            //         "Noembed is no help with",
-            //         that.cont.id_attribute,
-            //         that.cont.caption_text,
-            //         "so skipping it"
-            //     );
-            //     that.end_one_begin_another(SECONDS_BREATHER_AT_NOEMBED_ERROR, true);
             } else {
+                if ( ! that.cont.is_dom_rendered()) {
+                    // throw Error("Not yet implemented - popping up an unrendered contribution such as " + String(that.cont.idn));
+                    that.cont.cat.render_rando_cont(that.cont);
+                    that.cont.cat.show_unrendered_count();
+                    // CAUTION:  This will break:  lex.assert_consistent();
+                    //           because there's a temporarily rendered contribution that's probably
+                    //           out of order.
+                    that.cont.is_temporarily_rendered = true;
+                }
                 $(window.document.body).addClass('pop-up-auto');
+                that.cont.cat.valve.set_openness(true);
                 that.cont.pop_up(true);
                 that.pop_begin(popped_cont);
                 // TODO:  Reform this weird corrupt mix of global and member variables.
@@ -1161,7 +1161,10 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                     that.transit([S.PLAYING_CONTRIBUTION], S.MEDIA_READY);
                 });
                 ON(E.MEDIA_BEGUN, function () {
-                    that.transit([S.MEDIA_READY], S.MEDIA_STARTED);
+                    that.transit([
+                        S.MEDIA_READY,
+                        S.PLAYING_CONTRIBUTION   // e.g. MEDIA_BEGUN came before MEDIA_INIT on bogus
+                    ], S.MEDIA_STARTED);
                 });
                 ON(E.MEDIA_ERROR, function (data) {
                     that.assert_state_is([
@@ -2356,6 +2359,26 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                 return "(unowned)";
             }
         };
+
+        /**
+         * Add a word to the lex.
+         *
+         * TODO:  Move this method to LexCloud.
+         *        That will require encapsulating ajax calls there, which is good.
+         *        Probably they should be there, and qoolbar should use them too.
+         *        Then ajax_url needs to be some app-specific configurable value,
+         *        along with LexCloud.url used for scanning.
+         *        Duh, the REST way is to use the SAME url for both and the method
+         *        would be GET or POST.
+         *        Huh, including a way to GET the whole lex (async of course) or
+         *        one word by idn, or multiple words by search criteria.
+         *        So lex.py needs a RESTful server and lex.js a RESTful client.
+         *
+         * @param vrb_name - e.g. 'edit'
+         * @param named_sub_nits - e.g. {contribute: idn, text: "new contribution text"}
+         * @param done_callback
+         * @param fail_callback
+         */
         create_word(vrb_name, named_sub_nits, done_callback, fail_callback) {
             var that = this;
             done_callback = done_callback || function () {};
@@ -2372,9 +2395,9 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                  * @param response_object
                  * @param response_object.jsonl - JSON of array of the created word's bytes and nits.
                  */
-                function create_word_maybe_done(response_object) {
+                function done_creating_a_word(response_object) {
                     var word_json = response_object.jsonl;
-                    var word_created = that.each_word_json(word_json);
+                    var word_created = that.each_json(word_json);
                     if (word_created === null) {
                         fail_callback("JSONL error");
                     } else {
@@ -2509,6 +2532,9 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                     );
                     if (cont.is_dom_rendered()) {
                         num_with_sups++;
+                    }
+                    if (cont.is_temporarily_rendered) {
+                        console.error("Contribution temporarily rendered and left to rot", cont);
                     }
                 });
             });
@@ -3402,24 +3428,8 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                     //        contributions, skipping first over those that are already rendered.
                 } else if (does_query_string_allow(cont.idn)) {
 
-                    cont.build_dom();
+                    that.render_rando_cont(cont);
 
-                    cont.rebuild_bars(function () {
-                        if (is_defined(window.ResizeObserver)) {
-                            // SEE:  ResizeObserver, https://caniuse.com/#feat=resizeobserver
-
-                            cont.resize_observer = new ResizeObserver(function resized_cont_handler() {
-                                cont.fix_caption_width();
-                            });
-                            cont.resize_observer.observe(dom_from_$(cont.$cont));
-                        }
-                    });
-                    if (that.$unrendered.length === 0) {
-                        that.$cat.append(cont.$sup);
-                    } else {
-                        that.$unrendered.before(cont.$sup);
-                    }
-                    console.assert(cont.is_dom_rendered(), "Should be freshly rendered", cont);
                     num_newly_rendered++;
                     if (num_newly_rendered >= n_show) {
                         return false;
@@ -3429,13 +3439,38 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                 }
             });
         }
+        render_rando_cont(cont) {
+            var that = this;
+            if (cont.is_dom_rendered()) {
+                console.error("Already rendered contribution", cont);
+            } else {
+                cont.build_dom();
+                cont.rebuild_bars(function () {
+                    if (is_defined(window.ResizeObserver)) {
+                        // SEE:  ResizeObserver, https://caniuse.com/#feat=resizeobserver
+
+                        cont.resize_observer = new ResizeObserver(function resized_cont_handler() {
+                            cont.fix_caption_width();
+                        });
+                        cont.resize_observer.observe(dom_from_$(cont.$cont));
+                    }
+                });
+                if (that.$unrendered.length === 0) {
+                    that.$cat.append(cont.$sup);
+                } else {
+                    that.$unrendered.before(cont.$sup);
+                }
+                console.assert(cont.is_dom_rendered(), "Should be freshly rendered", cont);
+            }
+        }
         show_unrendered_count() {
             var that = this;
             var total_conts = that.conts.num_words();
             var number_renderings = that.$cat.find('.contribution').length;
-            var number_popup_conts = that.$cat.find('#popup-screen').find('.contribution').length;
-            var number_thumbnail_renderings = number_renderings - number_popup_conts;
-            var number_of_unrendered_conts = total_conts - number_thumbnail_renderings;
+            // var number_popup_conts = that.$cat.find('#popup-screen').find('.contribution').length;
+            // var number_thumbnail_renderings = number_renderings - number_popup_conts;
+            var number_of_unrendered_conts = total_conts - number_renderings;
+            that.$unrendered.empty();
             that.$unrendered.append($('<div>', {class: 'unrendered-count'}).text(f("{n} more", {n: number_of_unrendered_conts})));
             that.$unrendered.append($('<div>', {class: 'unrendered-arrow'}).text(UNICODE.BLACK_RIGHT_POINTING_TRIANGLE));
             that.$unrendered.data('count', number_of_unrendered_conts);
@@ -3487,9 +3522,10 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
         lex;
         idn;
         obj;
-        /** @namespace {ResizeObserver} */ resize_observer
+        /** @namespace {ResizeObserver} */ resize_observer;
         /** @namespace {CategoryWord} */ cat;
-        handler
+        handler;
+        is_temporarily_rendered = false;
 
         get id_attribute () {return this.id_prefix + this.idn_string;}
         get id_prefix() {return this._id_prefix || '';}
@@ -3517,7 +3553,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
         get $img_thumb() {return this.$render_bar.find('img.thumb');}
         get has_iframe() {return this.is_dom_rendered() && this.$iframe.length === 1;}
         get $iframe() {return this.$render_bar.find('iframe');}
-        get $cat() {return this.$sup.closest('.category');}
+        // get $cat() {return this.$sup.closest('.category');}
         get media_url() {return this.is_media ? this.obj.text : null;}
 
         /**
@@ -3528,12 +3564,6 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
         // TODO:  This JSDoc header STILL doesn't obviate the need for a
         //        noinspection JSIncompatibleTypesComparison
         get iframe() {return dom_from_$(this.$iframe) || null;}
-
-
-        /**
-         * .is_superseded - Should we hide this Contribution?  True if an edit supersedes it.
-         */
-        get is_superseded() {return is_specified(this.superseded_by_idn);}
 
         /**
          * Do we have a DOM element rendering for this contribution?
@@ -3653,7 +3683,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
 
             function intermediate_step() {
                 setTimeout(function () {
-                    // NOTE:  This little bit of breathing space really seems to make the difference
+                    // NOTE:  This little bit of breathing space really seems to make a difference
                     //        when adjusting the sizes of what's newly rendered.
                     //        Especially some quotes and yellow-background error messages, which
                     //        otherwise are too wide.
@@ -3746,6 +3776,10 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
             type_should_be(thumb_title, String);
             type_should_be(load_callback, Function);
             type_should_be(error_callback, Function);
+            if ( ! that.is_dom_rendered()) {
+                console.warn("No thumb for unrendered contribution", that);
+                return;
+            }
             var $a = $('<a>', {
                 id: that.id_prefix + 'thumb_' + that.idn_string,
                 'class': 'thumb-link',
@@ -3833,15 +3867,41 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                 // NOTE:  In other words, is there a popup, and is the error for the same contribution
                 //        as the popup!  The second test is so that a delayed (dynamic) thumbnail
                 //        error does not interfere with displaying the popup.
-                popped_cont.$sup.animate({
-                    top: TOP_SPACER_PX,
-                    left: 0
-                }, {
-                    duration: POP_UP_ANIMATE_MS,
-                    easing: POP_UP_ANIMATE_EASING,
-                    queue: false
-                });
+                // popped_cont.$sup.animate({
+                //     top: TOP_SPACER_PX,
+                //     left: 0
+                // }, {
+                //     duration: POP_UP_ANIMATE_MS,
+                //     easing: POP_UP_ANIMATE_EASING,
+                //     queue: false
+                // });
+                that.animate_headroom(TOP_SPACER_PX);
             }
+        }
+
+        /**
+         * Animate the headroom of this contribution to a specific value.
+         *
+         * Headroom is the pixels between the top of the contribution and the top of the screen.
+         * It can be negative when scrolled down below it.  Or larger than the screen height when
+         * scrolled up above it.
+         */
+        animate_headroom(headroom_finish) {
+            var that = this;
+            var headroom_start = that.$sup.offset().top - $(window).scrollTop();
+            $('html, body').each(function () {
+                this.headroom = headroom_start;
+            }).animate({
+                headroom: headroom_finish
+            }, {
+                duration: POP_UP_ANIMATE_MS,
+                easing: POP_UP_ANIMATE_EASING,
+                queue: false,
+                step: function (headroom_now) {
+                    var scroll_top_now = that.$sup.offset().top - headroom_now;
+                    $(this).scrollTop(scroll_top_now);
+                },
+            });
         }
         set_can_play(can) {
             var that = this;
@@ -3888,6 +3948,10 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
         live_media_iframe(parameters, then) {
             var that = this;
             then = default_to(then, function () {});
+            if ( ! that.is_dom_rendered()) {
+                console.warn("No live media for unrendered contribution", that);
+                return;
+            }
             var $iframe = $('<iframe>', {
                 id: that.id_prefix + 'iframe_' + that.idn_string,   // This is NOT how a pop-up gets made.
                 src: our_oembed_relay_url(parameters),
@@ -3904,6 +3968,11 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                 $iframe.off('.media1');
                 // NOTE:  Cannot delegate the iframe load event, because it doesn't bubble.
                 //        https://developer.mozilla.org/Web/API/Window/load_event
+
+                if ( ! that.is_dom_rendered()) {
+                    console.warn("No live media loading for unrendered contribution", that);
+                    return;
+                }
 
                 var older_loader_timer = $iframe.data('loader_timer');
                 if (is_specified(older_loader_timer)) {
@@ -3951,21 +4020,25 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
         }
         zero_iframe_recover() {
             var that = this;
-            var $iframe = that.$iframe;
-            if (
-                $iframe.is(':visible') &&
-                ($iframe.width() === 0 || $iframe.height() === 0)
-            ) {
-                var i_recovery = $iframe.data('recovery-count') || 0;
-                i_recovery++;
-                $iframe.data('recovery-count', i_recovery);
-                if (i_recovery > MAX_IFRAME_RECOVERY_TRIES) {
-                    console.error("Too many iframe recoveries, giving up", $iframe.attr('id'));
-                    // NOTE:  This can stop an endless cycle of reloading, for embedded media that
-                    //        for whatever reason always has zero size.
-                } else {
-                    reload_iframe($iframe);
-                    console.log("ZERO-IFRAME, RECOVERY", i_recovery, $iframe.attr('id'));
+            if (that.is_dom_rendered()) {
+                // NOTE:  A temporarily rendered contribution may already be popped down and no
+                //        longer rendered.
+                var $iframe = that.$iframe;
+                if (
+                    $iframe.is(':visible') &&
+                    ($iframe.width() === 0 || $iframe.height() === 0)
+                ) {
+                    var i_recovery = $iframe.data('recovery-count') || 0;
+                    i_recovery++;
+                    $iframe.data('recovery-count', i_recovery);
+                    if (i_recovery > MAX_IFRAME_RECOVERY_TRIES) {
+                        console.error("Too many iframe recoveries, giving up", $iframe.attr('id'));
+                        // NOTE:  This can stop an endless cycle of reloading, for embedded media that
+                        //        for whatever reason always has zero size.
+                    } else {
+                        reload_iframe($iframe);
+                        console.log("ZERO-IFRAME, RECOVERY", i_recovery, $iframe.attr('id'));
+                    }
                 }
             }
         }
@@ -4087,7 +4160,11 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                 delete that.resize_observer;
             }
             if (is_defined(that.$sup)) {
+                that.$sup.removeData();
+                that.$sup.remove();
                 delete that.$sup;
+            } else {
+                console.error("Cannot remove an unrendered contribution", that);
             }
         }
 
@@ -4140,7 +4217,6 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                             );
                             var siz_width = parseFloat(stuff.width);
                             var siz_height = parseFloat(stuff.height);
-                            // var pop_stuff = that.$sup.data('pop-stuff');
                             if (
                                 is_popup() &&
                                 ! popped_cont.is_noembed_error &&
@@ -4902,15 +4978,9 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
          */
         full_ish_screen_text(then) {
             var that = this;
-
-            // that.$sup.css('display', 'inline-block');
-            // NOTE:  Temporarily disable .pop-up class's display:block, so as to measure
-            //        the width of the .sup-contribution.
-
             var cont_css_width = that.$cont.css('width');
             var cont_css_height = that.$cont.css('height');
-            var sup_left_was = that.$sup.offset().left;
-            // popped_cont.pop_stuff.window_scroll_top = $(window).scrollTop();
+            var sup_left_is = that.$sup.offset().left;
 
             that.$cont.width('auto');   // Find out how wide the text wants to go.
             that.$cont.height('auto');
@@ -4948,7 +5018,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                 widest_cont_could_be
             );
             var width_cont_doesnt_need = widest_cont_could_be - cont_width_value;
-            var sup_left = width_cont_doesnt_need/2 + SUP_PAD_LEFT;
+            var sup_left_want = width_cont_doesnt_need/2 + SUP_PAD_LEFT;
             var cont_width_setting;
             if (is_poetry) {   // let poetry control the line width
                 cont_width_setting = 'auto';
@@ -4990,7 +5060,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                         //        WIDER than they would have been.
                         //        Because we only want this step to SHRINK width.
 
-                        sup_left += (cont_width_value - cont_width_value_new)/2;
+                        sup_left_want += (cont_width_value - cont_width_value_new)/2;
                         cont_width_value = cont_width_value_new;
                         cont_width_setting = cont_width_value;
                     }
@@ -5008,13 +5078,13 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
 
             var sup_height = that.$sup.height();
             var sup_chrome_v = that.$sup.innerHeight() - that.$cont.height();
-            var sup_top;
+            var sup_top_want;
             var cont_height_setting;
             if (sup_height <= usable_height()) {
-                sup_top = (TOP_SPACER_PX + $(window).height() - sup_height)/2;
+                sup_top_want = (TOP_SPACER_PX + $(window).height() - sup_height)/2;
                 cont_height_setting = 'auto';
             } else {
-                sup_top = TOP_SPACER_PX;
+                sup_top_want = TOP_SPACER_PX;
                 cont_height_setting = usable_height() - sup_chrome_v;
             }
 
@@ -5065,24 +5135,22 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                 var sup_width_after = that.$sup.width();
                 var sup_height_after = that.$sup.height();
                 //
-                sup_left -= (sup_width_after - sup_width_before) / 2;
-                sup_top -= (sup_height_after - sup_height_before) / 2;
+                sup_left_want -= (sup_width_after - sup_width_before) / 2;
+                sup_top_want -= (sup_height_after - sup_height_before) / 2;
                 // that.$sup.css('left', sup_left);
                 // that.$sup.css('top', sup_top);
             } else {
                 font_size_setting = font_size_normal;
             }
 
-            var is_too_right = sup_left < sup_left_was;
+            var is_right_of_where_we_want_it = sup_left_want < sup_left_is;
             console.debug(
-                is_too_right ? "It's right" : "It's left",
-                Math.abs(sup_left - sup_left_was),
-                "of where we want it.",
-                sup_left, sup_left_was, that.cat.usable_width(), cont_width_value
+                is_right_of_where_we_want_it ? "It's right" : "It's left",
+                Math.abs(sup_left_want - sup_left_is),
+                "px from where we want it.",
+                sup_left_want, sup_left_is, that.cat.usable_width(), cont_width_value
             );
 
-            // that.$sup.css('display', '');
-            // NOTE:  Restore the .pop-up display:block setting.
 
 
             //// Animate
@@ -5099,14 +5167,6 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
             var pop_cont_css_width = that.$cont.css('width');
             var pop_cont_css_height = that.$cont.css('height');
             var pop_caption_css_width = that.$caption_bar.css('width');
-            var pop_up_caption_background = that.$caption_bar.css('background-color');
-            var pop_down_caption_background;
-            if (thumb_cont.is_dom_rendered()) {
-                pop_down_caption_background = thumb_cont.$caption_bar.css('background-color');
-            } else {
-                pop_down_caption_background = 'rgba(0,0,0,0)';
-                // TODO:  replace transparent final ''color'' with background of .unrendered?
-            }
 
             that.$cont.css('width', cont_css_width);
             that.$cont.css('height', cont_css_height);
@@ -5114,25 +5174,13 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
             //        not .width() and .height()
 
             that.fix_caption_width();
-            that.$caption_bar.css('background-color', pop_down_caption_background);
-            // that.$sup.css(thumb_cont.css_for_position_fixed());
             that.$cont.css('font-size', font_size_normal);
 
             var promises = [];
-            // promises.push(that.$sup.animate({
-            //     // top: sup_top,
-            //     // left: sup_left
-            //     top: 'auto',
-            //     left: 'auto'
-            // }, {
-            //     duration: POP_UP_ANIMATE_MS,
-            //     easing: POP_UP_ANIMATE_EASING,
-            //     queue: false
-            // }).promise());
             var margin_left_up;
-            if (is_too_right) {
-                popped_cont.pop_stuff.margin_left_down = sup_left_was - FUDGE_FICKLE;
-                margin_left_up = sup_left - FUDGE_FICKLE;
+            if (is_right_of_where_we_want_it) {
+                popped_cont.pop_stuff.margin_left_down = sup_left_is - FUDGE_FICKLE;
+                margin_left_up = sup_left_want - FUDGE_FICKLE;
 
                 var offset_top_1 = popped_cont.$sup.offset().top;
                 var scroll_top_1 = $(window).scrollTop();
@@ -5146,7 +5194,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                 $(window).scrollTop(scroll_top_2);
             } else {
                 popped_cont.pop_stuff.margin_left_down = 0;
-                margin_left_up = sup_left - sup_left_was;
+                margin_left_up = sup_left_want - sup_left_is;
             }
             promises.push(that.$sup.animate({
                 'margin-left': margin_left_up
@@ -5156,8 +5204,8 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                 queue: false
             }));
 
-            var scroll_top_for_popped_up = popped_cont.$sup.offset().top - sup_top;
-            console.debug("Scroll to", scroll_top_for_popped_up, sup_top);
+            var scroll_top_for_popped_up = popped_cont.$sup.offset().top - sup_top_want;
+            console.debug("Scroll to", scroll_top_for_popped_up, sup_top_want);
             promises.push($('html, body').animate({
                 scrollTop: scroll_top_for_popped_up
             }, {
@@ -5188,8 +5236,6 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
 
             promises.push(that.$caption_bar.animate({
                 width: pop_caption_css_width,
-                'background-color': pop_up_caption_background
-                // TODO:  Use .fadeIn() or .fadeOut(), to wean from jQuery UI
             }, {
                 duration: POP_UP_ANIMATE_MS,
                 easing: POP_UP_ANIMATE_EASING,
@@ -5199,7 +5245,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                 }
             }).promise());
 
-            promises.push(pop_screen_fade_in().promise());
+            promises.push(pop_screen_up_fade_in().promise());
 
             var combined_promise = $.when.apply($, promises);
             // var combined_promise = $.when(
@@ -5252,7 +5298,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
             //        mutation or resize observations take place.
             //        That only happens for contribution objects in contribution_lexi.
 
-            popped_cont.$sup.find('.grip').removeClass('grip').addClass('grip-inoperative');
+            popped_cont.$sup.find('.grip').addClass('inoperative');
             // NOTE:  No dragging popped-up stuff.
             //        It was a little disconcerting not seeing the grip symbol there.
             //        So just disabling the feature and dimming the icon
@@ -5311,10 +5357,8 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                 cont_css_height: popped_cont.$cont.css('height'),
                 caption_css_width: popped_cont.$caption_bar.css('width'),
                 caption_css_height: popped_cont.$caption_bar.css('height'),
-                caption_css_background: popped_cont.$caption_bar.css('background-color'),
                 max_live_width: that.cat.usable_width(),
                 max_live_height: max_live_height,
-                // fixed_coordinates: thumb_fixed_coordinates,
                 window_scroll_top: $(window).scrollTop()
             };
 
@@ -5399,7 +5443,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                 //        until embed_content.js gets up and sets the size of the iframe through
                 //        the iFrameResizer, let it start off as the same size as the thumbnail.
 
-                pop_screen_fade_in();
+                pop_screen_up_fade_in();
                 console.debug("Fading in.....................");
 
                 if ( ! popped_cont.is_noembed_error) {
@@ -6514,13 +6558,13 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
     //     }
     // };
 
-    /**
-     * //// Contribution - unslumping.org
-     *
-     * @param {number} idn
-     * @return {Contribution}
-     * @constructor - sorta - should subclass Contribution here
-     */
+    // /**
+    //  * //// Contribution - unslumping.org
+    //  *
+    //  * @param {number} idn
+    //  * @return {Contribution}
+    //  * @constructor - sorta - should subclass Contribution here
+    //  */
     // Contribution.from_idn = function Contribution_from_idn(idn) {
     //     type_should_be(idn, Number);
     //     var contribution_instance = contribution_lexi.get(idn, null);
@@ -7894,7 +7938,10 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
     function contribution_edit(evt) {
         var element = this;
         var cont = ContributionWord.from_element(element);
-        console.assert(cont.is_dom_rendered(), element);
+        console.assert(cont.is_dom_rendered(), cont);
+        // NOTE:  Much falderal in this function to support long-press edit.
+        //        If we gave up entirely on that feature, the rest of this function might be
+        //        simplified to just calling contribution_edit_begin() and stopPropagation()
         var $clicked_on = $(evt.target);
         // SEE:  this vs evt.target, https://stackoverflow.com/a/21667010/673991
         if ($clicked_on.is('.contribution') && is_click_on_the_resizer(evt, $clicked_on.get(0))) {
@@ -8299,8 +8346,6 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                         promises.push(popped_cont.$caption_bar.animate({
                             width: popped_cont.pop_stuff.caption_css_width,
                             height: popped_cont.pop_stuff.caption_css_height,
-                            'background-color': popped_cont.pop_stuff.caption_css_background
-                            // TODO:  Use .fadeIn() or .fadeOut(), to wean from jQuery UI
                         }, {
                             duration: POP_DOWN_ANIMATE_MS,
                             easing: POP_DOWN_ANIMATE_EASING,
@@ -8325,9 +8370,10 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                             duration: POP_DOWN_ANIMATE_MS,
                             easing: POP_DOWN_ANIMATE_EASING,
                         }));
+                        // TODO:  Animate headroom instead of scrollTop, perhaps with step.
                     }
                 }
-                promises.push(pop_screen_fade_out().promise());
+                promises.push(pop_screen_down_fade_out().promise());
                 // promises.push(popped_cont.$sup.animate(thumb_cont.css_for_position_fixed(), {
                 //     duration: POP_DOWN_ANIMATE_MS,
                 //     easing: POP_DOWN_ANIMATE_EASING,
@@ -8356,12 +8402,23 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
 
                 var combined_promise = $.when.apply($, promises);
                 combined_promise.done(function popdown_animation_done() {
-                    $('#popup-screen').remove();   // Removes contained popup contribution too.
+                    // $('#popup-screen').remove();   // Removes contained popup contribution too.
                     popped_cont.$sup.removeClass('pop-up');
                     popped_cont.$sup.removeClass('pop-up-block');
                     popped_cont.$sup.css('margin-left', 0);
+                    popped_cont.$sup.find('.grip').removeClass('inoperative');
                     popped_cont.rebuild_bars();
                     // NOTE:  Revert from live media to thumbnail at END of pop-down animation.
+
+                    if (popped_cont.is_temporarily_rendered) {
+                        popped_cont.is_temporarily_rendered = false;
+                        popped_cont.dom_removal();
+                        popped_cont.cat.show_unrendered_count();
+                    }
+                    delete popped_cont.pop_stuff;
+                    // NOTE:  Some events could conceivably come in later from the embedded
+                    //        rendering via the iFrameResizer, but that handler should handle
+                    //        that gracefully by checking is_specified(...pop_stuff)
                     set_popped_cont(null);
                     then();
                 });
@@ -9338,40 +9395,68 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
     //     });
     // };
 
-    function pop_screen_fade_out() {   // while popping down, fade to transparent
-        return pop_screen_fade(
-            'rgba(0,0,0,0.25)',
-            'rgba(0,0,0,0.00)',
-            POP_DOWN_ANIMATE_MS,
-            POP_DOWN_ANIMATE_EASING
-        )
-    }
-
-    function pop_screen_fade_in() {   // while popping up, fade to 1/4 darkened background
-        return pop_screen_fade(
-            'rgba(0,0,0,0.00)',
-            'rgba(0,0,0,0.25)',
-            POP_UP_ANIMATE_MS,
-            POP_UP_ANIMATE_EASING
-        )
-    }
-
-    function pop_screen_fade(from_color, to_color, duration, easing) {
-        // CAUTION:  This requires the jQuery-UI plugin (or the color plugin)
-        //           Otherwise colors won't animate!
-        //           Use jQuery .fadeIn() instead?
+    function pop_screen_down_fade_out() {   // while popping down, fade and then hide the screen
+        // return pop_screen_fade(
+        //     'rgba(0,0,0,0.25)',
+        //     'rgba(0,0,0,0.00)',
+        //     POP_DOWN_ANIMATE_MS,
+        //     POP_DOWN_ANIMATE_EASING,
+        //     function () {
+        //         // $('#popup-screen').hide();
+        //     }
+        // )
         var $pop_screen = $('#popup-screen');
-        $pop_screen.css({'background-color': from_color});
-        $pop_screen.animate({
-            'background-color': to_color
-            // TODO:  Use .fadeIn() or .fadeOut(), to wean from jQuery UI
-        }, {
-            duration: duration,
-            easing: easing,
+        return $pop_screen.fadeOut({
+            duration: POP_UP_ANIMATE_MS,
+            easing: POP_UP_ANIMATE_EASING,
+            queue: false,
+            done: function () {
+                $pop_screen.hide();
+            }
+        });
+    }
+
+    function pop_screen_up_fade_in() {   // while popping up a cont, fade in a screen behind it
+        // $('#popup-screen').show();
+        // return pop_screen_fade(
+        //     'rgba(0,0,0,0.00)',
+        //     'rgba(0,0,0,0.25)',
+        //     POP_UP_ANIMATE_MS,
+        //     POP_UP_ANIMATE_EASING,
+        //     function () {
+        //     }
+        // )
+        var $pop_screen = $('#popup-screen');
+        $pop_screen.hide();
+        return $pop_screen.fadeIn({
+            duration: POP_UP_ANIMATE_MS,
+            easing: POP_UP_ANIMATE_EASING,
             queue: false
         });
-        return $pop_screen;
+        // THANKS:  .fadeIn() requires .hide(), https://stackoverflow.com/a/3398905/673991
+        //          .hide() may be redundant here but doing it anyway in case it's ever not.
+        // THANKS:  Starting opacity at zero would make more sense, since that is the property
+        //          animated by .fadeIn(), but that does NOT appear to work,
+        //          https://stackoverflow.com/q/3398882/673991#comment69712297_3398905
     }
+
+    // function pop_screen_fade(from_color, to_color, duration, easing, always) {
+    //     // CAUTION:  This requires the jQuery-UI plugin (or the color plugin)
+    //     //           Otherwise colors won't animate!
+    //     //           Use jQuery .fadeIn() instead?
+    //     var $pop_screen = $('#popup-screen');
+    //     $pop_screen.css({'background-color': from_color});
+    //     $pop_screen.animate({
+    //         'background-color': to_color
+    //         // DONE:  Use .fadeIn() or .fadeOut(), to wean from jQuery UI
+    //     }, {
+    //         duration: duration,
+    //         easing: easing,
+    //         queue: false,
+    //         always: always
+    //     });
+    //     return $pop_screen;
+    // }
 
     /**
      * Finish up all animations.
@@ -9471,12 +9556,12 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
      * Extract text from a jQuery object or selector.  Honor <br> as \n and <p> as \n\n, etc.
      *
      * Helps when pasting text into a contribution being edited.
-     * For example, pasting from poem-a-day email turned foo<br>bar into foobar using .text().
+     * For example, pasting from poem-a-day email turned foo<br>bar into foobar using plain .text().
      *
      * THANKS:  loosely based on html-to-text code in https://stackoverflow.com/a/50822488/673991
      * THANKS:  DOMParser parsing, https://stackoverflow.com/a/42254787/673991
      *
-     * @param selector
+     * @param selector - raw html, DOM, jQuery, or anything that could be passed to $()
      */
     function text_from_$(selector) {
         var html = $(selector).html();
@@ -9500,51 +9585,53 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
     }
     assert_equal("foo\nbar", text_from_$("<span>foo<br>bar</span>"));
 
-    /**
-     * Is the click on the div resize handle?  I.e. (crudely) with 20px of the bottom-right corner.
-     *
-     * THANKS:  Idea of using click-coordinates for this, https://stackoverflow.com/q/49136251/673991
-     *          Brett DeWoody calls this his "final, and last, last, last resort
-     *          ... ludicrous and unreliable."  Cool!
-     *
-     * CAVEAT:  IE11 has no div resize, so there's a little dead-zone there.
-     *
-     * @param evt - click or other mouse event
-     * @param element - target of the event
-     * @return {boolean}
-     */
-    function is_click_on_the_resizer(evt, element) {
-        var xy = getXY(evt, element);
-        var r = element.offsetWidth - xy.x;
-        var b = element.offsetHeight - xy.y;
-        return (
-            0 <= r && r <= 20 &&
-            0 <= b && b <= 20
-        );
-    }
+    if (DO_LONG_PRESS_EDIT) {
+        /**
+         * Is the click on the div resize handle?  I.e. (crudely) with 20px of the bottom-right corner.
+         *
+         * THANKS:  Idea of using click-coordinates for this, https://stackoverflow.com/q/49136251/673991
+         *          Brett DeWoody calls this his "final, and last, last, last resort
+         *          ... ludicrous and unreliable."  Cool!
+         *
+         * CAVEAT:  IE11 has no div resize, so there's a little dead-zone there.
+         *
+         * @param evt - click or other mouse event
+         * @param element - target of the event
+         * @return {boolean}
+         */
+        function is_click_on_the_resizer(evt, element) {
+            var xy = getXY(evt, element);
+            var r = element.offsetWidth - xy.x;
+            var b = element.offsetHeight - xy.y;
+            return (
+                0 <= r && r <= 20 &&
+                0 <= b && b <= 20
+            );
+        }
 
-    /**
-     * Get the position of a click, relative to the top-left corner of the element.
-     *
-     * THANKS:  click position, element-relative, https://stackoverflow.com/a/33378989/673991
-     *          Paulo Bueno's code works well in Chrome, Firefox, IE11.
-     *
-     * @param evt - click or other mouse event
-     * @param element - target of the event
-     * @return {{x: number, y: number}} - in pixels from the top-left corner of the target element
-     */
-    function getXY(evt, element) {
-        var rect = element.getBoundingClientRect();
-        var scrollTop = document.documentElement.scrollTop?
-                        document.documentElement.scrollTop:window.document.body.scrollTop;
-        var scrollLeft = document.documentElement.scrollLeft?
-                        document.documentElement.scrollLeft:window.document.body.scrollLeft;
-        var elementLeft = rect.left+scrollLeft;
-        var elementTop = rect.top+scrollTop;
+        /**
+         * Get the position of a click, relative to the top-left corner of the element.
+         *
+         * THANKS:  click position, element-relative, https://stackoverflow.com/a/33378989/673991
+         *          Paulo Bueno's code works well in Chrome, Firefox, IE11.
+         *
+         * @param evt - click or other mouse event
+         * @param element - target of the event
+         * @return {{x: number, y: number}} - in pixels from the top-left corner of the target element
+         */
+        function getXY(evt, element) {
+            var rect = element.getBoundingClientRect();
+            var scrollTop = document.documentElement.scrollTop?
+                            document.documentElement.scrollTop:window.document.body.scrollTop;
+            var scrollLeft = document.documentElement.scrollLeft?
+                            document.documentElement.scrollLeft:window.document.body.scrollLeft;
+            var elementLeft = rect.left+scrollLeft;
+            var elementTop = rect.top+scrollTop;
 
-        var x = evt.pageX-elementLeft;
-        var y = evt.pageY-elementTop;
-        return {x:x, y:y};
+            var x = evt.pageX-elementLeft;
+            var y = evt.pageY-elementTop;
+            return {x:x, y:y};
+        }
     }
 
     // TODO:  Contribution method -- or maybe not, since editing applies to one instance at a time.
@@ -10532,10 +10619,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
         lex.cats.loop(/** @param {CategoryWord} cat */ function (cat) {
             cat.build_dom();
         });
-        lex.cats.by_name.my.$sup.addClass('sup-category-first');
-
-
-        // $sup_categories[categories.by_name.my.idn].addClass('sup-category-first');
+        lex.cats.first().$sup.addClass('sup-category-first');
 
         var $entry = $('<div>', {'class': 'container-entry'});
         $entry.append($('<textarea>', {id: 'enter_some_text', placeholder: "enter a quote or video"}));
@@ -10560,8 +10644,10 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
         lex.cats.loop(/** @param {CategoryWord} cat */ function (cat) {
             $(window.document.body).append(cat.$sup);
         });
-
         // NOTE:  Now the category DOM objects are a visible part of the DOM.
+
+        var $popup_screen = $('<div>', { id: 'popup-screen' });
+        $(window.document.body).append($popup_screen);
 
         refresh_labels_in_play_bot_from();
         // NOTE:  Must come after play_bot_from is in DOM.

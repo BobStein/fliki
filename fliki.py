@@ -54,7 +54,7 @@ import to_be_released.web_html as web_html
 
 
 AJAX_URL = '/meta/ajax'
-JQUERY_VERSION = '3.4.1'   # https://developers.google.com/speed/libraries/#jquery
+JQUERY_VERSION = '3.6.0'   # https://developers.google.com/speed/libraries/#jquery
 JQUERYUI_VERSION = '1.12.1'   # https://developers.google.com/speed/libraries/#jquery-ui
 DO_MINIFY = False
 config_names = ('AJAX_URL', 'JQUERY_VERSION', 'JQUERYUI_VERSION')
@@ -63,8 +63,8 @@ SCRIPT_DIRECTORY = os.path.dirname(os.path.realpath(__file__))   # e.g. '/var/ww
 PARENT_DIRECTORY = os.path.dirname(SCRIPT_DIRECTORY)             # e.g. '/var/www'
 GIT_SHA = git.Repo(SCRIPT_DIRECTORY).head.object.hexsha
 GIT_SHA_10 = GIT_SHA[ : 10]
-NUM_QOOL_VERB_NEW = qiki.Number(1)
-NUM_QOOL_VERB_DELETE = qiki.Number(0)
+# NUM_QOOL_VERB_NEW = qiki.Number(1)
+# NUM_QOOL_VERB_DELETE = qiki.Number(0)
 MINIMUM_SECONDS_BETWEEN_ANONYMOUS_QUESTIONS = 10
 MINIMUM_SECONDS_BETWEEN_ANONYMOUS_ANSWERS = 60
 THUMB_MAX_WIDTH = 160
@@ -176,14 +176,17 @@ class NamedElements(object):
         #           words in a cyclic loop.  (E.g. the noun definition is its own parent.)
         #           Anyway it was never clear that a deepcopy fixed or caused any bugs.
 
-    def to_values(self):
-        return self._dict.values()
+    def key_list(self):
+        return list(self._dict.keys())
+
+    def value_list(self):
+        return list(self._dict.values())
 
     def len(self):
         return len(self._dict)
 
     def to_json(self):
-        return self.to_values()
+        return self.value_list()
 
     def add(self, name, value):
         self._dict[name] = value
@@ -215,6 +218,136 @@ class NamedElements(object):
             return self._dict[item]
         else:
             raise AttributeError(repr(self) + " has no attribute " + repr(item))
+
+
+class UserLex(object):
+    """
+    A local memory cache of all that we want to remember or process about users.
+
+    A UserLex instance is coupled with a UserWord subclass.
+        The lex instance has a `word_class` instance-variable.
+        The word class has a `lex` class-variable.
+    """
+    _lex_instances = list()
+
+    def __init__(self, word_class, meta_idn):
+        self.word_class = word_class
+        self.meta_idn = meta_idn
+        self._users = list()
+        self._lex_instances.append(self)
+
+    def users(self):
+        for user in self._users:
+            yield user
+
+    @classmethod
+    def word_from_idn(cls, idn):
+        """
+        Instantiate a user word from its idn.  Consider all UserLex instances.
+
+        If the idn is formatted properly, consider all UserLex instances,
+        and all the user words they already store.
+        But if not stored there, and the meta-idn applies to one of the lexes,
+        then instantiate a new word and store it there.
+        """
+        if cls.valid_idn(idn):
+            for lex_instance in cls._lex_instances:
+                if lex_instance.meta_idn == cls.meta_from_idn(idn):
+                    user_word = lex_instance.word_from_index(cls.index_from_idn(idn))
+                    return user_word
+        return None
+
+    def word_from_index(self, user_index):
+        """
+        Factory function for instantiating words, given a UserLex and a user index (aka id).
+
+        Pull an instance from self._users[], or instantiate a new one, and store it there.
+        """
+        for user_word in self.users():
+            if user_word.index == user_index:
+                break
+        else:
+            user_word = self.word_class(user_index)
+            self._users.append(user_word)
+        return user_word
+
+    @classmethod
+    def idn_from_parts(cls, meta_idn, index):
+        return tuple((meta_idn, index))
+
+    @classmethod
+    def meta_from_idn(cls, idn):
+        return idn[0]
+
+    @classmethod
+    def index_from_idn(cls, idn):
+        return idn[1]
+
+    @classmethod
+    def valid_idn(cls, idn):
+        return (
+            isinstance(idn, (list, tuple)) and
+            len(idn) == 2 and
+            isinstance(cls.meta_from_idn(idn), int) and
+            FlikiWord.Ancestry(cls.meta_from_idn(idn)).is_offspring_of(FlikiWord.idn_of.user)
+        )
+
+    def to_json(self):
+        return self._users
+
+
+class UserWord(object):
+    lex = None
+
+    def __init__(self, user_index):
+        self.index = user_index
+        self.obj = NamedElements()
+
+    @property
+    def idn(self):
+        return self.lex.idn_from_parts(self.lex.meta_idn, self.index)
+
+    def to_json(self):
+        mock_dictionary = dict(
+            idn=self.idn,
+            obj=self.obj.to_dict(),
+        )
+        if hasattr(self, 'is_authenticated'):
+            mock_dictionary['is_authenticated'] = self.is_authenticated
+        if hasattr(self, 'is_anonymous'):
+            mock_dictionary['is_anonymous'] = self.is_anonymous
+        # NOTE:  is_authenticated and is_anonymous come from UserMixin or AnonymousUserMixin
+        return mock_dictionary
+
+    def get_id(self):
+        """What UserMixin calls an id, we call an index, which is part of the idn (identifier)."""
+        return self.index
+
+    def name(self):
+        if self.obj.has('name'):
+            return self.obj.name
+        else:
+            return "UNNAMED USER " + json_encode(self.idn)
+
+    def is_admin(self):
+        return self.obj.has('admin') and self.obj.admin == 1
+
+
+class GoogleWord(UserWord, flask_login.UserMixin):
+    """
+    Explicitly instantiated in Flask Login, login manager, (1) user loader, and (2) login.
+
+    But not directly, only via factory function GoogleWord.lex.user_word_from_index().
+    """
+
+
+class AnonymousWord(UserWord, flask_login.AnonymousUserMixin):
+    """Implicitly instantiated automagically into Flask Login, current user."""
+    def __init__(self, index=None):
+        if index is None:
+            index = flask.request.remote_addr
+        super(AnonymousWord, self).__init__(index)
+        self.obj.add('name', "(anonymous {})".format(index))
 
 
 class FlikiWord(object):   # qiki.nit.Nit):   # pity, all that work in nit.py for nought
@@ -352,20 +485,24 @@ class FlikiWord(object):   # qiki.nit.Nit):   # pity, all that work in nit.py fo
             for word in cls.by_idn.values():   # validate lex-defined fields
                 word.validate_definition_word()
 
+            GoogleWord.lex = UserLex(GoogleWord, cls.idn_of.google_user)
+            AnonymousWord.lex = UserLex(AnonymousWord, cls.idn_of.anonymous)
+
             p.at("DEF")
 
             word = None
             cls._vrb_from_idn = dict()
-            for word in cls.all_words_unresolved():   # pass 3:  Take a swing at resolving all user words
+            for word in cls.all_words_unresolved():   # pass 3:  Make a lookup table of verb idns for all reference words
                 if not word.is_definition():
                     cls._vrb_from_idn[word.idn] = word.vrb
 
             p.at("ref")
 
             word = None
-            for word in cls.all_words_unresolved():   # pass 4:  Take a swing at resolving all user words
+            for word in cls.all_words_unresolved():   # pass 4:  Take a swing at resolving all reference words
                 if not word.is_definition():
                     word.resolve()
+                    word.check_if_lex_is_referencing_a_user()
                     word.validate_reference_word(cls.vrb_from_idn)
                     word.check_forref_in_reference_word()
 
@@ -392,16 +529,20 @@ class FlikiWord(object):   # qiki.nit.Nit):   # pity, all that work in nit.py fo
                 p.report(),
                 sys.getsizeof(cls._vrb_from_idn),
             )
+            # Auth.print(
+            #     "USERS GALORE, " +
+            #     "google:\n" +
+            #     json_pretty(GoogleWord.lex) + "\n" +
+            #     "anonymous:\n" +
+            #     json_pretty(AnonymousWord.lex)
+            # )
 
     @classmethod
     def vrb_from_idn(cls, idn):
+        """ What vrb does a reference-word use? """
         if cls._vrb_from_idn is None:
-            raise cls.WordError("Cannot look up non-def verbs before they're tallied")
-        return cls._vrb_from_idn[idn]   # may raise a KeyError
-
-    @classmethod
-    def __sizeof__(cls):
-        return 1000000
+            raise cls.WordError("Cannot look up verbs before they're tallied")
+        return cls._vrb_from_idn[idn]   # may raise a KeyError for a bogus idn
 
     @classmethod
     def close_lex(cls):
@@ -488,7 +629,7 @@ class FlikiWord(object):   # qiki.nit.Nit):   # pity, all that work in nit.py fo
         # EXAMPLE:  Forward reference in contribute word 882 --
         #           verb refers to contribute, whose idn is 1408
         for (field_index_1_based, (field_idn, field_value)) in (
-            enumerate(zip(vrb.obj.fields, self.obj.to_values()), start=1)
+            enumerate(zip(vrb.obj.fields, self.obj.value_list()), start=1)
         ):
             field_ancestry = self.Ancestry(field_idn)
             if field_ancestry.founder().idn == self.idn_of.noun:
@@ -569,13 +710,12 @@ class FlikiWord(object):   # qiki.nit.Nit):   # pity, all that work in nit.py fo
             )
 
     @classmethod
-    def create_word_by_lex(cls, auth, vrb_idn, obj_dictionary):
+    def create_word_by_lex(cls, vrb_idn, obj_dictionary):
         """Instantiate and store a sbj=lex word.   (Not a define word.)"""
         assert vrb_idn != cls.idn_of.define, (
             "Definitions must not result from outside events. " +
             cls.repr_limited(obj_dictionary)
         )
-        assert int(auth.lex.IDN.LEX) == cls.idn_of.lex, repr(cls.idn_of.lex)
         new_lex_word = cls(
             sbj=cls.idn_of.lex,
             vrb=vrb_idn,
@@ -638,7 +778,7 @@ class FlikiWord(object):   # qiki.nit.Nit):   # pity, all that work in nit.py fo
                     )
                 else:
                     word = cls(
-                        sbj=auth.qiki_user.jsonl(),    # e.g. [167,"103620384189003122864"]
+                        sbj=auth.flask_user.idn,    # e.g. [167,"103620384189003122864"]
                         vrb=vrb.idn,
                         **obj_dict
                     )
@@ -677,6 +817,11 @@ class FlikiWord(object):   # qiki.nit.Nit):   # pity, all that work in nit.py fo
         self.obj = NamedElements(obj_dict)
         self.line_number = None
 
+        # FIXME:  Uh oh there's a problem in this happy world where .obj parts are dot-dereferenced
+        #         e.g. .obj.name.  NamedElements instances have lots of generic-sounding methods
+        #         that obviously can never then be lex fields.  Maybe all NamedElements
+        #         methods should be obfuscated.  Ending with an underscore makes me want to ralph.
+
     def name_an_obj(self, field_index_0_based, name):
         """
         Name an unresolved obj.
@@ -702,7 +847,7 @@ class FlikiWord(object):   # qiki.nit.Nit):   # pity, all that work in nit.py fo
     #     return (
     #         [N(self.whn), N(self.sbj), N(self.vrb)] +
     #         [N(v) for v in self.obj_values] +
-    #         [N(v) for v in self.obj.to_values()]
+    #         [N(v) for v in self.obj.value_list()]
     #     )
 
     def __repr__(self):
@@ -957,6 +1102,92 @@ class FlikiWord(object):   # qiki.nit.Nit):   # pity, all that work in nit.py fo
                     # TODO:  Use .name_an_obj().  Or D.R.Y. up the call to self.obj.add() there.
                 self.obj_values = []
 
+    def check_if_lex_is_referencing_a_user(self):
+        if self.sbj == self.idn_of.lex and self.obj.len() == 2 and self.obj.key_list()[0] == 'user':
+            self.user_cache(self.obj.user, self.vrb_name(), self.obj.value_list()[1])
+
+    from_user = dict()
+
+    @classmethod
+    def user_record(cls, user_idn, property_name, property_value):
+        """
+        If this property of a user has a new value, store it in both remote and local lexes.
+
+        :param user_idn: e.g. [167,"103620384189003122864"] (authenticated)
+                           or [168,"127.0.0.1"] (anonymous)
+        :param property_name: e.g. ip_address, user_agent, name, iconify
+        :param property_value:
+        """
+        user_word = UserLex.word_from_idn(user_idn)
+        if user_word is None:
+            raise cls.FieldError("Invalid user idn", cls.repr_limited(user_idn))
+
+        if user_word.obj.get(property_name, default_value=None) == property_value:
+            '''Latest property value is the same, no need to update remote lex or local user-lex.'''
+            # Auth.print("UNCHANGED", user_idn, property_name)
+        else:
+            try:
+                vrb_idn = cls.idn_of.get(property_name)
+                vrb_word = cls.by_idn[vrb_idn]
+            except KeyError:
+                raise cls.FieldError("Undefined user property {name} for {user}".format(
+                    name=cls.repr_limited(property_name),
+                    user=cls.repr_limited(user_idn),
+                ))
+            else:
+                # TODO:  Encapsulate most of the following logic in some kind of definition word
+                #        object.  Hmm how about `Vrb`.  Then instead of the over-used and worn-out
+                #        `User` I could make a type called `Sbj`.  This could include humans as
+                #        well as bots.
+                #        This might be part of a desirable partition between user-created "verbs"
+                #        and the geeky internal vrb that's part of every word.  A verb might be a
+                #        special case of a vrb.
+                #        Anyway qiki.Vrb could subclass a qiki.Word and have rich methods for
+                #        dealing with its fields.  Scan-time validation could use that too.
+                #        qiki.Sbj could be something else.  It's not a word but it wants to
+                #        know words that the lex has thrown at it, like name and user-agent.
+                #        Then when instantiating a Word, its sbj and vrb properties could become
+                #        Sbj and Vrb instances.
+                field_words = [cls.by_idn[field_idn] for field_idn in vrb_word.obj.fields]
+                if len(field_words) != 2 or field_words[0].obj.name != 'user':
+                    raise cls.FieldError(
+                        "Invalid user property {name}, fields {fields}, for {user}".format(
+                            name=cls.repr_limited(property_name),
+                            fields=cls.repr_limited(field_words),
+                            user=cls.repr_limited(user_idn),
+                        )
+                    )
+                obj = dict(user=user_idn)
+                if property_value is not None:
+                    second_field_type = field_words[1].obj.name
+                    obj[second_field_type] = property_value
+                # Auth.print(
+                #     "CHANGED",
+                #     user_idn,
+                #     property_name,
+                #     cls.repr_limited(field_words),
+                #     cls.repr_limited(obj)
+                # )
+                # EXAMPLE:
+                #     CHANGED
+                #     (167, '110221274882432613660')
+                #     iconify
+                #     [[166,1478081379890,0,1,2,"user",[]],[170,147 ... (27 more)
+                #     {"user":[167,"110221274882432613660"],"url":" ... (89 more)
+                cls.create_word_by_lex(vrb_idn, obj)
+                cls.user_cache(user_idn, property_name, property_value)
+
+    @classmethod
+    def user_cache(cls, user_idn, property_name, property_value):
+        """Store a user property in the local UserLex."""
+        user_word = UserLex.word_from_idn(user_idn)
+        user_word.obj.add(property_name, property_value)
+
+    def vrb_name(self):
+        if self.vrb in self.by_idn:
+            return self.by_idn[self.vrb].obj.name
+        else:
+            return "(undefined verb {})".format(self.vrb)
 
     def validate_definition_word(self):
         """
@@ -1031,7 +1262,7 @@ class FlikiWord(object):   # qiki.nit.Nit):   # pity, all that work in nit.py fo
         #           That function whines about it's repetition of .resolve() code, so here's
         #           some more whining about that.
         num_fields_vrb_expected = len(vrb.obj.fields)
-        num_fields_obj_actual = len(self.obj.to_values())
+        num_fields_obj_actual = len(self.obj.value_list())
         if num_fields_obj_actual != num_fields_vrb_expected:
             raise self.FieldError(
                 "Word {idn} has {n_obj} fields {obj_names}, "
@@ -1047,7 +1278,7 @@ class FlikiWord(object):   # qiki.nit.Nit):   # pity, all that work in nit.py fo
             )
 
         for (field_index_1_based, (field_idn, field_value)) in (
-            enumerate(zip(vrb.obj.fields, self.obj.to_values()), start=1)
+            enumerate(zip(vrb.obj.fields, self.obj.value_list()), start=1)
         ):
             # NOTE:  field_index 0-based is the key to two arrays,
             #            field definition - array of idns pointing to definitions
@@ -1086,8 +1317,9 @@ class FlikiWord(object):   # qiki.nit.Nit):   # pity, all that work in nit.py fo
 
     @classmethod
     def is_user(cls, maybe_user):
+        # TODO:  Instead, pass through UserLex.word_from_idn(), and make that as strict.
         return (
-            isinstance(maybe_user, list) and
+            isinstance(maybe_user, (list, tuple)) and
             len(maybe_user) >= 2 and
             isinstance(maybe_user[0], int) and
             cls.Ancestry(maybe_user[0]).is_offspring_of(cls.idn_of.user)
@@ -1611,8 +1843,10 @@ class GoogleFlaskUser(flask_login.UserMixin):
     """Flask_login model for a Google user."""
     # TODO:  Merge this with GoogleQikiUser somehow
 
-    def __init__(self, google_user_id):
+    def __init__(self, google_user_id, name=None, icon=None):
         self.id = google_user_id
+        self.name = name
+        self.icon = icon
 
 
 class LexFliki(qiki.LexMySQL):
@@ -1915,16 +2149,16 @@ class LexFliki(qiki.LexMySQL):
         return super(LexFliki, self).read_word(idn)
 
 
-def connect_lex():
-
-
-    try:
-        lex = LexFliki()
-    except LexFliki.ConnectError as e:
-        print("CANNOT CONNECT", str(e))
-        return None
-    else:
-        return lex
+# def connect_lex():
+#
+#
+#     try:
+#         lex = LexFliki()
+#     except LexFliki.ConnectError as e:
+#         print("CANNOT CONNECT", str(e))
+#         return None
+#     else:
+#         return lex
 
 
 def static_url(relative_path, **kwargs):
@@ -1935,8 +2169,8 @@ def static_code_url( relative_path, **kwargs):
     return static_url('code/' + relative_path, **kwargs)
 
 
-_ = WorkingIdns(connect_lex()).dictionary_of_ints()   # catch missing ".idn"
-# TODO:  Remove this when nits rule.
+# _ = WorkingIdns(connect_lex()).dictionary_of_ints()   # catch missing ".idn"
+# DONE:  Remove this when nits rule.
 #        I think this was only done so the CANNOT CONNECT (to MySQL) error appeared
 #        when restarting.
 
@@ -1983,33 +2217,33 @@ class UNICODE(object):
 # very_first_request = True
 
 
-def setup_application_context():
-    # global very_first_request
-    # if very_first_request:
-    #     very_first_request = False
-    #     FlikiWord.open_lex()
-
-
-    if hasattr(flask.g, 'lex'):
-        Auth.print("WHOOPS, ALREADY SETUP WITH A LEX")
-
-    flask.g.lex = connect_lex()
-    flask.g.is_online = flask.g.lex is not None
-    if flask.g.is_online:
-        lex = flask.g.lex
-
-        def report_dup_def(_, message):
-            Auth.print("DUP DUP", message)
-
-        lex.duplicate_definition_notify(report_dup_def)
+# def setup_application_context():
+#     # global very_first_request
+#     # if very_first_request:
+#     #     very_first_request = False
+#     #     FlikiWord.open_lex()
+#
+#
+#     if hasattr(flask.g, 'lex'):
+#         Auth.print("WHOOPS, ALREADY SETUP WITH A LEX")
+#
+#     flask.g.lex = connect_lex()
+#     flask.g.is_online = flask.g.lex is not None
+#     if flask.g.is_online:
+#         lex = flask.g.lex
+#
+#         def report_dup_def(_, message):
+#             Auth.print("DUP DUP", message)
+#
+#         lex.duplicate_definition_notify(report_dup_def)
 
 
 @flask_app.teardown_appcontext
 def teardown_application_context(exc=None):
-    if hasattr(flask.g, 'lex') and hasattr(flask.g.lex, 'disconnect') and callable(flask.g.lex.disconnect):
-        if flask.g.is_online:
-            flask.g.lex.disconnect()
-            flask.g.pop('lex')
+    # if hasattr(flask.g, 'lex') and hasattr(flask.g.lex, 'disconnect') and callable(flask.g.lex.disconnect):
+    #     if flask.g.is_online:
+    #         flask.g.lex.disconnect()
+    #         flask.g.pop('lex')
     # FlikiWord.close_lex()
     if exc is not None:
         Auth.print("teardown exception", type_name(exc), str(exc))
@@ -2045,6 +2279,7 @@ STALE_LOGIN_ERROR = 'Unable to retrieve stored state!'
 
 
 login_manager = flask_login.LoginManager()
+login_manager.anonymous_user = AnonymousWord
 # noinspection PyTypeChecker
 login_manager.init_app(flask_app)
 
@@ -2077,17 +2312,19 @@ class Auth(object):
 
     def __init__(
         self,
-        this_lex,
-        is_authenticated,
-        is_anonymous,
+        # this_lex,
+        # is_authenticated,
+        # is_anonymous,
         ip_address_txt,
         user_agent_txt,
+        flask_user,
     ):
-        self.lex = this_lex
-        self.is_authenticated = is_authenticated
-        self.is_anonymous = is_anonymous
+        self.lex = None   # this_lex
+        # self.is_authenticated = flask_user.is_authenticated
+        # self.is_anonymous = flask_user.is_anonymous
         self.ip_address_txt = ip_address_txt
         self.user_agent_txt = user_agent_txt
+        self.flask_user = flask_user
         # self.full_disclosure = False
 
         # self.print("COOKIES!", ",".join(flask.request.cookies.keys()))
@@ -2152,8 +2389,9 @@ class Auth(object):
         #        So we no longer need to track anonymous users.  Much.
         self.session_verb = None
 
-        if self.is_authenticated:
-            self.qiki_user = self.lex.word_google_class(self.authenticated_id())
+        if self.flask_user.is_authenticated:
+            pass
+            # self.qiki_user = self.lex.word_google_class(self.authenticated_id())
 
             # if not self.qiki_user.is_named:
             #     self.print("NOT A NAMED USER", self.qiki_user.idn)
@@ -2166,17 +2404,18 @@ class Auth(object):
             #        if they haven't been paired yet,
             #        or aren't the most recent pairing
             #        (or remove that last thing, could churn if user is on two devices at once)
-        elif self.is_anonymous:
+        elif self.flask_user.is_anonymous:
+            pass
             # self.qiki_user = self.lex.word_anon_class(self.session_verb.idn)
-            ip_address_int = int(ipaddress.ip_address(ip_address_txt))
+            # ip_address_int = int(ipaddress.ip_address(ip_address_txt))
             # THANKS:  ip address to 32-bit integer, https://stackoverflow.com/a/22272197/673991
-            self.qiki_user = self.lex.word_anon_class(ip_address_int)
+            # self.qiki_user = self.lex.word_anon_class(ip_address_int)
             # TODO:  Tag the anonymous user with the session (like authenticated user)
             #        rather than embedding the session ID so prominently
             #        although, that session ID is the only way to identify anonymous users
             #        so maybe not
         else:
-            self.qiki_user = None
+            # self.qiki_user = None
             self.print("User is neither authenticated nor anonymous.")
             return
 
@@ -2256,13 +2495,13 @@ class Auth(object):
         #        (by cloning the Request object -- request.args is immutable)
         #        before passing it to Authomatic.login().
 
-        if self.is_authenticated:
-            display_name = self.qiki_user.name
-            if self.qiki_user.is_admin:
+        if self.flask_user.is_authenticated:
+            display_name = self.flask_user.name()   # HACK self.qiki_user.name
+            if self.flask_user.is_admin():   # HACK self.qiki_user.is_admin:
                 display_name += " (admin)"
             return (
                 "<a href='{logout_link}'>"
-                    "logout"
+                    "logout" +
                 "</a>"
                 " "
                 "{display_name}"
@@ -2270,7 +2509,7 @@ class Auth(object):
                 display_name=display_name,
                 logout_link=self.logout_url,
             )
-        elif self.is_anonymous:
+        elif self.flask_user.is_anonymous:
             return (
                 # "<a href='{login_link}' title='{login_title}'>"
                 "<a href='{login_link}'>"
@@ -2316,7 +2555,7 @@ class Auth(object):
         """Filter out anonymous contributions from other anonymous users."""
         sbj_warnings = set()
 
-        if self.is_anonymous:
+        if self.flask_user.is_anonymous:
 
             def allowed_word(word):
                 # if self.full_disclosure:
@@ -2333,7 +2572,7 @@ class Auth(object):
                         self.print("sbj", sbj, "is neither user nor lex, starting with", repr(word))
                     return False
                 else:
-                    return is_logged_in or word.sbj == self.qiki_user
+                    return is_logged_in or word.sbj == self.flask_user.idn
 
             vetted_words = [w for w in words if allowed_word(w)]
             n_removed = len(words) - len(vetted_words)
@@ -2448,69 +2687,84 @@ class Auth(object):
             ok = True
         return ok
 
+    # def me_idn(self):
+    #     raise NotImplementedError
+
     def user_stuff(self):   # cls, auth, ip_address_txt, user_agent_txt):
-        ip_int = int(self.lex.IDN.IP_ADDRESS_TAG)
-        ua_int = int(self.lex.IDN.USER_AGENT_TAG)
-        lex_int = int(self.lex.IDN.LEX)
-        user_list = self.qiki_user.jsonl()
+        """Remember details of a user's interaction."""
 
-        assert ip_int == FlikiWord.idn_of.ip_address, repr(FlikiWord.idn_of.ip_address)
-        assert ua_int == FlikiWord.idn_of.user_agent
-        assert lex_int == FlikiWord.idn_of.lex
+        FlikiWord.user_record(self.flask_user.idn, 'ip_address', self.ip_address_txt)
+        FlikiWord.user_record(self.flask_user.idn, 'user_agent', self.user_agent_txt)
 
-        ip_latest = None
-        ua_latest = None
+        # ip_int = FlikiWord.idn_of.ip_address   # int(self.lex.IDN.IP_ADDRESS_TAG)
+        # ua_int = FlikiWord.idn_of.user_agent   # int(self.lex.IDN.USER_AGENT_TAG)
+        # lex_int = FlikiWord.idn_of.lex   # int(self.lex.IDN.LEX)
+        # user_list = self.me_idn()   # HACK self.qiki_user.jsonl()
+        #
+        # # assert ip_int == FlikiWord.idn_of.ip_address, repr(FlikiWord.idn_of.ip_address)
+        # # assert ua_int == FlikiWord.idn_of.user_agent
+        # # assert lex_int == FlikiWord.idn_of.lex
+        #
+        # ip_latest = None
+        # ua_latest = None
+        # name_latest = None
+        # icon_latest = None
+        #
+        # # TODO:  Instead of the following loop,
+        # #        maintain latest ip and ua for (at least some) users in memory
+        #
+        # for each_word in FlikiWord.all_words():
+        #     if each_word.sbj == lex_int and each_word.obj.has('user') and each_word.obj.user == user_list:
+        #         if each_word.vrb == ip_int:
+        #             ip_latest = each_word.obj.text
+        #         elif each_word.vrb == ua_int:
+        #             ua_latest = each_word.obj.text
+        #         elif each_word.vrb == FlikiWord.idn_of.name:
+        #             name_latest = each_word.obj.text
+        #         elif each_word.vrb == FlikiWord.idn_of.iconify:
+        #             icon_latest = each_word.obj.url
+        #
+        # Auth.print("User falderal", name_latest, self.me_idn(), self.flask_user.name, ",".join(dir(self.flask_user)))
+        # if not self.is_anonymous:
+        #     # NOTE:  Redundant to tag anonymous users with IP address
+        #     #        because it's part of their user idn.
+        #     if self.ip_address_txt != ip_latest:
+        #         Auth.print("Was", user_list, ip_latest)
+        #         ip_word = self.create_word_by_lex(ip_int, dict(user=user_list, text=self.ip_address_txt))
+        #         Auth.print(str(ip_word.idn) + ".", "User", ip_word.obj.user, "ip", ip_word.obj.text)
+        # if self.user_agent_txt != ua_latest:
+        #     Auth.print("Was", user_list, ua_latest)
+        #     ua_word = self.create_word_by_lex(ua_int, dict(user=user_list, text=self.user_agent_txt))
+        #     Auth.print(str(ua_word.idn) + ".", "User", ua_word.obj.user, "ua", ua_word.obj.text)
 
-        # TODO:  Instead of the following loop,
-        #        maintain latest ip and ua for (at least some) users in memory
-
-        for each_word in FlikiWord.all_words():
-            # print("WORD", each_word.idn, each_word.sbj, each_word.vrb, each_word.obj_values, each_word.obj.to_dict())
-            if each_word.sbj == lex_int and each_word.obj.has('user') and each_word.obj.user == user_list:
-                if each_word.vrb == ip_int:
-                    ip_latest = each_word.obj.text
-                elif each_word.vrb == ua_int:
-                    ua_latest = each_word.obj.text
-
-        if not self.is_anonymous:
-            # NOTE:  Redundant to tag anonymous users with IP address
-            #        because it's part of their user idn.
-            if self.ip_address_txt != ip_latest:
-                Auth.print("Was", user_list, ip_latest)
-                ip_word = self.create_word_by_lex(ip_int, dict(user=user_list, text=self.ip_address_txt))
-                Auth.print(str(ip_word.idn) + ".", "User", ip_word.obj.user, "ip", ip_word.obj.text)
-        if self.user_agent_txt != ua_latest:
-            Auth.print("Was", user_list, ua_latest)
-            ua_word = self.create_word_by_lex(ua_int, dict(user=user_list, text=self.user_agent_txt))
-            Auth.print(str(ua_word.idn) + ".", "User", ua_word.obj.user, "ua", ua_word.obj.text)
-
-            # parsed = werkzeug.user_agent.UserAgent(w.obj['text'])
-            # print(
-            #     str(w.idn) + ".",
-            #     "User", w.obj['user'],
-            #     parsed.platform,
-            #     parsed.browser,
-            #     parsed.version,
-            # )
-            # NO THANKS:  https://tedboy.github.io/flask/generated/generated/werkzeug.UserAgent.html
-            # SEE:  No UA parsing, https://werkzeug.palletsprojects.com/en/2.0.x/utils/?highlight=user%20agent#useragent-parsing-deprecated   # noqa
-            # SEE:  UA parsing, https://github.com/ua-parser/uap-python
+        # parsed = werkzeug.user_agent.UserAgent(w.obj['text'])
+        # print(
+        #     str(w.idn) + ".",
+        #     "User", w.obj['user'],
+        #     parsed.platform,
+        #     parsed.browser,
+        #     parsed.version,
+        # )
+        # NO THANKS:  https://tedboy.github.io/flask/generated/generated/werkzeug.UserAgent.html
+        # SEE:  No UA parsing, https://werkzeug.palletsprojects.com/en/2.0.x/utils/?highlight=user%20agent#useragent-parsing-deprecated   # noqa
+        # SEE:  UA parsing, https://github.com/ua-parser/uap-python
 
     def create_word_by_user(self, vrb_name, obj_dictionary):
         self.user_stuff()
         return FlikiWord.create_word_by_user(self, vrb_name, obj_dictionary)
 
-    def create_word_by_lex(self, vrb_idn, obj_dictionary):
-        """Instantiate and store a sbj=lex word.   (Not a define word.)"""
-        assert vrb_idn != FlikiWord.idn_of.define, "Definitions must not result from outside events."
-        assert int(self.lex.IDN.LEX) == FlikiWord.idn_of.lex, repr(FlikiWord.idn_of.lex)
-        new_lex_word = FlikiWord(
-            sbj=FlikiWord.idn_of.lex,
-            vrb=vrb_idn,
-            **obj_dictionary
-        )
-        new_lex_word.stow()
-        return new_lex_word
+    # @classmethod
+    # def create_word_by_lex(cls, vrb_idn, obj_dictionary):
+    #     """Instantiate and store a sbj=lex word.   (Not a define word.)"""
+    #     assert vrb_idn != FlikiWord.idn_of.define, "Definitions must not result from outside events."
+    #     # assert int(self.lex.IDN.LEX) == FlikiWord.idn_of.lex, repr(FlikiWord.idn_of.lex)
+    #     new_lex_word = FlikiWord(
+    #         sbj=FlikiWord.idn_of.lex,
+    #         vrb=vrb_idn,
+    #         **obj_dictionary
+    #     )
+    #     new_lex_word.stow()
+    #     return new_lex_word
 
 
 class Probe(object):
@@ -2597,45 +2851,50 @@ class AuthFliki(Auth):
 
     """
     def __init__(self, ok_to_print=True):
-        setup_application_context()
-        self.is_online = flask.g.is_online   # Do we have a lex?  False if MySQL is down.
-        if self.is_online:
+        # setup_application_context()
+        # self.is_online = flask.g.is_online   # Do we have a lex?  False if MySQL is down.
+        # if self.is_online:
 
-            self.flask_user = flask_login.current_user
-            # NOTE:  Apparently this is where the authomatic magic happens.
+        super(AuthFliki, self).__init__(
+            # this_lex=flask.g.lex,
+            # is_authenticated=self.flask_user.is_authenticated,
+            # is_anonymous=self.flask_user.is_anonymous,
+            ip_address_txt=qiki.Text.decode_if_you_must(flask.request.remote_addr),
+            user_agent_txt=qiki.Text.decode_if_you_must(flask.request.user_agent.string),
+            flask_user=flask_login.current_user,
+        )
+        # THANKS:  User agent fields, https://stackoverflow.com/a/33706555/673991
+        # SEE:  https://werkzeug.palletsprojects.com/en/0.15.x/utils/#module-werkzeug.useragents
 
-            super(AuthFliki, self).__init__(
-                this_lex=flask.g.lex,
-                is_authenticated=self.flask_user.is_authenticated,
-                is_anonymous=self.flask_user.is_anonymous,
-                ip_address_txt=qiki.Text.decode_if_you_must(flask.request.remote_addr),
-                user_agent_txt=qiki.Text.decode_if_you_must(flask.request.user_agent.string),
+        auth_anon = (
+            "logged in" if self.flask_user.is_authenticated else "" +
+            "anonymous" if self.flask_user.is_anonymous else ""
+        )
+        if ok_to_print:
+            self.print(
+                "AUTH",
+                # self.qiki_user.idn.qstring(),
+                json_encode(self.flask_user.idn),
+                auth_anon,
+                # self.qiki_user.name,
             )
-            # THANKS:  User agent fields, https://stackoverflow.com/a/33706555/673991
-            # SEE:  https://werkzeug.palletsprojects.com/en/0.15.x/utils/#module-werkzeug.useragents
+            # flask.request.user_agent.platform,
+            # flask.request.user_agent.browser,
+            # flask.request.user_agent.version,
+            # EXAMPLE:  windows chrome 94.0.4606.81
+            #           DeprecationWarning: The built-in user agent parser is deprecated and
+            #           will be removed in Werkzeug 2.1. The 'platform' property will be 'None'.
+            #           Subclass 'werkzeug.user_agent.UserAgent' and set
+            #           'Request.user_agent_class' to use a different parser.
+        self.path_word = None
+        self.browse_word = None
 
-            auth_anon = (
-                "logged in" if self.is_authenticated else "" +
-                "anonymous" if self.is_anonymous else ""
-            )
-            if ok_to_print:
-                self.print(
-                    "AUTH",
-                    # self.qiki_user.idn.qstring(),
-                    self.qiki_user.jsonl(),
-                    auth_anon,
-                    self.qiki_user.name,
-                    # flask.request.user_agent.platform,
-                    # flask.request.user_agent.browser,
-                    # flask.request.user_agent.version,
-                )
-                # EXAMPLE:  windows chrome 94.0.4606.81
-                #           DeprecationWarning: The built-in user agent parser is deprecated and
-                #           will be removed in Werkzeug 2.1. The 'platform' property will be 'None'.
-                #           Subclass 'werkzeug.user_agent.UserAgent' and set
-                #           'Request.user_agent_class' to use a different parser.
-            self.path_word = None
-            self.browse_word = None
+    # def me_idn(self):
+    #     if self.is_authenticated:
+    #         # return tuple((FlikiWord.idn_of.google_user, str(self.flask_user.get_id())))
+    #         return self.flask_user.idn
+    #     else:
+    #         return tuple((FlikiWord.idn_of.anonymous, str(flask.request.remote_addr)))
 
     def hit(self, path_str):
         self.create_word_by_user('browse', dict(url=path_str))
@@ -2649,7 +2908,6 @@ class AuthFliki(Auth):
         #     self.lex.IDN.PATH,
         #     qiki.Text.decode_if_you_must(path_str)
         # )
-        # # TODO:  Nit incarnation -- sbj=lex, vrb=define, obj=[path-noun, path-url]
         # self.browse_word = self.lex.create_word(
         #     sbj=self.qiki_user,
         #     vrb=self.session_verb,
@@ -2796,12 +3054,12 @@ class AuthFliki(Auth):
             return int(self.lex[vrb_name].idn)
 
 
-def is_qiki_user_anonymous(user_word):
-    # return isinstance(user_word, AnonymousQikiUser)
-    try:
-        return user_word.is_anonymous
-    except AttributeError:
-        return False
+# def is_qiki_user_anonymous(user_word):
+#     # return isinstance(user_word, AnonymousQikiUser)
+#     try:
+#         return user_word.is_anonymous
+#     except AttributeError:
+#         return False
 
 
 class SessionVariableName(object):
@@ -2810,13 +3068,12 @@ class SessionVariableName(object):
 
 @login_manager.user_loader
 def user_loader(google_user_id_string):
-    # print("user_loader", google_user_id_string)
     # EXAMPLE:  user_loader 103620384189003122864 (Bob Stein's google user id, apparently)
     #           hex 0x59e058e6a6308c8b0 (67 bits)
     #           qiki 0q8A_059E058E6A6308C8B0 (9 qigits)
     #           (Yeah well it better not be a security thing to air this number like a toynbee tile.)
-    new_flask_user = GoogleFlaskUser(google_user_id_string)
-    # TODO:  Validate with google?
+    new_flask_user = GoogleWord.lex.word_from_index(google_user_id_string)
+    # TODO:  Validate with google?  Did authomatic do that for us?
     return new_flask_user
 
 
@@ -2845,11 +3102,11 @@ def get_then_url():
 # no noinspection PyUnresolvedReferences
 @flask_app.route('/meta/login', methods=('GET', 'POST'))
 def login():
-    setup_application_context()
-    if not flask.g.is_online:
-        return "offline"
-
-    lex = flask.g.lex
+    # setup_application_context()
+    # if not flask.g.is_online:
+    #     return "offline"
+    #
+    # lex = flask.g.lex
 
     response = flask.make_response(" Play ")
     login_result = authomatic_global.login(
@@ -2977,21 +3234,26 @@ def login():
                         # EXAMPLE:  2019.1028 - logged_in_user.picture (first appeared 2019.0820)
                         #     https://lh3.googleusercontent.com/a-/AAuE7mDmUoEqODezLnr1LEwU_DW-Rkyvu1-3fvrdA34Fog=s50
 
-                        flask_user = GoogleFlaskUser(logged_in_user.id)
-                        qiki_user = lex.word_google_class(logged_in_user.id)
+                        # flask_user = GoogleFlaskUser(logged_in_user.id, logged_in_user.name, logged_in_user.picture)
 
-                        picture_size_string = url_var(logged_in_user.picture, 'sz', '0')
-                        try:
-                            picture_size_int = int(picture_size_string)
-                        except ValueError:
-                            picture_size_int = 0
-                        avatar_width = qiki.Number(picture_size_int)
-                        # TODO:  avatar_width is always 0 - recompute?  Alternative?
+                        flask_user = GoogleWord.lex.word_from_index(logged_in_user.id)
 
+                        # Auth.print("Ephemeris", FlikiWord.repr_limited(flask_user))
+                        # EXAMPLE:  Ephemeris {"idn":[167,"103620384189003122864"],"obj":{" ... (332 more)
+                        # qiki_user = lex.word_google_class(logged_in_user.id)
+
+                        # picture_size_string = url_var(logged_in_user.picture, 'sz', '0')
+                        # try:
+                        #     picture_size_int = int(picture_size_string)
+                        # except ValueError:
+                        #     picture_size_int = 0
+                        # avatar_width = qiki.Number(picture_size_int)
+                        # NOTE:  avatar_width is always 0
+                        #
                         avatar_url = logged_in_user.picture or ''
                         display_name = logged_in_user.name or ''
 
-                        Auth.print("Logging in", qiki_user.index, qiki_user.jsonl())
+                        # Auth.print("Logging in", qiki_user.index, qiki_user.jsonl())
                         # EXAMPLE:   Logging in 0q8A_059E058E6A6308C8B0 [167, '103620384189003122864']
 
                         # lex[lex](lex.IDN.ICONIFY, use_already=True)[qiki_user.idn] = (
@@ -3003,27 +3265,33 @@ def login():
                         #        in spite of how clever and visionary and creative it made me feel.
                         #        I may be procedural down to my ever-loving soul.
 
-                        lex.create_word(
-                            sbj=lex.IDN.LEX,
-                            vrb=lex.IDN.ICONIFY,
-                            use_already=True,
-                            obj=qiki_user,
-                            num=avatar_width,
-                            txt=avatar_url,
-                        )
-                        lex.create_word(
-                            sbj=lex.IDN.LEX,
-                            vrb=lex.IDN.NAME,
-                            use_already=True,
-                            obj=qiki_user,
-                            txt=display_name,
-                        )
-                        # TODO:  Nit record icon and name, only if they've changed
-                        flask_login.login_user(flask_user)
-                        return flask.redirect(get_then_url())
-                        # TODO:  Why does Chrome put a # on the end of this URL (empty fragment)?
-                        # SEE:  Fragment on redirect, https://stackoverflow.com/q/2286402/673991
-                        # SEE:  Fragment of resource, https://stackoverflow.com/a/5283528/673991
+                        # lex.create_word(
+                        #     sbj=lex.IDN.LEX,
+                        #     vrb=lex.IDN.ICONIFY,
+                        #     use_already=True,
+                        #     obj=qiki_user,
+                        #     num=avatar_width,
+                        #     txt=avatar_url,
+                        # )
+                        # lex.create_word(
+                        #     sbj=lex.IDN.LEX,
+                        #     vrb=lex.IDN.NAME,
+                        #     use_already=True,
+                        #     obj=qiki_user,
+                        #     txt=display_name,
+                        # )
+                        try:
+                            FlikiWord.user_record(flask_user.idn, 'name', display_name)
+                            FlikiWord.user_record(flask_user.idn, 'iconify', avatar_url)
+                        except ValueError as e:
+                            Auth.print(str(e))
+                            raise
+                        else:
+                            flask_login.login_user(flask_user)
+                            return flask.redirect(get_then_url())
+                            # TODO:  Why does Chrome put a # on the end of this URL (empty fragment)?
+                            # SEE:  Fragment on redirect, https://stackoverflow.com/q/2286402/673991
+                            # SEE:  Fragment of resource, https://stackoverflow.com/a/5283528/673991
             else:
                 Auth.print("No user!")
             if hasattr(login_result, 'provider'):
@@ -3169,7 +3437,10 @@ class FlikiHTML(web_html.WebHTML):
     def footer(self):
         self(newlines=True)
         self.jquery(JQUERY_VERSION)
-        self.js('//ajax.googleapis.com/ajax/libs/jqueryui/{}/jquery-ui.min.js'.format(JQUERYUI_VERSION))
+        # TODO:  Can I remove jQuery UI now?
+        #        self.js('//ajax.googleapis.com/ajax/libs/jqueryui/{version}/jquery-ui.min.js'.format(
+        #            version=JQUERYUI_VERSION
+        #        ))
         self.js_stamped(web_path_qiki_javascript('jquery.hotkeys.js'))
         self.js_stamped(web_path_qiki_javascript('qoolbar.js'))
         return self
@@ -3222,12 +3493,12 @@ def unslumping_home(home_page_title):
     t_start = time.time()
     auth = AuthFliki(ok_to_print=False)
 
-    if not auth.is_online:
-        return "lex database offline"
-    if not auth.is_enough_anonymous_patience(MINIMUM_SECONDS_BETWEEN_ANONYMOUS_QUESTIONS):
-        return "wait a bit"
+    # if not auth.is_online:
+    #     return "lex database offline"
+    # if not auth.is_enough_anonymous_patience(MINIMUM_SECONDS_BETWEEN_ANONYMOUS_QUESTIONS):
+    #     return "wait a bit"
 
-    q_start = auth.lex.query_count
+    # q_start = auth.lex.query_count
 
     # auth.hit(auth.current_path)
     # NOTE:  Commented out to suppress early churn from all my hits.
@@ -3303,7 +3574,7 @@ def unslumping_home(home_page_title):
                     ],
                     POPUP_ID_PREFIX=POPUP_ID_PREFIX,
                     STATIC_IMAGE=static_url('image'),
-                    me_idn=auth.qiki_user.jsonl(),
+                    me_idn=auth.flask_user.idn,   # HACK was auth.qiki_user.jsonl(),
                     INTERACT_VERBS=INTERACT_VERBS,
                 ))
                 script.raw_text('var MONTY = {json};\n'.format(json=json_pretty(monty)))
@@ -3369,11 +3640,11 @@ def unslumping_home(home_page_title):
 
         t_stuff = time.time()
 
-        # NOTE:  NOT calling auth.user_stuff() here, waiting for user to do something important,
+        # NOTE:  NOT calling auth.user_stuff() here for anonymous users, waiting for user to do something important,
         #        such as rearrange or submit.  This prevents the geological accumulation of
         #        fake bot users for hits to the home page.
 
-        if not auth.is_anonymous:
+        if not auth.flask_user.is_anonymous:
             # NOTE:  Only record page hits for logged-in users.  This avoids all the bot hits
             #        that I assume are doing happy benevolent DigitalOcean monitoring.
             relative_url = flask.request.full_path.rstrip('?')
@@ -3382,9 +3653,9 @@ def unslumping_home(home_page_title):
             auth.hit(relative_url)
 
         t_end = time.time()
-        q_end = auth.lex.query_count
-        Auth.print("unslumping home {q:d} queries, {t1:.3f} {t2:.3f} sec".format(
-            q=q_end - q_start,
+        # q_end = auth.lex.query_count
+        Auth.print("unslumping home {t1:.3f} {t2:.3f} sec".format(
+            # q=q_end - q_start,
             t1=t_stuff - t_start,
             t2=t_end - t_stuff,
         ))
@@ -3407,10 +3678,10 @@ def unslumping_home(home_page_title):
 
 def contribution_dictionary(auth, more_verb_idns=None):
     """Put the relevant contribution information from the lex into a dictionary."""
-    if not auth.is_online:
-        return dict(error="lex database offline")
-    if not auth.is_enough_anonymous_patience(MINIMUM_SECONDS_BETWEEN_ANONYMOUS_QUESTIONS):
-        return dict(error="wait a bit")
+    # if not auth.is_online:
+    #     return dict(error="lex database offline")
+    # if not auth.is_enough_anonymous_patience(MINIMUM_SECONDS_BETWEEN_ANONYMOUS_QUESTIONS):
+    #     return dict(error="wait a bit")
 
     verbs = []
     verbs += auth.get_category_idns_in_order()
@@ -3441,9 +3712,9 @@ def contribution_dictionary(auth, more_verb_idns=None):
     monty = dict(
         # me_idn=auth.qiki_user.idn.qstring(),
         # me_lineage=auth.qiki_user.lineage(),
-        me_idn=auth.qiki_user.lineage(),
-        me_txt=auth.qiki_user.name,
-        is_anonymous=auth.is_anonymous,
+        me_idn=auth.flask_user.idn,
+        me_txt=auth.flask_user.name(),
+        is_anonymous=auth.flask_user.is_anonymous,
         URL_HERE=auth.current_url,
         IDN=auth.lex.IDN.dictionary_of_ints(),
         NOW=float(time_lex.now_word().num),
@@ -3457,9 +3728,9 @@ def contribution_dictionary(auth, more_verb_idns=None):
 def meta_contribution_json():
     auth = AuthFliki()
 
-    if not auth.is_online:
-        return dict(error="lex database offline")
-    if not auth.is_authenticated:
+    # if not auth.is_online:
+    #     return dict(error="lex database offline")
+    if not auth.flask_user.is_authenticated:
         return auth.login_html()   # anonymous viewing not allowed, just show "login" link
 
     monty = contribution_dictionary(auth)
@@ -3562,9 +3833,9 @@ def meta_nits():
 
     auth = AuthFliki()
 
-    if not auth.is_online:
-        return dict(error="lex database offline")
-    # if not auth.is_authenticated and not is_hack_dour:   # only for porting to Nits
+    # if not auth.is_online:
+    #     return dict(error="lex database offline")
+    # if not auth.flask_user.is_authenticated and not is_hack_dour:   # only for porting to Nits
     #     return auth.login_html()   # anonymous viewing not allowed, just show "login" link
 
     p.at("auth", queries=auth.lex.query_count)
@@ -4386,9 +4657,9 @@ assert not is_whole(42.1)
 def meta_raw():
     """Raw json dump of all words in the lex."""
     auth = AuthFliki()
-    if not auth.is_online:
-        return "lex offline"
-    if not auth.is_authenticated:
+    # if not auth.is_online:
+    #     return "lex offline"
+    if not auth.flask_user.is_authenticated:
         return auth.login_html()   # anonymous viewing not allowed, just show "login" link
         # TODO:  Instead of rebuffing anonymous users, show them the content appropriate for
         #        anonymous users:  i.e. exclude all anonymous content except their own.
@@ -4445,9 +4716,9 @@ def slam_test():
     """
 
     auth = AuthFliki()
-    if not auth.is_online:
-        return "lex offline"
-    if not auth.is_authenticated:
+    # if not auth.is_online:
+    #     return "lex offline"
+    if not auth.flask_user.is_authenticated:
         return auth.login_html()   # anonymous viewing not allowed, just show "login" link
 
     slam_verb = auth.lex.verb('slam')
@@ -4501,9 +4772,9 @@ def slam_test():
 def meta_lex():
 
     auth = AuthFliki()
-    if not auth.is_online:
-        return "lex offline"
-    if not auth.is_authenticated:
+    # if not auth.is_online:
+    #     return "lex offline"
+    if not auth.flask_user.is_authenticated:
         return auth.login_html()   # anonymous viewing not allowed, just show "login" link
 
     with FlikiHTML('html') as html:
@@ -4542,9 +4813,9 @@ def meta_lex():
 def meta_lex_classic():
 
     auth = AuthFliki()
-    if not auth.is_online:
-        return "lex offline"
-    if not auth.is_authenticated:
+    # if not auth.is_online:
+    #     return "lex offline"
+    if not auth.flask_user.is_authenticated:
         return auth.login_html()   # anonymous viewing not allowed, just show "login" link
         # TODO:  Omit anonymous content for anonymous users (except their own).
         #        I.e. show anonymous user only their own words, logged-in user words, and lex words.
@@ -4562,7 +4833,7 @@ def meta_lex_classic():
 
 
         with html.body(class_='target-environment', newlines=True) as body:
-            user_idn_qstring = auth.qiki_user.idn.qstring()
+            user_idn_qstring = str(auth.flask_user.idn)   # was auth.qiki_user.idn.qstring()
             with body.div(id='login-prompt', title='your idn is ' + user_idn_qstring) as div_login:
                 div_login.raw_text(auth.login_html())
 
@@ -4820,9 +5091,9 @@ def legacy_even_older_meta_all_words():
     #        Or is it the viewing code's responsibility to filter out tactical cruft?
 
     auth = AuthFliki()
-    if not auth.is_online:
-        return "words offline"
-    if not auth.is_authenticated:
+    # if not auth.is_online:
+    #     return "words offline"
+    if not auth.flask_user.is_authenticated:
         return auth.login_html()   # anonymous viewing not allowed, just show "login" link
 
     lex = auth.lex
@@ -5058,8 +5329,8 @@ def answer_qiki(url_suffix):
 
 
     auth = AuthFliki()
-    if not auth.is_online:
-        return "answers offline"
+    # if not auth.is_online:
+    #     return "answers offline"
 
     auth.hit(url_suffix)   # flask.request.path has an initial slash
     lex = auth.lex
@@ -5125,7 +5396,7 @@ def answer_qiki(url_suffix):
         answers=answers,
         len_answers=len(answers),
         len_questions=len(question_words) + len(hit_words),
-        me_idn=auth.qiki_user.idn,
+        me_idn=auth.flask_user.idn,
         log_html=auth.login_html(),
         render_question=render_question,
         dot_min='.min' if DO_MINIFY else '',
@@ -5209,7 +5480,7 @@ def ajax():
     t_start = time.time()
     auth = None
     action = None
-    qc_start = 0
+    # qc_start = 0
     ok_to_print = (
         SHOW_LOG_AJAX_NOEMBED_META or
         flask.request.form.get('action', '_') != 'noembed_meta'
@@ -5219,10 +5490,10 @@ def ajax():
     try:
         auth = AuthFliki(ok_to_print=ok_to_print)
 
-        if not auth.is_online:
-            return invalid_response("ajax offline")
+        # if not auth.is_online:
+        #     return invalid_response("ajax offline")
 
-        qc_start = auth.lex.query_count
+        # qc_start = auth.lex.query_count
 
         lex = auth.lex
         action = auth.form('action')
@@ -5231,7 +5502,8 @@ def ajax():
             question_path = auth.form('question')
             answer_txt = auth.form('answer')
             question_word = lex.define(lex.IDN.PATH, question_path)
-            auth.qiki_user(lex.IDN.ANSWER)[question_word] = 1, answer_txt
+            # auth.qiki_user(lex.IDN.ANSWER)[question_word] = 1, answer_txt
+            auth.create_word_by_user('answer', dict(question=question_word.idn, text=answer_txt))
             return valid_response('message', "Question {q} answer {a}".format(
                 q=question_path,
                 a=answer_txt,
@@ -5252,55 +5524,55 @@ def ajax():
             #         {"idn": "0q83_01FC", "icon_url": null,                                         "name": "laugh"}
             #     ]}
 
-        elif action == 'sentence':
-            obj_idn = auth.form('obj_idn')
-            vrb_txt = auth.form('vrb_txt', None)
-            if vrb_txt is None:
-                # TODO:  Should vrb_idn have priority over vrb_txt instead?
-                vrb_idn = auth.form('vrb_idn')
-                vrb = lex[qiki.Number(vrb_idn)]
-            else:
-                vrb = lex.verb(vrb_txt)
-                # FIXME:  can we allow browser trash to define a verb?
-
-            txt = auth.form('txt')
-            use_already = auth.form('use_already', False)
-            obj = lex[qiki.Number(obj_idn)]
-            num_add_str = auth.form('num_add', None)
-            num_str = auth.form('num', None)
-            num_add = None if num_add_str is None else qiki.Number(num_add_str)
-            num = None if num_str is None else qiki.Number(num_str)
-            new_word_kwargs = dict(
-                sbj=auth.qiki_user,
-                vrb=vrb,
-                obj=obj,
-                num=num,
-                num_add=num_add,
-                txt=txt,
-                use_already=use_already,
-            )
-            if auth.may_create_word(new_word_kwargs):
-                new_word = lex.create_word(**new_word_kwargs)
-                # DONE:  Ported to nits, see action == 'create_word'
-                return valid_response('new_words', [new_word])
-                # TODO:  Maybe exclude txt form new_word to save bandwidth?
-            else:
-                return invalid_response("not authorized")
+        # elif action == 'sentence':
+        #     obj_idn = auth.form('obj_idn')
+        #     vrb_txt = auth.form('vrb_txt', None)
+        #     if vrb_txt is None:
+        #         # TODO:  Should vrb_idn have priority over vrb_txt instead?
+        #         vrb_idn = auth.form('vrb_idn')
+        #         vrb = lex[qiki.Number(vrb_idn)]
+        #     else:
+        #         vrb = lex.verb(vrb_txt)
+        #         # FIXME:  can we allow browser trash to define a verb?
+        #
+        #     txt = auth.form('txt')
+        #     use_already = auth.form('use_already', False)
+        #     obj = lex[qiki.Number(obj_idn)]
+        #     num_add_str = auth.form('num_add', None)
+        #     num_str = auth.form('num', None)
+        #     num_add = None if num_add_str is None else qiki.Number(num_add_str)
+        #     num = None if num_str is None else qiki.Number(num_str)
+        #     new_word_kwargs = dict(
+        #         sbj=auth.qiki_user,
+        #         vrb=vrb,
+        #         obj=obj,
+        #         num=num,
+        #         num_add=num_add,
+        #         txt=txt,
+        #         use_already=use_already,
+        #     )
+        #     if auth.may_create_word(new_word_kwargs):
+        #         new_word = lex.create_word(**new_word_kwargs)
+        #         # DONE:  Ported to nits, see action == 'create_word'
+        #         return valid_response('new_words', [new_word])
+        #         # TODO:  Maybe exclude txt form new_word to save bandwidth?
+        #     else:
+        #         return invalid_response("not authorized")
 
         elif action == 'new_verb':
             new_verb_name = auth.form('name')
             new_verb = lex.create_word(
-                sbj=auth.qiki_user,
+                sbj=auth.flask_user.idn,
                 vrb=lex.IDN.DEFINE,
                 obj=lex.IDN.VERB,
                 txt=new_verb_name,
                 use_already=True,
             )
             lex.create_word(
-                sbj=auth.qiki_user,
+                sbj=auth.flask_user.idn,
                 vrb=lex.IDN.QOOL,
                 obj=new_verb,
-                num=NUM_QOOL_VERB_NEW,
+                # num=NUM_QOOL_VERB_NEW,
                 use_already=True,
             )
             # TODO:  Nits for new qool verb.
@@ -5312,10 +5584,10 @@ def ajax():
             old_verb_idn = qiki.Number(auth.form('idn'))
 
             lex.create_word(
-                sbj=auth.qiki_user,
+                sbj=auth.flask_user.idn,
                 vrb=lex.IDN.QOOL,
                 obj=old_verb_idn,
-                num=NUM_QOOL_VERB_DELETE,
+                # num=NUM_QOOL_VERB_DELETE,
                 use_already=True,
             )
             # TODO:  Nits for del qool verb.
@@ -5335,28 +5607,28 @@ def ajax():
             oembed_dict = noembed_get(url)
             return valid_response('oembed', oembed_dict)
 
-        elif action == 'interact':
-            interact_name = auth.form('name')   # e.g. MONTY.INTERACT.PAUSE == 'pause'
-            if interact_name in INTERACT_VERBS:
-                interact_obj = auth.form('obj')     # e.g. idn of a contribution
-                interact_num = auth.form('num', default=1)     # e.g. 15 sec (video), 92 chars (text)
-                interact_txt = auth.form('txt', default="")
-                interact_verb = lex.define(lex.IDN.INTERACT, qiki.Text(interact_name))
-                interact_word = lex.create_word(
-                    sbj=auth.qiki_user,
-                    vrb=interact_verb,
-                    obj=qiki.Number(interact_obj),
-                    num=qiki.Number(interact_num),
-                    txt=qiki.Text(interact_txt),
-                    use_already=False,
-                )
-                # DONE:  Nit ported, see interact_new in js, and in py action == 'create_word'
-                etc = interact_word.idn.qstring()
-                return valid_response()
-            else:
-                error_message = "Unrecognized interact " + repr(interact_name)
-                auth.print(error_message)
-                return invalid_response(error_message)
+        # elif action == 'interact':
+        #     interact_name = auth.form('name')   # e.g. MONTY.INTERACT.PAUSE == 'pause'
+        #     if interact_name in INTERACT_VERBS:
+        #         interact_obj = auth.form('obj')     # e.g. idn of a contribution
+        #         interact_num = auth.form('num', default=1)     # e.g. 15 sec (video), 92 chars (text)
+        #         interact_txt = auth.form('txt', default="")
+        #         interact_verb = lex.define(lex.IDN.INTERACT, qiki.Text(interact_name))
+        #         interact_word = lex.create_word(
+        #             sbj=auth.qiki_user,
+        #             vrb=interact_verb,
+        #             obj=qiki.Number(interact_obj),
+        #             num=qiki.Number(interact_num),
+        #             txt=qiki.Text(interact_txt),
+        #             use_already=False,
+        #         )
+        #         # DONE:  Nit ported, see interact_new in js, and in py action == 'create_word'
+        #         etc = interact_word.idn.qstring()
+        #         return valid_response()
+        #     else:
+        #         error_message = "Unrecognized interact " + repr(interact_name)
+        #         auth.print(error_message)
+        #         return invalid_response(error_message)
 
         elif action == 'create_word':
             vrb_name = auth.form('vrb_name')
@@ -5366,7 +5638,7 @@ def ajax():
                 # word = FlikiWord.create_word_by_user(auth, vrb_name, sub_nits_dict)
                 word = auth.create_word_by_user(vrb_name, sub_nits_dict)
             except ValueError as e:
-                auth.print("CREATE WORD ERROR", type(e).__name__, auth.qiki_user.jsonl(), str(e))
+                auth.print("CREATE WORD ERROR", type(e).__name__, auth.flask_user.idn, str(e))
                 return invalid_response("create_word error")
             else:
                 return valid_response('jsonl', word.jsonl())
@@ -5408,16 +5680,16 @@ def ajax():
 
     finally:
         t_end = time.time()
-        if auth is None or not auth.is_online:
+        if auth is None:   # or not auth.is_online:
             Auth.print("AJAX CRASH, {t:.3f} sec".format(t=t_end - t_start))
         else:
-            qc_end = auth.lex.query_count
+            # qc_end = auth.lex.query_count
             if ok_to_print:
                 auth.print(
-                    "Ajax {action}{etc}, {qc} queries, {t:.3f} sec".format(
+                    "Ajax {action}{etc}, {t:.3f} sec".format(
                         action=repr(action),
                         etc=" " + etc   if etc is not None else   "",
-                        qc=qc_end - qc_start,
+                        # qc=qc_end - qc_start,
                         t=t_end - t_start
                     )
                 )

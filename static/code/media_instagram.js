@@ -46,9 +46,9 @@
         },
         can_play: function (cont) { return false; }
     };
-    console.assert(media.url_patterns[0].test('https://www.instagram.com/p/BNCeThsAhVT/'));
-    console.assert(media.url_patterns[0].test('https://instagram.com/p/BNCeThsAhVT/'));
-    console.assert(media.url_patterns[0].test('https://instagr.am/p/BNCeThsAhVT/'));
+    console.assert(true === media.url_patterns[0].test('https://www.instagram.com/p/BNCeThsAhVT/'));
+    console.assert(true === media.url_patterns[0].test('https://instagram.com/p/BNCeThsAhVT/'));
+    console.assert(true === media.url_patterns[0].test('https://instagr.am/p/BNCeThsAhVT/'));
     window.qiki.media_register(media);
 
     function is_valid_media_id(media_id) {

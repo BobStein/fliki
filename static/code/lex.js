@@ -3,7 +3,7 @@
 // Parse a .lex.jsonl file into words.  Derive classes from Lex and Word to process the words.
 // Requires jQuery
 
-(function (qiki, jQuery) {
+(function (qiki, $) {
 
     /**
      * Lex - a collection of Words
@@ -118,6 +118,9 @@
             });
             return word_and_index;
         }
+        first() {
+            return this._words[0];
+        }
         get(idn) {
             return this._get_word_and_index(idn)[0];
         }
@@ -156,7 +159,7 @@
         }
         scan(done, fail) {   // derived classes call this to traverse the lex
             var that = this;
-            var promise_jsonl = jQuery.get({url: that.url, dataType:'text'});
+            var promise_jsonl = $.get({url: that.url, dataType:'text'});
             promise_jsonl.fail(function (jqxhr, settings, exception) {
                 console.error("Lex.scan, ajax get:", jqxhr, settings, exception);
                 fail("Failure to get lex for scan: " + jqxhr.responseText);
@@ -189,7 +192,7 @@
                     //     return false;
                     //     // NOTE:  Terminate the scanning loop if any word has an error.
                     // }
-                    if (that.each_word_json(word_json) === null) {
+                    if (that.each_json(word_json) === null) {
                         return false;
                         // NOTE:  Terminate the scanning loop if any word has an error.
                     }
@@ -204,7 +207,7 @@
                 }
             });
         }
-        each_word_json(word_json) {   // callback for derived class
+        each_json(word_json) {
             var that = this;
             that.line_number++;
             that.current_word_json = word_json;
@@ -214,11 +217,14 @@
                 that.each_word(word_to_return);
                 if (is_specified(that.num_lines) && that.line_number > that.num_lines) {
                     that.num_lines = that.line_number;
-                    // NOTE:  This only happens if each_word_json() is called outside
-                    //        the scan() loop, where num_lines is null.
+                    // NOTE:  This only happens if each_json() is called outside the scan() loop,
+                    //        because num_lines is null inside the scan() loop.
+                    //        That happens in the callback of create_word.
                     //        We want to keep num_lines null during the scan loop because it's
                     //        not yet know.  We want to increase it here and now because
                     //        (since we got here) an additional line has been added to the lex.
+                    // TODO:  Er, maybe this increase should happen in create_word() and
+                    //        create_word() should be a LexCloud member.
                 }
             } catch (e) {
                 if (e instanceof qiki.LexCloud.ScanFail) {
@@ -252,13 +258,16 @@
         each_word(word) {   // callback for derived class
             var that = this;
             if (that.is_early_in_the_scan()) {
-                if (word.is_lex_definition() || word.is_define_definition()) {
+                if (
+                    word.is_the_definition_of_lex_itself() ||
+                    word.is_the_definition_of_define_itself()
+                ) {
                     that.each_definition_word(word);
                 } else {
                     that.scan_fail("Expecting the first words to define 'lex' and 'define'.");
                 }
             } else {
-                if (word.is_define()) {
+                if (word.is_this_word_a_lex_definition()) {
                     that.each_definition_word(word);
                 } else {
                     that.each_reference_word(word);
@@ -266,9 +275,12 @@
             }
         }
         is_early_in_the_scan() {
-            return ! this.is_name_defined('lex') || ! this.is_name_defined('define');
+            return (
+                ! this.have_we_processed_the_definition_of('lex') ||
+                ! this.have_we_processed_the_definition_of('define')
+            );
         }
-        is_name_defined(name) {
+        have_we_processed_the_definition_of(name) {
             var that = this;
             type_should_be(name, String);
             return qiki.Lex.is_idn_defined(that.idn_of[name]);
@@ -321,7 +333,7 @@
             //        Then there's the possibility of defining and naming ALL word parts somewhere in
             //        some definition:  idn, whn, sbj, vrb.
 
-            if (that.is_name_defined(word.obj.name)) {
+            if (that.have_we_processed_the_definition_of(word.obj.name)) {
                 that.scan_fail("Duplicate define", that.by_idn[that.idn_of[word.obj.name]], word);
             }
             that.idn_of[word.obj.name] = word.idn;
@@ -357,6 +369,26 @@
                 }
             });
             word.obj_values = null;
+
+            // TODO:  The three categories of words should maybe be more distinct:
+            //        lex-definition, lex-reference, user-reference.
+            //        Maybe one day there will be user-definition words (e.g. custom verbs)
+            //        although probably not because we don't want internal code names
+            //        and user verb names stepping on each others toes.  So probably there will
+            //        always and forever only be these three distinct sets.  Anyway, the following
+            //        if-clause is the only place that lex-reference words are processed.
+            //        Maybe things would be more secure if they were not munged up with user-
+            //        reference words (by derived classes that override each_reference_word().
+            //        Name candidates?  That aren't effing confusifying like "user words"?!
+            //        definition word, app word, system word.  Yuck.
+            //        Hey wait, there could be user-definition words where each pairing of
+            //        sbj and obj.parent gets its own name-space.
+            //        Nah, maybe each sbj.  (IOW don't use obj.parent for two purposes, as it's now
+            //        used for a kind of inheritance type hierarchy.)
+            //        But I still think a separate vrb could be defined for users to create custom
+            //        qoolbar icons to themselves be used as vrb in user-reference words.
+            //        So user "definitions" would in fact be user-reference words, at least in
+            //        LexCloud.each_word().
 
             if (word.sbj === word.lex.idn_of.lex) {
                 switch (word.vrb) {
@@ -500,18 +532,20 @@
                 //           Those always come first and in numerical order, not alpha, not insert.
             }
         }
-        is_define() {
+        is_this_word_a_lex_definition() {
             return (
                 this.sbj === this.lex.idn_of.lex &&
                 this.vrb === this.lex.idn_of.define
             );
         }
         /**
-         * Is this word the definition of 'lex' itself?  Works before 'lex' has been defined.
+         * Works on the 'lex' definition word before it has been processed, by slight trickery.
+         *
+         * And it works after that without the trickery.
          */
-        is_lex_definition() {
+        is_the_definition_of_lex_itself() {
             var that = this;
-            if (that.lex.is_name_defined('lex')) {
+            if (that.lex.have_we_processed_the_definition_of('lex')) {
                 return that.idn === that.lex.idn_of.lex;
             } else {
                 return (
@@ -522,11 +556,13 @@
             }
         }
         /**
-         * Is this word the definition of 'define' itself?  Works before 'define' has been defined.
+         * Works on the 'define' definition word before it has been processed, by slight trickery.
+         *
+         * And it works after that without the trickery.
          */
-        is_define_definition() {
+        is_the_definition_of_define_itself() {
             var that = this;
-            if (that.lex.is_name_defined('define')) {
+            if (that.lex.have_we_processed_the_definition_of('define')) {
                 return that.idn === that.lex.idn_of.define;
             } else {
                 // NOTE:  The following fall-back works early in the scan,

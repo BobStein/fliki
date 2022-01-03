@@ -22,7 +22,7 @@
             console.assert(that.description_short === "noembed");
             console.assert(that === cont.handler.media);   // Hint object organization could improve
             qoolbar.post('noembed_meta', {
-                url: cont.content
+                url: cont.obj.text
             }, function media_noembed_done(oembed_response) {
                 var oembed = oembed_response.oembed;
 
@@ -43,7 +43,7 @@
                 var is_author_usable = is_laden(oembed.author_name);
                 var caption_for_media;
                 if (is_error_usable) {
-                    console.warn("Not an oembed URL", cont.content, oembed.error);
+                    console.warn("Not an oembed URL", cont.obj.text, oembed.error);
                     caption_for_media = "(" + oembed.error + ")";
                 } else if (is_title_usable) {
                     caption_for_media = oembed.title + " (" + cont.media_domain + ")";

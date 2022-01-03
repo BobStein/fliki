@@ -9,7 +9,7 @@
     left: 0;
     right: 0;
     top: 0;
-    z-index: 2;
+    z-index: 3;
     padding: 0.1em 0.1em 0 0.1em;
     background-color: white;
 }
@@ -91,6 +91,11 @@ select#thumb-res option { direction: rtl; }
     padding: 0.5em 0.5em 0.5em 0.5em;
     margin-top: 1em;
     background-color: rgb(216,216,216);
+    /** NOTE:  Must not give .sup-category nor .category position.  That would break the stacking
+      *        context shared between .sup-contribution and #popup-screen.  That stacking context
+      *        is required for #popup-screen to get BETWEEN the popped-up contribution and all other
+      *        contributions (in the z-index order) without itself being inside any category.
+      */
 }
 .sup-category-first {
     margin-top: 1.5rem;   /* TOP_SPACER_REM */
@@ -142,6 +147,33 @@ select#thumb-res option { direction: rtl; }
     display: inline-block;
     vertical-align: top;
     padding: 0.3em 0.5em 0.3em 0.5em;   /* SEE:  sup_pad_left in contribution.js */
+    z-index: 0;
+    position: relative;
+}
+#popup-screen {
+    position: fixed;
+    z-index: 1;
+    top: 1.5rem;   /* TOP_SPACER_REM */
+    right: 0;
+    bottom: 0;
+    left: 0;
+    background-color: rgba(0,0,0,0.25);
+    display: none;   /* to be overridden by .fadeIn() and .fadeOut() affecting element styles */
+}
+.pop-up.sup-contribution {
+    z-index: 2;
+    pointer-events: none;
+    /**
+     * THANKS:  Transparent to clicks, https://stackoverflow.com/a/4839672/673991
+     *          This is required in the stoopid confluence of events where a particular kind of
+     *          popped up text quote hogs the left with margin (which is already transparent to
+     *          clicks) but hogs the right with content.  The particular kind is a quote that
+     *          (before popped up) happens to lay on the right of the screen, so it's given
+     *          .pop-up-block class and display:block property.  See is_right_of_where_we_want_it.
+     */
+}
+.pop-up.sup-contribution .contribution {
+    pointer-events: all;
 }
 .contribution,
 #enter_some_text {
@@ -174,7 +206,6 @@ select#thumb-res option { direction: rtl; }
     position: relative;
     top: 0;
     left: 0;
-    z-index: 0;
     resize: both;
     min-width: 4em;
     min-height: 2em;
@@ -261,6 +292,20 @@ select#thumb-res option { direction: rtl; }
     color: white;
     font: small-caption;
     line-height: 1.4;
+}
+
+/* FALSE WARNING:  Unknown CSS property '-ms-transition' */
+/* noinspection CssUnknownProperty */
+.pop-up .caption-bar {
+    background-color: #666666;   /* Darker, to contrast the .pop-screen obscured body background */
+    -webkit-transition: background-color 0.5s linear;
+       -moz-transition: background-color 0.5s linear;
+        -ms-transition: background-color 0.5s linear;
+         -o-transition: background-color 0.5s linear;
+            transition: background-color 0.5s linear;
+    /* TODO:  Transition popping down too, but start it at the beginning of popping down, somehow.
+     *        e.g. a .popping-down class for the .sup-contribution
+     */
 }
 .render-media .caption-bar {
     -webkit-border-bottom-left-radius: 0.7em;
@@ -370,14 +415,10 @@ body.playing-somewhere                           .save-bar   .external-link { vi
 
 .grip {
     cursor: move;
-}
-
-.grip,
-.grip-inoperative {
     padding-right: 0.3em;
 }
-
-.grip-inoperative {
+.grip.inoperative {
+    cursor: auto;
     -ms-filter: "progid:DXImageTransform.Microsoft.Alpha(Opacity=50)"; /* IE 8 */
         filter:                                    alpha(opacity=50);  /* IE 5-7 */ /*noinspection CssUnknownProperty*/
                                                -khtml-opacity: 0.50;   /* Safari 1.x */
@@ -470,6 +511,10 @@ body.playing-somewhere                           .save-bar   .external-link { vi
      .category .drop-hint {                            border-width: 0.25em; }   /* rel to body font */
 .frou-category .drop-hint { width: 1em; height: 0.7em; border-width: 0.17em; }   /* rel to H2 font */
 
+.frou-category {
+    position: relative;
+    z-index: 0;
+}
 .how-many + .drop-hint {
     margin-left: 1em;
 }
@@ -536,16 +581,6 @@ iframe { display:block; }
 .talkify-sentence-highlight {
 }
 
-#popup-screen {
-    position: fixed;
-    z-index: 1;
-    top: 1.5rem;   /* TOP_SPACER_REM */
-    right: 0;
-    bottom: 0;
-    left: 0;
-    /* background-color: rgba(0,0,0,0.25); -- shade will be animated, fading in and out */
-}
-
 .text-animate .pop-up .contribution .talkify-word-highlight,
 .text-animate .speaking {
     /*transition: font-size 1s;*/
@@ -566,5 +601,6 @@ iframe { display:block; }
     bottom: 0;
 }
 .pop-up-block {
+    /* This pop-up needs its own line, as if hard returns before and after. */
     display: block;
 }
