@@ -2570,10 +2570,10 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                         //        has not been computed either.
 
                         num_unrendered += num_unrendered_this_category;
-                        assert_equal(   // 1.sql vs 2.dom -- compare quantity
+                        assert_equal(   // 1.lex vs 2.dom -- compare quantity
                             num_current_this_category,
                             rendered_idn_strings.length + num_unrendered_this_category,
-                            "sql vs dom"
+                            "lex vs dom in category " + cat.obj.name
                         );
 
                         var current_idns = cat.conts.idn_array();
@@ -3487,10 +3487,13 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
         }
     
         /**
-         * Insert a contribution's DOM into the left end of a category's DOM.
+         * Insert a contribution's newly built DOM into the left end of a category's DOM.
          *
-         * This doesn't touch the underlying objects, e.g. Category.cont_sequence, because
-         * the caller should do that (soon before or soon after) with Category.word_pass().
+         * This doesn't touch the Bunch of ContributionWords in CategoryWord.conts.
+         * The caller should have done that via .each_json() in .contribute_word.
+         *
+         * This is called when (1) posting a new contribution, or (2) dropping into a Valve-
+         * minimized category.
          *
          * @param cont
          */
@@ -3498,10 +3501,10 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
             var that = this;
             var $container_entry = that.$cat.find('.container-entry');
             if ($container_entry.length > 0) {
-                // Drop into the my category, after the entry form.
+                // Insert after the entry form ('my' category)
                 $container_entry.last().after(cont.$sup);
             } else {
-                // Drop into the left end of any other category, whether empty or not
+                // Insert at the left end (any other category)
                 that.$cat.prepend(cont.$sup);
             }
         };
@@ -3515,7 +3518,6 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                 that.$cat.width()
             );
         }
-
     }
 
     class ContributionWord extends qiki.Word {
@@ -3672,6 +3674,11 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
             //                     LexCloud.scan() or
             //                     LexContribute.create_word()
         }
+
+        /**
+         * Render the contents of .render-bar (for a media url) or .contribution (for a text quote)
+         * @param then
+         */
         rebuild_bars(then) {
             var that = this;
             then = then || function () {};
@@ -10041,7 +10048,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                     console.error("Unexpected drop to outside any category", evt);
                 }
 
-                if (is_in_frou(evt.to)) {   // drop into a closed category
+                if (is_in_frou(evt.to)) {   // drop into a closed category -- place all the way left
                     console.log(
                         "Frou drop", to_cat.obj.text,
                         "where cont", dom_from_$($movee).id,
@@ -10524,7 +10531,11 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
             cont.build_dom();
             
             // categories.by_name.my.insert_left(cont);
-            // NOTE:  Already done by create_word()
+            // NOTE:  Already done by create_word() -- NO IT WAS NOT!!!
+            cont.cat.insert_left(cont);
+            // NOTE:  Contribution already knows it's in the 'my' category because LexContribution
+            //        .contribute_word() calls .starting_cat() and puts it there.
+
 
             // NOTE:  From this point on, the new contribution is in the DOM.
 

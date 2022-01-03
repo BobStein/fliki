@@ -708,6 +708,8 @@ class FlikiWord(object):   # qiki.nit.Nit):   # pity, all that work in nit.py fo
                     idn_referent=idn_referent,
                 )
             )
+            # EXAMPLE:  (benign)
+            #     Forward reference in 'lex' define word 0 -- verb refers to word 1
 
     @classmethod
     def create_word_by_lex(cls, vrb_idn, obj_dictionary):
