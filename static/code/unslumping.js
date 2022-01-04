@@ -462,6 +462,20 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
             $(window.document)
                 .on('input', '.contribution, .caption-span', caption_input)
                 .on('click', '.contribution', stop_propagation)
+                .on('click', '.sup-contribution', function (evt) {
+                    console.debug("SUP-CONTRIBUTION CLICK");   // HACK
+                    background_pop_down();
+                    // NOTE:  This is important in a weird case where a text quote contribution
+                    //        toward the right part of the screen is popped up.  Its
+                    //        .sup-contribution stretches to the right edge, but it's
+                    //        .contribution does not.  So clicking on the .sup-contribution part
+                    //        should pop down (as it looks just like the background screen)
+                    //        but clicking on .contribution is ignored (maybe the user wants
+                    //        to select some text) via the .contribution stop_propagation()
+                })
+                .on('click', '.render-bar', function (evt) {
+                    console.debug("RENDER-BAR CLICK");   // HACK
+                })
                 .on('click', '.caption-bar, .save-bar', stop_propagation)
                 .on('click', '.render-bar .thumb-link', thumb_click)
                 .on('click', '.save-bar .edit',    contribution_edit)
@@ -483,20 +497,26 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                     work_around_jumpy_contenteditable_chrome_bug(this);
                 })
                 .on('click', '#popup-screen', function popup_screen_click() {
-                    if (bot.state === bot.State.MANUAL) {
-                        // Background clicks only end manual popups, never bot popups.
-                        pop_down_all(false);
-                    }
-                    // NOTE:  If the bot is running, clicking on the translucent popup background does nothing.
-                    //        Because that would make it too easy to inadvertently terminate the bot.
-                    //        If you really want to stop or skip (which is it?) click that button.
-                    //        If you manually popped up a contribution,
-                    //        then clicking on the #popup-screen closes the popup.
-                    //        This follows tons of convention,
-                    //        e.g. tapping on the margin of a popped-up facebook image.
+                    console.debug("SCREEN CLICK");   // HACK
+                    background_pop_down();
                 })
                 .on('wheel', '.sup-category', mouse_wheel_handler)
             ;
+
+            function background_pop_down() {
+                if (bot.state === bot.State.MANUAL) {
+                    // Background clicks only end manual popups, never bot popups.
+                    pop_down_all(false);
+                }
+                // NOTE:  If the bot is running, clicking on the translucent popup background does
+                //        nothing.
+                //        Because that would make it too easy to inadvertently terminate the bot.
+                //        If you really want to stop or skip (which is it?) click that button.
+                //        If you manually popped up a contribution,
+                //        then clicking on the #popup-screen closes the popup.
+                //        This follows tons of convention,
+                //        e.g. tapping on the margin of a popped-up facebook image.
+            }
 
             persist_select_element('#play_bot_sequence', SETTING_PLAY_BOT_SEQUENCE);
 
@@ -7969,7 +7989,9 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
             // NOTE:  Luckily .focus() allows the click that began editing to also place the caret.
             //        Except it doesn't do that in IE11, requiring another click.
         }
-        evt.stopPropagation();   // Don't let the document get it, which would end the editing.
+        evt.stopPropagation();
+        // NOTE:  Don't let the document get whatever got us here.  This only matters when there
+        //        was a feature to click on any contribution to start editing it.
     }
 
     function contribution_cancel() {
@@ -8185,6 +8207,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
      */
     function thumb_click(evt) {
         var div = this;
+        console.debug("RENDER BAR CLICK");   // HACK
         if ( ! check_contribution_edit_dirty(false, true)) {
             var cont = ContributionWord.from_element(this);
             console.log("thumb click", cont.id_attribute);
@@ -11359,7 +11382,10 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
      * Handler to e.g. avoid document click immediately undoing long-press
      */
     function stop_propagation(evt) {
+        console.debug("STOP PROPAGATION");   // HACK
         evt.stopPropagation();
+        evt.preventDefault();
+        return false;
     }
 
     var long_press_timer = null;

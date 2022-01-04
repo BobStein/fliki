@@ -1048,17 +1048,17 @@ function animate_surely(element, properties, options) {
  * NOTE:  constraining the parameter type to {jQuery} generates noisome warnings in caller code,
  *        e.g. Argument type {get: function(): any} is not assignable to parameter type jQuery
  *
- * @param $jquery_object
+ * @param $jquery_object - or a selector string, e.g. '#id'
  * @return {HTMLElement|undefined}
  */
 function dom_from_$($jquery_object) {
-    type_should_be($jquery_object, $);
+    type_should_be($jquery_object, [$, String]);
     console.assert(
-        $jquery_object.length === 1,
+        $($jquery_object).length === 1,
         "Expecting exactly one element",
         $jquery_object
     );
-    var dom_object = $jquery_object.get(0);
+    var dom_object = $($jquery_object).get(0);
     return dom_object;
 }
 

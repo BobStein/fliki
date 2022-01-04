@@ -162,7 +162,7 @@ select#thumb-res option { direction: rtl; }
 }
 .pop-up.sup-contribution {
     z-index: 2;
-    pointer-events: none;
+    /*pointer-events: none;*/
     /**
      * THANKS:  Transparent to clicks, https://stackoverflow.com/a/4839672/673991
      *          This is required in the stoopid confluence of events where a particular kind of

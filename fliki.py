@@ -697,19 +697,21 @@ class FlikiWord(object):   # qiki.nit.Nit):   # pity, all that work in nit.py fo
                 referent_description = "word {not_a_def_idn}".format(
                     not_a_def_idn=idn_referent,
                 )
-            print(
-                "Forward reference in "
-                "{word_description} -- "
-                "{part_description} refers to "
-                "{referent_description}".format(
-                    word_description=word_description,
-                    part_description=part_description,
-                    referent_description=referent_description,
-                    idn_referent=idn_referent,
+            if self.idn == 0 and idn_referent == 1:
+                '''Ignore where the `lex` definition-word uses the `define` verb.'''
+                # EXAMPLE:  (benign)
+                #     Forward reference in 'lex' define word 0 -- verb refers to word 1
+            else:
+                print(
+                    "Forward reference in "
+                    "{word_description} -- "
+                    "{part_description} refers to "
+                    "{referent_description}".format(
+                        word_description=word_description,
+                        part_description=part_description,
+                        referent_description=referent_description,
+                    )
                 )
-            )
-            # EXAMPLE:  (benign)
-            #     Forward reference in 'lex' define word 0 -- verb refers to word 1
 
     @classmethod
     def create_word_by_lex(cls, vrb_idn, obj_dictionary):
