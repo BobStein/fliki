@@ -181,6 +181,10 @@ class Options(object):
     session_cookie_domain = server_domain   # or None
     redirect_domain_port = {
         'www.my.example.com': server_domain_port,
+
+        '127.0.0.1:5000': server_domain_port,
+        # NOTE:  This is what I used on the Flask development web server, to allow Google
+        #        authorization to work because it requires a domain, not an ip address.
     }
     system_administrator_users = [
         MY_GOOGLE_IDN,

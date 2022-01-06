@@ -325,6 +325,25 @@ select#thumb-res option { direction: rtl; }
                    .caption-bar { padding: 0 0.666em 0.3em 0.666em; }
 .contribution-edit .caption-bar { padding: 0 0.566em 0.2em 0.566em; border: 0.1em inset; }
 
+.caption-bar .caption-span,
+.caption-bar .caption-span:focus-visible {
+    outline: none;
+    /* NOTE:  This prevents a weird, unsightly line around this span when it is
+     *        content-editable in Chrome.  Not a problem for divs (blocks).
+     */
+}
+.caption-bar:focus-within {
+    cursor: text;
+    /* NOTE:  Show a text caret I-bar hovering anywhere in the caption.
+     *        This doesn't help until the caption has focus.  Unfortunately, because it's an
+     *        editable SPAN not a DIV clicking in .caption-bar but outside .caption-span
+     *        doesn't give it the focus.  But once the span DOES have the focus, THEN clicking
+     *        in that no-mans-land DOES place the caret at the end of the caption.  So that's
+     *        when this rule makes the cursor look like an I-bar caret there.  Again, after
+     *        the editable span already has the focus.
+     */
+}
+
 .sup-contribution .save-bar {
     clear: left;
     background-color: transparent;
@@ -414,7 +433,7 @@ body.playing-somewhere                           .save-bar   .external-link { vi
           the layout, which would cause contributions to reflow. */
 
 .grip {
-    cursor: move;
+    cursor: move;   /* 4-direction arrows */
     padding-right: 0.3em;
 }
 .grip.inoperative {

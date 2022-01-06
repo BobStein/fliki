@@ -1043,7 +1043,7 @@ function animate_surely(element, properties, options) {
  * Convert jQuery object to DOM object.  Selector works too:  dom_from_$('.css-class')
  *
  * SEE:  What could possibly justify all this verbose verbosity here?  `[0]` would totally work.
- *       My answer:  https://stackoverflow.com/a/62595720/673991
+ *       (my answer) https://stackoverflow.com/a/62595720/673991
  *
  * NOTE:  constraining the parameter type to {jQuery} generates noisome warnings in caller code,
  *        e.g. Argument type {get: function(): any} is not assignable to parameter type jQuery

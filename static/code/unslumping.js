@@ -49,6 +49,7 @@
  * @param MONTY
  * @param MONTY.AJAX_URL
  * @param MONTY.INTERACT_VERBS
+ * @param MONTY.LEX_URL
  * @param MONTY.login_html
  * @param MONTY.me_idn
  * @param MONTY.MEDIA_HANDLERS
@@ -462,19 +463,16 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
             $(window.document)
                 .on('input', '.contribution, .caption-span', caption_input)
                 .on('click', '.contribution', stop_propagation)
-                .on('click', '.sup-contribution', function (evt) {
-                    console.debug("SUP-CONTRIBUTION CLICK");   // HACK
+                .on('click', '.sup-contribution', function () {
                     background_pop_down();
                     // NOTE:  This is important in a weird case where a text quote contribution
-                    //        toward the right part of the screen is popped up.  Its
+                    //        lying toward the right part of the screen is popped up.  Its
                     //        .sup-contribution stretches to the right edge, but it's
                     //        .contribution does not.  So clicking on the .sup-contribution part
                     //        should pop down (as it looks just like the background screen)
                     //        but clicking on .contribution is ignored (maybe the user wants
-                    //        to select some text) via the .contribution stop_propagation()
-                })
-                .on('click', '.render-bar', function (evt) {
-                    console.debug("RENDER-BAR CLICK");   // HACK
+                    //        to select some text) via the stop_propagation callback for the
+                    //        .contribution click.
                 })
                 .on('click', '.caption-bar, .save-bar', stop_propagation)
                 .on('click', '.render-bar .thumb-link', thumb_click)
@@ -1767,7 +1765,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
         // FALSE WARNING:  Invalid number of arguments, expected 0
         //                 because PyCharm doesn't see the qiki.Lex class in lex.js
         // noinspection JSCheckFunctionSignatures
-        lex = new LexContribution('/meta/static/data/unslumping.lex.jsonl');
+        lex = new LexContribution(MONTY.LEX_URL);
 
         qiki.lex = lex;
         // NOTE:  Make the lex instance available for debugging.
@@ -2392,7 +2390,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
          *        would be GET or POST.
          *        Huh, including a way to GET the whole lex (async of course) or
          *        one word by idn, or multiple words by search criteria.
-         *        So lex.py needs a RESTful server and lex.js a RESTful client.
+         *        So lex.py needs a REST-ful server and lex.js a REST-ful client.
          *
          * @param vrb_name - e.g. 'edit'
          * @param named_sub_nits - e.g. {contribute: idn, text: "new contribution text"}
@@ -3948,8 +3946,14 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
 
 
             function adjust_to(width) {
-                if (equal_ish(width, that.$caption_bar.outerWidth(), 1.0)) {
-                    // NOTE:  width is already within 1 pixel, don't upset the UI.
+                var is_width_explicit = is_laden(dom_from_$(that.$caption_bar).style.width);
+                // NOTE:  This special case makes sure the caption-bar width does not remain
+                //        implicit, even when that happens to give it the correct width.
+                //        Without an explicit width, when editing the caption, it overflows.
+                if (is_width_explicit && equal_ish(width, that.$caption_bar.outerWidth(), 1.0)) {
+                    // NOTE:  width is already within 1 pixel, don't upset the UI by setting it.
+                    //        Can't remember what this improves, but there may have been some kind
+                    //        of churn or oscillation without this.
                 } else {
                     // EXAMPLE:  caption tweak 296 -> 162 55% thumb loading
                     // EXAMPLE:  caption tweak 221 -> 210 95% quote size adjust
@@ -4400,8 +4404,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                 that.id_attribute,
                 message
             );
-            var idn_string = strip_prefix(message.id_attribute, MONTY.POPUP_ID_PREFIX);
-            var idn = parseInt(idn_string);
+            var idn = parseInt(message.id_attribute);
             console.assert(idn === that.idn, "Mismatch idn", that.idn, idn, message);
             // noinspection JSRedundantSwitchStatement
             switch (message.action) {
@@ -5184,7 +5187,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
 
             deanimate("popping up quote", that.id_attribute);
 
-            var thumb_cont = that.lex.cont_from_idn(that.idn);
+            // var thumb_cont = that.lex.cont_from_idn(that.idn);
 
             // NOTE:  Popup text elements are now are at their FINAL place and size.
             //        But nobody has seen that yet.
