@@ -5,7 +5,6 @@ Authentication courtesy of flask-login and authomatic.
 """
 
 import abc
-import datetime
 import functools
 import json
 import logging
@@ -14,18 +13,18 @@ import re
 import sys
 import threading
 import time
-
 import traceback
-# import uuid
 
 import authomatic
 import authomatic.adapters
 import authomatic.core
 import authomatic.providers.oauth2
-import flask   # , send_from_directory
+import flask
 import flask_login
 import git
-import six.moves.urllib as urllib
+import urllib.error
+import urllib.parse
+import urllib.request
 import werkzeug.local
 import werkzeug.useragents
 import werkzeug.user_agent
@@ -33,6 +32,7 @@ import werkzeug.utils
 
 import secure.credentials
 import to_be_released.web_html as web_html
+from individual_functions import *
 
 
 AJAX_URL = '/meta/ajax'
@@ -40,8 +40,6 @@ JQUERY_VERSION = '3.6.0'   # https://developers.google.com/speed/libraries/#jque
 DO_MINIFY = False
 SCRIPT_DIRECTORY = os.path.dirname(os.path.realpath(__file__))   # e.g. '/var/www/flask'
 PARENT_DIRECTORY = os.path.dirname(SCRIPT_DIRECTORY)             # e.g. '/var/www'
-GIT_SHA = git.Repo(SCRIPT_DIRECTORY).head.object.hexsha
-GIT_SHA_10 = GIT_SHA[ : 10]
 THUMB_MAX_WIDTH = 160
 THUMB_MAX_HEIGHT = 128
 NON_ROUTABLE_IP_ADDRESS = '10.255.255.1'   # THANKS:  https://stackoverflow.com/a/904609/673991
@@ -49,17 +47,24 @@ NON_ROUTABLE_URL = 'https://' + NON_ROUTABLE_IP_ADDRESS + '/'   # for testing
 SHOW_LOG_AJAX_NOEMBED_META = False
 CATCH_JS_ERRORS = False
 FINISHER_METHOD_NAME = 'fin'   # see qiki.js
-JSON_SEPARATORS_NO_SPACES = (',', ':')
 INTERACT_VERBS = [
     'bot',      # |>  global play button
     'start',    # |>  individual media play
     'quit',     # []  ARTIFICIAL, manual stop, skip, or pop-up close
-    'end',      # ..  NATURAL, automatic end of the media
+    'end',      #     NATURAL, automatic end of the media
     'pause',    # ||  either the global pause or the pause within the iframe
     'resume',   # |>
     'error',    #     something went wrong, human-readable txt
     'unbot',    #     bot ended, naturally or artificially (but not crash)
 ]
+
+JSONL_EXTENSION = '.jsonl'
+MIME_TYPE_JSONL  = 'application/jsonl+json'
+# SEE:  (my comment) on using the +json suffix,
+#       https://stackoverflow.com/q/51690624/673991#comment122920211_67807011
+#       It is technically a lie, but it allows direct browsing in Chrome to display the file.
+#       With this MIME type on the other hand, Chrome just downloads the file:  application/jsonl
+#       Another possibility:  text/x.jsonl+json
 
 
 YOUTUBE_PATTERNS = [
@@ -114,11 +119,28 @@ log_handler.setFormatter(log_formatter)
 logger.addHandler(log_handler)
 # THANKS:  Log to stdout, http://stackoverflow.com/a/14058475/673991
 
+login_manager = flask_login.LoginManager()
+
+flask_app = flask.Flask(
+    __name__,
+    static_url_path='/meta/static',
+    static_folder='static'
+)
+# SEE:  "Ideally your web server is configured to serve [static files] for you"
+#       https://flask.palletsprojects.com/en/2.0.x/quickstart/#static-files
+# EXAMPLE:  Apache settings redundant to the above.  Except mistakenly for /static not /meta/static!
+#       Alias /static /var/www/example.com/fliki/static
+#       <Directory /var/www/example.com/fliki/static/>
+#           Order allow,deny
+#           Allow from all
+#           Options -Indexes
+#       </Directory>
+
 
 class UNICODE(object):
     BLACK_RIGHT_POINTING_TRIANGLE = '\u25B6'
     VERTICAL_ELLIPSIS = '\u22EE'   # 3 vertical dots, aka &vellip; &#x022ee; &#8942;
-    VERTICAL_FOUR_DOTS = '\u205E'   # 4 vertical dots
+    VERTICAL_FOUR_DOTS = '\u205E'
     HORIZONTAL_LINE_EXTENSION = '\u23AF'
 
 
@@ -220,7 +242,7 @@ class NamedElements(object):
         if item in self._dict:
             return self._dict[item]
         else:
-            raise AttributeError(repr(self) + " has no attribute " + repr(item))
+            raise AttributeError(repr_safe(self) + " has no attribute " + repr_safe(item))
 
 
 class UserLex(object):
@@ -330,7 +352,7 @@ class UserWord(object):
         if self.obj.has('name'):
             return self.obj.name
         else:
-            return "UNNAMED USER " + json_encode(self.idn)
+            return "UNNAMED USER " + repr_safe(self.idn)
 
     def is_admin(self):
         return self.obj.has('admin') and self.obj.admin == 1
@@ -410,6 +432,7 @@ class FlikiWord(object):   # qiki.nit.Nit):   # pity, all that work in nit.py fo
     by_idn = dict()
     idn_of = NamedElements()
     _vrb_from_idn = None
+    _vrb_from_idn_alternate = None
 
     MINIMUM_JSONL_ELEMENTS = 4   # Each word contains at a minimum:  idn, whn, sbj, vrb
     MAXIMUM_JSONL_CHARACTERS = 10000   # No word's JSON string should be longer than this
@@ -507,9 +530,11 @@ class FlikiWord(object):   # qiki.nit.Nit):   # pity, all that work in nit.py fo
 
             word = None
             cls._vrb_from_idn = dict()
+            cls._vrb_from_idn_alternate = list()
             for word in cls.all_words_unresolved():   # pass 3:  Make a lookup table of verb idns for all reference words
                 if not word.is_definition():
                     cls._vrb_from_idn[word.idn] = word.vrb
+                    cls._vrb_from_idn_alternate.append((word.idn, word.vrb))
 
             p.at("ref")
 
@@ -527,14 +552,14 @@ class FlikiWord(object):   # qiki.nit.Nit):   # pity, all that work in nit.py fo
             if word is None:
                 raise cls.OpenError("{file}\n    {e}".format(
                     file=cls.file_name,
-                    e=str(e),
+                    e=repr_safe(e),
                 )) from e
                 # THANKS:  Amend exception, Py3, https://stackoverflow.com/a/29442282/673991
             else:
                 raise cls.OpenError("{file} line {line_number}\n    {e}".format(
                     file=cls.file_name,
                     line_number=word.line_number,
-                    e=str(e),
+                    e=repr_safe(e),
                 )) from e
         else:
             Auth.print(
@@ -542,7 +567,9 @@ class FlikiWord(object):   # qiki.nit.Nit):   # pity, all that work in nit.py fo
                 cls.lines_in_file, "lines,",
                 "max idn", cls.max_idn,
                 p.report(),
-                sys.getsizeof(cls._vrb_from_idn),
+                sys.getsizeof(cls._vrb_from_idn),   # Potentially ginormous idn reference cache.
+                sys.getsizeof(cls._vrb_from_idn_alternate),   # Less ginormous?  42K vs 148K
+                len(cls._vrb_from_idn),                       # for 5K pairs
             )
 
     @classmethod
@@ -573,28 +600,28 @@ class FlikiWord(object):   # qiki.nit.Nit):   # pity, all that work in nit.py fo
             raise self.FieldError(
                 "Definition {idn}, name should be a string, not {name}".format(
                     idn=self.idn,
-                    name=repr(self.obj.name),
+                    name=repr_safe(self.obj.name),
                 )
             )
         if not isinstance(self.obj.parent, int):
             raise self.FieldError(
                 "Definition {idn}, parent should be an idn, not {parent}".format(
                     idn=self.idn,
-                    parent=repr(self.obj.parent),
+                    parent=repr_safe(self.obj.parent),
                 )
             )
         if not isinstance(self.obj.fields, list):
             raise self.FieldError(
                 "Definition {idn}, fields should be a list, not {fields}".format(
                     idn=self.idn,
-                    fields=repr(self.obj.fields),
+                    fields=repr_safe(self.obj.fields),
                 )
             )
         if not all(isinstance(field, int) for field in self.obj.fields):
             raise self.FieldError(
                 "Definition {idn}, fields should be a list of idns, not {fields}".format(
                     idn=self.idn,
-                    fields=repr(self.obj.fields),
+                    fields=repr_safe(self.obj.fields),
                 )
             )
         self.idn_of.add(self.obj.name, self.idn)
@@ -726,7 +753,7 @@ class FlikiWord(object):   # qiki.nit.Nit):   # pity, all that work in nit.py fo
         """Instantiate and store a sbj=lex word.   (Not a define word.)"""
         assert vrb_idn != cls.idn_of.define, (
             "Definitions must not result from outside events. " +
-            cls.repr_limited(obj_dictionary)
+            repr_safe(obj_dictionary)
         )
         new_lex_word = cls(
             sbj=cls.idn_of.lex,
@@ -755,13 +782,13 @@ class FlikiWord(object):   # qiki.nit.Nit):   # pity, all that work in nit.py fo
         #        but browser-origin words have named obj fields (to detect parameter mismatches).
         #        So, different conversion and validation needs.
         if vrb_name not in cls.VERBS_USERS_MAY_USE:
-            raise cls.CreateError("May not create a word with verb " + repr(vrb_name))
+            raise cls.CreateError("May not create a word with verb " + repr_safe(vrb_name))
         else:
             try:
                 vrb_idn = cls.idn_of.get(vrb_name)
                 vrb = cls.by_idn[vrb_idn]
             except KeyError as e:
-                raise cls.CreateError("Cannot create a word with verb " + repr(vrb_name)) from e
+                raise cls.CreateError("Cannot create a word with verb " + repr_safe(vrb_name)) from e
             else:
                 unused = set(sub_nit_dict.keys())
                 obj_dict = dict()
@@ -773,7 +800,7 @@ class FlikiWord(object):   # qiki.nit.Nit):   # pity, all that work in nit.py fo
                         raise cls.CreateError(
                             "Underspecified {vrb_name} - {error_message}".format(
                                 vrb_name=vrb_name,
-                                error_message=str(e),
+                                error_message=repr_safe(e),
                             )
                         ) from e
                     else:
@@ -857,7 +884,7 @@ class FlikiWord(object):   # qiki.nit.Nit):   # pity, all that work in nit.py fo
             raise self.FieldError("Word {idn} is missing field {field_1}, named {name}".format(
                 idn=self.idn,
                 field_1=field_index_0_based + 1,
-                name=repr(name),
+                name=repr_safe(name),
             )) from e
 
     # TODO:  What are the benefits of the Nit model?  API for storage.
@@ -942,7 +969,7 @@ class FlikiWord(object):   # qiki.nit.Nit):   # pity, all that work in nit.py fo
         """Return a JSON string of the word.  Ready to become a line in the .lex.jsonl file."""
         word_as_json_array = json_encode(self)
         if len(word_as_json_array) > self.MAXIMUM_JSONL_CHARACTERS:
-            raise self.StorageError("too long " + str(len(word_as_json_array)))
+            raise self.StorageError("too long " + repr_safe(len(word_as_json_array)))
         else:
             return word_as_json_array
 
@@ -963,7 +990,7 @@ class FlikiWord(object):   # qiki.nit.Nit):   # pity, all that work in nit.py fo
             try:
                 word_jsonl = self.jsonl()
             except ValueError as e:
-                raise self.StorageError("JSONL\n    {e}".format(e=str(e))) from e
+                raise self.StorageError("JSONL\n    {e}".format(e=repr_safe(e))) from e
             else:
                 try:
                     with open(self.file_path(), 'a') as f:
@@ -971,7 +998,7 @@ class FlikiWord(object):   # qiki.nit.Nit):   # pity, all that work in nit.py fo
                 except OSError as e:
                     raise self.StorageError("Open {file}\n    {e}".format(
                         file=self.file_name,
-                        e=str(e),
+                        e=repr_safe(e),
                     )) from e
                 else:
                     # TODO:  Open file in open_lex().  Close in close_lex().  Flush here.
@@ -1040,7 +1067,7 @@ class FlikiWord(object):   # qiki.nit.Nit):   # pity, all that work in nit.py fo
                                     "Bad JSON, line {line_number}: {line}\n    {e}".format(
                                         line_number=line_number,
                                         line=word_json[ : 40],
-                                        e=str(e),
+                                        e=repr_safe(e),
                                     )
                                 ) from e
                             else:
@@ -1057,14 +1084,14 @@ class FlikiWord(object):   # qiki.nit.Nit):   # pity, all that work in nit.py fo
                                     raise cls.ReadError(
                                         "Malformed line {line_number} - {line}".format(
                                             line_number=line_number,
-                                            line=cls.repr_limited(word_json)
+                                            line=repr_safe(word_json)
                                         )
                                     )
             except OSError as e:
                 raise cls.ReadError("OS {file} line {line}\n    {e}".format(
                     file=cls.file_name,
                     line=repr(line_number),   # may be None
-                    e=str(e),
+                    e=repr_safe(e),
                 )) from e
 
     @classmethod
@@ -1119,7 +1146,7 @@ class FlikiWord(object):   # qiki.nit.Nit):   # pity, all that work in nit.py fo
                         "{n_vrb} fields ({vrb_names})".format(
                             idn=self.idn,
                             n_obj=num_fields_obj_actual,
-                            obj_values=self.repr_limited(self.obj_values),
+                            obj_values=repr_safe(self.obj_values),
                             n_vrb=num_fields_vrb_expected,
                             vrb_names=",".join(self.by_idn[f].obj.name for f in vrb.obj.fields),
                             vrb_name=vrb.obj.name,
@@ -1149,19 +1176,18 @@ class FlikiWord(object):   # qiki.nit.Nit):   # pity, all that work in nit.py fo
         """
         user_word = UserLex.word_from_idn(user_idn)
         if user_word is None:
-            raise cls.FieldError("Invalid user idn", cls.repr_limited(user_idn))
+            raise cls.FieldError("Invalid user idn", repr_safe(user_idn))
 
         if user_word.obj.get(property_name, default_value=None) == property_value:
             '''Latest property value is the same, no need to update remote lex or local user-lex.'''
-            # Auth.print("UNCHANGED", user_idn, property_name)
         else:
             try:
                 vrb_idn = cls.idn_of.get(property_name)
                 vrb_word = cls.by_idn[vrb_idn]
             except KeyError:
                 raise cls.FieldError("Undefined user property {name} for {user}".format(
-                    name=cls.repr_limited(property_name),
-                    user=cls.repr_limited(user_idn),
+                    name=repr_safe(property_name),
+                    user=repr_safe(user_idn),
                 ))
             else:
                 # TODO:  Encapsulate most of the following user idn decoding and validating logic
@@ -1181,9 +1207,9 @@ class FlikiWord(object):   # qiki.nit.Nit):   # pity, all that work in nit.py fo
                 if len(field_words) != 2 or field_words[0].obj.name != 'user':
                     raise cls.FieldError(
                         "Invalid user property {name}, fields {fields}, for {user}".format(
-                            name=cls.repr_limited(property_name),
-                            fields=cls.repr_limited(field_words),
-                            user=cls.repr_limited(user_idn),
+                            name=repr_safe(property_name),
+                            fields=repr_safe(field_words),
+                            user=repr_safe(user_idn),
                         )
                     )
                 obj = dict(user=user_idn)
@@ -1246,8 +1272,8 @@ class FlikiWord(object):   # qiki.nit.Nit):   # pity, all that work in nit.py fo
                             name=self.obj.name,
                             idn=self.idn,
                             field_ordinal=field_ordinal,
-                            fields=repr(self.obj.fields),
-                            e=str(e),
+                            fields=repr_safe(self.obj.fields),
+                            e=repr_safe(e),
                         )
                     ) from e
                     # THANKS:  amend exception, https://stackoverflow.com/a/29442282/673991
@@ -1258,7 +1284,7 @@ class FlikiWord(object):   # qiki.nit.Nit):   # pity, all that work in nit.py fo
             raise self.FieldError(
                 "Definition {idn} fields should be a list, not {fields}".format(
                     idn=self.idn,
-                    fields=repr(self.obj.fields),
+                    fields=repr_safe(self.obj.fields),
                 ))
 
     def validate_reference_word(self, vrb_from_idn_lookup=None):
@@ -1277,7 +1303,7 @@ class FlikiWord(object):   # qiki.nit.Nit):   # pity, all that work in nit.py fo
         """
 
         if not self.is_resolved():
-            raise self.FieldError("Cannot validate unresolved word {word}".format(word=repr(self)))
+            raise self.FieldError("Cannot validate unresolved word {word}".format(word=repr_safe(self)))
 
         self.validate_sbj()
         vrb = self.validated_vrb()
@@ -1329,7 +1355,7 @@ class FlikiWord(object):   # qiki.nit.Nit):   # pity, all that work in nit.py fo
                     name=vrb.obj.name,
                     idn=self.idn,
                     field_ordinal=field_ordinal,
-                    e=str(e),
+                    e=repr_safe(e),
                 )) from e
 
     def validate_sbj(self):
@@ -1343,7 +1369,7 @@ class FlikiWord(object):   # qiki.nit.Nit):   # pity, all that work in nit.py fo
         elif self.is_user(self.sbj):
             ''' This sbj is a user. '''
         else:
-            raise self.FieldError("Malformed sbj {sbj}".format(sbj=self.repr_limited(self.sbj)))
+            raise self.FieldError("Malformed sbj {sbj}".format(sbj=repr_safe(self.sbj)))
 
     @classmethod
     def is_user(cls, maybe_user):
@@ -1390,7 +1416,7 @@ class FlikiWord(object):   # qiki.nit.Nit):   # pity, all that work in nit.py fo
                     return field_def_word
         else:
             raise cls.FieldError("Field def {field_idn} should be an integer".format(
-                field_idn=repr(field_idn),
+                field_idn=repr_safe(field_idn),
             ))
 
     def validated_vrb(self):
@@ -1433,7 +1459,7 @@ class FlikiWord(object):   # qiki.nit.Nit):   # pity, all that work in nit.py fo
             else:
                 raise cls.FieldError("A {name} field should be an integer, not {value}".format(
                     name=field_ancestry.child().obj.name,
-                    value=cls.repr_limited(field_value),
+                    value=repr_safe(field_value),
                 ))
         elif field_ancestry.founder().idn == cls.idn_of.text:
             if isinstance(field_value, str):
@@ -1441,7 +1467,7 @@ class FlikiWord(object):   # qiki.nit.Nit):   # pity, all that work in nit.py fo
             else:
                 raise cls.FieldError("A {name} field should be a string, not {value}".format(
                     name=field_ancestry.child().obj.name,
-                    value=cls.repr_limited(field_value),
+                    value=repr_safe(field_value),
                 ))
         elif field_ancestry.founder().idn == cls.idn_of.sequence:
             if isinstance(field_value, list):
@@ -1452,13 +1478,13 @@ class FlikiWord(object):   # qiki.nit.Nit):   # pity, all that work in nit.py fo
                     raise cls.FieldError(
                         "A {name} field should be a list of integers, not {value}".format(
                             name=field_ancestry.child().obj.name,
-                            value=cls.repr_limited(field_value),
+                            value=repr_safe(field_value),
                         )
                     )
             else:
                 raise cls.FieldError("A {name} field should be a list, not {value}".format(
                     name=field_ancestry.child().obj.name,
-                    value=cls.repr_limited(field_value),
+                    value=repr_safe(field_value),
                 ))
         elif field_ancestry.founder().idn == cls.idn_of.noun:
             '''
@@ -1481,8 +1507,8 @@ class FlikiWord(object):   # qiki.nit.Nit):   # pity, all that work in nit.py fo
                             "{ref_name} (idn {value}) "
                             "is a {ref_parent} "
                             "but it is not a {def_name}".format(
-                                value=cls.repr_limited(field_value),
-                                value_name=cls.repr_limited(field_value),
+                                value=repr_safe(field_value),
+                                value_name=repr_safe(field_value),
                                 ref_name=referent_ancestry.child().obj.name,
                                 ref_parent=referent_ancestry.parent().obj.name,
                                 def_name=field_ancestry.child().obj.name,
@@ -1521,8 +1547,8 @@ class FlikiWord(object):   # qiki.nit.Nit):   # pity, all that work in nit.py fo
                                     "{value} is the idn of a {vrb_name} word, "
                                     # "which is a {vrb_parent}, "
                                     "but it should be a {def_name} word".format(
-                                        value=cls.repr_limited(field_value),
-                                        value_name=cls.repr_limited(field_value),
+                                        value=repr_safe(field_value),
+                                        value_name=repr_safe(field_value),
                                         vrb_name=vrb_ancestry.child().obj.name,
                                         vrb_parent=vrb_ancestry.parent().obj.name,
                                         def_name=field_ancestry.child().obj.name,
@@ -1545,9 +1571,9 @@ class FlikiWord(object):   # qiki.nit.Nit):   # pity, all that work in nit.py fo
                             "Field value {field_value} "
                             "is supposed to be a {def_name}\n"
                             "    {e}".format(
-                                field_value=cls.repr_limited(field_value),
+                                field_value=repr_safe(field_value),
                                 def_name=field_ancestry.child().obj.name,
-                                e=str(e),
+                                e=repr_safe(e),
                             )
                         ) from e
 
@@ -1560,7 +1586,7 @@ class FlikiWord(object):   # qiki.nit.Nit):   # pity, all that work in nit.py fo
                         raise cls.FieldError(
                             "Field value {field_value} is a compound {ref_name}, "
                             "which is not a {def_name}".format(
-                                field_value=cls.repr_limited(field_value),
+                                field_value=repr_safe(field_value),
                                 ref_name=referent_ancestry.child().obj.name,
                                 def_name=field_ancestry.child().obj.name,
                             )
@@ -1570,29 +1596,15 @@ class FlikiWord(object):   # qiki.nit.Nit):   # pity, all that work in nit.py fo
                 raise cls.FieldError(
                     "Field value {field_value} "
                     "should be a {field_name}".format(
-                        field_value=cls.repr_limited(field_value),
+                        field_value=repr_safe(field_value),
                         field_name=cls.by_idn[field_idn].obj.name,
                     )
                 )
         else:
             raise cls.FieldError("Unable to process a {names} field with value {value}".format(
                 names=field_ancestry.names(),
-                value=cls.repr_limited(field_value),
+                value=repr_safe(field_value),
             ))
-
-    @staticmethod
-    def repr_limited(x):
-        """ Like repr() but the output is JSON, compact, and the length is limited. """
-        might_be_long = json_encode(x)
-        how_long = len(might_be_long)
-        max_out = 60
-        overhead = 15
-        if how_long > max_out:
-            show_this_many = max_out - overhead
-            omit_this_many = how_long - show_this_many
-            return might_be_long[0 : show_this_many] + " ... ({} more)".format(omit_this_many)
-        else:
-            return might_be_long
 
     class Ancestry(object):
         """Wrapper class for the procedural FlikiWord._ancestry() function, and its uses."""
@@ -1662,7 +1674,7 @@ class FlikiWord(object):   # qiki.nit.Nit):   # pity, all that work in nit.py fo
         """ Return a list of ancestor definition words, child first, founder last.  Recursive. """
         if not isinstance(child_idn, int):
             raise cls.FieldError("{child_idn} is not an idn".format(
-                child_idn=cls.repr_limited(child_idn),
+                child_idn=repr_safe(child_idn),
             ))
         try:
             child = cls.by_idn[child_idn]
@@ -1694,59 +1706,6 @@ class FlikiWord(object):   # qiki.nit.Nit):   # pity, all that work in nit.py fo
         """Word object values do not agree with the fields specified by its verb."""
 
 
-def seconds_since_1970_utc():
-    return datetime.datetime.timestamp(datetime.datetime.now(datetime.timezone.utc))
-
-
-def milliseconds_since_1970_utc():
-    return int(seconds_since_1970_utc() * 1000.0)
-
-
-def time_format_yyyy_mmdd_hhmm_ss(unix_epoch):
-    """ Format a unix timestamp (seconds since 1970 UTC) into a string. """
-    time_tuple_thingie = time.gmtime(unix_epoch)
-    return time.strftime('%Y.%m%d.%H%M.%S', time_tuple_thingie)
-assert "1999.1231.2359.59" == time_format_yyyy_mmdd_hhmm_ss(946684799.0)
-assert "2000.0101.0000.00" == time_format_yyyy_mmdd_hhmm_ss(946684800.0)
-
-
-flask_app = flask.Flask(
-    __name__,
-    static_url_path='/meta/static',
-    static_folder='static'
-)
-# SEE:  "Ideally your web server is configured to serve [static files] for you"
-#       https://flask.palletsprojects.com/en/2.0.x/quickstart/#static-files
-# EXAMPLE:  Apache settings redundant to the above.  Except mistakenly for /static not /meta/static!
-#       Alias /static /var/www/example.com/fliki/static
-#       <Directory /var/www/example.com/fliki/static/>
-#           Order allow,deny
-#           Allow from all
-#           Options -Indexes
-#       </Directory>
-
-
-flask_app.config.update(
-    SERVER_NAME=secure.credentials.Options.server_domain_port,
-    # NOTE:  setting SERVER_NAME has benefits:  url_for() can be used with app_context()
-    #                                           Otherwise this raises the exception:
-    #                                           RuntimeError: Application was not able to create a
-    #                                           URL adapter for request independent URL generation.
-    #                                           You might be able to fix this by setting the
-    #                                           SERVER_NAME config variable.
-    #        setting SERVER_NAME has drawbacks:  alternate domain hits get 404
-    #                                            So if you want your site to work on example.com
-    #                                            and www.example.com, don't set SERVER_NAME.
-
-    SESSION_COOKIE_DOMAIN=secure.credentials.Options.session_cookie_domain,
-    # NOTE:  Without this, two different fliki servers running on different subdomains
-    #        could share the same set of session variables.
-    # SEE:  Session domain, https://flask.palletsprojects.com/en/1.1.x/config/#SESSION_COOKIE_DOMAIN
-    # SEE:  Host-only cookie, set to False, https://stackoverflow.com/a/28320172/673991
-)
-flask_app.secret_key = secure.credentials.flask_secret_key
-
-
 @flask_app.before_first_request
 def before_first_request():
     version_report()
@@ -1766,7 +1725,7 @@ def before_every_request():
         # THANKS:  hostname and port substitution, https://stackoverflow.com/a/21629125/673991
 
         new_url = urllib.parse.urlunparse(new_parts)
-        Auth.print("REDIRECT from", parts.netloc, "to", new_url)
+        Auth.print("REDIRECT from", repr_safe(parts.netloc), "to", repr_safe(new_url))
         return flask.redirect(new_url, code=301)
         # THANKS:  Domain change with redirect, https://stackoverflow.com/a/10964868/673991
 
@@ -1781,40 +1740,7 @@ def before_every_request():
 @flask_app.teardown_appcontext
 def teardown_application_context(exc=None):
     if exc is not None:
-        Auth.print("teardown exception", type(exc).__name__, str(exc))
-
-
-GOOGLE_PROVIDER = 'google'
-authomatic_global = authomatic.Authomatic(
-    {
-        GOOGLE_PROVIDER: {
-            'class_': authomatic.providers.oauth2.Google,
-            'consumer_key': secure.credentials.google_client_id,
-            'consumer_secret': secure.credentials.google_client_secret,
-
-            'scope':
-                authomatic.providers.oauth2.Google.user_info_scope
-                # + ['https://gdata.youtube.com']
-                # SEE:  get a user's YouTube uploads, https://stackoverflow.com/a/21987075/673991
-                # The gdata.youtube.com field means that logging in for the first time
-                # asks if you want to allow the app to "Manage your YouTube account"
-            ,
-
-            'id': 42,
-            # NOTE:  See exception in core.py Credentials.serialize() ~line 810:
-            #            "To serialize credentials you need to specify a"
-            #            "unique integer under the "id" key in the config"
-            #            "for each provider!"
-            #        This happened when calling login_result.user.to_dict()
-        }
-    },
-    secure.credentials.authomatic_secret_key,
-)
-
-
-login_manager = flask_login.LoginManager()
-login_manager.anonymous_user = AnonymousWord
-login_manager.init_app(flask_app)
+        Auth.print("teardown exception", type(exc).__name__, repr_safe(exc))
 
 
 class Auth(object):
@@ -1874,155 +1800,41 @@ class Auth(object):
     def logout_url(self):
         raise NotImplementedError
 
-    @property
-    @abc.abstractmethod
-    def then_url(self):
-        raise NotImplementedError
-
-    @then_url.setter
-    @abc.abstractmethod
-    def then_url(self, new_url):
-        raise NotImplementedError
-
     @abc.abstractmethod
     def form(self, variable_name):
         raise NotImplementedError
 
-    def login_html(self, then_url=None):
+    def login_html(self):
         """
-        Log in or out link.  Redirected to then_url, defaults to current_url
+        Show a login link or a logout link, as appropriate.  Show the user name if logged in.
+
+        Remember the current URL.  Then if the link is clicked, other code will redirect back to it
+        when done with logging in or out.  See that happen at the calls to then_url.get()
         """
-        if then_url is None:
-            self.then_url = self.current_url
-        else:
-            self.then_url = then_url
-        # NOTE:  The timing of setting this URL is weird.
-        #
-        #        Here we are presumably generating a login link for some page.
-        #        We're remembering the URL of that page in order to "return" to that page.
-        #        That is, we expect to use that page-URL some time after
-        #        the login-link is clicked and the login is completed.
-        #
-        #        Will this really be the right URL to "return" to after login?
-        #        It just smacks of a global variable that could get stale or something.
-        #
-        #        Like what if that user generated some SECOND page on some SECOND browser
-        #        window?  Then went back to the FIRST page and clicked login.
-        #        Then the first browser window would go to the second page after logging in.
-        #
-        #        Might it be better to record that page-URL WHEN the login-link is clicked.
-        #        But how to do that?  Can't futz with the URL itself, that breaks login.
-        #        Maybe some ajax request, just before the link is followed.
-        #
-        #        Or maybe go ahead and add then_url to the query string but strip it off
-        #        (by cloning the Request object -- request.args is immutable)
-        #        before passing it to Authomatic.login().
+
+        then_url.set(self.current_url)
 
         if self.flask_user.is_authenticated:
-            display_name = self.flask_user.name()   # HACK self.qiki_user.name
-            if self.flask_user.is_admin():   # HACK self.qiki_user.is_admin:
-                display_name += " (admin)"
-            return (
-                "<a href='{logout_link}'>"
-                    "logout" +
-                "</a>"
-                " "
-                "{display_name}"
-            ).format(
-                display_name=display_name,
-                logout_link=self.logout_url,
-            )
+            with web_html.WebHTML('span') as span:
+                with span.a(href=self.logout_url) as a:
+                    a.text("logout")
+                span.text(" ")
+                span.text(self.flask_user.name())
+                if self.flask_user.is_admin():
+                    span.text(" (admin)")
+                return str(span)
         elif self.flask_user.is_anonymous:
-            return (
-                "<a href='{login_link}'>"
-                    "login"
-                "</a>"
-            ).format(
-                login_link=self.login_url,
-            )
+            with web_html.WebHTML('span') as span:
+                with span.a(href=self.login_url) as a:
+                    a.text("login")
+                return str(span)
         else:
-            return "neither auth nor anon???"
+            return "Impossible situation, neither authenticated nor anonymous."
 
     def create_word_by_user(self, vrb_name, obj_dictionary):
         FlikiWord.user_record(self.flask_user.idn, 'ip_address', self.ip_address_txt)
         FlikiWord.user_record(self.flask_user.idn, 'user_agent', self.user_agent_txt)
         return FlikiWord.create_word_by_user(self, vrb_name, obj_dictionary)
-
-
-class Probe(object):
-    """
-    Time a series of events.  Optionally count some countable things along the way.
-
-    EXAMPLE:
-        p = Probe();
-
-        step1()
-        p.at("step1")
-
-        step2()
-        p.at("step2")
-
-        step3()
-        p.at("step3")
-
-        print("\n".join(p.report_lines()))
-    EXAMPLE OUTPUT:
-        step1 0.312 s
-        step2 4.806 s
-        step3 0.006 s
-        total 5.125 s
-    """
-    def __init__(self, countables_initial=None):
-        """
-        Begin the timing and counting.
-
-        .records is an array of triples:
-            unix timestamp (seconds since 1970)
-            event name, e.g. "authorization"
-            countables dictionary, e.g. dict(queries=3, records=333)
-
-        :param countables_initial: - a dictionary of name:count pairs, some measure other than time.
-        """
-        self.t_initial = time.time()
-        self.c_initial = countables_initial
-        self.records = []
-
-    def at(self, event_name="", **kwargs):
-        self.records.append((time.time(), event_name, kwargs))
-
-    def report_lines(self):
-
-        def report_line(_event_name, t_delta, countables_late, countables_early):
-
-            def countable_deltas():
-                for k, v in countables_late.items():
-                    # FALSE WARNING:  Cannot find reference 'get' in 'None'
-                    # noinspection PyUnresolvedReferences
-                    v_delta = v   if countables_early is None else   v - countables_early.get(k, 0)
-                    if v_delta != 0:
-                        yield "{v_delta} {k}".format(k=k, v_delta=v_delta)
-
-            times = ["{t_delta:.3f}s".format(t_delta=t_delta).lstrip('0')]
-            counts = list(countable_deltas())
-            return "{event_name} {commas}".format(
-                event_name=_event_name,
-                commas=" ".join(times + counts)
-            )
-
-        if len(self.records) == 0:
-            yield "(no events)"
-        else:
-            t_prev = self.t_initial
-            c_prev = self.c_initial
-            for t_event, event_name, countables in self.records:
-                yield report_line(event_name, t_event - t_prev, countables, c_prev)
-                c_prev = countables
-                t_prev = t_event
-            if len(self.records) > 1:
-                yield report_line("total", t_prev - self.t_initial, c_prev, self.c_initial)
-
-    def report(self):
-        return ";  ".join(self.report_lines())
 
 
 class AuthFliki(Auth):
@@ -2045,7 +1857,7 @@ class AuthFliki(Auth):
         if ok_to_print:
             self.print(
                 "AUTH",
-                json_encode(self.flask_user.idn),
+                repr_safe(self.flask_user.idn),
                 auth_anon,
             )
             # flask.request.user_agent.platform,
@@ -2062,8 +1874,6 @@ class AuthFliki(Auth):
     def hit(self, path_str):
         self.create_word_by_user('browse', dict(url=path_str))
 
-    SESSION_THEN_URL = 'then_url'
-
     @property
     def current_url(self):
         return flask.request.url
@@ -2079,17 +1889,6 @@ class AuthFliki(Auth):
     def logout_url(self):
         return flask.url_for('logout')
 
-    @property
-    def then_url(self):
-        """Get next URL from session variable.  Default to home."""
-        then_url_default = flask.url_for('home_or_root_directory')
-        then_url_actual = flask.session.get(self.SESSION_THEN_URL, then_url_default)
-        return then_url_actual
-
-    @then_url.setter
-    def then_url(self, new_url):
-        flask.session[self.SESSION_THEN_URL] = new_url
-
     _not_specified = object()   # like None but more obscure, so None CAN be specified
 
     def form(self, variable_name, default=_not_specified):
@@ -2101,6 +1900,20 @@ class AuthFliki(Auth):
 
     class FormVariableMissing(KeyError):
         """E.g. auth.form('nonexistent variable')"""
+
+
+class SessionProperty(object):
+    def __init__(self, name):
+        self.name = name
+
+    def get(self, default_value):
+        return flask.session.get(self.name, default_value)
+
+    def set(self, value):
+        flask.session[self.name] = value
+
+
+then_url = SessionProperty('then_url')
 
 
 @login_manager.user_loader
@@ -2118,20 +1931,14 @@ def user_loader(google_user_id_string):
 @flask_login.login_required
 def logout():
     flask_login.logout_user()
-    return flask.redirect(get_then_url())
+    return flask.redirect(then_url.get(flask.url_for('home_or_root_directory')))
+    # NOTE:  This default value cannot be specified when the `then_url` variable was instantiated.
+    #        Otherwise you'd get this error:
+    #            Attempted to generate a URL without the application context being pushed.
+    #            This has to be executed when application context is available.
 
 
-def get_then_url():
-    """Get next URL from session variable.  Default to home."""
-    then_url_default = flask.url_for('home_or_root_directory')
-    then_url_actual = flask.session.get(AuthFliki.SESSION_THEN_URL, then_url_default)
-    # TODO:  Make this work better if a user has multiple tabs open at once.
-    #        sessionStorage?
-    # SEE:  Tab-specific user data, https://stackoverflow.com/q/27137562/673991
-    return then_url_actual
-
-
-STALE_LOGIN_ERROR = 'Unable to retrieve stored state!'
+STALE_LOGIN_ERROR_MESSAGE = 'Unable to retrieve stored state!'
 
 
 @flask_app.route('/meta/login', methods=('GET', 'POST'))
@@ -2148,7 +1955,7 @@ def login():
 
     if login_result:
         if hasattr(login_result, 'error') and login_result.error is not None:
-            Auth.print("Login error:", str(login_result.error))
+            Auth.print("Login error:", repr_safe(login_result.error))
             # EXAMPLE:
             #     Failed to obtain OAuth 2.0 access token from https://accounts.google.com/o/oauth2/token!
             #     HTTP status: 400, message: {
@@ -2170,22 +1977,19 @@ def login():
             #        https://stackoverflow.com/questions/14386304/flask-how-to-remove-cookies
 
             url_has_question_mark_parameters = flask.request.path != flask.request.full_path
-            is_stale = str(login_result.error) == STALE_LOGIN_ERROR
+            is_stale = str(login_result.error) == STALE_LOGIN_ERROR_MESSAGE
             if is_stale and url_has_question_mark_parameters:
                 Auth.print(
                     "Redirect from {from_}\n"
                     "           to {to_}".format(
-                        from_=flask.escape(flask.request.full_path),
-                        to_=flask.escape(flask.request.path),
+                        from_=repr_safe(flask.request.full_path),
+                        to_=repr_safe(flask.request.path),
                     )
                 )
                 return flask.redirect(flask.request.path)  # Hopefully not a redirect loop.
             else:
                 Auth.print("Whoops, don't know how to handle this login error.")
 
-                # # TODO:  WTF "Unexpected argument"?  It's supposed to take a string.
-                # # noinspection PyArgumentList
-                # response.set_data("Whoops")   # HACK
         else:
             if hasattr(login_result, 'user'):
 
@@ -2201,21 +2005,20 @@ def login():
                         not hasattr(login_result.user, 'id'  ) or logged_in_user.id   is None or
                         not hasattr(login_result.user, 'name') or logged_in_user.name is None
                     ):                                                             # Try #1
-                        Auth.print(
-                            "Fairly routine, user data needs updating because it was:",
-                            repr_attr(logged_in_user, 'id'),
-                            repr_attr(logged_in_user, 'name'),
-                        )
-
-                        logged_in_user.update()
                         # SEE:  about calling user.update() only if id or name is missing,
                         #       http://authomatic.github.io/authomatic/#log-the-user-in
 
-                        Auth.print(
-                            "    Now it's:",
-                            repr_attr(logged_in_user, 'id'),
-                            repr_attr(logged_in_user, 'name'),
-                        )
+                        # Auth.print(
+                        #     "Fairly routine, user data needs updating because it was:",
+                        #     repr_attr(logged_in_user, 'id'),
+                        #     repr_attr(logged_in_user, 'name'),
+                        # )
+                        logged_in_user.update()
+                        # Auth.print(
+                        #     "    Now it's:",
+                        #     repr_attr(logged_in_user, 'id'),
+                        #     repr_attr(logged_in_user, 'name'),
+                        # )
                         # EXAMPLE:
                         #     Fairly routine, user data needs updating because it was: None ''
                         #         Now it's: '103620384189003122864' 'Bob Stein'
@@ -2224,8 +2027,8 @@ def login():
                         Auth.print(
                             "Freakish!  "
                             "Updated, but something is STILL None, "
-                            "user id:", repr(logged_in_user.id),
-                            "name:", repr(logged_in_user.name),
+                            "user id:", repr_safe(logged_in_user.id),
+                            "name:", repr_safe(logged_in_user.name),
                         )
                     else:
 
@@ -2279,40 +2082,24 @@ def login():
                             FlikiWord.user_record(flask_user.idn, 'name', display_name)
                             FlikiWord.user_record(flask_user.idn, 'iconify', avatar_url)
                         except ValueError as e:
-                            Auth.print(str(e))
+                            Auth.print(repr_safe(e))
                             raise
                         else:
                             flask_login.login_user(flask_user)
-                            return flask.redirect(get_then_url())
+                            return flask.redirect(then_url.get(flask.url_for('home_or_root_directory')))
                             # TODO:  Why does Chrome put a # on the end of this URL (empty fragment)?
                             # SEE:  Fragment on redirect, https://stackoverflow.com/q/2286402/673991
                             # SEE:  Fragment of resource, https://stackoverflow.com/a/5283528/673991
             else:
                 Auth.print("No user!")
             if hasattr(login_result, 'provider'):
-                Auth.print("Provider:", repr(login_result.provider))
+                Auth.print("Provider:", repr_safe(login_result.provider))
     else:
-        Auth.print("Strange login limbo, authomatic login() returned", repr(login_result))
+        Auth.print("Strange login limbo, authomatic login() returned", repr_safe(login_result))
         # TODO:  Figure out what it means when we get here.
         #        Anonymous users do not go here -- login() is never called for them.
 
     return response
-
-
-def repr_attr(z, attribute_name):
-    """Represent the attribute of an object in a safe way, even if it has no such attribute."""
-    if hasattr(z, attribute_name):
-        return repr(getattr(z, attribute_name))
-    else:
-        return "Undefined"
-
-
-class TestReprAttr:
-    string = "string"
-    none = None
-assert  "'string'" == repr_attr(TestReprAttr, 'string')
-assert      "None" == repr_attr(TestReprAttr, 'none')
-assert "Undefined" == repr_attr(TestReprAttr, 'no_such_member')
 
 
 @flask_app.route('/module/qiki-javascript/<path:filename>')
@@ -2405,17 +2192,7 @@ def favicon_ico():
     return flask.send_file(os_path_static('image/favicon/favicon.ico'))
 
 
-MIME_TYPE_JSONL  = 'application/jsonl+json'
-# SEE:  (my comment) on using the +json suffix,
-#       https://stackoverflow.com/q/51690624/673991#comment122920211_67807011
-#       It is technically a lie, but it allows direct browsing in Chrome to display the file.
-#       With this MIME type on the other hand, Chrome just downloads the file:  application/jsonl
-#       Another possibility:  text/x.jsonl+json
-
-
 if __name__ == '__main__':
-
-    JSONL_EXTENSION = '.jsonl'
 
     @flask_app.route(flask_app.static_url_path + '/' + '<path:path>' + JSONL_EXTENSION)
     def jsonl_mime_type(path):
@@ -2455,8 +2232,9 @@ def unslumping_home(home_page_title):
 
     An unslumping.org inspired application.
     """
-    t_start = time.time()
+    p = Probe()
     auth = AuthFliki(ok_to_print=False)
+    p.at("auth")
 
     with FlikiHTML('html') as html:
         with html.header(home_page_title) as head:
@@ -2586,7 +2364,7 @@ def unslumping_home(home_page_title):
                         js_for_unslumping(window, jQuery, qoolbar, MONTY, window.talkify);
                     \n''')
 
-        t_stuff = time.time()
+        p.at("foot")
 
         # NOTE:  NOT calling auth.user_record() here for anonymous users, waiting for user to do
         #        something important, such as rearrange or submit.  This prevents the geological
@@ -2600,13 +2378,9 @@ def unslumping_home(home_page_title):
             # THANKS:  Parts of request url, https://stackoverflow.com/a/15975041/673991
             auth.hit(relative_url)
 
-        t_end = time.time()
-        Auth.print("unslumping home {t1:.3f} {t2:.3f} sec".format(
-            # q=q_end - q_start,
-            t1=t_stuff - t_start,
-            t2=t_end - t_stuff,
-        ))
-        # TODO:  If t2 gets too big, start remembering latest user stuff.
+        p.at("hit")
+
+        Auth.print("unslumping home: ", p.report())
 
         html_response = html.doctype_plus_html()
         flask_response = flask.Response(html_response)
@@ -2632,7 +2406,10 @@ def meta_lex():
 
     Less geeky than directly browsing the .lex.jsonl file.
     """
+    p = Probe()
     auth = AuthFliki()
+    p.at("auth")
+
     if not auth.flask_user.is_authenticated:
         return auth.login_html()   # anonymous viewing not allowed, just show "login" link
 
@@ -2663,6 +2440,8 @@ def meta_lex():
                     ))
 
         response = html.doctype_plus_html()
+    p.at("html")
+    print("meta lex: ", p.report())
     return response
 
 
@@ -2696,11 +2475,11 @@ if secure.credentials.Options.oembed_server_prefix is not None:
             else:
                 error = oembed_dict.get('error', "((for some reason))")
                 but_why = "Anyway noembed says: " + error
-            Auth.print("Unsupported", json.dumps(url), but_why)
+            Auth.print("Unsupported", repr_safe(url), but_why)
             return error_render(
                 message="{domain} - unsupported domain.  {but_why}".format(
-                    domain=json.dumps(domain_from_url(url)),
-                    but_why=but_why,
+                    domain=repr_safe(domain_from_url(url)),
+                    but_why=repr_safe(but_why),
                 ),
                 title=idn,
                 # TODO:  simplified domain - idn
@@ -2787,10 +2566,9 @@ def domain_from_url(url):
 
 @flask_app.route(AJAX_URL, methods=('POST',))
 def ajax():
-    t_start = time.time()
+    p = Probe()
     auth = None
     action = None
-    # qc_start = 0
     ok_to_print = (
         SHOW_LOG_AJAX_NOEMBED_META or
         flask.request.form.get('action', '_') != 'noembed_meta'
@@ -2798,6 +2576,8 @@ def ajax():
 
     try:
         auth = AuthFliki(ok_to_print=ok_to_print)
+        p.at("auth")
+
         action = auth.form('action')
 
         if action == 'noembed_meta':
@@ -2813,7 +2593,7 @@ def ajax():
                 # word = FlikiWord.create_word_by_user(auth, vrb_name, sub_nits_dict)
                 word = auth.create_word_by_user(vrb_name, sub_nits_dict)
             except ValueError as e:
-                auth.print("CREATE WORD ERROR", type(e).__name__, auth.flask_user.idn, str(e))
+                auth.print("CREATE WORD ERROR", type(e).__name__, auth.flask_user.idn, repr_safe(e))
                 return invalid_response("create_word error")
             else:
                 return valid_response('jsonl', word.jsonl())
@@ -2825,7 +2605,7 @@ def ajax():
         # EXAMPLE:  werkzeug.exceptions.BadRequestKeyError
         # EXAMPLE:  fliki.AuthFliki.FormVariableMissing
 
-        Auth.print("AJAX ERROR", type(e).__name__, str(e))
+        Auth.print("AJAX ERROR", type(e).__name__, repr_safe(e))
         traceback.print_exc()
         # EXAMPLE:  (request with no action, before Auth.form() was created)
         #     AJAX ERROR 400 Bad Request: The browser (or proxy) sent a request
@@ -2851,17 +2631,15 @@ def ajax():
         return invalid_response("ajax error")
 
     finally:
-        t_end = time.time()
+        p.at("response")
         if auth is None:   # or not auth.is_online:
-            Auth.print("AJAX CRASH, {t:.3f} sec".format(t=t_end - t_start))
+            Auth.print("AJAX CRASH: ", p.report())
         else:
             if ok_to_print:
-                auth.print(
-                    "Ajax {action}, {t:.3f} sec".format(
-                        action=repr(action),
-                        t=t_end - t_start
-                    )
-                )
+                auth.print("Ajax {action}:  {report}".format(
+                    action=repr_safe(action),
+                    report=p.report(),
+                ))
 
 
 def retry(exception_to_check, tries=4, delay=3, delay_multiplier=2):
@@ -2896,13 +2674,14 @@ def retry(exception_to_check, tries=4, delay=3, delay_multiplier=2):
 
         @functools.wraps(function_to_retry)
         def retry_looper(*args, **kwargs):
-            tries_remaining, delay_next = tries, delay
+            tries_remaining = tries
+            delay_next = delay
             while tries_remaining > 1:
                 try:
                     return function_to_retry(*args, **kwargs)
                 except exception_to_check as e:
                     Auth.print("{exception}, Retrying in {delay} seconds...".format(
-                        exception=str(e),
+                        exception=repr_safe(e),
                         delay=delay_next,
                     ))
                     time.sleep(delay_next)
@@ -2922,21 +2701,20 @@ def retry(exception_to_check, tries=4, delay=3, delay_multiplier=2):
 def _urlopen_with_retries(url):
     return urllib.request.urlopen(url)
 
-
-# EXAMPLE of a _urlopen_with_retries() failure:
-#     try:
-#         _urlopen_with_retries(NON_ROUTABLE_URL)
-#     except urllib.error.URLError:
-#         print("URLError as expected")
-#     else:
-#         print("THIS SHOULD NOT HAVE WORKED!")
-#     <urlopen error [WinError 10060] A connection attempt failed because the connected party
-#                                     did not properly respond after a period of time,
-#                                     or established connection failed because connected host
-#                                     has failed to respond>, Retrying in 3 seconds...
-#     <urlopen error [WinError 10060] A connection ........>, Retrying in 6 seconds...
-#     <urlopen error [WinError 10060] A connection ........>, Retrying in 12 seconds...
-#     URLError as expected
+    # EXAMPLE of a _urlopen_with_retries() failure:
+    #     try:
+    #         _urlopen_with_retries(NON_ROUTABLE_URL)
+    #     except urllib.error.URLError:
+    #         print("URLError as expected")
+    #     else:
+    #         print("THIS SHOULD NOT HAVE WORKED!")
+    #     <urlopen error [WinError 10060] A connection attempt failed because the connected party
+    #                                     did not properly respond after a period of time,
+    #                                     or established connection failed because connected host
+    #                                     has failed to respond>, Retrying in 3 seconds...
+    #     <urlopen error [WinError 10060] A connection ........>, Retrying in 6 seconds...
+    #     <urlopen error [WinError 10060] A connection ........>, Retrying in 12 seconds...
+    #     URLError as expected
 
 
 def json_get(url):
@@ -2948,7 +2726,7 @@ def json_get(url):
     try:
         response = _urlopen_with_retries(url)
     except urllib.error.URLError as e:
-        Auth.print("json_get gives up", str(e), url)
+        Auth.print("json_get gives up", repr_safe(e), url)
         return None
 
     with response:
@@ -3022,63 +2800,27 @@ def invalid_response(error_message):
     ))
 
 
-def json_encode(x, **kwargs):
-    """ JSON encode a dict, including custom objects with a .to_json() method. """
-    # TODO:  Support encoding list, etc.  ((WTF does this mean?  This works:  json.dumps([1,2,3])))
-    json_almost = json.dumps(
-        x,
-        cls=VersatileJsonEncoder,
-        separators=JSON_SEPARATORS_NO_SPACES,
-        allow_nan=False,
-        **kwargs
-        # NOTE:  The output may have no newlines.  (Unless indent=4 is in kwargs.)
-        #        If there APPEAR to be newlines when viewed in a browser Ctrl-U page source,
-        #        it may just be the browser wrapping on the commas.
-    )
-
-    json_for_script = json_almost.replace('<', r'\u003C')
-    # SEE:  (my answer) JSON for a script element, https://stackoverflow.com/a/57796324/673991
-    # THANKS:  Jinja2 html safe json dumps utility, for inspiration
-    #          https://github.com/pallets/jinja/blob/90595070ae0c8da489faf24f153b918d2879e759/jinja2/utils.py#L549
-
-    return json_for_script
-
-
-def json_pretty(x):
-    return json_encode(
-        x,
-        sort_keys=True,
-        indent=4,
-    )
-
-
-class VersatileJsonEncoder(json.JSONEncoder):
-    """Custom converter for json_encode()."""
-
-    def default(self, w):
-        if hasattr(w, 'to_json') and callable(w.to_json):
-            return w.to_json()
-        else:
-            return super(VersatileJsonEncoder, self).default(w)
-            # NOTE:  Raises a TypeError, unless a multi-derived class
-            #        calls a sibling class.  (If that's even how multiple
-            #        inheritance works.)
-            # NOTE:  This is not the same TypeError as the one that
-            #        complains about custom dictionary keys.
-
-
 def version_report():
+    git_stuff = dict(
+        sha_excerpt=git.Repo(SCRIPT_DIRECTORY).head.object.hexsha[0 : 10],
+        num_uncommitted=len(git.Repo(SCRIPT_DIRECTORY).index.diff(None)),
+    )
+    if git_stuff['num_uncommitted'] == 0:
+        git_report = "{sha_excerpt}".format(**git_stuff)
+    else:
+        git_report = "{sha_excerpt} ({num_uncommitted} FILES UNCOMMITTED)".format(**git_stuff)
+
     Auth.print((
         "Fliki {yyyy_mmdd_hhmm_ss}" +
         " - " +
-        "git {git_sha_10}" +
+        "git {git_report}" +
         " - " +
         "Python {python_version}" +
         " - " +
         "Flask {flask_version}"
     ).format(
         yyyy_mmdd_hhmm_ss=time_format_yyyy_mmdd_hhmm_ss(seconds_since_1970_utc()),
-        git_sha_10=GIT_SHA_10,
+        git_report=git_report,
         python_version=".".join(str(x) for x in sys.version_info),
         flask_version=flask.__version__,
     ))
@@ -3086,13 +2828,60 @@ def version_report():
     #     Fliki 2019.0603.1144.11, git e74a46d9ed, Python 2.7.15.candidate.1, Flask 1.0.3, qiki 0.0.1.2019.0603.0012.15
     #     Fliki 2019.0603.1133.40, git a34d72cdc6, Python 2.7.16.final.0, Flask 1.0.2, qiki 0.0.1.2019.0603.0012.15
     #     Fliki 2019.0822.0932.33 - git 379d8bcd48 - Python 3.7.3.final.0 - Flask 1.1.1 - qiki 0.0.1.2019.0728.1919.04
+    #     Fliki 2022.0106.2219.24 - git 39F81D5C31 (2 FILES UNCOMMITTED) - Python 3.9.6.final.0 - Flask 2.0.1
 
+
+flask_app.config.update(
+    SERVER_NAME=secure.credentials.Options.server_domain_port,
+    # NOTE:  setting SERVER_NAME has benefits:  url_for() can be used with app_context()
+    #                                           Otherwise this raises the exception:
+    #                                           RuntimeError: Application was not able to create a
+    #                                           URL adapter for request independent URL generation.
+    #                                           You might be able to fix this by setting the
+    #                                           SERVER_NAME config variable.
+    #        setting SERVER_NAME has drawbacks:  alternate domain hits get 404
+    #                                            So if you want your site to work on example.com
+    #                                            and www.example.com, don't set SERVER_NAME.
+
+    SESSION_COOKIE_DOMAIN=secure.credentials.Options.session_cookie_domain,
+    # NOTE:  Without this, two different fliki servers running on different subdomains
+    #        could share the same set of session variables.
+    # SEE:  Session domain, https://flask.palletsprojects.com/en/1.1.x/config/#SESSION_COOKIE_DOMAIN
+    # SEE:  Host-only cookie, set to False, https://stackoverflow.com/a/28320172/673991
+)
+flask_app.secret_key = secure.credentials.flask_secret_key
+
+GOOGLE_PROVIDER = 'google'
+authomatic_global = authomatic.Authomatic(
+    {
+        GOOGLE_PROVIDER: {
+            'class_': authomatic.providers.oauth2.Google,
+            'consumer_key': secure.credentials.google_client_id,
+            'consumer_secret': secure.credentials.google_client_secret,
+
+            'scope': authomatic.providers.oauth2.Google.user_info_scope,
+                # + ['https://gdata.youtube.com']
+                # SEE:  get a user's YouTube uploads, https://stackoverflow.com/a/21987075/673991
+                #       The gdata.youtube.com field means that logging in for the first time
+                #       asks if you want to allow the app to "Manage your YouTube account"
+
+            'id': 42,
+                # NOTE:  See exception in core.py Credentials.serialize() ~line 810:
+                #            "To serialize credentials you need to specify a"
+                #            "unique integer under the "id" key in the config"
+                #            "for each provider!"
+                #        This happened when calling login_result.user.to_dict()
+        }
+    },
+    secure.credentials.authomatic_secret_key,
+)
 
 FlikiWord.open_lex()
 
+login_manager.anonymous_user = AnonymousWord
+login_manager.init_app(flask_app)
 
 if __name__ == '__main__':
-    '''When fliki.py is run locally, it spins up its own web server.'''
     flask_app.run(
         debug=True,
 
@@ -3121,5 +2910,4 @@ if __name__ == '__main__':
     #     Process finished with exit code 1
     #     (I think this means flask_app.config.update(SERVER_NAME,...) can't be DNS resolved.)
 
-
-application = flask_app
+application = flask_app   # export for fliki.wsgi
