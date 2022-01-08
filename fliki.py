@@ -46,6 +46,7 @@ NON_ROUTABLE_IP_ADDRESS = '10.255.255.1'   # THANKS:  https://stackoverflow.com/
 NON_ROUTABLE_URL = 'https://' + NON_ROUTABLE_IP_ADDRESS + '/'   # for testing
 SHOW_LOG_AJAX_NOEMBED_META = False
 CATCH_JS_ERRORS = False
+ENABLE_TALKIFY = False    # NOTE:  talkify voices seemed better than the standard browser voices.
 FINISHER_METHOD_NAME = 'fin'   # see qiki.js
 INTERACT_VERBS = [
     'bot',      # |>  global play button
@@ -562,6 +563,10 @@ class FlikiWord(object):   # qiki.nit.Nit):   # pity, all that work in nit.py fo
                     e=repr_safe(e),
                 )) from e
         else:
+            vfi_third = [False] * (cls.max_idn + 1)
+            for idn, vrb in cls._vrb_from_idn.items():
+                vfi_third[idn] = vrb
+
             Auth.print(
                 "Scanned",
                 cls.lines_in_file, "lines,",
@@ -569,7 +574,8 @@ class FlikiWord(object):   # qiki.nit.Nit):   # pity, all that work in nit.py fo
                 p.report(),
                 sys.getsizeof(cls._vrb_from_idn),   # Potentially ginormous idn reference cache.
                 sys.getsizeof(cls._vrb_from_idn_alternate),   # Less ginormous?  42K vs 148K
-                len(cls._vrb_from_idn),                       # for 5K pairs
+                len(cls._vrb_from_idn),                       # 5K pairs
+                sys.getsizeof(vfi_third),                     # sparse list 69K vs pair list 42K
             )
 
     @classmethod
@@ -2272,11 +2278,9 @@ def unslumping_home(home_page_title):
             foot.js(static_code_url('iframeResizer.js'))
             foot.comment("SEE:  /meta/static/code/iframe-resizer-LICENSE.txt")
 
-            # foot.js('https://use.fontawesome.com/49adfe8390.js')   # req by talkify
-            # foot.js('https://cdn.jsdelivr.net/npm/talkify-tts@2.6.0/dist/talkify.min.js')
-            # NOTE:  Commenting the above lines out is how talkify is disabled.
-            #        Might want to revive it someday,
-            #        because talkify voices seemed better than the standard browser voices.
+            if ENABLE_TALKIFY:
+                foot.js('https://use.fontawesome.com/49adfe8390.js')   # req by talkify
+                foot.js('https://cdn.jsdelivr.net/npm/talkify-tts@2.6.0/dist/talkify.min.js')
 
             foot.js_stamped(static_code_url('util.js'))
             foot.js_stamped(static_code_url('lex.js'))

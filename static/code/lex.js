@@ -267,7 +267,7 @@
                     that.scan_fail("Expecting the first words to define 'lex' and 'define'.");
                 }
             } else {
-                if (word.is_this_word_a_lex_definition()) {
+                if (word.is_definition()) {
                     that.each_definition_word(word);
                 } else {
                     that.each_reference_word(word);
@@ -532,7 +532,7 @@
                 //           Those always come first and in numerical order, not alpha, not insert.
             }
         }
-        is_this_word_a_lex_definition() {
+        is_definition() {
             return (
                 this.sbj === this.lex.idn_of.lex &&
                 this.vrb === this.lex.idn_of.define

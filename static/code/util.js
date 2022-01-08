@@ -965,23 +965,21 @@ assert_equal(-1000, linear_transform(890, 880, 870, 0, 1000));
  * @param parameters - name to value mapping.
  * @return {string}
  *
- * TODO:  Support multiple instances of a symbol, e.g. "to {be} or not to {be}",
- *        https://stackoverflow.com/a/1144788/673991
- * TODO:  Warn of any unspecified symbols.
- * TODO:  Much better approach would be to iterate through the MESSAGE not the PARAMETERS,
- *        then replace curly symbol {x} with the value o parameters.x.
- *        That way, parameters might be an object, and it might have dynamic properties.
+ * "rock vs paper" === f("{a} vs {b}", {a:"rock", b:"paper"})
+ *
+ * THANKS:  replaceAll() is universal enough, https://stackoverflow.com/a/1144788/673991
+ * THANKS:  String() trumps .toString(), https://stackoverflow.com/a/35673907/673991
  */
 function f(message, parameters) {
     var formatted_message = message;
     looper(parameters, function (name, value) {
         var symbol = '{' + name + '}';
-        formatted_message = formatted_message.replace(symbol, String(value));
-        // THANKS:  String() trumps .toString(), https://stackoverflow.com/a/35673907/673991
+        formatted_message = formatted_message.replaceAll(symbol, String(value));
     });
     return formatted_message;
 }
-assert_equal("life + everything = 42", f("life + {a} = {b}", {a:'everything', b:42}));
+assert_equal("rock vs paper", f("{a} vs {b}", {a: 'rock', b: 'paper'}));
+assert_equal("to do or not to do", f("to {be} or not to {be}", {be: 'do'}));
 
 /**
  * Drop-in replacement for jQuery $element.animate(props, opts), but works around the ASS-OS bug.

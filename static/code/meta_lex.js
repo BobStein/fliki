@@ -113,7 +113,7 @@ function js_for_meta_lex(window, $, MONTY) {
             that.$li = $('<li>', {id:that.idn, value:that.idn, class:'word-rendering'});
             var $statement = $('<span>');
             that.$li.append($statement);
-            if (that.lex.is_early_in_the_scan() || that.is_this_word_a_lex_definition()) {
+            if (that.lex.is_early_in_the_scan() || that.is_definition()) {
                 that.$li.addClass('definition-word');
                 var is_reflexive = that.obj.parent === that.idn;
                 var $name = $('<span>', {class: 'name'});
