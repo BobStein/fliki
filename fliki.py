@@ -794,7 +794,9 @@ class FlikiWord(object):   # qiki.nit.Nit):   # pity, all that work in nit.py fo
                 vrb_idn = cls.idn_of.get(vrb_name)
                 vrb = cls.by_idn[vrb_idn]
             except KeyError as e:
-                raise cls.CreateError("Cannot create a word with verb " + repr_safe(vrb_name)) from e
+                raise cls.CreateError(
+                    "Cannot create a word with verb " + repr_safe(vrb_name)
+                ) from e
             else:
                 unused = set(sub_nit_dict.keys())
                 obj_dict = dict()
@@ -1309,7 +1311,9 @@ class FlikiWord(object):   # qiki.nit.Nit):   # pity, all that work in nit.py fo
         """
 
         if not self.is_resolved():
-            raise self.FieldError("Cannot validate unresolved word {word}".format(word=repr_safe(self)))
+            raise self.FieldError("Cannot validate unresolved word {word}".format(
+                word=repr_safe(self)
+            ))
 
         self.validate_sbj()
         vrb = self.validated_vrb()
@@ -1477,9 +1481,9 @@ class FlikiWord(object):   # qiki.nit.Nit):   # pity, all that work in nit.py fo
                 ))
         elif field_ancestry.founder().idn == cls.idn_of.sequence:
             if isinstance(field_value, list):
-                '''Ok, a sequence field is a list.'''
+                '''Ok, a sequence field is like a list.'''
                 if all(isinstance(x, int) for x in field_value):
-                    '''Ok, a sequence of integers is all we expect and check for no.'''
+                    '''Ok, a sequence of integers is all we expect and check for.'''
                 else:
                     raise cls.FieldError(
                         "A {name} field should be a list of integers, not {value}".format(
@@ -1926,8 +1930,7 @@ then_url = SessionProperty('then_url')
 def user_loader(google_user_id_string):
     # EXAMPLE:  user_loader 103620384189003122864 (Bob Stein's google user id, apparently)
     #           hex 0x59e058e6a6308c8b0 (67 bits)
-    #           qiki 0q8A_059E058E6A6308C8B0 (9 qigits)
-    #           (Yeah well it better not be a security thing to air this number like a toynbee tile.)
+    #           (It better not be a security thing to air this number like a toynbee tile.)
     new_flask_user = GoogleWord.lex.word_from_index(google_user_id_string)
     # TODO:  Validate with google?  Did authomatic do that for us?
     return new_flask_user
@@ -1963,7 +1966,8 @@ def login():
         if hasattr(login_result, 'error') and login_result.error is not None:
             Auth.print("Login error:", repr_safe(login_result.error))
             # EXAMPLE:
-            #     Failed to obtain OAuth 2.0 access token from https://accounts.google.com/o/oauth2/token!
+            #     Failed to obtain OAuth 2.0 access token from
+            #     https://accounts.google.com/o/oauth2/token!
             #     HTTP status: 400, message: {
             #       "error" : "invalid_grant",
             #       "error_description" : "Invalid code."
@@ -1971,7 +1975,7 @@ def login():
             # e.g. after a partial login crashes, trying to resume with a URL such as:
             # http://.../meta/login?state=f45ad ... 4OKQ#
             # EXAMPLE:  Unable to retrieve stored state!
-            # EXAMPLE:  The returned state csrf cookie "c5...2b" doesn't match with the stored state!
+            # EXAMPLE:  The returned state csrf cookie "c5..." doesn't match with the stored state!
             #           Solved maybe by deleting cookies on session_cookie_domain
             #           and apparently the embedded domain too
             # INSTRUCTIONS:
@@ -2050,7 +2054,7 @@ def login():
                         #             },
                         #             'displayName': 'Bob Stein',
                         #             'image': {
-                        #                 'url': 'https://lh3.googleusercontent.com/a-/AAuE7mDmUoEqODezLnr1LEwU_DW-Rkyvu1-3fvrdA34Fog=s50'
+                        #                 'url': 'https://lh3.googleusercontent.com/a-/AAu...'
                         #             },
                         #             'emails': [
                         #                 {
@@ -2263,7 +2267,7 @@ def unslumping_home(home_page_title):
                 <link rel="mask-icon" href="{path}/safari-pinned-tab.svg" color="#5bbad5">
                 <meta name="msapplication-TileColor" content="#da532c">
                 <meta name="theme-color" content="#ffffff">
-            \n'''.format(path=static_url('image/favicon')))   # was path='/meta/static/image/favicon'
+            \n'''.format(path=static_url('image/favicon')))
         # THANKS:  real favicon generator, https://realfavicongenerator.net/
         # NOTE:  Hoping the "shortcut icon" will get browsers to stop hitting root /favicon.ico
         html.body("Loading . . .")

@@ -130,7 +130,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
 
     const LONG_PRESS_DEFAULT_MS = 1.000 * 1000;
 
-    const INITIAL_RESIZING_NUDGE_MS = 3.000 * 1000;   // Ask iFrameResizer to resize after some settling.
+    const INITIAL_RESIZING_NUDGE_MS = 3.000 * 1000;   // Extra resize after iFrameResizer settles.
 
     const FINITE_STATE_MACHINE_INTERVAL_MS = 1.000 * 1000;
 
@@ -318,7 +318,9 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
     const MAX_FONT_EXPANSION = 3.0;   // Popping up a quote, magnify font size up to this factor.
 
     const INITIAL_CAT_CONT = 40;   // How many contributions to show in a category initially
-    const INITIAL_CAT_CONT_QUERY = 'initial';   // query-string variable to override INITIAL_CAT_CONT
+    const INITIAL_CAT_CONT_QUERY = 'initial';
+    // NOTE:  INITIAL_CAT_CONT_QUERY is a query-string variable to override INITIAL_CAT_CONT
+    //        So to show at least 5 initial contributions:  https://unslumping.org/?initial=5
 
     const MORE_CAT_CONT = 20;   // Clicking "N MORE" renders this many contributions
                                 // It's also the granularity of the "N MORE" contributions --
@@ -375,13 +377,13 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
             $(  '#stop-button').on('click', function () { bot.stop(); });
             $(  '#skip-button').on('click', function () { bot.skip(); });
             // NOTE:  You might expect lex INTERACT words to all be generated near here, where most
-            //        user interaction originates.  But then how to record the controls inside a youtube
-            //        video?  Those actions can be detected by events in the youtube API, but those
-            //        events also trigger as a result of the click events here.
-            //        So most of those words are generated there, in response to youtube events.
-            //        But they're generated elsewhere (I forget) for other media interactions.
-            //        So the words are generated in diverse places with fiddly conditions.
-            //        This is a tiny part of that perennially difficult quest:
+            //        user interaction originates.  But then how to record when controls are
+            //        operated inside a youtube video?  Those actions can be detected by events in
+            //        the youtube API, but those events also trigger as a result of the click events
+            //        here.  So most of those words are generated there, in response to youtube
+            //        events.  But they're also generated elsewhere (I forget) for other media
+            //        interactions.  So the words are generated in diverse places with fiddly
+            //        conditions. This is a tiny skirmish in that perennially difficult war:
             //        machines understanding people.
 
             $('#play_bot_speech').on('change', play_bot_speech_change);
@@ -487,16 +489,18 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                 );
                 return do_hinder_page_unload ? "Discard?" : undefined;
             });
-            // NOTE:  This helps prevent a user from losing work by inadvertently closing the page
+            // NOTE:  If some work wasn't saved, pester the user, e.g. the canned message in Chrome:
+            //            "Reload site? Changes you made may not be saved.  Reload  Cancel"
+            //        This helps prevent a user from losing work by inadvertently closing the page
             //        while in the middle of an entry or edit.
             // TODO:  Radical idea:  save this in localStorage, and resurrect it later, instead?
             //        Downside is it thwarts attempt to "clear" the page by reloading it.
             //        Ugh might require "Resurrect abandoned work?" question on next load.  No!
             //        If we do this, maybe there should be a "clear" button next to "post it".
             //        In any case, the page should reload with red controls, scrolled into view.
-            //        Whew that's a lot of work.
-            //        As well as creepy resurrection of possibly ancient work on some far future load.
-            //        Possibly for a different user on the same computer, that could be bad bad bad.
+            //        Whew that's a lot of work.  As well as a creepy resurrection of possibly
+            //        ancient work on some far future load.  Possibly for a different user on the
+            //        same computer.  That could be bad.  The above hindering is best for now.
 
             entry_caption_same_width_as_textarea();
             post_it_button_appearance();
@@ -504,11 +508,10 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
             initial_thumb_size_adjustment();
             // TODO:  How does this work so early (we've just called build_body_dom()),
             //        when some contribution thumbnails have not been rendered yet,
-            //        by Contribution.rebuild_bars()?
-            //        Specifically, those handled by media_noembed.js.
-            //        Aren't twitter contributions greatly delayed in their renderings,
-            //        and therefore adjustments?
-            //        Maybe the size is just limited regardless of its contents, and that's kinda okay.
+            //        by Contribution.rebuild_bars()?  Specifically, those handled by
+            //        media_noembed.js.  Aren't twitter contributions greatly delayed in their
+            //        renderings, and therefore adjustments? Maybe the size is just limited
+            //        regardless of its contents, and that's kinda okay.
 
             settle_down();
 
@@ -818,9 +821,15 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
         that.cont = null;       // e.g. id_attribute '1821' a thumbnail
         that.pop_cont = null;   // e.g. id_attribute 'popup_1821' an almost full screen pop-up
         that.is_paused = false;
-        // that.cont_idn = null;
-        that.did_bot_transition = false;  // Did the bot initiate transition to the next contribution?
+
+        that.did_bot_transition = false;
+        // NOTE:  Was it the bot that initiated a transition to the next contribution?
     }
+
+    // NOTE:  There's static media and dynamic media.
+    //        dynamic - e.g. youtube videos that play, or a text quote that vocalizes.
+    //        static - e.g. a flickr or instagram (when it works) still image that's displayed
+    //                 for a fixed amount of time.
 
     Bot.prototype.State = Enumerate({
         MANUAL: "Normal, manual site operation",
@@ -831,7 +840,8 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
         MEDIA_READY: "The iframe is showing stuff",                           // dynamic or static
         MEDIA_STARTED: "The iframe dynamically doing stuff, we'll know when it ends",   // dynamic
         MEDIA_TIMING: "The iframe is static",                                           // static
-        MEDIA_PAUSE_IN_FORCE: "Both main and iframe agree we're paused",   // no more pause_media() - dynamic only
+        MEDIA_PAUSE_IN_FORCE: "Both main and iframe agree we're paused",
+        // NOTE:  Stop peppering the embed with pause_media() messages -- dynamic only
         MEDIA_ERROR_MESSAGE: "Displaying an error message",
         SPEECH_SHOULD_PLAY: "The text was told to speak",
         SPEECH_STARTED: "The speaking has started",
@@ -1061,7 +1071,6 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                 that.end_one_begin_another(SECONDS_BREATHER_AFTER_ZERO_TIME, true);
             } else {
                 if ( ! that.cont.is_dom_rendered()) {
-                    // throw Error("Not yet implemented - popping up an unrendered contribution such as " + String(that.cont.idn));
                     that.cont.cat.render_rando_cont(that.cont);
                     that.cont.cat.show_unrendered_count();
                     // CAUTION:  This will break:  lex.assert_consistent();
@@ -1234,7 +1243,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
             });
             break;
         case S.POP_DOWN_PATIENCE:
-            // Waiting for pop-down animation to complete, between Bot-automated contributions.
+            // NOTE:  Wait for pop-down animation to complete, between Bot-automated contributions.
             break;
         case S.BEGIN_ANOTHER:
             index_play_bot++;
@@ -1409,7 +1418,8 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
     Bot.prototype.pause_media = function Bot_pause_media() {
         if (is_popup()) {
             popped_cont.embed_message({ action: 'pause' });
-            // NOTE:  Indiscriminately send this to static media and error messages that don't need it.
+            // NOTE:  While paused, this message is repeatedly sent.  Static media and error
+            //        messages dont need it, but probably no harm done.
         }
     };
 
@@ -1477,13 +1487,25 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
     Bot.prototype.skip = function Bot_skip() {
         var that = this;
         if (that.is_manual()) {
-            console.warn("Mysteriously but harmlessly getting a skip when not animating or anything.");
+            console.warn(
+                "Mysteriously but harmlessly getting a skip when not animating or anything."
+            );
         } else {
             that._pause_ends("skip");
             if (index_play_bot < list_play_bot.length) {
-                console.log("Skipping idn", list_play_bot[index_play_bot], "at state", that.state.name);
+                console.log(
+                    "Skipping idn",
+                    list_play_bot[index_play_bot],
+                    "at state",
+                    that.state.name
+                );
             } else {
-                console.error("Skip shouldn't be possible", index_play_bot, list_play_bot, that.state.name);
+                console.error(
+                    "Skip shouldn't be possible",
+                    index_play_bot,
+                    list_play_bot,
+                    that.state.name
+                );
             }
             that.pop_end();
             that.end_one_begin_another(SECONDS_BREATHER_AT_SKIP, false);
@@ -1515,15 +1537,13 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
      *     The type of the sequence? But that's known at define time:
      *         For a definition, the subtypes are definition idns.
      *         For an interact.bot, the subtypes are contribution idns.
-     *         Same could be said about the sequence idn, the information is redundant and misplaced.
-     * TODO:  Why can't the bytes be always empty?
+     *         Same could be said about the sequence idn, the information is redundant and
+     *         misplaced.
+     * TODO:  Why can't the bytes just be always empty?
      * For now, the bot sequence always begins with the sequence idn.
-     * This might be the only case where a Bot method needs to know ContributionUnslumping
-     *     (the Lexi) exists and use its stuff, specifically the sequence idn.
+     * This might be the only case where a Bot method needs to know the lex global instance
+     *     of LeContribution, to get at the sequence idn.
      *     At least that breakage of encapsulation is encapsulated here.  FOR NOW.
-     *
-     * SEE:  IDN_SEQUENCE in fliki.py where the idn sequence is defined and used to artificially
-     *       prepend all interact.bot sequence fields.
      */
     function sequence_nit(list_of_contribution_idns) {
         var sequence_idn = lex.idn_of.sequence;
@@ -1720,18 +1740,22 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
             var old_cont = that.cont_from_idn(word.obj.contribute);
             if (old_cont === null) {
                 if (that.is_me(word.sbj)) {
-                    // NOTE:  Weird situation:  I did this edit, but for some reason the old contribution
-                    //        that this edit displaces was not in my view.  Oh well, treat the edit itself
-                    //        as a new contribution from me.  This is problematic of course if I was merely
-                    //        edited some contribution somewhere that was subsequently lost.  I don't
-                    //        necessarily want it elevated to my category.  But I guess it's better than
+                    // NOTE:  Weird situation:  I (the browsing user) did this edit, but for some
+                    //        reason the old
+                    //        contribution that this edit displaced was not in my view.  Oh well,
+                    //        treat the edit itself as a new contribution from me.  This is
+                    //        problematic of course, if I was merely editing some contribution
+                    //        somewhere.  I don't necessarily want it elevated to my category.  But
+                    //        because it was lost that's what now happens.  I guess it's better than
                     //        not seeing it at all.
                     word.cat = that.starting_cat(word);
                     word.cat.conts.add_leftmost(word);
-                    that.notify(f("{new_cont_idn}. Resurrecting my edit of ghostly #{old_cont_idn})", {
-                        new_cont_idn: word.idn,
-                        old_cont_idn: word.obj.contribute
-                    }));
+                    that.notify(f(
+                        "{new_cont_idn}. Resurrecting my edit of ghostly #{old_cont_idn})", {
+                            new_cont_idn: word.idn,
+                            old_cont_idn: word.obj.contribute
+                        }
+                    ));
                 } else {
                     that.notify(f("{new_cont_idn}. (Can't edit {old_cont_idn})", {
                         new_cont_idn: word.idn,
@@ -1758,8 +1782,16 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                         //        collection actually happens, then the memory used by the old
                         //        word could be recovered.
                     }
-                    console.assert( ! word.cat.conts.has(old_cont.idn), "WTF it should be gone from cat", word.cat.obj.name, old_cont);
-                    console.assert(that.cont_from_idn(old_cont.idn) === null, "WTF it should be gone from all cats", old_cont);
+                    console.assert(
+                        ! word.cat.conts.has(old_cont.idn),
+                        "WTF, this contribution should be gone from cat", word.cat.obj.name,
+                        old_cont
+                    );
+                    console.assert(
+                        that.cont_from_idn(old_cont.idn) === null,
+                        "WTF, this contribution should be gone from all cats",
+                        old_cont
+                    );
                     // TODO:  Maybe superseded contributions can be destroyed:
                     //        old_cont.destroy()
                 }
@@ -1775,10 +1807,12 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
             }
             var cont = that.cont_from_idn(word.obj.contribute);
             if (cont === null) {
-                that.notify(f("{reordering_idn}. (Can't find contribution {cont_idn} to rearrange)", {
-                    reordering_idn: word.idn,
-                    cont_idn: word.obj.contribute
-                }));
+                that.notify(f(
+                    "{reordering_idn}. (Can't find contribution {cont_idn} to rearrange)", {
+                        reordering_idn: word.idn,
+                        cont_idn: word.obj.contribute
+                    }
+                ));
             } else {
                 var new_cat = that.cats.get(word.obj.category);
                 var is_far_right = qiki.Lex.is_equal_idn(word.obj.locus, that.idn_of.rightmost);
@@ -1834,13 +1868,13 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
          *               word.sbj is the idn qstring of the user who initiated this change.
          *               word.vrb is the idn number of the verb
          *               word.obj is the idn number of the object
-         * @param old_owner - tricky - id of the last person we authorized to change this contribution.
-         *                It starts off as the original contributor.
-         *                But then if I (the browsing user) moved it or edited it, then I'm the owner.
-         *                But before that if the system admin moved or edited it,
-         *                then they became the owner.
-         *                This field comes from the data-owner attribute.  BUT if we return true,
-         *                then we expect data-owner to be overridden by whoever initiated THIS change!
+         * @param old_owner - tricky - id of the last person we authorized to change this
+         *                    contribution.  It starts off as the original contributor.
+         *                    But then if I (the browsing user) moved it or edited it, then I'm the
+         *                    owner.  But before that if the system admin moved or edited it,
+         *                    then they became the owner.  This field was stored in the word.sbj.
+         *                    BUT if we return true, then we expect the .sbj to be
+         *                    overridden by whoever initiated THIS change!
          * @param action - text describing the change.
          *                 (This may be briefly word.vrb.txt, as if that were accessible in JS,
          *                 or it may be longer, e.g. "drop on right end of my")
@@ -1853,8 +1887,9 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
         ) {
             var that = this;
 
-            // DONE:  Don't let owner or admin "drag to my.*"  (not even before I do)
-            //            Shame that removes the Seuss quote, and the top will be empty for new users.
+            // DONE:  Don't let owner or admin "drag to my.*"  (not even for virgin users)
+            //            Shame that removes the Seuss quote, and the top will be empty for new
+            //            users.
             //        Nor other.* nor anon.*
             //            (It's weird that we allow recategorizations to there at all,
             //            less weird that we allow rearrangements within those categories,
@@ -1862,14 +1897,14 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
             //            But this eliminates admin rearranging the "other" category.
             //            Which would be problematic anyway, as different users already have
             //            different stuff there.  So admin placing X to the left of Y would
-            //            already be unusable to the user who created Y (or moved it to category 'my')
-            //            because it wouldn't then be in category 'other'.
+            //            already be unusable to the user who created Y (or moved it to category
+            //            'my') because it wouldn't then be in category 'other'.
             //        But do allow owner or admin to "drag to trash.*"
-            //            And that affects everyone else, unless of course I drag it elsewhere later.
-            //            A little weird that owner or admin rearrangements WITHIN trash affect
-            //            everyone.
-            //        Do allow admin to "drag to about.*" (Only admin can create those words anyway.)
-            //            And those actions rightly affect everyone.
+            //            And that affects everyone else, unless of course I drag it elsewhere
+            //            later.  A little weird that owner or admin rearrangements WITHIN trash
+            //            affect everyone.
+            //        Do allow admin to "drag to about.*" (Only admin can create those words
+            //            anyway.)  And those actions rightly affect everyone.
             // TODO:  The confusion above is a symptom of the deeper confusion:
             //            Are categories user-interest partitions, or user-origin partitions?
             //            IOW are we separating things by where they came from?
@@ -1886,10 +1921,11 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
             var did_admin_change_last = that.is_user_admin(old_owner);
             var is_same_owner = qiki.Lex.is_equal_idn(new_owner, old_owner);
             var is_guarded = that.is_word_guarded(word);
+            var welcome_oppression = ! is_guarded && ! did_i_change_last;
 
-            // Second stage of decision making:
-            var let_admin_change = ! is_guarded && ! did_i_change_last                            && is_change_admin;
-            var let_owner_change = ! is_guarded && ! did_i_change_last && ! did_admin_change_last && is_same_owner;
+            // Second stage of decision making, do we let the owner or admin change things:
+            var let_admin_change = welcome_oppression                            && is_change_admin;
+            var let_owner_change = welcome_oppression && ! did_admin_change_last && is_same_owner;
 
             // Third stage:
             var ok = is_change_mine || let_admin_change || let_owner_change;
@@ -2039,7 +2075,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                  * Handle a valid response from the create-word ajax.
                  *
                  * @param response_object
-                 * @param response_object.jsonl - JSON of array of the created word's bytes and nits.
+                 * @param response_object.jsonl - JSON of array of the created word's bytes & nits.
                  */
                 function done_creating_a_word(response_object) {
                     var word_json = response_object.jsonl;
@@ -2082,7 +2118,10 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                             var delta, whn;
                             var is_first_line_and_latest_version = later_cont === null;
                             if (is_first_line_and_latest_version) {
-                                delta = delta_format(seconds_since_1970() - this_cont.whn_seconds());
+                                delta = delta_format(
+                                    seconds_since_1970() -
+                                    this_cont.whn_seconds()
+                                );
                                 whn = delta.amount_long + delta.units_short;
                             } else {
                                 delta = delta_format(
@@ -2130,11 +2169,14 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
         }
         refresh_how_many() {
             var that = this;
-            that.cats.loop(/** @param {CategoryWord} cat */ function recompute_category_anti_valves(cat) {
-                var num_cont = cat.conts.num_words();
-                var num_cont_string = num_cont === 0 ? "" : f(" ({n})", {n:num_cont});
-                cat.$sup.find('.how-many').text(num_cont_string);
-            });
+            that.cats.loop(
+                /** @param {CategoryWord} cat */
+                function recompute_category_anti_valves(cat) {
+                    var num_cont = cat.conts.num_words();
+                    var num_cont_string = num_cont === 0 ? "" : f(" ({n})", {n:num_cont});
+                    cat.$sup.find('.how-many').text(num_cont_string);
+                }
+            );
         }
         cont_loop(callback) {
             var that = this;
@@ -4348,7 +4390,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
     function could_be_url(text) {
         // FALSE WARNING:  HTTP links are not secure
         // noinspection HttpUrlsUsage
-        return starts_with(text, 'http://') || starts_with(text, 'https://');
+        return text.startsWith('http://') || text.startsWith('https://');
     }
 
     /**
@@ -4364,14 +4406,15 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
      * Replace each line's leading spaces with non-breaking en-spaces.
      */
     function leading_spaces_indent(text) {
-        if ( ! is_laden(text)) {
+        if (is_laden(text)) {
+            return text.replace(/^[ \t]+/gm, function each_indentation(spaces) {
+                return new Array(spaces.length + 1).join(UNICODE.EN_SPACE);
+                // NOTE:  UNICODE.NBSP is too narrow and UNICODE.EM_SPACE is too wide.
+                // THANKS:  leading spaces to nbsp, https://stackoverflow.com/a/4522228/673991
+            });
+        } else {
             return "";
         }
-        return text.replace(/^[ \t]+/gm, function each_indentation(spaces) {
-            return new Array(spaces.length + 1).join(UNICODE.EN_SPACE);
-            // NOTE:  UNICODE.NBSP is too narrow and UNICODE.EM_SPACE is too wide.
-        });
-        // THANKS:  leading spaces to nbsp, https://stackoverflow.com/a/4522228/673991
     }
 
 
@@ -4962,7 +5005,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
             // NOTE:  Don't use mf-ing jQuery .finish(), callbacks are NOT "immediately called".
             $element.stop(true, true);
             var deanimating_cont = ContributionWord.from_element($element);
-            if (is_specified(deanimating_cont)/* && deanimating_cont.is_dom_rendered()*/) {
+            if (is_specified(deanimating_cont)) {
                 console.warn(
                     "Deanimating",
                     context,
@@ -5006,8 +5049,8 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
      *
      * Aux output is $div.attr('id'), the idn of the new word.
      */
-    function edit_submit($div, what, /*vrb,*/ vrb_name, obj, then, fail) {
-        var new_text = text_from_$($div);   // was $div.text();
+    function edit_submit($div, what, vrb_name, obj, then, fail) {
+        var new_text = text_from_$($div);
         // TODO:  Why doesn't this remove leading or trailing newlines from an edited caption?
         if ($div.data('unedited_text') === new_text) {
             console.log("(skipping", what, "save,", new_text.length, "characters unchanged)");
@@ -5194,7 +5237,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                     var $enter_some_text = $('#enter_some_text');
                     var $enter_a_caption = $('#enter_a_caption');
                     var is_new_text = (
-                        $enter_some_text.val().length === 0 ||    // was blank (is blank?? remove this?)
+                        $enter_some_text.val().length === 0 ||
                         $enter_some_text.val() === pasted_text    // must have pasted over all
                     );
                     var is_blank_caption = $enter_a_caption.val().length === 0;
@@ -5954,7 +5997,8 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
             handler.$script.one('load.script2', function () {
                 handler.$script.off('.script2');
                 handler.did_load = true;
-                // EXAMPLE:  Media handler loaded: http://localhost:5000/meta/static/code/media_youtube.js
+                // EXAMPLE:  (but please don't hot-link it)
+                //     handler.url === 'http://unslumping.org/meta/static/code/media_youtube.js'
                 if ( ! handler.did_register) {
                     console.error(
                         "HANDLER", handler_index,
@@ -6112,7 +6156,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
         } else {
             console.log(f("Not rendering {cont_idn} - query-string has cont={conts_limited_to}", {
                 cont_idn: cont_idn,
-                conts_limited_to: query_get('cont')
+                conts_limited_to: query_get('cont', "")
             }));
             return false;
         }
@@ -6381,12 +6425,16 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                     handler.call(element, evt);
                 }, enough_milliseconds);
             })
-            .on('mouseup mouseout mouseleave touchend touchleave touchcancel', selector, function () {
-                if (long_press_timer !== null) {
-                    clearTimeout(long_press_timer);
-                    long_press_timer = null;
+            .on(
+                'mouseup mouseout mouseleave touchend touchleave touchcancel',
+                selector,
+                function () {
+                    if (long_press_timer !== null) {
+                        clearTimeout(long_press_timer);
+                        long_press_timer = null;
+                    }
                 }
-            })
+            )
             // TODO:  setInterval check?   https://stackoverflow.com/questions/7448468/
             //        why-cant-i-reliably-capture-a-mouseout-event
         ;

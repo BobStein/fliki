@@ -4,12 +4,14 @@
 /**
  * util.js
  *
- * Requires jQuery as $.
+ * Requires jQuery as the global $.
  */
 
 /**
  * Assert that two things are identical.  Show both values in the log if not.
  *
+ * Unlike a conventional assert or an uncaught exception, this does not halt execution.
+ * It only shows up in the JavaScript console, e.g. F12 or Cmd+Alt+I or Ctrl-Shift-I.
  * SEE:  expected, actual parameter order (my answer), https://stackoverflow.com/a/53603565/673991
  *
  * @param expected - often a literal
@@ -22,7 +24,7 @@ function assert_equal(expected, actual, context) {
     console.assert(expected === actual, "Expected:", expected, "but got:", actual, context);
     return expected === actual;
 }
-assert_equal(true, assert_equal(4, 2+2));
+assert_equal(true, assert_equal(4, 2 + 2));
 
 /**
  * Type declaration.  Subtypes okay.  Null or undefined are not ok.
@@ -36,8 +38,8 @@ assert_equal(true, assert_equal(4, 2+2));
  *                            type_should_be(42, Number);
  *                            type_should_be(Number(42), Number);
  *                        Also supports an array of such types, any of which valid.
- *                        TODO:  Allow null to be among the "types" meaning the variable
- *                               should/could be identical to null.
+ *                        TODO:  Allow null or undefined to be among the "types" meaning the
+ *                               variable should/could be identical to null or undefined.
  * @return {boolean} - to support chaining:  type_should_be(a, X) && type_should_be(a.b, Y)
  */
 function type_should_be(thing, expected_type) {
@@ -87,36 +89,49 @@ assert_equal(true, type_should_be([], Array));
 assert_equal(true, type_should_be(function () {}, Function));
 assert_equal(true, type_should_be(new Date(), Date));
 assert_equal(true, type_should_be($('<div>'), $));
+assert_equal(true, type_should_be(42, [Number, String]));
+assert_equal(true, type_should_be('42', [Number, String]));
 error_expected(function () {
     assert_equal(false, type_should_be(42, String));
 });
-
-assert_equal(true, type_should_be(42, [Number, String]));
-assert_equal(true, type_should_be('42', [Number, String]));
 error_expected(function () {
     assert_equal(false, type_should_be(null, [Number, String]));
 });
 
 /**
- * Slightly more versatile alternative to instanceof or typeof operators.
+ * For checking or enforcing type.  Slightly more versatile than instanceof or typeof.
  *
  * Better than instanceof for fundamental types,
- *     because 42 is not an instanceof Number,
- *     but is_a(42, Number) and is_a(Number(42), Number).
+ *     because
+ *         false === 42 instanceof Number
+ *     but
+ *         true === is_a(42, Number)
+ *         true === is_a(Number(42), Number)
  * Better than typeof for complex types,
- *     because typeof (new Date()) === 'object'
- *     but is_a(new Date(), Date)
+ *     because
+ *         typeof (new Date()) === 'object'
+ *     but
+ *         true === is_a(new Date(), Date)
  * Better than typeof for fundamental types too,
- *     because the typo typeof x === 'spring' is not caught by an IDE
- *     but the typo is_a(x, Spring) could be.
+ *     because the typo
+ *         typeof x === 'spring'
+ *     is not caught by an IDE, but the typo
+ *         is_a(x, Spring)
+ *     could be.
  * About the same as instanceof for complex types,
- *     x instanceof T is less obscure,
- *     is_a(x, T) is slightly briefer.
+ *     on the one hand, x instanceof T is less obscure,
+ *     on the other hand, is_a(x, T) is slightly briefer.
  *
  * SEE:  typeof vs instanceof, https://stackoverflow.com/a/6625960/673991
  *
+ * CAUTION:  Don't use `Object` for the second parameter.
+ *     true === is_a(function () {}, Object)   // use is_associative_array()
+ *     true === is_a(undefined, Object)        // use is_define()
+ *     true === is_a(null, Object)             // use is_specified()
+ *     true === is_a([], Object)               // use is_array_like() or is_array()
+ *
  * @param thing
- * @param expected_type
+ * @param expected_type - String, Number
  * @return {boolean}
  */
 // TODO:  Figure out if is_a() is some kind of obscure security risk with the way it casts a
@@ -141,6 +156,7 @@ assert_equal(true, is_a(function () {}, Function));
 assert_equal(true, is_a(function () {}, Object));
 assert_equal(true, is_a(undefined, Object));
 assert_equal(true, is_a(null, Object));
+assert_equal(true, is_a([], Object));
 
 function should_be_array_like(putative_array) {
     if (is_array_like(putative_array)) {
@@ -158,55 +174,6 @@ error_expected(function () {
 });
 
 /**
- * Does this behave like an array?
- *
- * Includes strings.
- * Includes jQuery collection.
- * Includes an object with a length and first and last elements.
- * Does not include an allocated but uninitialized array.
- *
- * @param putative_array
- * @return {boolean}
- */
-function is_array_like(putative_array) {
-    if (putative_array.hasOwnProperty('length')) {
-        if (is_a(putative_array.length, Number)) {
-            var n = putative_array.length;
-            if (n <= 0) {
-                return true;
-            } else {
-                if (putative_array.hasOwnProperty(0) && putative_array.hasOwnProperty(n-1)) {
-                    return true;
-                }
-            }
-        }
-    }
-    return false;
-}
-assert_equal(true, is_array_like(['alpha', 'bravo']));
-assert_equal(true, is_array_like({length:2, 0:'alpha', 1:'bravo'}));
-assert_equal(true, is_array_like($('<input> <br>')));   // 3 elements
-assert_equal(true, is_array_like('yes strings are array-like'));
-
-assert_equal(false, is_array_like(42));
-assert_equal(false, is_array_like({length:99, 0:'alpha', 1:'bravo'}));
-// NOTE:  Would be array-like, except it's missing a [98] element.
-
-(function () {
-    assert_equal(false, is_array_like(new Array(3)));
-    // noinspection JSLastCommaInArrayLiteral,JSConsecutiveCommasInArrayLiteral
-    assert_equal(false, is_array_like([, , , ]));
-    // noinspection JSPrimitiveTypeWrapperUsage
-    assert_equal(true, is_array_like(new Array()));
-    assert_equal(true, is_array_like([]));
-    assert_equal(true, is_array_like([undefined, undefined, undefined]));
-    // NOTE:  An Array with empty slots fails is_array_like() because it has no first and last
-    //        elements.  But an empty array squeaks by.
-    //        An array with undefined stored in its slots also passes.
-    // SEE:  Why [] is better than new Array(), https://stackoverflow.com/a/8206581/673991
-})();
-
-/**
  * The callback is expected to generate a console.error() -- but run to completely anyway.
  *
  * This does NOT detect an exception, and would not give an error if one were thrown.
@@ -217,7 +184,7 @@ assert_equal(false, is_array_like({length:99, 0:'alpha', 1:'bravo'}));
  *
  * @param callback
  */
-// TODO:  Optional regular expression to match expected error message.
+// TODO:  Optional regular expression to match the contents of the expected error message.
 function error_expected(callback) {
     var number_of_error_calls = 0;
 
@@ -324,6 +291,14 @@ function selector_from_class(class_) {
     return '.' + $.escapeSelector(class_);
 }
 
+/**
+ * Get the value of a query-string parameter in the URL that loaded the page (not the .js)
+ *
+ * EXAMPLE:  If the page were https://example.com/foo.html?bar=baz, then 'baz' === query_get('bar')
+ * @param name
+ * @param default_value - value in case it was missing from the query string
+ * @returns {string|*}
+ */
 function query_get(name, default_value) {
     default_value = is_defined(default_value) ? default_value : null;
     // CAUTION:  Bad idea:  default_value = default_value || null
@@ -440,10 +415,13 @@ assert_equal('inflammable', strip_prefix('inflammable', 'un'));
  *
  * Example:
  *     var t = Timing();
+ *
  *     step_one();
  *     t.moment("one");
+ *
  *     step_two();
  *     t.moment("two");
+ *
  *     console.log(t.report());   // "1.701: one 1.650, two 0.051"
  *
  * @return {Timing}
@@ -510,7 +488,9 @@ Timing.prototype.moment = function Timing_moment(what) {
 /**
  * Are there any single newlines in this string?  They indicate "poetry" formatting.
  *
- * Double newlines don't count.  They're paragraph boundaries.
+ * Poetry formatting means there are hard-returns in the text, meant to end lines at
+ * specific places and prevent reflow to the margins.
+ * Double newlines don't count.  Those are paragraph boundaries.
  * CRs dont count.  Some browsers may use them.
  * Final line terminators don't count.  Might have seen Chrome append LF for no reason.
  *
@@ -518,15 +498,15 @@ Timing.prototype.moment = function Timing_moment(what) {
  *          Using String.replace() to loop through each bundle of line terminators.
  *
  * SEE:  String.replace() callback,
- *       https://developer.mozilla.org/Web/JavaScript/Reference/Global_Objects/String/replace#Specifying_a_function_as_a_parameter
+ *       https://developer.mozilla.org/docs/Web/JavaScript/Reference/Global_Objects/String/replace#specifying_a_function_as_a_parameter
  */
 function any_lone_newlines(string) {
-    var LF_OR_CRLF_BUNDLES = /(\r?\n)+/g;
+    const LF_OR_CRLF_BUNCHES = /(\r?\n)+/g;
     var return_value = false;
-    var string_trimmed = string.trim();
-    string_trimmed.replace(LF_OR_CRLF_BUNDLES, function (terminator) {
+    var string_trimmed = string.trim();   // Ignore starting or ending LFs.
+    string_trimmed.replace(LF_OR_CRLF_BUNCHES, function (terminator) {
          var newlines_only = terminator.replace(/\r/g, '');
-         if (newlines_only.length === 1) {
+         if (newlines_only.length === 1) {   // 2 = paragraph, 1 = lone LF, 0 = impossible
              return_value = true;
          }
     });
@@ -541,33 +521,30 @@ assert_equal(false, any_lone_newlines("abc" + "\r\n" + "\r\n" + "\r\n" + "def"))
 assert_equal( true, any_lone_newlines("abc\n\ndef\n\nghi\njkl"));
 
 /**
- * Does a long string start with a short string?  Case sensitive.
+ * Is a container nonempty?  For string, array, or associative array.  Null or undefined is empty.
  *
- * @param string {string}
- * @param str {string}
- * @return {boolean}
- */
-function starts_with(string, str) {
-    return string.substr(0, str.length) === str;
-}
-assert_equal( true, starts_with("string", "str"));
-assert_equal(false, starts_with("string", "ing"));
-
-/**
- * Is an expected string nonempty?  That is, not undefined, not null, and not the empty string.
+ * Not for use on numbers or intrinsic types (Date, Number).
+ * Better than treating as boolean, e.g. if (thing), !!thing, Boolean(thing),
+ * because in JavaScript (unlike Python), [] and {} are truthy.  By the way "" is falsy.
  *
  * THANKS:  Nonnegative synonym for nonempty, https://english.stackexchange.com/a/102788/18673
+ *          For those do not think double-negatives are unconfusing.
  *
- * @param txt - usually a string, when null or undefined means the same as empty.
+ * @param thing - expected string or array or associative array (aka object),
+ *                when null or undefined means the same as empty.
  * @return {boolean}
  */
-function is_laden(txt) {
-    return is_specified(txt) && txt.toString() !== "";
+function is_laden(thing) {
+    return ! $.isEmptyObject(thing);
 }
+assert_equal(false, is_laden(undefined));
 assert_equal(false, is_laden(null));
-assert_equal(false, is_laden(""));
+assert_equal(false, is_laden(""));   // string
 assert_equal( true, is_laden(" "));
-assert_equal( true, is_laden(0));
+assert_equal(false, is_laden([]));   // array
+assert_equal( true, is_laden([null]));
+assert_equal(false, is_laden({}));   // associative array
+assert_equal( true, is_laden({'': ''}));
 
 /**
  * Not undefined, and not null.
@@ -637,10 +614,11 @@ assert_equal(false, window.hasOwnProperty('hasOwnProperty'));
 /**
  * Is this an honest to Oprah array?
  *
- * Includes an allocated but uninitialized array.
- * Does not include a string.
- * Does not include a jQuery container.
- * Does not include an object with a length and numeric properties.
+ * Different from is_array_like():
+ *     is_array()          includes an allocated but uninitialized array.
+ *     is_array() DOES NOT include a string.
+ *     is_array() DOES NOT include a jQuery container.
+ *     is_array() DOES NOT include an object with a length and numeric properties.
  *
  * @param z
  * @return {boolean}
@@ -668,6 +646,56 @@ assert_equal(false, is_array($('<input> <br>')));
 assert_equal(false, is_array({length:2, 0:'x', 1:'y'}));
 
 /**
+ * Does this behave like an array?
+ *
+ * Differences from is_array():
+ *     is_array_like()          includes strings.
+ *     is_array_like()          includes jQuery collection.
+ *     is_array_like()          includes an object with a length and first and last elements.
+ *     is_array_like() DOES NOT include an allocated but uninitialized array.
+ *
+ * @param putative_array
+ * @return {boolean}
+ */
+function is_array_like(putative_array) {
+    if (putative_array.hasOwnProperty('length')) {
+        if (is_a(putative_array.length, Number)) {
+            var n = putative_array.length;
+            if (n <= 0) {
+                return true;
+            } else {
+                if (putative_array.hasOwnProperty(0) && putative_array.hasOwnProperty(n-1)) {
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
+}
+assert_equal(true, is_array_like(['alpha', 'bravo']));
+assert_equal(true, is_array_like({length:2, 0:'alpha', 1:'bravo'}));
+assert_equal(true, is_array_like($('<input> <br>')));   // 3 elements
+assert_equal(true, is_array_like('yes strings are array-like'));
+
+assert_equal(false, is_array_like(42));
+assert_equal(false, is_array_like({length:99, 0:'alpha', 1:'bravo'}));
+// NOTE:  Would be array-like, except it's missing a [98] element.
+
+(function () {
+    assert_equal(false, is_array_like(new Array(3)));
+    // noinspection JSLastCommaInArrayLiteral,JSConsecutiveCommasInArrayLiteral
+    assert_equal(false, is_array_like([, , , ]));
+    // noinspection JSPrimitiveTypeWrapperUsage
+    assert_equal(true, is_array_like(new Array()));
+    assert_equal(true, is_array_like([]));
+    assert_equal(true, is_array_like([undefined, undefined, undefined]));
+    // NOTE:  An Array with empty slots fails is_array_like() because it has no first and last
+    //        elements.  But an empty array squeaks by.
+    //        An array with undefined stored in its slots also passes.
+    // SEE:  Why [] is better than new Array(), https://stackoverflow.com/a/8206581/673991
+})();
+
+/**
  * Is this a plain object with properties?
  *
  * Includes an object literal.
@@ -692,8 +720,7 @@ function is_associative_array(z) {
 }
 assert_equal( true, is_associative_array({a:1, b:2}));
 assert_equal( true, is_associative_array(new function Legacy_Class() {}));
-// assert_equal( true, is_associative_array(new class ES2015_Class{}));
-
+assert_equal( true, is_associative_array(new class ES2015_Class{}));
 assert_equal(false, is_associative_array(window));
 assert_equal(false, is_associative_array(new Date()));
 assert_equal(false, is_associative_array([]));
@@ -737,7 +764,7 @@ assert_equal('Object',    official_type_name({a:1, b:2}));
 assert_equal('Date',      official_type_name(new Date()));
 assert_equal('String',    official_type_name(Date()));
 assert_equal('Object',    official_type_name(new function Legacy_Class() {}));
-// assert_equal('Object',   official_type_name(new class ES2015_Class{}));
+assert_equal('Object',    official_type_name(new class ES2015_Class{}));
 
 /**
  * Get a more human-readable type name, especially for JavaScript Legacy class instances.
@@ -769,7 +796,7 @@ function type_name(z) {
 }
 assert_equal('Object',       type_name({a:1, b:2}));
 assert_equal('Legacy_Class', type_name(new function Legacy_Class() {}));
-// assert_equal('ES2015_Class', type_name(new class ES2015_Class{}));
+assert_equal('ES2015_Class', type_name(new class ES2015_Class{}));
 
 function default_to(parameter, default_value) {
     if (is_defined(parameter)) {
@@ -812,6 +839,7 @@ function iterate(opt) {
     if (typeof opt.n_chunk !== 'number' || opt.n_chunk < 1) {
         opt.n_chunk = 1;
     }
+
     var i_step = 0;
     var is_done = false;
     var interval = null;
@@ -832,6 +860,7 @@ function iterate(opt) {
             }
         }
     }
+
     if (opt.do_early) {
         chunk();
     }
@@ -861,7 +890,6 @@ function iterate(opt) {
  * @return {object} setInterval object, caller could pass to clearInterval() to abort.
  */
 function array_async(array, process, delay_ms, n_chunk, then) {
-    // type_should_be(array, Array) && type_should_be(array.length, Number);
     should_be_array_like(array);
     if (typeof n_chunk !== 'number' || n_chunk < 1) {
         n_chunk = 1;
@@ -1040,10 +1068,10 @@ function animate_surely(element, properties, options) {
 /**
  * Convert jQuery object to DOM object.  Selector works too:  dom_from_$('.css-class')
  *
- * SEE:  What could possibly justify all this verbose verbosity here?  `[0]` would totally work.
+ * SEE:  What could possibly justify all this wordy verbosity here?  `[0]` would totally work.
  *       (my answer) https://stackoverflow.com/a/62595720/673991
  *
- * NOTE:  constraining the parameter type to {jQuery} generates noisome warnings in caller code,
+ * NOTE:  The JSDoc tag `@param {jQuery} $jquery_object` makes noisome warnings in caller code,
  *        e.g. Argument type {get: function(): any} is not assignable to parameter type jQuery
  *
  * @param $jquery_object - or a selector string, e.g. '#id'
@@ -1063,6 +1091,8 @@ function dom_from_$($jquery_object) {
 /**
  * Convert an array of things to an array of strings.
  *
+ * TODO:  max_length, if too long, show e.g. ... (100 more)
+ *
  * @param {Array} things
  * @return {Array.<string>}
  */
@@ -1079,21 +1109,6 @@ function first_word(string) {
 }
 assert_equal("foo", first_word(" foo bar "));
 assert_equal("",    first_word(""));
-
-/**
- * Constrain a floating point resolution so it only requires one qigit (qiki base-256 digit)
- * below the decimal point.  (Yes it should be called the radix point, but hey. English.)
- *
- * This lets imprecise numbers take up fewer bytes.
- *
- * @param {number} n
- * @return {number}
- */
-function one_qigit(n) {
-    return Math.round(n * 256.0) / 256.0;
-}
-assert_equal(0.1015625, one_qigit(0.1));
-assert_equal(26 / 256, one_qigit(0.1));
 
 /**
  * Get the last element of an array.
@@ -1143,7 +1158,8 @@ function extract_file_name(path_or_url) {
 console.assert("foo.txt" === extract_file_name('https://example.com/dir/foo.txt?q=p#anchor'));
 console.assert("foo.txt" === extract_file_name('C:\\program\\barrel\\foo.txt'));
 
-(function (window) {
+
+(function (window) {   // Encapsulation of delta_format() and internals.
 
     var MILLISECOND = 0.001;
     var SECOND = 1;
@@ -1153,7 +1169,7 @@ console.assert("foo.txt" === extract_file_name('C:\\program\\barrel\\foo.txt'));
     var MONTH = 30*DAY;
     var YEAR = 365*DAY;
 
-    // The following are thresholds.
+    // The following are thresholds.  They are the upper bounds of an (open, closed] interval.
     //    at and below which, we display this ---vvvv    vvvv--- above which, we display this
     var EXACTLY_ZERO    = 0.0000000000000;    //    z -> 0ms ___ <-- at exactly zero, display z
     var UP_TO_MILLI     = 95*MILLISECOND;     // 95ms -> .01s _ `--- between these -- 1ms to 95ms
@@ -1172,9 +1188,7 @@ console.assert("foo.txt" === extract_file_name('C:\\program\\barrel\\foo.txt'));
     // SEE:  const unavailable in IE10, etc., https://stackoverflow.com/a/130399/673991
 
     /**
-     * Format a period of time in multiple human-readable formats.
-     *
-     *
+     * Format a period of time (in seconds) in multiple human-readable formats.
      *
      * EXAMPLE:  delta_format(1) == {
      *     "num": 1,
@@ -1197,12 +1211,13 @@ console.assert("foo.txt" === extract_file_name('C:\\program\\barrel\\foo.txt'));
      *
      * @param sec - number of seconds
      * @return {{}}
-     *     amount_short        0-2 characters
+     *     num                number of seconds, same as the input
+     *     amount_short        0-2 characters (if less than 100 years)
      *     amount_long         0-4 characters
-     *     units_short           1 character
+     *     units_short           1 character - CAUTION:  m for minutes, M for months
      *     units_long         1-12 characters
-     *     description_short   2-3 characters - e.g. "z", "99Y"
-     *     description_long   1-15 characters
+     *     description_short   2-3 characters - e.g. "z", "99Y" (4 characters if 100-999 years)
+     *     description_long   1-15 characters - e.g. "zero", "99.2 years"
      */
     // TODO:  Candidate short descriptions for 0-1 second:
     //          0.05 - 0.94    ...  ".1s" - ".9s"
@@ -1330,4 +1345,3 @@ function find_duplicates(array) {
     return array.filter((element, index) => array.indexOf(element) !== index);
 }
 assert_equal("2,3,3", find_duplicates([1, 2,2, 3,3,3]).join(","))
-
