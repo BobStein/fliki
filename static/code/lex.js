@@ -3,6 +3,7 @@
 // Parse a .lex.jsonl file into words.  Derive classes from Lex and Word to process the words.
 // Requires jQuery
 
+window.qiki = window.qiki || {};
 (function (qiki, $) {
 
     /**
@@ -22,7 +23,12 @@
         constructor() {
             var that = this;
             that.word_class = qiki.Word;
+            // NOTE:  Derived class may override word_class either here for all words or in an
+            //        overridden .word_factory() to make the word class depend on word contents.
         }
+        /**
+         * Instantiate a word in this lex.  Expect word_class to be Word or a derived class.
+         */
         word_factory(...args) {
             return new this.word_class(this, ...args);
         }
@@ -49,6 +55,16 @@
             // TODO:  Less alarming name collision between Lex.is_a() and window.is_a().
             return false;
         }
+
+        /**
+         * For Lex constructor to:  that.idn_of.some_expected_name = qiki.Lex.IDN_UNDEFINED
+         *
+         * Then later test:  if (qiki.Lex.is_idn_defined(that.idn_of.some_expected_name))
+         *
+         * TODO:  Eventually the app should create these definitions if they don't exist, not
+         *        just test for them.  So that a virgin lex will be populated with app-specific
+         *        definitions.  By the way, we need to auto-magically create a virgin lex too.
+         */
         static IDN_UNDEFINED = ['IDN_UNDEFINED'];
         static is_idn_defined(idn) {
             return is_defined(idn) && idn !==   qiki.Lex.IDN_UNDEFINED;
@@ -56,6 +72,23 @@
     }
     console.assert(true === qiki.Lex.is_equal_idn([11,"22"], [11,"22"]));
 
+    /**
+     * A Bunch is an ordered container of words.
+     *
+     * Words will be identified by idn.  Use bunch.get(idn) to retrieve.
+     * Words may be identified by name.  Use bunch.by_name.name to retrieve.
+     *                                   Only for each word where word.obj.name is a unique string.
+     *
+     * Dumb stuff calls the .notify callback function.  By default it's a console.warn().
+     * This can be changed after instantiation, e.g.:
+     *     bunch.notify = function () {} to ignore.
+     *     bunch.notify = console.error.bind(console) to elevate the message.
+     * Dumb stuff includes:
+     *     delete(idn_nonexistent)
+     *     add_left_of(w, nonexistent_idn)
+     *     replace(nonexistent_idn, new_word)
+     * Each case returns false, and explains in notify callback.
+     */
     qiki.Bunch = class Bunch {
         constructor() {
             var that = this;
@@ -119,7 +152,7 @@
             return word_and_index;
         }
         first() {
-            return this._words[0];
+            return this._words[0];   // Return `undefined` if the bunch contains no words.
         }
         get(idn) {
             return this._get_word_and_index(idn)[0];
@@ -187,11 +220,6 @@
                 that.line_number = 0;
                 that.num_lines = null;
                 looper(response_lines, function (_, word_json) {
-                    // var word = that.word_from_json(word_json);
-                    // if ( ! that.each_word(word)) {
-                    //     return false;
-                    //     // NOTE:  Terminate the scanning loop if any word has an error.
-                    // }
                     if (that.each_json(word_json) === null) {
                         return false;
                         // NOTE:  Terminate the scanning loop if any word has an error.
@@ -256,23 +284,23 @@
             return word;
         }
         each_word(word) {   // callback for derived class
-            var that = this;
-            if (that.is_early_in_the_scan()) {
-                if (
-                    word.is_the_definition_of_lex_itself() ||
-                    word.is_the_definition_of_define_itself()
-                ) {
-                    that.each_definition_word(word);
-                } else {
-                    that.scan_fail("Expecting the first words to define 'lex' and 'define'.");
-                }
-            } else {
-                if (word.is_definition()) {
-                    that.each_definition_word(word);
-                } else {
-                    that.each_reference_word(word);
-                }
-            }
+            // var that = this;
+            // if (that.is_early_in_the_scan()) {
+            //     if (
+            //         word.is_the_definition_of_lex_itself() ||
+            //         word.is_the_definition_of_define_itself()
+            //     ) {
+            //         that.each_definition_word(word);
+            //     } else {
+            //         that.scan_fail("Expecting the first words to define 'lex' and 'define'.");
+            //     }
+            // } else {
+            //     if (word.is_definition()) {
+            //         that.each_definition_word(word);
+            //     } else {
+            //         that.each_reference_word(word);
+            //     }
+            // }
         }
         is_early_in_the_scan() {
             return (
@@ -285,15 +313,23 @@
             type_should_be(name, String);
             return qiki.Lex.is_idn_defined(that.idn_of[name]);
         }
+
+        // NOTE:  Hardwired fields for a definition word.
+        static I_DEFINITION_PARENT = 0;
+        static I_DEFINITION_NAME   = 1;
+        static I_DEFINITION_FIELDS = 2;   // Definitions have a field called 'fields'
+        static N_DEFINITION        = 3;
+        // TODO:  Specify these in the lex, and make the circularity not dumb.
+
         each_definition_word(word) {
             var that = this;
             word.obj = {};
-            if (word.obj_values.length !== 3) {
+            if (word.obj_values.length !== qiki.LexCloud.N_DEFINITION) {
                 that.scan_fail("Definition should have 3 objs, not:", word.obj_values);
             }
-            word.obj.parent = word.obj_values.shift();   // parent or definition-definer (may be self)
-            word.obj.name = word.obj_values.shift();
-            word.obj.fields = word.obj_values.shift();   // array of type specifications
+            word.obj.parent = word.obj_values[qiki.LexCloud.I_DEFINITION_PARENT];
+            word.obj.name   = word.obj_values[qiki.LexCloud.I_DEFINITION_NAME];
+            word.obj.fields = word.obj_values[qiki.LexCloud.I_DEFINITION_FIELDS];
             word.obj_values = null;
 
             // NOTE:  There are definition words and reference words.  A reference word has a vrb
@@ -410,7 +446,7 @@
         user_remember(user, property_name, property_value) {
             var that = this;
             if ( ! has(that.from_user, user)) {
-                that.from_user[user] = {};
+                that.from_user[user] = {};  // TODO:  Give users a class.  No, literally a `class`.
             }
             that.from_user[user][property_name] = property_value;
         }
@@ -491,18 +527,46 @@
     qiki.Word = class Word {
         static MILLISECONDS_PER_WHN = 1.0;   // whn is milliseconds since 1970
         static SECONDS_PER_WHN = 0.001;   // whn is milliseconds since 1970
-        // NOTE:  Maybe someday to save memory make the lex instance a static property of the derived
-        //        Word class.  That way each word instance will know its lex instance but won't be
-        //        burdened with storing it in every word instance.  But not today.
+
         constructor(lex, idn, whn, sbj, vrb, ...obj_values) {
             var that = this;
             that.lex = lex;
+            // TODO:  Make lex a static property of the derived Word class.  That way each word
+            //        instance will know its lex instance but won't be burdened with storing it in
+            //        every word instance.
+            //        Could lead to an oppressively tall hierarchy of word classes, e.g.:
+            //        qiki.Word:
+            //            AllContributionWords:   <-- static lex;
+            //                ContributionWord:
+            //                    ContributeOriginalWord
+            //                    EditWord
+            //                CaptionWord
+            //                RearrangeWord
+            //        Plus layers on top of that for
+            //            generic Contribution Application and
+            //            specific Unslumping implementation
             that.idn = idn;
             that.whn = whn;
             that.sbj = sbj;
             that.vrb = vrb;
             that.obj = null;   // named object values (after word is resolved)
             that.obj_values = obj_values;   // indexed object values (after nit json decoded, before resolved)
+            if (that.lex.is_early_in_the_scan()) {
+                if (
+                    that.is_the_definition_of_lex_itself() ||
+                    that.is_the_definition_of_define_itself()
+                ) {
+                    that.lex.each_definition_word(that);
+                } else {
+                    throw that.lex.scan_fail("Expecting the first words to define 'lex' and 'define'.");
+                }
+            } else {
+                if (that.is_definition()) {
+                    that.lex.each_definition_word(that);
+                } else {
+                    that.lex.each_reference_word(that);
+                }
+            }
         }
         parent_name() {
             return this.lex.by_idn[this.obj.parent].obj.name;
@@ -594,6 +658,7 @@
             return this.lex.is_google_user(this.sbj);
         }
 
+        // noinspection JSUnusedGlobalSymbols
         /**
          * Change this word's class.  Turn it into an instance of a subclass of qiki.Word
          *
@@ -626,4 +691,8 @@
         }
     }
 
-})(window.qiki = window.qiki || {}, jQuery);
+})(qiki, jQuery);
+// NOTE:  The last line used to be a little more explicit about window.qiki being a global variable:
+//            })(window.qiki = window.qiki || {}, jQuery);
+//        But that tripped up JetBrains into not seeing qiki.Word and other module classes.
+

@@ -280,7 +280,7 @@ assert_equal('no.domain', domain_from_url(''), JSON.stringify(domain_from_url(''
 function $_from_class(class_) {
     return $(selector_from_class(class_));
 }
-// noinspection JSUnusedGlobalSymbols
+
 function $_from_id(id) {
     return $(selector_from_id(id));
 }
@@ -624,10 +624,6 @@ assert_equal(false, window.hasOwnProperty('hasOwnProperty'));
  * @return {boolean}
  */
 function is_array(z) {
-    // return official_type_name(z) === 'Array';                        // but this works
-    // return Object.prototype.toString.call(z) === '[object Array]';   // this works too
-    // return Array.isArray(z);                                         // this works too
-    // SEE:  isArray() is better across iframes, https://stackoverflow.com/a/22289982/673991
     return is_a(z, Array);
 }
 assert_equal( true, is_array([]));
@@ -680,20 +676,17 @@ assert_equal(true, is_array_like('yes strings are array-like'));
 assert_equal(false, is_array_like(42));
 assert_equal(false, is_array_like({length:99, 0:'alpha', 1:'bravo'}));
 // NOTE:  Would be array-like, except it's missing a [98] element.
-
-(function () {
-    assert_equal(false, is_array_like(new Array(3)));
-    // noinspection JSLastCommaInArrayLiteral,JSConsecutiveCommasInArrayLiteral
-    assert_equal(false, is_array_like([, , , ]));
-    // noinspection JSPrimitiveTypeWrapperUsage
-    assert_equal(true, is_array_like(new Array()));
-    assert_equal(true, is_array_like([]));
-    assert_equal(true, is_array_like([undefined, undefined, undefined]));
-    // NOTE:  An Array with empty slots fails is_array_like() because it has no first and last
-    //        elements.  But an empty array squeaks by.
-    //        An array with undefined stored in its slots also passes.
-    // SEE:  Why [] is better than new Array(), https://stackoverflow.com/a/8206581/673991
-})();
+assert_equal(false, is_array_like(new Array(3)));
+// noinspection JSLastCommaInArrayLiteral,JSConsecutiveCommasInArrayLiteral
+assert_equal(false, is_array_like([, , , ]));
+// noinspection JSPrimitiveTypeWrapperUsage
+assert_equal(true, is_array_like(new Array()));
+assert_equal(true, is_array_like([]));
+assert_equal(true, is_array_like([undefined, undefined, undefined]));
+// NOTE:  An Array with empty slots fails is_array_like() because it has no first and last
+//        elements.  But an empty array squeaks by.
+//        An array with undefined stored in its slots also passes.
+// SEE:  Why [] is better than new Array(), https://stackoverflow.com/a/8206581/673991
 
 /**
  * Is this a plain object with properties?
@@ -712,11 +705,11 @@ assert_equal(false, is_array_like({length:99, 0:'alpha', 1:'bravo'}));
  *
  * SEE:  (my post) https://stackoverflow.com/a/61426885/673991
  *
- * @param z
+ * @param z - an object of any type
  * @return {boolean}
  */
 function is_associative_array(z) {
-    return official_type_name(z) === 'Object';
+    return String(z) === '[object Object]';
 }
 assert_equal( true, is_associative_array({a:1, b:2}));
 assert_equal( true, is_associative_array(new function Legacy_Class() {}));
@@ -739,16 +732,17 @@ assert_equal(false, is_associative_array(function () {}));
  * Extracts it from the Object class toString() method, which always gives
  * a string like "[Object {type name}]"
  *
+ * THANKS:  ES3 vintage Object.toString(), https://stackoverflow.com/a/22289869/673991
+ *
  * @param z - an object of any type
  * @return {string} - a simple reliable name for the type of the object
  */
 function official_type_name(z) {
     var simple_reliable_type_description = Object.prototype.toString.call(z);
     // EXAMPLE:  '[object Object]'
-    // THANKS:  ES3 vintage Object.toString(), https://stackoverflow.com/a/22289869/673991
-    var matcher = simple_reliable_type_description.match(/object (\w+)/);
+    var matcher = simple_reliable_type_description.match(/^\[object (\w+)]$/);
     if (matcher === null) {
-        return simple_reliable_type_description;   // Okay, but this should never happen.
+        return simple_reliable_type_description;   // Never found a way to make this happen.
     } else {
         return matcher[1];
     }
@@ -769,17 +763,16 @@ assert_equal('Object',    official_type_name(new class ES2015_Class{}));
 /**
  * Get a more human-readable type name, especially for JavaScript Legacy class instances.
  *
- * @param z
- * @return {string|*}
+ * CAUTION:  Minified code loses some constructor names,
+ *           https://stackoverflow.com/q/10314338/673991#comment17433297_10314492
+ *
+ * @param z - an object of any type
+ * @return {string}
  */
-// CAUTION:  Minified code loses some constructor names,
-//           https://stackoverflow.com/q/10314338/673991#comment17433297_10314492
 function type_name(z) {
     var the_official_name = official_type_name(z);
     if (the_official_name === 'Object') {
         try {
-            // FALSE WARNING:  Unresolved variable name
-            // noinspection JSUnresolvedVariable
             return z.constructor.name;
         } catch (exception) {
             if (exception instanceof TypeError) {
@@ -787,16 +780,32 @@ function type_name(z) {
                 return the_official_name;
             } else {
                 console.error("Freakish object", z, exception);
-                throw exception;
+                throw exception;   // Never found a way to make this happen
             }
         }
     } else {
         return the_official_name;
     }
 }
+assert_equal('Boolean',      type_name(true));
+assert_equal('Number',       type_name(3));
+assert_equal('String',       type_name("three"));
+assert_equal('Function',     type_name(function () {}));
+assert_equal('Null',         type_name(null));
+assert_equal('Undefined',    type_name(undefined));
+assert_equal('Array',        type_name([1,2,3]));
+assert_equal('Object',       type_name({a:1, b:2}));
+assert_equal('Date',         type_name(new Date()));
+assert_equal('String',       type_name(Date()));
 assert_equal('Object',       type_name({a:1, b:2}));
 assert_equal('Legacy_Class', type_name(new function Legacy_Class() {}));
 assert_equal('ES2015_Class', type_name(new class ES2015_Class{}));
+error_expected(function () {
+    assert_equal('Object', type_name({constructor: null}));
+})
+error_expected(function () {
+    assert_equal('Object', type_name(new class Foo{constructor(){this.constructor=null;}}));
+})
 
 function default_to(parameter, default_value) {
     if (is_defined(parameter)) {
@@ -808,13 +817,19 @@ function default_to(parameter, default_value) {
 assert_equal('red',  default_to('red',     'blue'));
 assert_equal('blue', default_to(undefined, 'blue'));
 assert_equal(null,   default_to(null,      'blue'));
-function missing_parameters_are_undefined(missing_parameter) {
-    assert_equal(missing_parameter, undefined);
-}
-missing_parameters_are_undefined();
-missing_parameters_are_undefined(undefined);
 
-// noinspection JSUnusedGlobalSymbols
+/**
+ * Verify that a missing function parameter is undefined.
+ */
+function _missing_parameters_are_undefined(missing_parameter) {
+    if (is_defined(missing_parameter)) console.error("Expecting undefined, not", missing_parameter);
+}
+_missing_parameters_are_undefined();
+_missing_parameters_are_undefined(undefined);
+error_expected(function () {
+    _missing_parameters_are_undefined(null);
+})
+
 /**
  * Call a process until it's done.  Relinquish control between chunks of process calls.
  *

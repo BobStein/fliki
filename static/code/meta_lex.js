@@ -85,6 +85,8 @@ function js_for_meta_lex(window, $, MONTY) {
         each_word(word) {
             var that = this;
             super.each_word(word);
+            // TODO:  Move the following logic to the WordUnslumping constructor.
+            //        Then we can get rid of each_word() everywhere.
             word.render(that.word_rendered_previously);
             that.$ol.append(word.$li);
             that.word_rendered_previously = word;
