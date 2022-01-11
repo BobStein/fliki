@@ -41,6 +41,21 @@ window.qiki = window.qiki || {};
                 String(idn1) === String(idn2)
             );
         }
+        /**
+         * Is one idn a sort-of descendent of another?
+         *
+         * Yes examples:
+         *     3504, 3504
+         *     [168, 1267], 168
+         *
+         * This parent-child relationship applies to idns that explicitly identify their basis.
+         * So far, this is only done for google or anonymous users.  But it could also work for
+         * detecting that the sequence field in an interaction bot word is a sequence.  E.g.
+         *     qiki.Lex.is_a([198,6469,1936,7513,1849,1851,1857], 198)
+         *
+         * This relationship is different from the parent-child relationship created by vrb
+         * definitions, and named explicitly in every definition.obj.parent field.
+         */
         static is_a(idn_child, idn_parent) {
             if (idn_child === idn_parent) {
                 return true;
@@ -202,7 +217,8 @@ window.qiki = window.qiki || {};
             });
             promise_jsonl.done(function (response_body) {
                 var response_lines = response_body.split('\n');
-                response_lines.pop();   // Remove trailing empty string, from file ending in a newline.
+                response_lines.pop();
+                // NOTE:  Remove trailing empty string, because the file ends in a newline.
 
                 that.idn_of = {
                     lex: qiki.Lex.IDN_UNDEFINED,
@@ -284,23 +300,6 @@ window.qiki = window.qiki || {};
             return word;
         }
         each_word(word) {   // callback for derived class
-            // var that = this;
-            // if (that.is_early_in_the_scan()) {
-            //     if (
-            //         word.is_the_definition_of_lex_itself() ||
-            //         word.is_the_definition_of_define_itself()
-            //     ) {
-            //         that.each_definition_word(word);
-            //     } else {
-            //         that.scan_fail("Expecting the first words to define 'lex' and 'define'.");
-            //     }
-            // } else {
-            //     if (word.is_definition()) {
-            //         that.each_definition_word(word);
-            //     } else {
-            //         that.each_reference_word(word);
-            //     }
-            // }
         }
         is_early_in_the_scan() {
             return (
@@ -334,16 +333,16 @@ window.qiki = window.qiki || {};
 
             // NOTE:  There are definition words and reference words.  A reference word has a vrb
             //        containing the idn of its definition word.  All words have multiple named obj
-            //        parts aka fields.  The named obj parts of a definition word are:  parent, name, fields.
-            //        The named obj parts of a reference word are specified in its definition
-            //        word, inside its obj part named fields.
+            //        parts aka fields.  The named obj parts of a definition word are:  parent,
+            //        name, fields.  The named obj parts of a reference word are specified in its
+            //        definition word, inside its obj part named fields.
             //
-            //        For example, a "caption" gives a title to a contribution.
+            //        For example, for unslumping.org, a "caption" gives a title to a contribution.
             //        There is one caption definition-word and many caption reference-words.
-            //        The vrb of each caption reference-word is the idn of the caption definition-word.
-            //        A caption reference-word has 2 obj parts:  contribution, text.
-            //        Its contribution field value contains the idn of a contribution reference-word.
-            //        Its text field value contains the text of the caption.
+            //        The vrb of each caption reference-word is the idn of the caption
+            //        definition-word.  A caption reference-word has 2 obj parts:  contribution,
+            //        text.  Its contribution field value contains the idn of a contribution
+            //        reference-word.  Its text field value contains the text of the caption.
             //        The caption definition-word specifies the 2 fields in its obj part "fields".
             //        That is an array of the idns for the definition-words named "contribution" and
             //        "text".
@@ -351,23 +350,23 @@ window.qiki = window.qiki || {};
             // TODO:  Wouldn't it be cool if somehow this scheme could define itself.  Then the
             //        parts of all definition words would be specified as:  define, text, sequence.
             //        That is, the parts that are now named:  parent, name, fields.
-            //        Maybe intermediate definitions would change these names akin to derived classes.
-            //        So a parent is another define word.  A name is text.  (Watch out for name
-            //        already being defined as something you apply to a user.)  And fields is
+            //        Maybe intermediate definitions would change these names akin to derived
+            //        classes.  So a parent is another define word.  A name is text.  (Watch out for
+            //        name already being defined as something you apply to a user.)  And fields is
             //        a sequence of idns.
             //        : : : in other words : : :
-            //        Doing this would require a few new definitions.  (A definition is already defined
-            //        as a definition. A fields would need a new explicit definition as a sequence.  A
-            //        name is already defined as something applied to a user.)
-            //        Then the define-word definition would define its fields as:  parent, name, fields.
-            //        Instead of hard-coding them as they are here.
+            //        Doing this would require a few new definitions.  (A definition is already
+            //        defined as a definition. A fields would need a new explicit definition as a
+            //        sequence.  A name is already defined as something applied to a user.)
+            //        Then the define-word definition would define its fields as:  parent, name,
+            //        fields.  Instead of hard-coding them as they are here.
             //        This would break the convention that definition-word fields are only used by
             //        reference-words.  Definitions that are used by other definitions all have
             //        empty fields.  So some kind of contradiction or special case might emerge.
             //        Like when do a definition-word's fields apply to a child definition, and when
             //        do they apply to a reference-word?  Maybe there's no confusion here.
-            //        Then there's the possibility of defining and naming ALL word parts somewhere in
-            //        some definition:  idn, whn, sbj, vrb.
+            //        Then there's the possibility of defining and naming ALL word parts somewhere
+            //        in some definition:  idn, whn, sbj, vrb.
 
             if (that.have_we_processed_the_definition_of(word.obj.name)) {
                 that.scan_fail("Duplicate define", that.by_idn[that.idn_of[word.obj.name]], word);
@@ -442,7 +441,6 @@ window.qiki = window.qiki || {};
                 }
             }
         }
-
         user_remember(user, property_name, property_value) {
             var that = this;
             if ( ! has(that.from_user, user)) {
@@ -462,7 +460,10 @@ window.qiki = window.qiki || {};
                 name:that.constructor.name,
                 line:that.line_number
             });
-            var more_args = [...args, "\nScan failed on " + name_line +":\n", that.current_word_json]
+            var more_args = [
+                ...args,
+                "\nScan failed on " + name_line + ":\n" + that.current_word_json
+            ]
 
             console.error.apply(null, more_args);
             // THANKS:  Pass along arguments, https://stackoverflow.com/a/3914600/673991
@@ -472,9 +473,9 @@ window.qiki = window.qiki || {};
             //        Poor appearance:  console.error(args.join(" "))
 
             throw new qiki.LexCloud.ScanFail(more_args.join(" "));
-            // NOTE:  This error message will get passed also to the scan() function fail() callback.
-            //        But since that message is a string, it may be less informative than what
-            //        console.error() produced above.
+            // NOTE:  This error message will get passed also to the scan() function fail()
+            //        callback.  But since that message is a string, it may be less informative than
+            //        what console.error() produced above.
         }
         static ScanFail = class ScanFail extends Error {
             constructor(message) {
@@ -487,19 +488,6 @@ window.qiki = window.qiki || {};
         //          instance.  This means you have to throw OuterClass.InnerError.
         //          Otherwise, throw that.InnerError() gets this:
         //          Uncaught TypeError: that.ScanFail is not a constructor
-
-        /**
-         * Is one idn a sort-of descendent of another?
-         *
-         * Yes examples:
-         *     3504, 3504
-         *     [168, 1267], 168
-         *
-         * This parent-child relationship applies to idns that explicitly identify their basis.
-         * So far this is only done for google or anonymous users.
-         * This is different from the parent-child relationship created by vrb definitions.
-         */
-
         is_anonymous(user_idn) {
             return qiki.Lex.is_a(user_idn, this.idn_of.anonymous);
         }
@@ -521,7 +509,6 @@ window.qiki = window.qiki || {};
                 return "my";
             }
         }
-
     }
 
     qiki.Word = class Word {
@@ -543,14 +530,25 @@ window.qiki = window.qiki || {};
             //                CaptionWord
             //                RearrangeWord
             //        Plus layers on top of that for
-            //            generic Contribution Application and
+            //            generic Contribution application innards versus
             //            specific Unslumping implementation
             that.idn = idn;
             that.whn = whn;
             that.sbj = sbj;
             that.vrb = vrb;
-            that.obj = null;   // named object values (after word is resolved)
-            that.obj_values = obj_values;   // indexed object values (after nit json decoded, before resolved)
+            that.obj = null;
+            that.obj_values = obj_values;
+
+            // NOTE:  word.obj_values is a numerically indexed array.  It was passed to constructor.
+            //        word.obj        is a named associative array.  It will get populated below.
+
+            // TODO:  Hmm, should the decisions below be moved to LexCloud.word_factory()?
+            //            qiki.WordDefinition constructor absorb LexCloud.each_definition_word()
+            //            qiki.WordReference constructor  absorb LexCloud.each_reference_word()
+            //        A reason not to do that:  Someone smarter than me should break down the
+            //        difference between these.  A lex definition could just be like any other word,
+            //        with fields defined in the lex.  It's got extra powers for sure, but maybe
+            //        those can be safely associated with the .sbj property, not with the class.
             if (that.lex.is_early_in_the_scan()) {
                 if (
                     that.is_the_definition_of_lex_itself() ||
@@ -558,7 +556,9 @@ window.qiki = window.qiki || {};
                 ) {
                     that.lex.each_definition_word(that);
                 } else {
-                    throw that.lex.scan_fail("Expecting the first words to define 'lex' and 'define'.");
+                    throw that.lex.scan_fail(
+                        "The first words should define 'lex' and 'define' themselves."
+                    );
                 }
             } else {
                 if (that.is_definition()) {
@@ -571,6 +571,10 @@ window.qiki = window.qiki || {};
         parent_name() {
             return this.lex.by_idn[this.obj.parent].obj.name;
         }
+        /**
+         * Get a printable name for this word's vrb.  Behave in all kinds of circumstances.
+         * @returns {string}
+         */
         vrb_name() {
             var that = this;
             if ( ! (that.lex instanceof qiki.Lex)) {
@@ -582,7 +586,17 @@ window.qiki = window.qiki || {};
             if ( ! has(that.lex.by_idn, that.vrb)) {
                 return f("VRB {vrb} NOT DEFINED", {vrb: that.vrb})
             }
-            return that.lex.by_idn[that.vrb].obj.name;
+            var vrb_word = that.lex.by_idn[that.vrb];
+            if ( ! is_specified(vrb_word)) {
+                return f("VRB {vrb} EMPTY DEFINITION", {vrb: that.vrb})
+            }
+            if ( ! is_specified(vrb_word.obj)) {
+                return f("VRB {vrb} HAS NO OBJ", {vrb: that.vrb})
+            }
+            if ( ! is_laden(vrb_word.obj.name)) {
+                return f("VRB {vrb} HAS NO NAME", {vrb: that.vrb})
+            }
+            return vrb_word.obj.name;
         }
         field_values() {
             var that = this;
@@ -695,4 +709,3 @@ window.qiki = window.qiki || {};
 // NOTE:  The last line used to be a little more explicit about window.qiki being a global variable:
 //            })(window.qiki = window.qiki || {}, jQuery);
 //        But that tripped up JetBrains into not seeing qiki.Word and other module classes.
-

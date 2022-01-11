@@ -119,32 +119,23 @@ error_expected(function () {
  *         is_a(x, Spring)
  *     could be.
  * About the same as instanceof for complex types,
- *     on the one hand, x instanceof T is less obscure,
+ *     on the one hand, x instanceof T is less obscure (slight preference for this),
  *     on the other hand, is_a(x, T) is slightly briefer.
  *
  * SEE:  typeof vs instanceof, https://stackoverflow.com/a/6625960/673991
  *
  * CAUTION:  Don't use `Object` for the second parameter.
  *     true === is_a(function () {}, Object)   // use is_associative_array()
- *     true === is_a(undefined, Object)        // use is_define()
+ *     true === is_a(undefined, Object)        // use is_defined()
  *     true === is_a(null, Object)             // use is_specified()
  *     true === is_a([], Object)               // use is_array_like() or is_array()
+ *
+ * CAUTION:  Don't test for null or undefined, use is_specified() or is_defined().
  *
  * @param thing
  * @param expected_type - String, Number
  * @return {boolean}
  */
-// TODO:  Figure out if is_a() is some kind of obscure security risk with the way it casts a
-//        putative function into a Function.
-//        Ominous clues at
-//        https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Function
-//        "Calling the constructor directly can create functions dynamically but suffers from
-//        security and similar (but far less significant) performance issues to Global_Objects/eval.
-//        However, unlike eval, the Function constructor creates functions that execute in the
-//        global scope only."
-//        Certainly has nothing to do with is_a(string_from_user).
-//        So I'll let this marinate a bit but it's probably nothing.
-// CAUTION:  Don't is_a(x, null) or is_a(x, undefined).  Use is_defined() or is_specified() instead.
 function is_a(thing, expected_type) {
     return Object(thing) instanceof expected_type;
 }

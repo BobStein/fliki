@@ -1551,9 +1551,6 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
      * //// Instantiate //// - Category and Contribution collections - and fill them from lex.
      */
     function category_and_contribution_instantiations(then) {
-        // FALSE WARNING:  Invalid number of arguments, expected 0
-        //                 because PyCharm doesn't see the qiki.Lex class in lex.js
-        // noinspection JSCheckFunctionSignatures
         lex = new LexContribution(MONTY.LEX_URL);
 
         console.debug("Lex", lex);
@@ -1596,6 +1593,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
 
                 // NOTE:  The category idns are not here (my, their, trash, etc.).
                 //        Those idns are available as e.g. lex.cats.by_name.my.idn
+
                 // NOTE:  The interact verb idns are not here.
                 //        They are not defined until and unless they're used.
                 //        And we allow new ones to come and go without complaint.
@@ -1617,38 +1615,10 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
             }
             that.last_notify_message = message;
         }
-        // each_definition_word(word) {
-        //     var that = this;
-        //     super.each_definition_word(word);
-        //     if (word.obj.parent === this.idn_of.category) {
-        //         // console.debug("EACH DEF", word.idn, word.obj.name);
-        //         // word.conts = new qiki.Bunch();
-        //         // that.cats.add_rightmost(word);
-        //         //
-        //         // that.category_rightmost_resolve();   // in case rightmost is defined first
-        //     }
-        //     if (word.idn === that.idn_of.rightmost) {
-        //         that.category_rightmost_resolve();   // in case categories are defined first
-        //     }
-        // }
         me_title() {
             return this.possessive(this.me_idn) + " " + MONTY.WHAT_IS_THIS_THING;
             // EXAMPLE:  "Bob Stein's playlist"
         }
-        // /**
-        //  * Inform categories about the idn representing the rightmost position.
-        //  *
-        //  * Whether categories are defined first, or the 'rightmost' word is defined first,
-        //  * calling this after either definition ensures that the categories are kept as up-to-date
-        //  * as possible.
-        //  *
-        //  * So this may get called redundantly but the cost is negligible.
-        //  */
-        // category_rightmost_resolve() {
-        //     var that=this;
-        //     if (is_specified(that.idn_of.rightmost)) {
-        //     }
-        // }
 
         /**
          * Use different Word subclasses for different verbs.
@@ -1683,191 +1653,6 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
             }
             return super.word_factory(idn, whn, sbj, vrb, ...obj_values);
         }
-        // contribute_word(word) {
-        //     var that = this;
-        //     if ( ! has(that.from_user, word.sbj) && that.is_authenticated(word.sbj)) {
-        //         // TODO:  Higher bar for word.sbj.  This will pass if either name or icon have
-        //         //        been scanned already (or admin).
-        //         console.warn(
-        //             "Contribution word", word.idn,
-        //             "scan line", this.line_number,
-        //             "unknown authenticated user", word.sbj
-        //         );
-        //     }
-        //     if ( ! (
-        //         is_specified(that.cats.by_name.my) &&
-        //         is_specified(that.cats.by_name.anon) &&
-        //         is_specified(that.cats.by_name.their)
-        //     )) {
-        //         that.scan_fail(
-        //             "Contribution word", word.idn,
-        //             "before categories defined", that.cats.by_name
-        //         );
-        //     }
-        //     word.cat = that.starting_cat(word);
-        //     word.cat.conts.add_leftmost(word);
-        //
-        //     if ( ! that.is_authenticated(word.sbj)) {
-        //         word.was_submitted_anonymous = true;
-        //         // NOTE:  Pink is the color of anonymous contributions.
-        //         //        Captioning or moving a contribution retains its .was_submitted_anonymous
-        //         //        But editing by a logged-in user removes it.
-        //     }
-        //
-        //     // NOTE:  Captioning does not change a contribution's owner.
-        //     //        (It does change the caption's owner.)
-        //     //        Moving and editing do change the contribution's owner.
-        //     //        (They do not change the caption's owner.  One way this could be weird:
-        //     //        if I move an anonymous contribution to "my" category, then that user
-        //     //        edits the caption, I will see the new caption too.  So this is a possible
-        //     //        leak between anonymous users.)
-        //
-        //     that.notify(f("{idn}. {author} contributes {n} bytes to {cat}", {
-        //         idn: word.idn,
-        //         author: that.user_name_short(word.sbj),
-        //         cat: word.cat.obj.name,
-        //         n: word.obj.text.length
-        //     }));
-        // }
-        // caption_word(word) {
-        //     var that = this;
-        //     var cont = that.cont_from_idn(word.obj.contribute);
-        //     if (cont === null) {
-        //         that.notify(f("{capt_idn}. (Can't caption {cont_idn})", {
-        //             cont_idn: word.obj.contribute,
-        //             capt_idn: word.idn
-        //         }));
-        //     } else {
-        //         var old_capt_owner;
-        //         if (is_specified(cont.capt)) {
-        //             old_capt_owner = cont.capt.sbj;
-        //         } else {
-        //             old_capt_owner = cont.sbj;
-        //         }
-        //         if (that.is_authorized(word, old_capt_owner, "caption")) {
-        //             cont.capt = word;
-        //         }
-        //     }
-        // }
-        // edit_word(word) {
-        //     var that = this;
-        //     var old_cont = that.cont_from_idn(word.obj.contribute);
-        //     if (old_cont === null) {
-        //         if (that.is_me(word.sbj)) {
-        //             // NOTE:  Weird situation:  I (the browsing user) did this edit, but for some
-        //             //        reason the old
-        //             //        contribution that this edit displaced was not in my view.  Oh well,
-        //             //        treat the edit itself as a new contribution from me.  This is
-        //             //        problematic of course, if I was merely editing some contribution
-        //             //        somewhere.  I don't necessarily want it elevated to my category.  But
-        //             //        because it was lost that's what now happens.  I guess it's better than
-        //             //        not seeing it at all.
-        //             word.cat = that.starting_cat(word);
-        //             word.cat.conts.add_leftmost(word);
-        //             that.notify(f(
-        //                 "{new_cont_idn}. Resurrecting my edit of ghostly #{old_cont_idn})", {
-        //                     new_cont_idn: word.idn,
-        //                     old_cont_idn: word.obj.contribute
-        //                 }
-        //             ));
-        //         } else {
-        //             that.notify(f("{new_cont_idn}. (Can't edit {old_cont_idn})", {
-        //                 new_cont_idn: word.idn,
-        //                 old_cont_idn: word.obj.contribute
-        //             }));
-        //         }
-        //     } else {
-        //         if (that.is_authorized(word, old_cont.sbj, "edit")) {
-        //             old_cont.cat.conts.replace(word.obj.contribute, word);
-        //             word.cat = old_cont.cat;
-        //             word.capt = old_cont.capt;
-        //             // TODO:  Should a lesser-privileged caption owner
-        //             //        be replaced by new_cont_owner?
-        //             //        Maybe always do this here:
-        //             //            word.capt.owner = word.sbj;
-        //             //        Is there a downside?
-        //             //        What does it mean to "own" a contribution or caption??
-        //             //        It's certainly not equivalent to being permitted to edit it.
-        //             if (console_verbose) {
-        //                 word.supersedes = old_cont;
-        //                 // NOTE:  This maintains a reference to the older, superseded contribute
-        //                 //        word (or edit word).  There is a theoretical memory penalty to
-        //                 //        doing this.  If not (if this option is false), and garbage
-        //                 //        collection actually happens, then the memory used by the old
-        //                 //        word could be recovered.
-        //             }
-        //             console.assert(
-        //                 ! word.cat.conts.has(old_cont.idn),
-        //                 "WTF, this contribution should be gone from cat", word.cat.obj.name,
-        //                 old_cont
-        //             );
-        //             console.assert(
-        //                 that.cont_from_idn(old_cont.idn) === null,
-        //                 "WTF, this contribution should be gone from all cats",
-        //                 old_cont
-        //             );
-        //             // TODO:  Maybe superseded contributions can be destroyed:
-        //             //        old_cont.destroy()
-        //         }
-        //     }
-        // }
-        // rearrange_word(word) {
-        //     var that = this;
-        //     if ( ! qiki.Lex.is_idn_defined(that.idn_of.rightmost)) {
-        //         that.scan_fail("Rearrange before 'rightmost' definition", word.idn);
-        //     }
-        //     if ( ! that.cats.has(word.obj.category)) {
-        //         that.scan_fail("Rearrange before category definition", word.idn, word.obj.category);
-        //     }
-        //     var cont = that.cont_from_idn(word.obj.contribute);
-        //     if (cont === null) {
-        //         that.notify(f(
-        //             "{reordering_idn}. (Can't find contribution {cont_idn} to rearrange)", {
-        //                 reordering_idn: word.idn,
-        //                 cont_idn: word.obj.contribute
-        //             }
-        //         ));
-        //     } else {
-        //         var new_cat = that.cats.get(word.obj.category);
-        //         var is_far_right = qiki.Lex.is_equal_idn(word.obj.locus, that.idn_of.rightmost);
-        //         var old_cat = cont.cat;
-        //         var old_cont_owner = cont.sbj;
-        //         var action_template = is_far_right
-        //             ? "rearrange to right end of {cat},"
-        //             : "rearrange to the left of #{idn} in {cat},";
-        //         var action = f(action_template, {
-        //             cat: new_cat.obj.name,
-        //             idn: word.obj.locus
-        //         });
-        //         if (that.is_authorized(word, old_cont_owner, action)) {
-        //             if (is_specified(old_cat)) {
-        //                 old_cat.conts.delete(word.obj.contribute);
-        //             } else {
-        //                 console.error("Why didn't contribution have a category?", type_name(old_cat), cont.cat, cont);
-        //             }
-        //             if (is_far_right) {
-        //                 new_cat.conts.add_rightmost(cont);
-        //             } else {
-        //                 if ( ! new_cat.conts.add_left_of(cont, word.obj.locus)) {
-        //                     new_cat.conts.add_leftmost(cont);
-        //                     // NOTE:  locus can't be found, insert leftmost instead.
-        //                 }
-        //             }
-        //             cont.sbj = word.sbj;   // HACK:  Does this leave things as they were with sql?
-        //             cont.cat = new_cat;
-        //             // NOTE:  This used to transfer ownership from the original author to
-        //             //        the person who rearranged it:
-        //             //            cont.owner = word.sbj;
-        //             //        What was the rationale for that?
-        //             //        Taking ownership of a contribution by moving it.
-        //             //        Makes more sense moving to my than moving from other to trash.
-        //             //        If we don't have to maintain a separate owner property for each
-        //             //        contribution (in addition to sbj as original author).
-        //             // TODO:  Commandeer the caption ownership too?
-        //             //        cont.capt.owner = new_cont_owner;
-        //         }
-        //     }
-        // }
         /**
          * Should we let this reference-word affect our rendering?
          *
@@ -1901,7 +1686,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
         ) {
             var that = this;
 
-            // DONE:  Don't let owner or admin "drag to my.*"  (not even for virgin users)
+            // NOTE:  We don't let owner or admin "drag to my.*"  (not even for virgin users)
             //            Shame that removes the Seuss quote, and the top will be empty for new
             //            users.
             //        Nor other.* nor anon.*
@@ -1913,11 +1698,11 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
             //            different stuff there.  So admin placing X to the left of Y would
             //            already be unusable to the user who created Y (or moved it to category
             //            'my') because it wouldn't then be in category 'other'.
-            //        But do allow owner or admin to "drag to trash.*"
+            //        But we do allow owner or admin to "drag to trash.*"
             //            And that affects everyone else, unless of course I drag it elsewhere
             //            later.  A little weird that owner or admin rearrangements WITHIN trash
             //            affect everyone.
-            //        Do allow admin to "drag to about.*" (Only admin can create those words
+            //        We do allow admin to "drag to about.*" (Only admin can create those words
             //            anyway.)  And those actions rightly affect everyone.
             // TODO:  The confusion above is a symptom of the deeper confusion:
             //            Are categories user-interest partitions, or user-origin partitions?
@@ -1928,7 +1713,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
 
             var new_owner = word.sbj;
 
-            // First stage of decision-making:
+            // First stage of decision-making, what are the factors:
             var is_change_mine = that.is_me(new_owner);
             var did_i_change_last = that.is_me(old_owner);
             var is_change_admin = that.is_user_admin(new_owner);
@@ -1937,11 +1722,11 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
             var is_guarded = that.is_word_guarded(word);
             var welcome_oppression = ! is_guarded && ! did_i_change_last;
 
-            // Second stage of decision making, do we let the owner or admin change things:
+            // Second stage of decision making, do we let the owner or admin change things for us:
             var let_admin_change = welcome_oppression                            && is_change_admin;
             var let_owner_change = welcome_oppression && ! did_admin_change_last && is_same_owner;
 
-            // Third stage:
+            // Third stage, ok or not:
             var ok = is_change_mine || let_admin_change || let_owner_change;
 
             // Decision:
@@ -2547,7 +2332,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
     }
 
     /**
-     * Base class for 'contribute' and 'edit' words.
+     * Base class for 'contribute' and 'edit' words.  Each quote or video gets one of these.
      */
     class ContributionWord extends qiki.Word {
         /** @namespace {ResizeObserver} */ resize_observer;
@@ -3264,8 +3049,8 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                                     0.0,
                                     1.0
                                 )
-                                // FALSE WARNING:  'thumb_render_height' should probably not be passed as
-                                //                 parameter 'x1'
+                                // FALSE WARNING:  'thumb_render_height' should probably not be
+                                //                 passed as parameter 'x1'
                                 // noinspection JSSuspiciousNameCombination
                                 var progress_height = linear_transform(
                                     siz_height,
@@ -3385,7 +3170,6 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
             );
             var idn = parseInt(message.id_attribute);
             console.assert(idn === that.idn, "Mismatch idn", that.idn, idn, message);
-            // noinspection JSRedundantSwitchStatement
             switch (message.action) {
             case 'auto-play-presaged':
                 console.log("Media presaged", that.id_attribute, message.id_attribute);
@@ -3493,12 +3277,6 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                     //        We got here from an auto-play-playing message from the embed
                     //        and that could not hardly have come from a zero-size iframe.
                 }
-
-
-                // that.trigger_event(that.Event.MEDIA_PLAYING);
-
-
-
                 break;
             case 'noembed-error-notify':
                 // Later error, noembed finds
@@ -4322,10 +4100,6 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                     }
                 });
             }
-                
-                
-                
-            // });
             console.log(
                 "Popup",
                 popped_cont.id_attribute,
@@ -4334,7 +4108,6 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                 popped_cont.caption_text
             );
         }
-
     }
 
     ContributionWord.prototype.Event = {
@@ -4353,8 +4126,6 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
     class ContributeOriginalWord extends ContributionWord {
         constructor(...args) {
             super(...args)
-            // var that = this;
-            // that.lex.contribute_word(that);
             var that = this;
             if ( ! has(that.lex.from_user, that.sbj) && that.lex.is_authenticated(that.sbj)) {
                 // TODO:  Higher bar for that.sbj.  This will pass if either name or icon have
@@ -4405,8 +4176,6 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
     class EditWord extends ContributionWord {
         constructor(...args) {
             super(...args)
-            // var that = this;
-            // that.lex.edit_word(that);
             var that = this;
             var old_cont = that.lex.cont_from_idn(that.obj.contribute);
             if (old_cont === null) {
@@ -4473,9 +4242,6 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
     class CaptionWord extends qiki.Word {
         constructor(...args) {
             super(...args)
-            // var that = this;
-            // that.lex.caption_word(that);
-
             var that = this;
             var cont = that.lex.cont_from_idn(that.obj.contribute);
             if (cont === null) {
@@ -4500,8 +4266,6 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
     class RearrangeWord extends qiki.Word {
         constructor(...args) {
             super(...args)
-            // var that = this;
-            // that.lex.rearrange_word(that);
             var that = this;
             if ( ! qiki.Lex.is_idn_defined(that.lex.idn_of.rightmost)) {
                 that.lex.scan_fail("Rearrange before 'rightmost' definition", that.idn);
@@ -4568,6 +4332,8 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
             }
         }
     }
+
+
 
     function pop_speech_synthesis_init() {
         if (window.speechSynthesis !== null) {
