@@ -1551,7 +1551,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
      * //// Instantiate //// - Category and Contribution collections - and fill them from lex.
      */
     function category_and_contribution_instantiations(then) {
-        lex = new LexContribution(MONTY.LEX_URL);
+        lex = new LexUnslumping(MONTY.LEX_URL);
 
         console.debug("Lex", lex);
         // NOTE:  Of course the lex instance is very unpopulated now, but the JavaScript console
@@ -1568,7 +1568,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
             });
             lex.assert_consistent();
             if (console_verbose) {
-                lex.editing_history_report();
+                lex.report_edit_history_in_console(console.debug.bind(console));
             }
             then();
         }, function (error_message) {
@@ -1600,13 +1600,9 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                 //        And they are referred to only by name in this code, not idn.
             });
             that.cats = new qiki.Bunch();
-            that.me_idn = MONTY.me_idn;
         }
-        am_i_admin() {
-            return this.is_user_admin(this.me_idn);
-        }
-        am_i_authenticated() {
-            return this.is_authenticated(this.me_idn);
+        is_me(user_idn) {
+            return false;
         }
         notify(message) {
             var that = this;
@@ -1615,43 +1611,39 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
             }
             that.last_notify_message = message;
         }
-        me_title() {
-            return this.possessive(this.me_idn) + " " + MONTY.WHAT_IS_THIS_THING;
-            // EXAMPLE:  "Bob Stein's playlist"
-        }
 
         /**
          * Use different Word subclasses for different verbs.
          *
          * Use CategoryWord for each category child-definition.
          * No app-specific handling of other words (word_class is Word).
+         *
+         * TODO:  There's a lot of power here.  Maybe it would be better imbued in some registered
+         *        word handlers.  Less inheritance, more composition perhaps?
+         *        {contribute: function () {...}, edit: function () {...}, category: ...}
+         *        Had something like that once, but it wasn't odorless.
          */
-        word_factory(idn, whn, sbj, vrb, ...obj_values) {
+        word_class(idn, whn, sbj, vrb, ...obj_values) {
             var that = this;
-            that.word_class = qiki.Word;
             switch (vrb) {
             case that.idn_of.contribute:
-                that.word_class = ContributeOriginalWord;
-                break;
+                return ContributeOriginalWord;
             case that.idn_of.edit:
-                that.word_class = EditWord;
-                break;
+                return EditWord;
             case that.idn_of.caption:
-                that.word_class = CaptionWord;
-                break;
+                return CaptionWord;
             case that.idn_of.rearrange:
-                that.word_class = RearrangeWord;
-                break;
+                return RearrangeWord;
             case that.idn_of.define:
                 if (sbj === that.idn_of.lex) {
                     parent = obj_values[qiki.LexCloud.I_DEFINITION_PARENT];
                     if (parent === that.idn_of.category) {
-                        that.word_class = CategoryWord;
+                        return CategoryWord;
                     }
                 }
                 break;
             }
-            return super.word_factory(idn, whn, sbj, vrb, ...obj_values);
+            return qiki.Word;
         }
         /**
          * Should we let this reference-word affect our rendering?
@@ -1780,9 +1772,6 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                 return that.cats.by_name.their;
             }
         }
-        cat_from_idn(cat_idn) {
-            return this.cats.get(cat_idn);
-        }
         cont_from_idn(cont_idn) {
             var that = this;
             var cont_answer = null;
@@ -1793,9 +1782,6 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                 }
             });
             return cont_answer;
-        }
-        is_me(user_idn) {
-            return qiki.Lex.is_equal_idn(user_idn, this.me_idn);
         }
         is_user_admin(user_idn) {
             var that = this;
@@ -1842,53 +1828,6 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
             }
         };
         /**
-         * Add a word to the lex.
-         *
-         * TODO:  Move this method to LexCloud.
-         *        That will require encapsulating ajax calls there, which is good.
-         *        Probably they should be there, and qoolbar should use them too.
-         *        Then ajax_url needs to be some app-specific configurable value,
-         *        along with LexCloud.url used for scanning.
-         *        Duh, the REST way is to use the SAME url for both and the method
-         *        would be GET or POST.
-         *        Huh, including a way to GET the whole lex (async of course) or
-         *        one word by idn, or multiple words by search criteria.
-         *        So lex.py needs a REST-ful server and lex.js a REST-ful client.
-         *
-         * @param vrb_name - e.g. 'edit'
-         * @param named_sub_nits - e.g. {contribute: idn, text: "new contribution text"}
-         * @param done_callback
-         * @param fail_callback
-         */
-        create_word(vrb_name, named_sub_nits, done_callback, fail_callback) {
-            var that = this;
-            done_callback = done_callback || function () {};
-            fail_callback = fail_callback || function (message) { console.error(message); };
-            qoolbar.post(
-                'create_word',
-                {
-                    vrb_name: vrb_name,
-                    named_sub_nits: JSON.stringify(named_sub_nits)
-                },
-                /**
-                 * Handle a valid response from the create-word ajax.
-                 *
-                 * @param response_object
-                 * @param response_object.jsonl - JSON of array of the created word's bytes & nits.
-                 */
-                function done_creating_a_word(response_object) {
-                    var word_json = response_object.jsonl;
-                    var word_created = that.each_json(word_json);
-                    if (word_created === null) {
-                        fail_callback("JSONL error");
-                    } else {
-                        done_callback(word_created);
-                    }
-                },
-                fail_callback
-            );
-        }
-        /**
          * Report all contribution edit histories in the console.
          *
          * Only edits that were "authorized" (e.g. we made them, etc.)
@@ -1900,7 +1839,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
          * Meaning 2.2 years ago a contribution was edited (to 420 characters),
          * and 5 days before that, the original was submitted (422 characters long).
          */
-        editing_history_report() {
+        report_edit_history_in_console(report) {
             var that = this;
             var superseded_idns = [];
             var active_idns = [];
@@ -1912,7 +1851,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                     if (cont.vrb !== that.idn_of.contribute) {
                         var this_cont = cont;
                         var later_cont = null;
-                        console.debug("");
+                        report("");
                         do {
                             var delta, whn;
                             var is_first_line_and_latest_version = later_cont === null;
@@ -1930,7 +1869,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                                 superseded_idns.push(this_cont.idn);
                             }
                             whn = whn.padEnd(4 + 2 + 1);
-                            var report = f("{whn} {idn}. {vrb} {text} ({len})", {
+                            var one_line = f("{whn} {idn}. {vrb} {text} ({len})", {
                                 whn: whn,
                                 idn: String(this_cont.idn).padStart(5),
                                 vrb: that.by_idn[this_cont.vrb].obj.name.substring(0,1),
@@ -1940,16 +1879,16 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                             var is_earliest_truly = this_cont.vrb === that.idn_of.contribute;
                             var is_earliest_we_know_of = ! is_specified(this_cont.supersedes);
                             if (is_earliest_truly && ! is_earliest_we_know_of) {
-                                console.debug("%c\t" + report, 'color:magenta;');
+                                report("%c\t" + one_line, 'color:magenta;');
                             } else if ( ! is_earliest_truly && is_earliest_we_know_of) {
-                                console.debug("%c\t" + report, 'color:red;');
+                                report("%c\t" + one_line, 'color:red;');
                                 var guessed_next = f("{whn} {idn}. ???", {
                                     whn: "       ",
                                     idn: String(this_cont.obj.contribute).padStart(5)
                                 });
-                                console.debug("%c\t" + guessed_next, 'color:red;');
+                                report("%c\t" + guessed_next, 'color:red;');
                             } else {
-                                console.debug("\t" + report);
+                                report("\t" + one_line);
                             }
                             later_cont = this_cont;
                             this_cont = this_cont.supersedes;
@@ -1957,25 +1896,14 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                     }
                 });
             });
-            console.debug("Active:", active_idns.join(" "));
-            console.debug("Superseded:", superseded_idns.join(" "));
+            report("Active:", active_idns.join(" "));
+            report("Superseded:", superseded_idns.join(" "));
             var duplicated_idns = find_duplicates(active_idns.concat(superseded_idns));
             if (duplicated_idns.length === 0) {
-                console.debug("No duplicates.");
+                report("No duplicates.");
             } else {
                 console.error("Duplicated:", duplicated_idns);
             }
-        }
-        refresh_how_many() {
-            var that = this;
-            that.cats.loop(
-                /** @param {CategoryWord} cat */
-                function recompute_category_anti_valves(cat) {
-                    var num_cont = cat.conts.num_words();
-                    var num_cont_string = num_cont === 0 ? "" : f(" ({n})", {n:num_cont});
-                    cat.$sup.find('.how-many').text(num_cont_string);
-                }
-            );
         }
         cont_loop(callback) {
             var that = this;
@@ -1993,14 +1921,14 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
             });
         }
         /**
-         * Affirm that Categories and Contributions agree on who contains whom.
+         * Affirm that Categories and Contributions are self-consistent.
+         *
+         * Step 1.  For each category, for each contribution within it...
+         *          Each contribution should know what category it's in.
          */
         assert_consistent() {
             var that = this;
 
-            // NOTE:  1. For each category, for each contribution within it...
-            //           Each contribution should know what category it's in.
-            var num_with_sups = 0;
             that.cats.loop(/** @param {CategoryWord} cat */ function (cat) {
                 cat.conts.loop(/** @param {ContributionWord} cont */ function (cont) {
                     console.assert(
@@ -2014,15 +1942,46 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                         cont.cat.obj.name,
                         cont.cat.idn,
                     );
-                    if (cont.is_dom_rendered()) {
-                        num_with_sups++;
-                    }
-                    if (cont.is_temporarily_rendered) {
-                        console.error("Contribution temporarily rendered and left to rot", cont);
-                    }
                 });
             });
+        }
+    }
 
+    class LexUnslumping extends LexContribution {
+        constructor(...args) {
+            super(...args)
+            var that = this;
+            that.me_idn = MONTY.me_idn;
+        }
+        is_me(user_idn) {
+            return qiki.Lex.is_equal_idn(user_idn, this.me_idn);
+        }
+        am_i_admin() {
+            return this.is_user_admin(this.me_idn);
+        }
+        am_i_authenticated() {
+            return this.is_authenticated(this.me_idn);
+        }
+        me_title() {
+            return this.possessive(this.me_idn) + " " + MONTY.WHAT_IS_THIS_THING;
+            // EXAMPLE:  "Bob Stein's playlist"
+        }
+        possessive(user_idn) {
+            var user_word = this.from_user[user_idn];
+            if (is_specified(user_word) && is_specified(user_word.name)) {
+                return user_word.name + "'s";
+            } else {
+                return "my";
+            }
+        }
+        /**
+         * Affirm that Category and Contribution data agrees with rendering
+         *
+         * Step 2.  Go through rendered contribution DOM objects in each category.
+         */
+        assert_consistent() {
+            super.assert_consistent();
+            var that = this;
             // NOTE:  2. Go through rendered contribution DOM objects in each category.
             var num_rendered = 0;
             var num_unrendered = 0;
@@ -2100,6 +2059,18 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                 }
             });
 
+            var num_with_sups = 0;
+            that.cats.loop(/** @param {CategoryWord} cat */ function (cat) {
+                cat.conts.loop(/** @param {ContributionWord} cont */ function (cont) {
+                    if (cont.is_dom_rendered()) {
+                        num_with_sups++;
+                    }
+                    if (cont.is_temporarily_rendered) {
+                        console.error("Contribution temporarily rendered and left to rot", cont);
+                    }
+                });
+            });
+
             assert_equal(num_rendered, num_with_sups);
             // NOTE:  The number of Contribution instances that think they're rendered,
             //        should match the number of DOM elements representing contributions.
@@ -2113,6 +2084,17 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                     no: num_rendered
                 }));
             }
+        }
+        refresh_how_many() {
+            var that = this;
+            that.cats.loop(
+                /** @param {CategoryWord} cat */
+                function recompute_category_anti_valves(cat) {
+                    var num_cont = cat.conts.num_words();
+                    var num_cont_string = num_cont === 0 ? "" : f(" ({n})", {n:num_cont});
+                    cat.$sup.find('.how-many').text(num_cont_string);
+                }
+            );
         }
     }
 
@@ -2331,9 +2313,15 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
         }
     }
 
-    /**
-     * Base class for 'contribute' and 'edit' words.  Each quote or video gets one of these.
-     */
+    // class Category extends CategoryWord {
+    // }
+    //
+    // /**
+    //  * Base class for 'contribute' and 'edit' words.  Each quote or video gets one of these.
+    //  */
+    // class Contribution extends ContributionWord {
+    //
+    // }
     class ContributionWord extends qiki.Word {
         /** @namespace {ResizeObserver} */ resize_observer;
         handler;
@@ -2957,7 +2945,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
         }
 
         /**
-         * Remove a contribution from the DOM.
+         * Remove a contribution from the DOM.  Undo .build_dom()
          *
          * This happens when editing a contribution's text.  The edit-word becomes the basis for a new
          * contribution.  The old contribution word (or earlier edit word) is superseded.
@@ -4633,7 +4621,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                 old_cont.idn,
                 function contribution_saved(new_cont_word) {
                     var did_contribution_change = new_cont_word !== null;
-                    var live_cont_idn;   // idn of the live contribution from onw on, new or old
+                    var live_cont_idn;   // idn of the live contribution from now on, new or old
                     if (did_contribution_change) {
                         live_cont_idn = new_cont_word.idn;
                     } else {
@@ -4697,12 +4685,15 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                                 var $new_dom_almost = old_cont.$sup;
                                 new_cont.dom_link($new_dom_almost);   // new cont becomes rendered
 
-                                old_cont.dom_removal();               // old cont disappears
+                                // old_cont.dom_removal();               // old cont disappears
+                                // NOTE:  Bug of 2022.0113, edited cont disappeared, duh!
+
                                 // TODO:  Encapsulate this code into some kind of new method
                                 //        ContributionLexi.cont_supersede(
                                 //            old_rendered_cont_with_updated_dom,
                                 //            new_superseding_cont
                                 //        )?
+                                //        Nah, turns out dom_link() is the whole thing.
 
                                 new_cont.rebuild_bars();
                             }
@@ -4949,7 +4940,6 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
 
                 var combined_promise = $.when.apply($, promises);
                 combined_promise.done(function popdown_animation_done() {
-                    // $('#popup-screen').remove();   // Removes contained popup contribution too.
                     popped_cont.$sup.removeClass('pop-up');
                     popped_cont.$sup.removeClass('pop-up-block');
                     popped_cont.$sup.css('margin-left', 0);
@@ -6119,7 +6109,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
         });
     }
 
-    // TODO:  Move this to qiki.js
+    // TODO:  Move to qiki.js
     window.qiki = window.qiki || {};
     window.qiki.media_register = function js_for_unslumping_media_register(media) {
         var $script = $(window.document.currentScript);

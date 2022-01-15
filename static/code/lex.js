@@ -2,6 +2,8 @@
 // ------
 // Parse a .lex.jsonl file into words.  Derive classes from Lex and Word to process the words.
 // Requires jQuery
+//
+// TODO:  Move to qiki.js
 
 window.qiki = window.qiki || {};
 (function (qiki, $) {
@@ -20,18 +22,10 @@ window.qiki = window.qiki || {};
     }
 
     qiki.Lex = class Lex {
-        constructor() {
-            var that = this;
-            that.word_class = qiki.Word;
-            // NOTE:  Derived class may override word_class either here for all words or in an
-            //        overridden .word_factory() to make the word class depend on word contents.
-        }
         /**
          * Instantiate a word in this lex.  Expect word_class to be Word or a derived class.
          */
-        word_factory(...args) {
-            return new this.word_class(this, ...args);
-        }
+
         static is_equal_idn(idn1, idn2) {
             console.assert(qiki.Lex.is_idn_defined(idn1));
             console.assert(qiki.Lex.is_idn_defined(idn2));
@@ -199,6 +193,13 @@ window.qiki = window.qiki || {};
         }
     }
 
+    /**
+     * A lex stored on an internet server.
+     *
+     * TODO:  Give a Lex object ways to read or write words with composition instead of subclassing.
+     *        lex.reader(Reader(url))
+     *        lex.writer(Writer(url))
+     */
     qiki.LexCloud = class LexCloud extends qiki.Lex {
         constructor(url) {
             super()
@@ -301,7 +302,28 @@ window.qiki = window.qiki || {};
         }
         each_word(word) {   // callback for derived class
         }
-        is_early_in_the_scan() {
+        /**
+         * Allow a lex-subclass to give words a vrb-dependent word-subclass, e.g.
+         *
+         * @param idn
+         * @param whn
+         * @param sbj
+         * @param vrb
+         * @param obj_values
+         * @returns {qiki.Word}
+         *
+         * TODO:  D.R.Y. - don't pass all this stuff to several different functions.
+         */
+        word_class(idn, whn, sbj, vrb, ...obj_values) {
+            return qiki.Word;
+        }
+        word_factory(idn, whn, sbj, vrb, ...obj_values) {
+            var that = this;
+            var the_word_class = that.word_class(idn, whn, sbj, vrb, ...obj_values);
+            var the_word_instance = new the_word_class(that, idn, whn, sbj, vrb, ...obj_values);
+            return the_word_instance;
+        }
+       is_early_in_the_scan() {
             return (
                 ! this.have_we_processed_the_definition_of('lex') ||
                 ! this.have_we_processed_the_definition_of('define')
@@ -441,12 +463,12 @@ window.qiki = window.qiki || {};
                 }
             }
         }
-        user_remember(user, property_name, property_value) {
+        user_remember(user_idn, property_name, property_value) {
             var that = this;
-            if ( ! has(that.from_user, user)) {
-                that.from_user[user] = {};  // TODO:  Give users a class.  No, literally a `class`.
+            if ( ! has(that.from_user, user_idn)) {
+                that.from_user[user_idn] = {};  // TODO:  Give users a class.  No, literally a `class`.
             }
-            that.from_user[user][property_name] = property_value;
+            that.from_user[user_idn][property_name] = property_value;
         }
 
         /**
@@ -501,13 +523,56 @@ window.qiki = window.qiki || {};
             var user_word = this.from_user[user_idn];
             return is_specified(user_word) && user_word.is_admin;
         }
-        possessive(user_idn) {
-            var user_word = this.from_user[user_idn];
-            if (is_specified(user_word) && is_specified(user_word.name)) {
-                return user_word.name + "'s";
-            } else {
-                return "my";
-            }
+        /**
+         * Add a word to the lex.
+         *
+         * TODO:  Move this method to LexCloud.
+         *        That will require encapsulating ajax calls there, which is good.
+         *        Probably they should be there, and qoolbar should use them too.
+         *        Then ajax_url needs to be some app-specific configurable value,
+         *        along with LexCloud.url used for scanning.
+         *        Duh, the REST way is to use the SAME url for both and the method
+         *        would be GET or POST.
+         *        Huh, including a way to GET the whole lex (async of course) or
+         *        one word by idn, or multiple words by search criteria.
+         *        So lex.py needs a REST-ful server and lex.js a REST-ful client.
+         *
+         * @param vrb_name - e.g. 'edit'
+         * @param objs_by_name - e.g. {contribute: idn, text: "new contribution text"}
+         * @param done_callback
+         * @param fail_callback
+         */
+        create_word(vrb_name, objs_by_name, done_callback, fail_callback) {
+            var that = this;
+            done_callback = done_callback || function () {};
+            fail_callback = fail_callback || function (message) { console.error(message); };
+            qoolbar.post(
+                'create_word',
+                {
+                    vrb_name: vrb_name,
+                    objs_by_name: JSON.stringify(objs_by_name)
+                },
+                // NOTE:  jQuery.post() will handle data being a nested object, but it uses weird
+                //        bracket scheming to encode the deeper parts.  JSON within MIME type
+                //        application/x-www-form-urlencoded is slightly more sane.
+                // SEE:  Square brackets in URIs, https://stackoverflow.com/a/30400578/673991
+                /**
+                 * Handle a valid response from the create-word ajax.
+                 *
+                 * @param response_object
+                 * @param response_object.jsonl - JSON of array of the created word's bytes & nits.
+                 */
+                function done_creating_a_word(response_object) {
+                    var word_json = response_object.jsonl;
+                    var word_created = that.each_json(word_json);
+                    if (word_created === null) {
+                        fail_callback("JSONL error");
+                    } else {
+                        done_callback(word_created);
+                    }
+                },
+                fail_callback
+            );
         }
     }
 
@@ -515,23 +580,35 @@ window.qiki = window.qiki || {};
         static MILLISECONDS_PER_WHN = 1.0;   // whn is milliseconds since 1970
         static SECONDS_PER_WHN = 0.001;   // whn is milliseconds since 1970
 
+        /**
+         * Word constructor
+         *
+         * @param lex - every word knows the lex it belongs to
+         * @param idn - identifier, probably an integer
+         * @param whn - milliseconds since 1970 when the word was stored in the lex
+         * @param sbj - idn of the subject or owner or user responsible for the word
+         * @param vrb - idn of the verb
+         * @param obj_values - unnamed values of the word's objects.
+         *                     The verb definition leads to the names.
+         *
+         * TODO:  Make lex a static property of the derived Word class.  That way each word
+         *        instance will know its lex instance but won't be burdened with storing it in
+         *        every word instance.
+         *        Could lead to an oppressively tall hierarchy of word classes, e.g.:
+         *        qiki.Word:
+         *            AllContributionWords:   <-- static lex;
+         *                ContributionWord:
+         *                    ContributeOriginalWord
+         *                    EditWord
+         *                CaptionWord
+         *                RearrangeWord
+         *        Plus layers on top of that for
+         *            generic Contribution application innards versus
+         *            specific Unslumping implementation
+         */
         constructor(lex, idn, whn, sbj, vrb, ...obj_values) {
             var that = this;
             that.lex = lex;
-            // TODO:  Make lex a static property of the derived Word class.  That way each word
-            //        instance will know its lex instance but won't be burdened with storing it in
-            //        every word instance.
-            //        Could lead to an oppressively tall hierarchy of word classes, e.g.:
-            //        qiki.Word:
-            //            AllContributionWords:   <-- static lex;
-            //                ContributionWord:
-            //                    ContributeOriginalWord
-            //                    EditWord
-            //                CaptionWord
-            //                RearrangeWord
-            //        Plus layers on top of that for
-            //            generic Contribution application innards versus
-            //            specific Unslumping implementation
             that.idn = idn;
             that.whn = whn;
             that.sbj = sbj;

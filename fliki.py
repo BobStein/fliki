@@ -1841,10 +1841,10 @@ class Auth(object):
         else:
             return "Impossible situation, neither authenticated nor anonymous."
 
-    def create_word_by_user(self, vrb_name, obj_dictionary):
+    def create_word_by_user(self, vrb_name, obj_dict):
         FlikiWord.user_record(self.flask_user.idn, 'ip_address', self.ip_address_txt)
         FlikiWord.user_record(self.flask_user.idn, 'user_agent', self.user_agent_txt)
-        return FlikiWord.create_word_by_user(self, vrb_name, obj_dictionary)
+        return FlikiWord.create_word_by_user(self, vrb_name, obj_dict)
 
 
 class AuthFliki(Auth):
@@ -2288,6 +2288,7 @@ def unslumping_home(home_page_title):
 
             foot.js_stamped(static_code_url('util.js'))
             foot.js_stamped(static_code_url('lex.js'))
+            foot.js_stamped(static_code_url('contribution.js'))
             foot.js_stamped(static_code_url('unslumping.js'))
 
             with foot.script() as script:
@@ -2595,11 +2596,10 @@ def ajax():
 
         elif action == 'create_word':
             vrb_name = auth.form('vrb_name')
-            sub_nits_json = auth.form('named_sub_nits')   # nits that follow idn,whn,user,vrb
-            sub_nits_dict = json.loads(sub_nits_json)
+            objs_by_name_json = auth.form('objs_by_name')   # nits that follow idn,whn,user,vrb
+            obj_dict = json.loads(objs_by_name_json)
             try:
-                # word = FlikiWord.create_word_by_user(auth, vrb_name, sub_nits_dict)
-                word = auth.create_word_by_user(vrb_name, sub_nits_dict)
+                word = auth.create_word_by_user(vrb_name, obj_dict)
             except ValueError as e:
                 auth.print("CREATE WORD ERROR", type(e).__name__, auth.flask_user.idn, repr_safe(e))
                 return invalid_response("create_word error")
@@ -2810,7 +2810,7 @@ def invalid_response(error_message):
 
 def version_report():
     git_stuff = dict(
-        sha_excerpt=git.Repo(SCRIPT_DIRECTORY).head.object.hexsha[0 : 10],
+        sha_excerpt=git.Repo(SCRIPT_DIRECTORY).head.object.hexsha[0 : 7],   # first 7, ala GitHub
         num_uncommitted=len(git.Repo(SCRIPT_DIRECTORY).index.diff(None)),
     )
     if git_stuff['num_uncommitted'] == 0:

@@ -158,7 +158,17 @@ class VersatileJsonEncoder(json.JSONEncoder):
 
 def repr_safe(x):
     """ Like repr() but the output is JSON, compact, and the length is limited. """
-    might_be_long = json_encode(x)
+    try:
+        might_be_long = json_encode(x)
+    except TypeError:
+        try:
+            might_be_long = json_encode(str(x))
+        except TypeError:
+            try:
+                might_be_long = json_encode(type(x).__name__)
+            except TypeError:
+                might_be_long = "(CANNOT RENDER OBJECT)"
+
     how_long = len(might_be_long)
     max_out = 60
     overhead = 15

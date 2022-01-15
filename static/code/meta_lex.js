@@ -6,7 +6,7 @@
 
 // meta_lex.js
 // -----------
-// Render the geeky innards of the lex for unslumping.org
+// Render the geeky innards of a lex in the cloud.
 // requires lex.js
 /**
  * JavaScript for the /meta/lex
@@ -23,8 +23,8 @@ function js_for_meta_lex(window, $, MONTY) {
         // FALSE WARNING:  Invalid number of arguments, expected 0
         //                 because PyCharm doesn't see th qiki.Lex class in lex.js
         // noinspection JSCheckFunctionSignatures
-        var lex = new LexUnslumping(MONTY.LEX_URL);
-        lex.word_class = WordUnslumping;
+        var lex = new LexMeta(MONTY.LEX_URL);
+        lex.word_class = WordMeta;
         lex.$ol = $('<ol>', {class: 'lex-list'});
         lex.$ol.hide();
         lex.$progress = $('<div>', {id: 'progress'});
@@ -65,7 +65,7 @@ function js_for_meta_lex(window, $, MONTY) {
         return " " + since_seconds.toFixed(1) + "sec ";
     }
 
-    class LexUnslumping extends qiki.LexCloud {
+    class LexMeta extends qiki.LexCloud {
 
         $progress = null;
         $ol = null;
@@ -85,7 +85,7 @@ function js_for_meta_lex(window, $, MONTY) {
         each_word(word) {
             var that = this;
             super.each_word(word);
-            // TODO:  Move the following logic to the WordUnslumping constructor.
+            // TODO:  Move the following logic to the WordMeta constructor.
             //        Then we can get rid of each_word() everywhere.
             word.render(that.word_rendered_previously);
             that.$ol.append(word.$li);
@@ -108,7 +108,7 @@ function js_for_meta_lex(window, $, MONTY) {
         }
     }
 
-    class WordUnslumping extends qiki.Word {
+    class WordMeta extends qiki.Word {
 
         render(word_prev) {
             var that = this;
