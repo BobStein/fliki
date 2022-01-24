@@ -15,13 +15,12 @@
  * SEE:  expected, actual parameter order (my answer), https://stackoverflow.com/a/53603565/673991
  *
  * @param expected - often a literal
- * @param actual - often an expression
- * @param {string=} context - more stuff to show if there's a problem
+ * @param actual - often a function call or other expression
+ * @param {string=} context - more stuff to be displayed on the console if there's a problem
  * @return {boolean} - support chaining:  assert_foo(a) && assert_bar(a.b)
  */
-function assert_equal(expected, actual, context) {
-    context = context || "";
-    console.assert(expected === actual, "Expected:", expected, "but got:", actual, context);
+function assert_equal(expected, actual, ...context) {
+    console.assert(expected === actual, "Expected:", expected, "but got:", actual, ...context);
     return expected === actual;
 }
 assert_equal(true, assert_equal(4, 2 + 2));
@@ -31,17 +30,23 @@ assert_equal(true, assert_equal(4, 2 + 2));
  *
  * See type_name() and official_type_name() for terminology.  Capitalize.
  *
+ * CAUTION:  Instead of type_should_be(z, Array), consider should_be_array_like(z)
+ *
+ * CAUTION:  type_should_be(z, Object) will accept arrays and functions.
+ *
  * @param thing
- * @param expected_type - e.g. String, Number, Array, Object, Function, MyClass, BaseClass
- *                        Because parameter is passed through the Object constructor, the formal
- *                        capitalized type names must be used.  E.g. these are both true:
- *                            type_should_be(42, Number);
- *                            type_should_be(Number(42), Number);
- *                        Also supports an array of such types, any of which valid.
- *                        TODO:  Allow null or undefined to be among the "types" meaning the
- *                               variable should/could be identical to null or undefined.
+ * @param {object} expected_type - e.g. String, Number, Function, MyClass, BaseClass
+ *                 Because parameter is passed through the Object constructor, the formal
+ *                 capitalized type names must be used.  E.g. these are both true:
+ *                     type_should_be(42, Number);
+ *                     type_should_be(Number(42), Number);
+ *                 Also supports an array of such types, any of which valid.
+ *                 TODO:  Allow null or undefined to be among the "types" meaning the
+ *                        variable should/could be identical to null or undefined.
  * @return {boolean} - to support chaining:  type_should_be(a, X) && type_should_be(a.b, Y)
  */
+// NOTE:  Unfortunately, JSdoc fails to have a type specifier more specific than "object" to
+//        represent the canonical JavaScript constructors Number, String, etc.
 function type_should_be(thing, expected_type) {
     if (is_a(expected_type, Function)) {
         if (is_specified(thing) && is_a(thing, expected_type)) {
@@ -84,8 +89,7 @@ function type_should_be(thing, expected_type) {
 }
 assert_equal(true, type_should_be(42, Number));
 assert_equal(true, type_should_be("X", String));
-assert_equal(true, type_should_be({}, Object));
-assert_equal(true, type_should_be([], Array));
+assert_equal(true, type_should_be([], Array));   // Consider should_be_array_like()
 assert_equal(true, type_should_be(function () {}, Function));
 assert_equal(true, type_should_be(new Date(), Date));
 assert_equal(true, type_should_be($('<div>'), $));
@@ -96,6 +100,18 @@ error_expected(function () {
 });
 error_expected(function () {
     assert_equal(false, type_should_be(null, [Number, String]));
+});
+
+// CAUTION:  As with is_a(), it doesn't mean much to pass Object to type_should_be().
+//           Although it's not quite that useless; type_should_be() won't accept null or undefined.
+assert_equal(true, type_should_be({}, Object));
+assert_equal(true, type_should_be([], Object));
+assert_equal(true, type_should_be(function () {}, Object));
+error_expected(function () {
+    assert_equal(false, type_should_be(null, Object));
+});
+error_expected(function () {
+    assert_equal(false, type_should_be(undefined, Object));
 });
 
 /**
@@ -124,7 +140,7 @@ error_expected(function () {
  *
  * SEE:  typeof vs instanceof, https://stackoverflow.com/a/6625960/673991
  *
- * CAUTION:  Don't use `Object` for the second parameter.
+ * CAUTION:  Don't use `Object` for the second parameter.  It doesn't mean much.
  *     true === is_a(function () {}, Object)   // use is_associative_array()
  *     true === is_a(undefined, Object)        // use is_defined()
  *     true === is_a(null, Object)             // use is_specified()
@@ -144,14 +160,41 @@ assert_equal(true, is_a(42, Number));
 assert_equal(true, is_a("X", String));
 assert_equal(true, is_a([], Array));
 assert_equal(true, is_a(function () {}, Function));
+
+// CAUTION:  is_a(z, Object) doesn't mean much.
 assert_equal(true, is_a(function () {}, Object));
 assert_equal(true, is_a(undefined, Object));
 assert_equal(true, is_a(null, Object));
 assert_equal(true, is_a([], Object));
 
-function should_be_array_like(putative_array) {
+/**
+ * Console error if it doesn't quack like an array.
+ *
+ * Includes strings, jQuery collections, and objects with length and first and last elements.
+ *
+ * @param putative_array
+ * @param {object=} element_type_should_be - optional type expected for all elements.
+ *                                           Use formal constructors, e.g. Number, String.
+ *                                           Can be an array of acceptable types.
+ * @returns {boolean} - true=it quacks like an array, and element types are as expected.
+ */
+function should_be_array_like(putative_array, element_type_should_be) {
     if (is_array_like(putative_array)) {
-        return true;
+        if (is_specified(element_type_should_be)) {
+            var all_elements_correct_type = true;
+            looper(putative_array, function (index, element) {
+                if ( ! type_should_be(element, element_type_should_be)) {
+                    console.error(f("...in array element {i} of {n}", {
+                        i: parseInt(index) + 1,
+                        n: putative_array.length
+                    }));
+                    all_elements_correct_type = false;
+                }
+            });
+            return all_elements_correct_type;
+        } else {
+            return true;
+        }
     }
     console.error(
         "Expecting an array-like thing, but got a", type_name(putative_array),
@@ -163,14 +206,18 @@ assert_equal(true, should_be_array_like(['yes', 'array']));
 error_expected(function () {
     assert_equal(false, should_be_array_like(42));
 });
+assert_equal(true, should_be_array_like([42, 216, 3435], Number));
+error_expected(function () {
+    assert_equal(false, should_be_array_like([42, 216, "square"], Number));
+});
 
 /**
- * The callback is expected to generate a console.error() -- but run to completely anyway.
+ * The callback is expected to generate a console.error() -- but run to completion anyway.
  *
  * This does NOT detect an exception, and would not give an error if one were thrown.
  * It merely detects whether console.error() were called by the callback.
  *
- * The error the callback generated is NOT displayed on the console. It is absorbed.
+ * The error the callback generated is NOT displayed on the console.  It is trashed.
  * Rather, an error is displayed on the console if the callback does NOT call console.error().
  *
  * @param callback
@@ -179,7 +226,7 @@ error_expected(function () {
 function error_expected(callback) {
     var number_of_error_calls = 0;
 
-    function fake_error() {
+    function fake_error(/* not using the expected error message */) {
         number_of_error_calls++;
     }
 
@@ -320,11 +367,13 @@ assert_equal(42, random_element([42, 42, 42]));
  *                   `this` is each value, as it is in $.each())
  *                   key, value are the parameters to the callback function
  *                       key is the name of the property for { objects }
- *                       key is the index of the array for [ arrays ] --
+ *                       key is the STRING-FORM index of the array for [ arrays ] --
  *                       CAUTION:  key is always a string!
  *                   return false (not just falsy) to prematurely terminate the looping
  * @return {*} - return the object, a convenience for chaining I guess.
  *               Seems as if $.each does this.
+ *
+ * CAUTION:  For an array, the callback index is a string.  Use parseInt() to make it an integer.
  *
  * SEE:  jQuery .call():  https://github.com/jquery/jquery/blob/438b1a3e8/src/core.js#L247
  *       where `this` is the same as the 2nd parameter, both for arrays and for objects.
@@ -337,6 +386,12 @@ assert_equal(42, random_element([42, 42, 42]));
 //        Unifying setTimeout() and $.each(), as it were.
 //        async={interval: milliseconds, chunk:iterations_per_interval, done:callback}
 //                         default 0           default 1                     default nothing
+// TODO:  Provide done() and fail() parameters.
+//            done() would get called if callback() never returns false
+//            fail() would get called if callback() ever returns false
+//        Or maybe looper() should return a jQuery promise object that achieves that.
+//        Then looper().done() would slightly resemble the for-else clause in Python.
+//        But that would (further?) break compatibility with jQuery.each().
 function looper(object, callback) {
     for (var key in object) {
         if (object.hasOwnProperty(key)) {
@@ -583,7 +638,7 @@ function has(collection, thing) {
     } else if (is_string(collection)) {
         return collection.indexOf(thing) !== -1;
     } else {
-        console.error("Don't understand has(", type_name(collection), ", )");
+        console.error("Don't understand has(", type_name(collection), ", )", collection, thing);
     }
 }
 assert_equal( true, has([1, 2, 3], 2));
@@ -639,7 +694,7 @@ assert_equal(false, is_array({length:2, 0:'x', 1:'y'}));
  *     is_array_like()          includes strings.
  *     is_array_like()          includes jQuery collection.
  *     is_array_like()          includes an object with a length and first and last elements.
- *     is_array_like() DOES NOT include an allocated but uninitialized array.
+ *     is_array_like() DOES NOT include an allocated but uninitialized array, e.g. new Array(3)
  *
  * @param putative_array
  * @return {boolean}
@@ -648,9 +703,9 @@ function is_array_like(putative_array) {
     if (putative_array.hasOwnProperty('length')) {
         if (is_a(putative_array.length, Number)) {
             var n = putative_array.length;
-            if (n <= 0) {
+            if (n === 0) {
                 return true;
-            } else {
+            } else if (n > 0) {
                 if (putative_array.hasOwnProperty(0) && putative_array.hasOwnProperty(n-1)) {
                     return true;
                 }
@@ -798,16 +853,29 @@ error_expected(function () {
     assert_equal('Object', type_name(new class Foo{constructor(){this.constructor=null;}}));
 })
 
-function default_to(parameter, default_value) {
-    if (is_defined(parameter)) {
-        return parameter;
-    } else {
-        return default_value;
-    }
-}
-assert_equal('red',  default_to('red',     'blue'));
-assert_equal('blue', default_to(undefined, 'blue'));
-assert_equal(null,   default_to(null,      'blue'));
+// function default_to(parameter, default_value) {
+//     if (is_defined(parameter)) {
+//         return parameter;
+//     } else {
+//         return default_value;
+//     }
+// }
+// assert_equal('red',  default_to('red',     'blue'));
+// assert_equal('blue', default_to(undefined, 'blue'));
+// assert_equal(null,   default_to(null,      'blue'));
+// NOTE:  Tossing out the default_to() function.  Because this:
+//            x = default_to(x, d);
+//        is less readable than:
+//            x = x || d;
+// TODO:  Bring it back!
+//        Because this practice eclipses an explicit falsy value with the default value.
+//        Eventually you're going to want an explicit falsy value that isn't clobbered:
+//            false, 0, "", null, NaN
+//        Possible syntax:   (New convention:  '_optional' suffix in the parameter list)
+//            function f(x, y_optional) {
+//                y = default_to(y_optional, default_value);
+//                y = typeof y_optional === 'undefined' ? default_value : y_optional;
+//                y = is_defined(y_optional) ? y_optional : default_value;
 
 /**
  * Verify that a missing function parameter is undefined.
@@ -840,8 +908,8 @@ error_expected(function () {
  *                    Typically whatever variable stores this value, is nulled by then().
  */
 function iterate(opt) {
-    opt.then     = default_to(opt.then,     function () {});
-    opt.do_early = default_to(opt.do_early, false);
+    opt.then ||= function () {};
+    opt.do_early ||= false;
     if (typeof opt.n_chunk !== 'number' || opt.n_chunk < 1) {
         opt.n_chunk = 1;
     }
@@ -1047,6 +1115,7 @@ function animate_surely(element, properties, options) {
         //        Then in Opera and Edge.  But never in Firefox.
         //        Did someone somewhere decide animations scrolled off screen
         //        don't need no lovin?
+        //        Hmm, I wonder if this animation asphyxiation only happens on sub-iframes?
         $element.stop();
         $element.css(properties);
         // FALSE WARNING:  Promise returned from complete is ignored
@@ -1130,9 +1199,9 @@ function last_item(array, value_if_empty) {
         return array[n-1];
     }
 }
-console.assert(42 === last_item([1,2,3,42]))
-console.assert("default" === last_item([], "default"))
-console.assert(undefined === last_item([]))
+assert_equal(42, last_item([1,2,3,42]))
+assert_equal("default", last_item([], "default"))
+assert_equal(undefined, last_item([]))
 
 /**
  * Colorize a line in the JavaScript console.
@@ -1161,11 +1230,11 @@ function is_subclass_or_same(class_child, class_parent) {
 function extract_file_name(path_or_url) {
     return path_or_url.split('/').pop().split('\\').pop().split('#')[0].split('?')[0];
 }
-console.assert("foo.txt" === extract_file_name('https://example.com/dir/foo.txt?q=p#anchor'));
-console.assert("foo.txt" === extract_file_name('C:\\program\\barrel\\foo.txt'));
+assert_equal("foo.txt", extract_file_name('https://example.com/dir/foo.txt?q=p#anchor'));
+assert_equal("foo.txt", extract_file_name('C:\\program\\barrel\\foo.txt'));
 
 
-(function (window) {   // Encapsulation of delta_format() and internals.
+(function (window) {   // Encapsulation of the delta_format() function and its internals.
 
     var MILLISECOND = 0.001;
     var SECOND = 1;
@@ -1322,8 +1391,8 @@ console.assert("foo.txt" === extract_file_name('C:\\program\\barrel\\foo.txt'));
 
         return word;
     }
-    console.assert("1s" === delta_format(1).description_short);
-    console.assert("42.0 days" === delta_format(42*24*3600).description_long);
+    assert_equal("1s", delta_format(1).description_short);
+    assert_equal("42.0 days", delta_format(42*24*3600).description_long);
 
     window.delta_format = delta_format;
 })(window);
@@ -1340,7 +1409,7 @@ function seconds_since_1970() {
 }
 
 /**
- * Extract elements from array that appear more than once.
+ * Return elements from array that appear more than once.  I.e. filter out singletons.
  *
  * THANKS:  https://stackoverflow.com/a/57928932/673991
  *

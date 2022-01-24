@@ -56,7 +56,6 @@
     display: inline-block;
     padding: 0 0.1em 0 0.1em;
 }
-.reference-word.sbj-unnamed,
 .reference-word.sbj-unnamed-anonymous,
 .reference-word.sbj-unnamed-google,
 .reference-word.sbj-unknown {
@@ -64,6 +63,9 @@
 }
 .reference-word.anonymous {
     background-color: #FFDDFF;
+}
+.reference-word.google-user {
+    background-color: #FFFFFF;
 }
 .user-icon {
     height: 1.2em;

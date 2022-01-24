@@ -49,14 +49,14 @@
  * @param MONTY.WHAT_IS_THIS_THING
  * @param talkify
  *
- * @property lex
- * @property lex.cats
- * @property lex.cats.by_name
- * @property lex.cats.by_name.my
- * @property lex.cats.by_name.their
- * @property lex.cats.by_name.anon
- * @property lex.cats.by_name.about
- * @property lex.cats.by_name.trash
+ * @ --- property lex
+ * @ --- property lex.cats
+ * @ --- property lex.cats.by_name
+ * @ --- property lex.cats.by_name.my
+ * @ --- property lex.cats.by_name.their
+ * @ --- property lex.cats.by_name.anon
+ * @ --- property lex.cats.by_name.about
+ * @ --- property lex.cats.by_name.trash
  *
  * @property interact
  * @property interact.bot
@@ -355,17 +355,6 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
 
         category_and_contribution_instantiations(function () {
 
-            lex.cats.loop(/** @param {CategoryWord} cat */ function (cat) {
-                cat.thumb_specs = {
-                    for_width: WIDTH_MAX_EM,
-                    for_height: HEIGHT_MAX_EM
-                };
-            });
-            lex.cats.by_name.about.thumb_specs = {
-                for_width: WIDTH_MAX_EM_ABOUT,
-                for_height: HEIGHT_MAX_EM_ABOUT
-            };
-
             build_body_dom();
 
             $( '#close-button').on('click', function () { pop_down_all(false); });
@@ -527,6 +516,11 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                    'mozfullscreenchange ' +
                       'fullscreenchange',
                 function full_screen_change() {
+                    // THANKS:  iPhone Chrome & Safari appear to use the event named
+                    //          webkitfullscreenchange in 2022,
+                    //          https://caniuse.com/mdn-api_element_fullscreenchange_event
+                    // THANKS:  Similarly for the property webkitIsFullScreen [sic],
+                    //          https://developer.mozilla.org/en-US/docs/Web/API/Fullscreen_API/Guide#prefixing
                     isFullScreen = window.document.fullScreen ||
                                    window.document.mozFullScreen ||
                                    window.document.webkitIsFullScreen;
@@ -544,7 +538,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                 }
             );
 
-            // NOTE:  On my desktop Chrome the following errors went away by disabling
+            // NOTE:  On my Windows/Chrome desktop, the following errors went away by disabling
             //        Youtube Playback Speed Control 0.0.5
             //            Unchecked runtime.lastError: Could not establish connection?
             //            Receiving end does not exist?
@@ -596,7 +590,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                         evt.target.tagName,
                         $(evt.target).attr('id') || ""
                     );
-                    // EXAMPLE:  ignoring keystroke F9 SHIFT CONTROL
+                    // EXAMPLE:  ignoring key F9 SHIFT CONTROL   BODY
                 }
             }
         }
@@ -605,16 +599,31 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
     /**
      * Does element expect the user to be typing some text?
      *
-     * For calling from a keyboard event handler on event_object.target
-     * Doesn't matter:  where focus is, what's visible, what's disabled, what's readonly.
+     * Used to prevent letter shortcuts (e.g. 'F' for full-screen) while typing text.
+     *
+     * For calling from a keyboard event handler, passing e.g. event_object.target
+     * This function makes its determination based only on the passed element, not directly on where
+     * focus is, what's visible, what's disabled, nor what's readonly.
      *
      * SEE:  Is typable question, https://stackoverflow.com/q/34149423/673991
+     *
+     * SEE:  Finding out which element gets keystroke events, i.e. has focus,
+     *       https://developer.mozilla.org/en-US/docs/Web/API/Document/activeElement
      *
      * @param element - jQuery object or DOM object or selector
      * @return {boolean}
      */
     function is_text_entry_element(element) {
-        return $(element).is(':input, [contenteditable]');
+
+        // return $(element).is(':input, [contenteditable]');
+        // NOTE:  The above is false-positive for buttons, e.g. "close" after manual pop-up.
+
+        return $(element).is('input, textarea, [contenteditable]');
+        // NOTE:  This works in the unslumping application but it is not universal.
+        //        False positive for input type=button, contenteditable=false, and lots more.
+        //        False negative for datalist element, and select-option inputs, input with
+        //        accesskey attribute.
+        //        Hidden or disabled inputs probably never get focus nor keystroke events.
     }
 
     /** Handle a keystroke whether the user is entering text or not.
@@ -650,7 +659,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
         }
     }
 
-    /** Handle a keystroke when a user is NOT entering text.
+    /** Handle a keystroke that should only have an effect when a user is NOT entering text.
      *
      * @param evt - as passed to jQuery .on() callback
      * @return {boolean} - true=handled it
@@ -713,13 +722,16 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
             return true;
         case ' ':
             if (bot.is_manual()) {
+
                 // console.info("spacebar - play");
                 // bot.play();
-                // NOTE:  This doesn't feel natural.
-                //        It would begin the long play of a sequence of contributions.
+                // NOTE:  Spacebar to play doesn't feel natural.
+                //        It could begin the long play of a sequence of contributions.
                 //        Just too big of a step to take on a whole web page.
-                // SEE:  Spacebar ux, https://ux.stackexchange.com/a/53113/25643
-                // TODO:  It could initiate play if a contribution has been manually popped up.
+                // TODO:  It could initiate play when one contribution has been manually popped up,
+                //        and ignored when all are thumbnails.
+                // SEE:  Spacebar for scrolling, https://ux.stackexchange.com/a/53113/25643
+
                 console.info("spacebar ignored when not playing");
             } else if (bot.is_paused) {
                 console.info("spacebar - resume");
@@ -735,7 +747,8 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
             return true;
         case '?':
             console.info("keyboard help -- goes here");
-            // TODO:  Scroll to and open a blurb in the About category?  Noice!
+            // TODO:  Scroll to and open a blurb in the About category about keyboard shortcuts?
+            //        That would be noice!
             return true;
         default:
             return false;
@@ -1551,7 +1564,31 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
      * //// Instantiate //// - Category and Contribution collections - and fill them from lex.
      */
     function category_and_contribution_instantiations(then) {
-        lex = new LexUnslumping(MONTY.LEX_URL);
+        lex = new LexUnslumping(MONTY.LEX_URL, {
+            done: function () {
+                lex.cats.loop(/** @param {CategoryWord} cat */ function (cat) {
+                    cat.late_setting_of_some_rando_properties();
+                });
+                lex.assert_consistent();
+                if (console_verbose) {
+                    lex.report_edit_history_in_console(console.debug.bind(console));
+                }
+                then();
+            },
+            parent: {
+                category: function (word) {
+                    console.debug("CATEGORY +", word.obj.name);
+                }
+            },
+            vrb: {
+                contribute: function(word) {
+                    console.debug("CONTRIBUTE +", word.idn, word.obj.text.length);
+                },
+                edit: function(word) {},
+                caption: function(word) {},
+                rearrange: function(word) {},
+            }
+        });
 
         console.debug("Lex", lex);
         // NOTE:  Of course the lex instance is very unpopulated now, but the JavaScript console
@@ -1561,49 +1598,47 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
 
         qiki.lex = lex;
         // NOTE:  Make the lex instance available for debugging.
-
-        lex.scan(function () {
-            lex.cats.loop(/** @param {CategoryWord} cat */ function (cat) {
-                cat.kludge_some_category_properties();
-            });
-            lex.assert_consistent();
-            if (console_verbose) {
-                lex.report_edit_history_in_console(console.debug.bind(console));
-            }
-            then();
-        }, function (error_message) {
-            console.error("Lex scan fail:", error_message);
-        });
     }
 
-    class LexContribution extends qiki.LexCloud {
+
+    /**
+     * Collection of multi-media contributions:  plain text or a url for e.g. a video or image.
+     *
+     * Contributions are categorized and ordered within their categories.
+     *
+     * @property LexContribution.idn_of.rightmost
+     */
+    class LexContribution extends qiki.LexClient {
         constructor(...args) {
             super(...args)
             var that = this;
-            $.extend(that.idn_of, {   // mapping name ==> idn for lex-defined words
+            that.expect_definitions(
+                'category',
+                'locus',
+                'contribute',
+                'caption',
+                'edit',
+                'rearrange',
+                'rightmost',
+                'interact',
+            );
+            // NOTE:  The categories are not here (my, their, trash, etc.).
+            //        Those idns are available as e.g. lex.cats.by_name.my.idn
 
-                category: qiki.Lex.IDN_UNDEFINED,
-                locus: qiki.Lex.IDN_UNDEFINED,
-                contribute: qiki.Lex.IDN_UNDEFINED,
-                caption: qiki.Lex.IDN_UNDEFINED,
-                edit: qiki.Lex.IDN_UNDEFINED,
-                rearrange: qiki.Lex.IDN_UNDEFINED,
-                rightmost: qiki.Lex.IDN_UNDEFINED,
-                interact: qiki.Lex.IDN_UNDEFINED,
+            // NOTE:  The interact verbs are not here (bot, start, pause, quit, etc.).
+            //        They are not defined until and unless they're used.
+            //        And we allow new ones to come and go without complaint.
+            //        And they are referred to only by name in this code, not idn.
+            // FIXME:  Going to have to rejigger all this so (a) users can't specify a name for an
+            //         interaction that the lex then goes ahead and defines, and (b) so each
+            //         child (verb, I guess we're calling them verbs) gets its own namespace, e.g.
+            //         now we couldn't have a category named 'play' or an interaction named 'edit'.
 
-                // NOTE:  The category idns are not here (my, their, trash, etc.).
-                //        Those idns are available as e.g. lex.cats.by_name.my.idn
-
-                // NOTE:  The interact verb idns are not here.
-                //        They are not defined until and unless they're used.
-                //        And we allow new ones to come and go without complaint.
-                //        And they are referred to only by name in this code, not idn.
-            });
             that.cats = new qiki.Bunch();
         }
-        is_me(user_idn) {
-            return false;
-        }
+        // is_me(user_idn) {
+        //     return false;
+        // }
         notify(message) {
             var that = this;
             if (console_verbose) {
@@ -1622,6 +1657,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
          *        word handlers.  Less inheritance, more composition perhaps?
          *        {contribute: function () {...}, edit: function () {...}, category: ...}
          *        Had something like that once, but it wasn't odorless.
+         *        Or maybe {contribute:Contribute, edit:Edit, category:Category, ...}
          */
         word_class(idn, whn, sbj, vrb, ...obj_values) {
             var that = this;
@@ -1636,7 +1672,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                 return RearrangeWord;
             case that.idn_of.define:
                 if (sbj === that.idn_of.lex) {
-                    parent = obj_values[qiki.LexCloud.I_DEFINITION_PARENT];
+                    parent = obj_values[qiki.LexClient.I_DEFINITION_PARENT];
                     if (parent === that.idn_of.category) {
                         return CategoryWord;
                     }
@@ -1703,14 +1739,14 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
             //            or by what we want to do with them?
             //                (my unslumping, others, trash)
 
-            var new_owner = word.sbj;
+            var new_owner = word.agent;
 
             // First stage of decision-making, what are the factors:
-            var is_change_mine = that.is_me(new_owner);
-            var did_i_change_last = that.is_me(old_owner);
-            var is_change_admin = that.is_user_admin(new_owner);
-            var did_admin_change_last = that.is_user_admin(old_owner);
-            var is_same_owner = qiki.Lex.is_equal_idn(new_owner, old_owner);
+            var is_change_mine = that.me === new_owner;
+            var did_i_change_last = that.me === old_owner;
+            var is_change_admin = new_owner.is_admin;
+            var did_admin_change_last = old_owner.is_admin
+            var is_same_owner = new_owner === old_owner;   // qiki.Lex.is_equal_idn(new_owner, old_owner);
             var is_guarded = that.is_word_guarded(word);
             var welcome_oppression = ! is_guarded && ! did_i_change_last;
 
@@ -1725,18 +1761,18 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
             if (ok) {
                 that.notify(f("{idn}. Yes {user} may {action} {cont}, work of {author}", {
                     idn: word.idn,
-                    user: that.user_name_short(new_owner),
+                    user: new_owner.name_presentable(),
                     action: action,
                     cont: word.obj.contribute,
-                    author: that.user_name_short(old_owner)
+                    author: old_owner.name_presentable()
                 }));
             } else {
                 that.notify(f("{idn}. Nope {user} won't {action} {cont}, work of {author}", {
                     idn: word.idn,
-                    user: that.user_name_short(new_owner),
+                    user: new_owner.name_presentable(),
                     action: action,
                     cont: word.obj.contribute,
-                    author: that.user_name_short(old_owner)
+                    author: old_owner.name_presentable()
                 }));
 
                 // TODO:  Display more thorough explanations on why or why not ok.
@@ -1764,9 +1800,9 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                 "\nidns defined:",
                 that.idn_of
             );
-            if (that.is_me(word.sbj)) {
+            if (that.me === word.agent) {
                 return that.cats.by_name.my;
-            } else if ( ! that.is_authenticated(word.sbj)) {
+            } else if ( ! word.agent.is_authenticated()) {
                 return that.cats.by_name.anon;
             } else {
                 return that.cats.by_name.their;
@@ -1783,15 +1819,6 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
             });
             return cont_answer;
         }
-        is_user_admin(user_idn) {
-            var that = this;
-            var user = that.from_user[user_idn];
-            if (is_specified(user)) {
-                return user.is_admin;
-            } else {
-                return false;
-            }
-        };
         /**
          * A guarded word is a rearrange to the my, other, or anon categories.
          *
@@ -1806,27 +1833,6 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
             ];
             return word.vrb === that.idn_of.rearrange && has(guarded_categories, word.obj.category);
         }
-        user_name_short(user_idn) {
-            var that = this;
-            if (is_defined(user_idn)) {
-                var user_word = that.from_user[user_idn];
-                if (
-                    is_specified(user_word) &&
-                    is_specified(user_word.name) &&
-                    user_word.name !== ''
-                ) {
-                    if (user_word.name.length > 20) {
-                        return user_word.name.substring(0,15) + "...";
-                    } else {
-                        return user_word.name;
-                    }
-                } else {
-                    return "#" + String(user_idn);
-                }
-            } else {
-                return "(unowned)";
-            }
-        };
         /**
          * Report all contribution edit histories in the console.
          *
@@ -1948,31 +1954,20 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
     }
 
     class LexUnslumping extends LexContribution {
-        constructor(...args) {
-            super(...args)
+
+        get me() {
+            return this.agent_from_idn(MONTY.me_idn);
+        }
+        my_category_title() {
             var that = this;
-            that.me_idn = MONTY.me_idn;
-        }
-        is_me(user_idn) {
-            return qiki.Lex.is_equal_idn(user_idn, this.me_idn);
-        }
-        am_i_admin() {
-            return this.is_user_admin(this.me_idn);
-        }
-        am_i_authenticated() {
-            return this.is_authenticated(this.me_idn);
-        }
-        me_title() {
-            return this.possessive(this.me_idn) + " " + MONTY.WHAT_IS_THIS_THING;
-            // EXAMPLE:  "Bob Stein's playlist"
-        }
-        possessive(user_idn) {
-            var user_word = this.from_user[user_idn];
-            if (is_specified(user_word) && is_specified(user_word.name)) {
-                return user_word.name + "'s";
+            var possessive;
+            if (that.me.is_named()) {
+                possessive = that.me.name + "'s";
             } else {
-                return "my";
+                possessive = "my";
             }
+            return possessive + " " + MONTY.WHAT_IS_THIS_THING;
+            // EXAMPLE:  "Bob Stein's playlist"
         }
         /**
          * Affirm that Category and Contribution data agrees with rendering
@@ -1988,7 +1983,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
             var any_query_string_limitations = cont_array_from_query_string() !== null;
             that.cats.loop(/** @param {CategoryWord} cat */ function (cat) {
                 var rendered_idn_strings = [];
-                if (is_defined(cat.$cat) && cat.$cat.length === 1) {
+                if (is_specified(cat.$cat) && cat.$cat.length === 1) {
                     // NOTE:  If cat.build_dom() has happened yet.
                     cat.$cat.find('.sup-contribution').each(function (_, sup) {
                         num_rendered++;
@@ -2039,10 +2034,10 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                         } else {
                             plus_n_more = f(" + {n} more", {n: num_unrendered_this_category});
                         }
-                        var rendered_idn_string = rendered_idn_strings.join(" ") || "(none rendered)";
+                        var rendered_idns = rendered_idn_strings.join(" ") || "(none rendered)";
                         var vars = {
                             cat: cat.obj.name,
-                            rendered_idns: rendered_idn_string,
+                            rendered_idns: rendered_idns,
                             plus_n_more: plus_n_more,
                             num_current: num_current_this_category,
                             current_idns: stringify_array(current_idns).join(" ")
@@ -2099,37 +2094,50 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
     }
 
     class CategoryWord extends qiki.Word {
-        presentable_name;
-        is_initially_open;
-        /** @namespace {jQuery} */ $sup;
-        /** @namespace {jQuery} */ $cat;
-        /** @namespace {Valve} */ valve;
-        thumb_specs;
-
         constructor(lex, idn, whn, sbj, vrb, ...obj_values) {
             super(lex, idn, whn, sbj, vrb, ...obj_values);
             var that = this;
+            that.presentable_name = null;
+            that.is_initially_open = null;
+            /** @namespace {jQuery} */ that.$sup = null;
+            /** @namespace {jQuery} */ that.$cat = null;
+            /** @namespace {Valve} */ that.valve = null;
+
             that.conts = new qiki.Bunch();
             that.lex.cats.add_rightmost(that);
-            // that.lex.category_rightmost_resolve();   // in case rightmost is defined first
         }
 
         /**
-         * This must be done late in the lex scan, after we've seen the user's name.
+         * Set some properties for each category.
+         *
+         * This must be done late in the lex scan, after we've seen the browsing user's name.
          */
-        kludge_some_category_properties() {
+        late_setting_of_some_rando_properties() {
             var that = this;
 
             that.presentable_name = {
-                my: lex.me_title(),
+                my: that.lex.my_category_title(),
                 their: "others",
-                anon: "anonymous"
-            }[that.obj.name] || that.obj.name;
+                anon: "anonymous",
+                trash: "trash",
+                about: "about"
+            }[that.obj.name];
 
             that.is_initially_open = {
                 my: true,
-                their: true
-            }[that.obj.name] || false;
+                their: true,
+                anon: false,
+                trash: false,
+                about: false
+            }[that.obj.name];
+
+            that.thumb_specs = {
+                my:    {for_width: WIDTH_MAX_EM,       for_height: HEIGHT_MAX_EM},
+                their: {for_width: WIDTH_MAX_EM,       for_height: HEIGHT_MAX_EM},
+                anon:  {for_width: WIDTH_MAX_EM,       for_height: HEIGHT_MAX_EM},
+                trash: {for_width: WIDTH_MAX_EM,       for_height: HEIGHT_MAX_EM},
+                about: {for_width: WIDTH_MAX_EM_ABOUT, for_height: HEIGHT_MAX_EM_ABOUT},
+            }[that.obj.name];
         }
 
         get $unrendered() { return this.$cat.find('.unrendered'); }
@@ -2313,24 +2321,25 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
         }
     }
 
-    // class Category extends CategoryWord {
-    // }
-    //
-    // /**
-    //  * Base class for 'contribute' and 'edit' words.  Each quote or video gets one of these.
-    //  */
-    // class Contribution extends ContributionWord {
-    //
-    // }
-    class ContributionWord extends qiki.Word {
-        /** @namespace {ResizeObserver} */ resize_observer;
-        handler;
-        is_temporarily_rendered = false;
 
+    /**
+     * Contribution:  text or url
+     *
+     * Subclass of ContributionOriginalWord and EditWord.
+     */
+    class ContributionWord extends qiki.Word {
         constructor(...args) {
             super(...args)
             var that = this;
-            that.cat = null;   // Tell JetBrains .cat will be a property, eye-roll emoji.
+
+            // noinspection SillyAssignmentJS
+            /** @namespace {CategoryWord} */ that.cat = that.cat;
+            // NOTE:  Tell JetBrains .cat will be a property, eye-roll emoji.
+            //        We can't assign it until we get to the derived class.
+
+            that.is_temporarily_rendered = false;
+            that.handler = null;
+            /** @namespace {ResizeObserver} */ that.resize_observer = null;
         }
 
         get id_attribute () {return this.id_prefix + this.idn_string;}
@@ -2473,9 +2482,9 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
 
             that.$sup.data('contribution-object', that);
             // NOTE:  primal connection:  from DOM element --> to object instance
-            //        `that` - object was instantiated by LexCloud.each_word_json(),
+            //        `that` - object was instantiated by LexClient.each_word_json(),
             //                 which was called by either:
-            //                     LexCloud.scan() or
+            //                     LexClient() or
             //                     LexContribute.create_word()
         }
 
@@ -2485,7 +2494,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
          */
         rebuild_bars(then) {
             var that = this;
-            then = then || function () {};
+            then ||= function () {};
             if (that.is_media) {
                 that.render_media(intermediate_step);
             } else {
@@ -2756,7 +2765,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
         }
         live_media_iframe(parameters, then) {
             var that = this;
-            then = default_to(then, function () {});
+            then ||= function () {};
             if ( ! that.is_dom_rendered()) {
                 console.warn("No live media for unrendered contribution", that);
                 return;
@@ -2891,7 +2900,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
             callback_bad
         ) {
             var that = this;
-            callback_bad = callback_bad || function (message) { console.error(message); };
+            callback_bad ||= function (message) { console.error(message); };
 
             if (that.is_dom_rendered()) {
                 if (that.is_media) {
@@ -2935,7 +2944,6 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                 handler_function(custom_object);
             });
         }
-
         trigger_event(
             event_name,
             custom_object   // not an array, as in jQuery .trigger()
@@ -2943,7 +2951,6 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
             var that = this;
             that.$sup.trigger(event_name, [custom_object]);
         }
-
         /**
          * Remove a contribution from the DOM.  Undo .build_dom()
          *
@@ -2966,7 +2973,6 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                 console.error("Cannot remove an unrendered contribution", that);
             }
         }
-
         /**
          * Initialize the iFrameResizer on an iframe jQuery object.
          *
@@ -4115,13 +4121,15 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
         constructor(...args) {
             super(...args)
             var that = this;
-            if ( ! has(that.lex.from_user, that.sbj) && that.lex.is_authenticated(that.sbj)) {
-                // TODO:  Higher bar for that.sbj.  This will pass if either name or icon have
+            console.debug("CONTRIBUTE -", that.idn, that.obj.text.length);
+
+            if (that.agent.is_authenticated() && ! that.agent.is_named()) {
+                // TODO:  Higher bar for that.agent.  This will pass if either name or icon have
                 //        been scanned already (or admin).
                 console.warn(
                     "Contribution word", that.idn,
                     "scan line", this.line_number,
-                    "unknown authenticated user", that.sbj
+                    "unknown authenticated user", that.agent.idn_presentable()
                 );
             }
             if ( ! (
@@ -4137,7 +4145,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
             that.cat = that.lex.starting_cat(that);
             that.cat.conts.add_leftmost(that);
 
-            if ( ! that.lex.is_authenticated(that.sbj)) {
+            if ( ! that.agent.is_authenticated()) {
                 that.was_submitted_anonymous = true;
                 // NOTE:  Pink is the color of anonymous contributions.
                 //        Captioning or moving a contribution retains its .was_submitted_anonymous
@@ -4154,7 +4162,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
 
             that.lex.notify(f("{idn}. {author} contributes {n} bytes to {cat}", {
                 idn: that.idn,
-                author: that.lex.user_name_short(that.sbj),
+                author: that.agent.name_presentable(),
                 cat: that.cat.obj.name,
                 n: that.obj.text.length
             }));
@@ -4167,7 +4175,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
             var that = this;
             var old_cont = that.lex.cont_from_idn(that.obj.contribute);
             if (old_cont === null) {
-                if (that.lex.is_me(that.sbj)) {
+                if (that.lex.me === that.agent) {
                     // NOTE:  Weird situation:  I (the browsing user) did this edit, but for some
                     //        reason the old
                     //        contribution that this edit displaced was not in my view.  Oh well,
@@ -4191,7 +4199,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                     }));
                 }
             } else {
-                if (that.lex.is_authorized(that, old_cont.sbj, "edit")) {
+                if (that.lex.is_authorized(that, old_cont.agent, "edit")) {
                     old_cont.cat.conts.replace(that.obj.contribute, that);
                     that.cat = old_cont.cat;
                     that.capt = old_cont.capt;
@@ -4240,9 +4248,9 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
             } else {
                 var old_capt_owner;
                 if (is_specified(cont.capt)) {
-                    old_capt_owner = cont.capt.sbj;
+                    old_capt_owner = cont.capt.agent;
                 } else {
-                    old_capt_owner = cont.sbj;
+                    old_capt_owner = cont.agent;
                 }
                 if (that.lex.is_authorized(that, old_capt_owner, "caption")) {
                     cont.capt = that;
@@ -4277,7 +4285,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                 var new_cat = that.lex.cats.get(that.obj.category);
                 var is_rightmost = qiki.Lex.is_equal_idn(that.obj.locus, that.lex.idn_of.rightmost);
                 var old_cat = cont.cat;
-                var old_cont_owner = cont.sbj;
+                var old_cont_owner = cont.agent;
                 var action_template = is_rightmost
                     ? "rearrange to right end of {cat},"
                     : "rearrange to the left of #{idn} in {cat},";
@@ -4304,8 +4312,9 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                             // NOTE:  locus can't be found, insert leftmost instead.
                         }
                     }
-                    cont.sbj = that.sbj;   // HACK:  Does this leave things as they were with sql?
                     cont.cat = new_cat;
+
+                    cont.sbj = that.sbj;   // HACK:  Does this leave things as they were with sql?
                     // NOTE:  This used to transfer ownership from the original author to
                     //        the person who rearranged it:
                     //            cont.owner = that.sbj;
@@ -4744,7 +4753,6 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
      */
     function thumb_click(evt) {
         var div = this;
-        console.debug("RENDER BAR CLICK");   // HACK
         if ( ! check_contribution_edit_dirty(false, true)) {
             var cont = ContributionWord.from_element(this);
             console.log("thumb click", cont.id_attribute);
@@ -4801,7 +4809,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
      * @param {function=} then - callback when popping down (if any) is done.
      */
     function pop_down_all(did_bot_transition, then) {
-        then = then || function () {};
+        then ||= function () {};
 
         if (talkify_player !== null) {
             console.log("DISPOSE", talkify_player.correlationId, "player");
@@ -5522,7 +5530,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                     }
                 }
                 if (cat === lex.cats.by_name.about) {
-                    if ( ! lex.am_i_admin()) {
+                    if ( ! lex.me.is_admin) {
                         // NOTE:  Only the admin will be able to move TO the about section.
                         return MOVE_CANCEL;
                     }
@@ -5532,7 +5540,8 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                     //        into a functional .category.  Just make it look like one with info.
                     //        Or go ahead and make it a Category object, but instantiate it
                     //        "with anon characteristics".
-                    if ( ! lex.am_i_authenticated()) {
+                    // if ( ! lex.am_i_authenticated()) {
+                    if ( ! lex.me.is_authenticated()) {
                         // NOTE:  Anonymous users can't interact with other anonymous content.
                         return MOVE_CANCEL;
                     }
@@ -5736,7 +5745,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
     }
 
     function em_from_px(px, $element) {
-        $element = $element || $(window.document.body);
+        $element ||= $(window.document.body);
         return px / parseFloat($element.css('font-size'));
     }
 
@@ -5917,7 +5926,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
 
         var $login_prompt = $('<div>', {
             id: 'login-prompt',
-            title: "your idn is " + JSON.stringify(lex.me_idn)
+            title: "your idn is " + lex.me.idn_presentable()
         });
         // EXAMPLE:  your idn is [167,"103620384189003122864"]
         $login_prompt.html(MONTY.login_html);
@@ -5939,7 +5948,8 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
         // TODO:  Global variables?  E.g. $enter_some_text instead of $('#enter_some_text')
         lex.cats.by_name.my.$cat.prepend($entry);
 
-        if ( ! lex.am_i_authenticated()) {
+        // if ( ! lex.am_i_authenticated()) {
+        if ( ! lex.me.is_authenticated()) {
             var $anon_blurb = $('<p>', {id: 'anon-v-anon-blurb'}).text(ANON_V_ANON_BLURB);
             lex.cats.by_name.anon.$cat.append($anon_blurb);
             lex.cats.by_name.anon.$sup.addClass('double-anon');
@@ -6110,7 +6120,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
     }
 
     // TODO:  Move to qiki.js
-    window.qiki = window.qiki || {};
+    window.qiki ||= {};
     window.qiki.media_register = function js_for_unslumping_media_register(media) {
         var $script = $(window.document.currentScript);
         console.assert($script.length === 1, "currentScript broke", window.document.currentScript);
@@ -6258,10 +6268,12 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
         var that = this;
         type_should_be(that, Valve);
         that.opt = opt;
+        that.opt.is_initially_open ||= false;
+        that.opt.on_open ||= function () {};
         type_should_be(that.opt, Object);
         type_should_be(that.opt.name, String);
-        type_should_be(that.opt.is_initially_open = that.opt.is_initially_open || false, Boolean);
-        type_should_be(that.opt.on_open = that.opt.on_open || function () {}, Function);
+        type_should_be(that.opt.is_initially_open, Boolean);
+        type_should_be(that.opt.on_open, Function);
 
         that.build_dom();
     }
@@ -6398,7 +6410,6 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
      * Handler to e.g. avoid document click immediately undoing long-press
      */
     function stop_propagation(evt) {
-        console.debug("STOP PROPAGATION");   // HACK
         evt.stopPropagation();
         evt.preventDefault();
         return false;
@@ -6406,7 +6417,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
 
     var long_press_timer = null;
     function long_press(selector, handler, enough_milliseconds) {
-        enough_milliseconds = enough_milliseconds || LONG_PRESS_DEFAULT_MS;
+        enough_milliseconds ||= LONG_PRESS_DEFAULT_MS;
         $(window.document)
             .on('mousedown touchstart', selector, function (evt) {
                 var element = this;

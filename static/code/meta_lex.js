@@ -20,40 +20,46 @@
 function js_for_meta_lex(window, $, MONTY) {
 
     $(function document_ready() {
-        // FALSE WARNING:  Invalid number of arguments, expected 0
-        //                 because PyCharm doesn't see th qiki.Lex class in lex.js
-        // noinspection JSCheckFunctionSignatures
-        var lex = new LexMeta(MONTY.LEX_URL);
-        lex.word_class = WordMeta;
-        lex.$ol = $('<ol>', {class: 'lex-list'});
-        lex.$ol.hide();
-        lex.$progress = $('<div>', {id: 'progress'});
-        $(window.document.body).append(lex.$progress);
-        $(window.document.body).append(lex.$ol);
-        lex.$progress.append("Scanning ... ");
+        var $progress = $('<div>', {id: 'progress'});
+        $(window.document.body).append($progress);
+        $progress.append("Scanning ");
         window.setTimeout(function () {
-            lex.scan(function () {
-                lex.$progress.append(since() + " ... Rendering ... ");
-                window.setTimeout(function () {
-                    lex.$ol.show();
-                    lex.$progress.append(since() + " ... Finishing ... ");
+            var lex = new LexMeta(MONTY.LEX_URL, {
+                done: function () {
+                    $progress.append(since() + " ... Rendering ");
                     window.setTimeout(function () {
-                        lex.$progress.text("");
-                        console.log(
-                            lex.constructor.name, "has",
-                            lex.num_lines, "lines,",
-                            lex.num_def, "definition-words,",
-                            lex.num_ref, "reference-words",
-                            lex
-                        );
+                        lex.show1();
+                        $progress.append(since() + " ... Showing ");
+                        window.setTimeout(function () {
+                            lex.show2();
+                            $progress.append(since() + " ... Delta ");
+                            window.setTimeout(function () {
+                                lex.show3();
+                                $progress.append(since() + " ... Finishing ");
+                                window.setTimeout(function () {
+                                    $progress.append(since());
+                                    // $progress.text("");
+                                    console.log(
+                                        lex.constructor.name, "has",
+                                        lex.num_lines, "lines,",
+                                        lex.num_def, "definition-words,",
+                                        lex.num_ref, "reference-words",
+                                        lex
+                                    );
+                                }, 100);
+                            }, 100);
+                        }, 10);
                     }, 100);
-                }, 100);
-            }, function (error_message) {
-                lex.$ol.show();
-                lex.$progress.text(error_message);
-                lex.$progress.addClass('scan-fail');
+                },
+                fail: function (error_message) {
+                    lex.show1();
+                    lex.show2();
+                    lex.show3();
+                    var $error = $('<span>', {class: 'scan-fail'}).text(error_message);
+                    $progress.append(" -- ", $error);
+                }
             });
-        }, 100);
+        }, 10);
     });
 
     var browse_time = seconds_since_1970();
@@ -65,22 +71,31 @@ function js_for_meta_lex(window, $, MONTY) {
         return " " + since_seconds.toFixed(1) + "sec ";
     }
 
-    class LexMeta extends qiki.LexCloud {
-
-        $progress = null;
-        $ol = null;
-
-        scan(url, done, fail) {
+    class LexMeta extends qiki.LexClient {
+        constructor(...args) {
+            super(...args);
             var that = this;
             that.num_def = 0;
             that.num_ref = 0;
             that.word_rendered_previously = null;
-            super.scan(url, function () {
-                that.word_rendered_previously.render_whn_delta(null);
-                // NOTE:  Show the triangle below the last word, indicating time since browsing.
-                done();
-            }, fail);
+            that.$ol = $('<ol>', {class: 'lex-list'});
+            that.$ol.hide();
 
+        }
+        show1() {
+            $(window.document.body).append(this.$ol);
+        }
+        show2() {
+            this.$ol.show();
+        }
+        show3() {
+            var that = this;
+            if (is_specified(that.word_rendered_previously)) {
+                that.word_rendered_previously.render_whn_delta(null);   // draw the bottom triangle
+            }
+        }
+        word_class(idn, whn, sbj, vrb, ...obj_values) {
+            return WordMeta;
         }
         each_word(word) {
             var that = this;
@@ -150,8 +165,8 @@ function js_for_meta_lex(window, $, MONTY) {
                 var $obj = $('<span>', {class: 'obj'});
                 $statement.append($sbj, " ", $vrb, " ", $obj);
 
-                that.$li.toggleClass('anonymous', that.is_sbj_anonymous());
-                that.$li.toggleClass('google-user', that.is_sbj_google_user());
+                that.$li.toggleClass('anonymous', that.agent.is_anonymous());
+                that.$li.toggleClass('google-user', that.agent.is_google_user());
 
                 var sbj_class = that.render_sbj($sbj)
                 that.$li.addClass(sbj_class);
@@ -160,7 +175,6 @@ function js_for_meta_lex(window, $, MONTY) {
 
                 $obj.text(JSON.stringify(that.obj));
             }
-
             var $whn = $('<span>', {class: 'whn'});
             that.$whn_delta = $('<svg>', {class: 'whn-delta'});
             $statement.append(" ", $whn, that.$whn_delta);
@@ -168,6 +182,7 @@ function js_for_meta_lex(window, $, MONTY) {
             if (is_specified(word_prev)) {
                 word_prev.render_whn_delta(that);
                 // NOTE:  render_whn_delta() deals with two words, but order is flipped.
+                //        This draws the triangle ABOVE the current word, below word_prev.
             }
         }
         render_sbj($sbj) {
@@ -176,31 +191,32 @@ function js_for_meta_lex(window, $, MONTY) {
             if (that.sbj === that.lex.idn_of.lex) {
                 $sbj.append($('<span>', {class:'lex'}).text("lex"));
                 sbj_class = 'sbj-lex';
-            } else if (has(that.lex.from_user, that.sbj)) {
-                var user_info = that.lex.from_user[that.sbj];
-                if (is_specified(user_info.icon)) {
-                    // FALSE WARNING:  Element img doesn't have required attribute src
-                    // FALSE WARNING:  Missing required 'alt' attribute
-                    // noinspection HtmlRequiredAltAttribute,RequiredAttributes
-                    var $icon = $('<img>', {class:'user-icon', src: user_info.icon});
-                    if (is_specified(user_info.name)) {
-                        $icon.attr('title', user_info.name);
-                        $icon.attr('alt', user_info.name);
-                    }
-                    $sbj.append($icon);
-                    sbj_class = 'sbj-icon';
-                } else if (is_specified(user_info.name)) {
-                    $sbj.append($('<span>', {class:'user-name'}).text(user_info.name));
-                    sbj_class = 'sbj-name';
-                } else {
-                    $sbj.append($('<span>', {class:'user-literal'}).text(that.sbj));
-                    sbj_class = 'sbj-unnamed';
-                }
-            } else if (that.is_sbj_anonymous()) {
+            } else if (is_specified(that.agent.icon)) {
+                // FALSE WARNING:  Element img doesn't have required attribute src
+                // FALSE WARNING:  Missing required 'alt' attribute
+                // noinspection HtmlRequiredAltAttribute,RequiredAttributes
+                var $icon = $('<img>', {
+                    class:'user-icon',
+                    src: that.agent.icon,
+                    title: that.agent.name_presentable(),
+                    alt: that.agent.name_presentable()
+                });
+                $sbj.append($icon);
+                sbj_class = 'sbj-icon';
+            } else if (that.agent.is_named()) {
+                var $name_text = $('<span>', {class:'user-name'});
+                $name_text.text(that.agent.name_presentable());
+                $sbj.append($name_text);
+                sbj_class = 'sbj-name';
+            // } else {
+            //     $sbj.append($('<span>', {class:'user-literal'}).text(that.sbj));
+            //     sbj_class = 'sbj-unnamed';
+            // }
+            } else if (that.agent.is_anonymous()) {
                 var anonymous_nits = that.sbj.slice(1);
                 $sbj.append($('<span>', {class:'anonymous-nits'}).text(anonymous_nits.join(";")));
                 sbj_class = 'sbj-unnamed-anonymous';
-            } else if (that.is_sbj_google_user()) {
+            } else if (that.agent.is_google_user()) {
                 var google_nits = that.sbj.slice(1);
                 $sbj.append($('<span>', {class:'google-nits'}).text("google user " + google_nits.join(";")));
                 sbj_class = 'sbj-unnamed-google';

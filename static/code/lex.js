@@ -22,6 +22,11 @@ window.qiki = window.qiki || {};
     }
 
     qiki.Lex = class Lex {
+        constructor() {
+            var that = this;
+            that.idn_of = {};
+            that.expect_definitions('lex', 'define');
+        }
         /**
          * Instantiate a word in this lex.  Expect word_class to be Word or a derived class.
          */
@@ -66,17 +71,33 @@ window.qiki = window.qiki || {};
         }
 
         /**
-         * For Lex constructor to:  that.idn_of.some_expected_name = qiki.Lex.IDN_UNDEFINED
-         *
-         * Then later test:  if (qiki.Lex.is_idn_defined(that.idn_of.some_expected_name))
+         * Singleton value for the idn of an expected definition.
          *
          * TODO:  Eventually the app should create these definitions if they don't exist, not
          *        just test for them.  So that a virgin lex will be populated with app-specific
          *        definitions.  By the way, we need to auto-magically create a virgin lex too.
          */
-        static IDN_UNDEFINED = ['IDN_UNDEFINED'];
+        static IDN_NOT_YET_DEFINED = ['IDN_NOT_YET_DEFINED'];
         static is_idn_defined(idn) {
-            return is_defined(idn) && idn !==   qiki.Lex.IDN_UNDEFINED;
+            return is_defined(idn) && idn !== qiki.Lex.IDN_NOT_YET_DEFINED;
+        }
+        expect_definitions(...names) {
+            var that = this;
+            looper(names, function (_, name) {
+                if ( ! has(that.idn_of, name)) {
+                    that.idn_of[name] = qiki.Lex.IDN_NOT_YET_DEFINED;
+                }
+            });
+        }
+        missing_definitions() {
+            var that = this;
+            var expected_but_undefined_names = [];
+            looper(that.idn_of, function(name, idn) {
+                if (idn === qiki.Lex.IDN_NOT_YET_DEFINED) {
+                    expected_but_undefined_names.push(name);
+                }
+            });
+            return expected_but_undefined_names;
         }
     }
     console.assert(true === qiki.Lex.is_equal_idn([11,"22"], [11,"22"]));
@@ -97,6 +118,8 @@ window.qiki = window.qiki || {};
      *     add_left_of(w, nonexistent_idn)
      *     replace(nonexistent_idn, new_word)
      * Each case returns false, and explains in notify callback.
+     *
+     * Any reason to make this a Lex?  A local, in-memory thing?
      */
     qiki.Bunch = class Bunch {
         constructor() {
@@ -193,25 +216,90 @@ window.qiki = window.qiki || {};
         }
     }
 
+    qiki.Agent = class Agent {
+        constructor(lex, idn) {
+            var that = this;
+            that.lex = lex;
+            that.idn = idn;
+            that.name = null;
+            // noinspection SpellCheckingInspection
+            that.icon = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAMAAABEpIrGAAAABGdBTUEAAK/INwWK6QAAABl0RVh0U29mdHdhcmUAQWRvYmUgSW1hZ2VSZWFkeXHJZTwAAABXUExURWFaUf///wAAAO7u7WNcU2hiWc/NyqCcl3JrY7y5tbWxrWVeVYF7dLq3s46JgmpkW5eSjPDv72xmXYqFfoyHgOvq6Ozs656aldLQzpOOiOfm5JWQiuXk4njm0WsAAAC1SURBVHjalNLXFoIwEEXRgZkk9KYUy/9/pxpcKWRi8DzCXtQLeSLIMxOWXUPUdCXaYw4YFcE3UmMINgFOYjuCFg61PpB0BCRdgD0E9egABUzKgoU4QIsBFbBVBlx4cDWg4EFhQM2D+jxI3iL5kMnXnPkPNZ//1BmK8LxA73eHQP43mPc1/MnJcLS42tGuyKx6nz1AdPZ8GuDA/oxiwB3cJ4g0PTV4QLSbBn0cCA3gRx+Q6CXAAPj+Bhc3Y6MSAAAAAElFTkSuQmCC";
+            that.is_admin = false;
+        }
+        is_anonymous() {
+            return qiki.Lex.is_a(this.idn, this.lex.idn_of.anonymous);
+        }
+        is_google_user() {
+            return qiki.Lex.is_a(this.idn, this.lex.idn_of.google_user);
+        }
+        is_authenticated() {
+            return this.is_google_user(this.idn);
+        }
+        is_named() {
+            return is_laden(this.name);
+        }
+        name_presentable() {
+            var that = this;
+            if (that.is_named()) {
+                return presentable(that.name);
+            }
+            return that.idn_presentable()
+        };
+        idn_presentable() {
+            return presentable(this.idn);
+        }
+    }
+    function presentable(string) {
+        if ( ! is_string(string)) {
+            string = JSON.stringify(string);
+        }
+        // noinspection RegExpRedundantEscape
+        string = string.replace(/[^\w\s\[\]\.\,\'\"]/g, '');
+        string = string.trim();
+        if (string.length > 40) {
+            string = string.substring(0, 37) + "...";
+        }
+        return string;
+    }
+
     /**
      * A lex stored on an internet server.
      *
      * TODO:  Give a Lex object ways to read or write words with composition instead of subclassing.
      *        lex.reader(Reader(url))
      *        lex.writer(Writer(url))
+     *
+     * @property LexClient.idn_of.admin
+     * @property LexClient.idn_of.anonymous
+     * @property LexClient.idn_of.google_user
      */
-    qiki.LexCloud = class LexCloud extends qiki.Lex {
-        constructor(url) {
+    qiki.LexClient = class LexClient extends qiki.Lex {
+        constructor(url, event_handlers) {
             super()
             var that = this;
             that.url = url;
-        }
-        scan(done, fail) {   // derived classes call this to traverse the lex
-            var that = this;
+            that.event_handlers = event_handlers;
+            that.event_handlers.done ||= function () {};
+            that.event_handlers.fail ||= error_message => console.error(error_message);
+            that.by_idn = {};
+            // that.from_user = {};
+            that.agent_cache = {};
+            that.agent_representing_lex_itself = null;
+            that.error_message = null;
+            that.line_number = 0;   // 0-based before each_json(), 1-based after it.
+            that.num_lines = null;
+            that.expect_definitions(
+                'iconify',
+                'name',
+                'admin',
+                'google_user',
+                'anonymous',
+            );
+
             var promise_jsonl = $.get({url: that.url, dataType:'text'});
             promise_jsonl.fail(function (jqxhr, settings, exception) {
                 console.error("Lex.scan, ajax get:", jqxhr, settings, exception);
-                fail("Failure to get lex for scan: " + jqxhr.responseText);
+                that.event_handlers.fail("Failure to get lex for scan: " + jqxhr.responseText);
                 // THANKS:  responseText is the needle in the fail callback haystack,
                 //          https://stackoverflow.com/a/12116790/673991
                 // SEE:  jqXHR, https://api.jquery.com/jQuery.Ajax/#jqXHR
@@ -221,21 +309,6 @@ window.qiki = window.qiki || {};
                 response_lines.pop();
                 // NOTE:  Remove trailing empty string, because the file ends in a newline.
 
-                that.idn_of = {
-                    lex: qiki.Lex.IDN_UNDEFINED,
-                    define: qiki.Lex.IDN_UNDEFINED,
-                    iconify: qiki.Lex.IDN_UNDEFINED,
-                    name: qiki.Lex.IDN_UNDEFINED,
-                    admin: qiki.Lex.IDN_UNDEFINED,
-                    google_user: qiki.Lex.IDN_UNDEFINED,
-                    anonymous: qiki.Lex.IDN_UNDEFINED,
-
-                };
-                that.by_idn = {};
-                that.from_user = {};
-                that.error_message = null;
-                that.line_number = 0;
-                that.num_lines = null;
                 looper(response_lines, function (_, word_json) {
                     if (that.each_json(word_json) === null) {
                         return false;
@@ -246,11 +319,46 @@ window.qiki = window.qiki || {};
                 that.line_number = null;
 
                 if (is_specified(that.error_message)) {
-                    fail(that.error_message);
+                    that.event_handlers.fail(that.error_message);
                 } else {
-                    done();
+                    var no_idn_for = that.missing_definitions();
+                    if (no_idn_for.length === 0) {
+                        that.event_handlers.done();
+                    } else {
+                        that.error_message = "Missing definitions: " + no_idn_for.join(", ");
+                        that.event_handlers.fail(that.error_message);
+                    }
                 }
             });
+        }
+        word_event(word, ...event_names) {
+            var that = this;
+            type_should_be(word, qiki.Word);
+            should_be_array_like(event_names, String);
+            var leaf = that.event_handlers;   // event_handler;
+            var is_a_hit = true;
+            looper(event_names, function (level, event_name) {
+                if (/*is_associative_array(leaf) && */has(leaf, event_name)) {
+                    leaf = leaf[event_name];
+                } else {
+                    is_a_hit = false;
+                    return false;
+                }
+            });
+            if (is_a_hit) {
+                if (is_a(leaf, Function)) {
+                    // NOTE:  Supports future finer-grained events.
+                    //        Or does that confuse things, and even degrade security?
+                    //        If e.g. event_handler.vrb.contribute has a sub-event,
+                    //        event_tree.vrb.contribute.superseded.
+                    // TODO:  This is all fine and good if event names are created by trusted
+                    //        parties, both the triggering and the handling.  How might untrusted
+                    //        parties do either?
+                    leaf(word);
+                } else {
+                    console.warn("Event handler is not a function", ...event_names, leaf);
+                }
+            }
         }
         each_json(word_json) {
             var that = this;
@@ -269,10 +377,10 @@ window.qiki = window.qiki || {};
                     //        not yet know.  We want to increase it here and now because
                     //        (since we got here) an additional line has been added to the lex.
                     // TODO:  Er, maybe this increase should happen in create_word() and
-                    //        create_word() should be a LexCloud member.
+                    //        create_word() should be a LexClient member.
                 }
             } catch (e) {
-                if (e instanceof qiki.LexCloud.ScanFail) {
+                if (e instanceof qiki.LexClient.ScanFail) {
                     // NOTE:  All calls to scan_fail() should end up here.
                     that.error_message = String(e);
                     word_to_return = null;
@@ -345,12 +453,12 @@ window.qiki = window.qiki || {};
         each_definition_word(word) {
             var that = this;
             word.obj = {};
-            if (word.obj_values.length !== qiki.LexCloud.N_DEFINITION) {
+            if (word.obj_values.length !== qiki.LexClient.N_DEFINITION) {
                 that.scan_fail("Definition should have 3 objs, not:", word.obj_values);
             }
-            word.obj.parent = word.obj_values[qiki.LexCloud.I_DEFINITION_PARENT];
-            word.obj.name   = word.obj_values[qiki.LexCloud.I_DEFINITION_NAME];
-            word.obj.fields = word.obj_values[qiki.LexCloud.I_DEFINITION_FIELDS];
+            word.obj.parent = word.obj_values[qiki.LexClient.I_DEFINITION_PARENT];
+            word.obj.name   = word.obj_values[qiki.LexClient.I_DEFINITION_NAME];
+            word.obj.fields = word.obj_values[qiki.LexClient.I_DEFINITION_FIELDS];
             word.obj_values = null;
 
             // NOTE:  There are definition words and reference words.  A reference word has a vrb
@@ -395,6 +503,16 @@ window.qiki = window.qiki || {};
             }
             that.idn_of[word.obj.name] = word.idn;
             that.by_idn[word.idn] = word;
+
+            var parent = that.by_idn[word.obj.parent];
+            that.word_event(word, 'parent', parent.obj.name)
+            // TODO:  Wouldn't it be cool if this expression:
+            //            that.by_idn[word.obj.parent].obj.name
+            //        could be this:
+            //            word.parent.name
+            //        In other words:
+            //            named obj parts were word parts:  parent.name vs parent.obj.name
+            //            and word parts were (germinal) words:  parent vs that.by_idn[parent]
         }
         each_reference_word(word) {
             var that = this;
@@ -445,31 +563,41 @@ window.qiki = window.qiki || {};
             //        But I still think a separate vrb could be defined for users to create custom
             //        qoolbar icons to themselves be used as vrb in user-reference words.
             //        So user "definitions" would in fact be user-reference words, at least in
-            //        LexCloud.each_word().
+            //        LexClient.each_word().
 
             if (word.sbj === word.lex.idn_of.lex) {
                 switch (word.vrb) {
                 case that.idn_of.name:
-                    that.user_remember(word.obj.user, 'name', word.obj.text);
+                    that.agent_remember(word.obj.user, 'name', word.obj.text);
                     break;
                 case that.idn_of.iconify:
-                    that.user_remember(word.obj.user, 'icon', word.obj.url);
+                    that.agent_remember(word.obj.user, 'icon', word.obj.url);
                     break;
                 case that.idn_of.admin:
-                    that.user_remember(word.obj.user, 'is_admin', true);
+                    that.agent_remember(word.obj.user, 'is_admin', true);
                     break;
                 default:
                     break;
                 }
             }
+            that.word_event(word, 'vrb', vrb.obj.name);
         }
-        user_remember(user_idn, property_name, property_value) {
+
+        agent_from_idn(agent_idn) {
             var that = this;
-            if ( ! has(that.from_user, user_idn)) {
-                that.from_user[user_idn] = {};  // TODO:  Give users a class.  No, literally a `class`.
+            if ( ! has(that.agent_cache, agent_idn)) {
+                // TODO:  May one day have to be a lot more selective about whom we cache.
+                that.agent_cache[agent_idn] = new qiki.Agent(that, agent_idn);
             }
-            that.from_user[user_idn][property_name] = property_value;
+            return that.agent_cache[agent_idn];
         }
+        agent_remember(agent_idn, property_name, property_value) {
+            var that = this;
+            var agent = that.agent_from_idn(agent_idn);
+            agent[property_name] = property_value;
+            // TODO:  Limit property names to:  name, icon, is_admin
+        }
+        // TODO:  Encapsulate in some kind of Agent container.
 
         /**
          * Raise a ScanFail exception -- only called by each_word() or subordinates.
@@ -494,7 +622,7 @@ window.qiki = window.qiki || {};
             //        Okay appearance:  console.error(args)
             //        Poor appearance:  console.error(args.join(" "))
 
-            throw new qiki.LexCloud.ScanFail(more_args.join(" "));
+            throw new qiki.LexClient.ScanFail(more_args.join(" "));
             // NOTE:  This error message will get passed also to the scan() function fail()
             //        callback.  But since that message is a string, it may be less informative than
             //        what console.error() produced above.
@@ -510,27 +638,14 @@ window.qiki = window.qiki || {};
         //          instance.  This means you have to throw OuterClass.InnerError.
         //          Otherwise, throw that.InnerError() gets this:
         //          Uncaught TypeError: that.ScanFail is not a constructor
-        is_anonymous(user_idn) {
-            return qiki.Lex.is_a(user_idn, this.idn_of.anonymous);
-        }
-        is_authenticated(user_idn) {
-            return this.is_google_user(user_idn);
-        }
-        is_google_user(user_idn) {
-            return qiki.Lex.is_a(user_idn, this.idn_of.google_user);
-        }
-        is_admin(user_idn) {
-            var user_word = this.from_user[user_idn];
-            return is_specified(user_word) && user_word.is_admin;
-        }
+
         /**
          * Add a word to the lex.
          *
-         * TODO:  Move this method to LexCloud.
-         *        That will require encapsulating ajax calls there, which is good.
-         *        Probably they should be there, and qoolbar should use them too.
+         * TODO:  qoolbar and LexClient should know about each other or merge or something.
+         *        Maybe encapsulating ajax calls there, which is good.
          *        Then ajax_url needs to be some app-specific configurable value,
-         *        along with LexCloud.url used for scanning.
+         *        along with LexClient.url used for scanning.
          *        Duh, the REST way is to use the SAME url for both and the method
          *        would be GET or POST.
          *        Huh, including a way to GET the whole lex (async of course) or
@@ -616,21 +731,24 @@ window.qiki = window.qiki || {};
             that.obj = null;
             that.obj_values = obj_values;
 
+            // TODO:  Better as a getter property?  Then lex and inconsequential users can still
+            //        have an agent that's an object with methods.
+
             // NOTE:  word.obj_values is a numerically indexed array.  It was passed to constructor.
             //        word.obj        is a named associative array.  It will get populated below.
 
-            // TODO:  Hmm, should the decisions below be moved to LexCloud.word_factory()?
-            //            qiki.WordDefinition constructor absorb LexCloud.each_definition_word()
-            //            qiki.WordReference constructor  absorb LexCloud.each_reference_word()
+            // TODO:  Hmm, should the decisions below be moved to LexClient.word_factory()?
+            //            qiki.WordDefinition constructor absorb LexClient.each_definition_word()
+            //            qiki.WordReference constructor  absorb LexClient.each_reference_word()
             //        A reason not to do that:  Someone smarter than me should break down the
             //        difference between these.  A lex definition could just be like any other word,
             //        with fields defined in the lex.  It's got extra powers for sure, but maybe
             //        those can be safely associated with the .sbj property, not with the class.
             if (that.lex.is_early_in_the_scan()) {
-                if (
-                    that.is_the_definition_of_lex_itself() ||
-                    that.is_the_definition_of_define_itself()
-                ) {
+                if (that.is_the_definition_of_lex_itself()) {
+                    that.lex.each_definition_word(that);
+                    that.lex.agent_remember(that.idn, 'name', 'lex');
+                } else if (that.is_the_definition_of_define_itself()) {
                     that.lex.each_definition_word(that);
                 } else {
                     throw that.lex.scan_fail(
@@ -645,6 +763,13 @@ window.qiki = window.qiki || {};
                 }
             }
         }
+
+        get agent() {
+            return this.lex.agent_from_idn(this.sbj);
+            // NOTE:  This is optimized for less memory, more compute time.  But maybe
+            //        every word instance should have an agent property.
+        }
+
         parent_name() {
             return this.lex.by_idn[this.obj.parent].obj.name;
         }
@@ -741,12 +866,6 @@ window.qiki = window.qiki || {};
         }
         whn_date() {
             return new Date(this.whn_milliseconds());
-        }
-        is_sbj_anonymous() {
-            return this.lex.is_anonymous(this.sbj);
-        }
-        is_sbj_google_user() {
-            return this.lex.is_google_user(this.sbj);
         }
 
         // noinspection JSUnusedGlobalSymbols
