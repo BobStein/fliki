@@ -32,7 +32,6 @@
  * @param {object}      MONTY.oembed.html
  * @param {object}      MONTY.oembed.thumbnail_url
  * @param {object}      MONTY.oembed.width
- * @param {string}      MONTY.POPUP_ID_PREFIX
  * @param {string}      MONTY.target_origin
  * @param {number}      MONTY.THUMB_MAX_HEIGHT
  * @param {number}      MONTY.THUMB_MAX_WIDTH

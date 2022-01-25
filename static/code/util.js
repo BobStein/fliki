@@ -1164,6 +1164,13 @@ function dom_from_$($jquery_object) {
 }
 
 /**
+ * Is this in the DOM?  No after .remove() or .detach().
+ */
+function is_in_dom(element_or_selector) {
+    return window.document.contains(dom_from_$($(element_or_selector)));
+}
+
+/**
  * Convert an array of things to an array of strings.
  *
  * TODO:  max_length, if too long, show e.g. ... (100 more)

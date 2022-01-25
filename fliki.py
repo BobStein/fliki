@@ -47,7 +47,7 @@ NON_ROUTABLE_URL = 'https://' + NON_ROUTABLE_IP_ADDRESS + '/'   # for testing
 SHOW_LOG_AJAX_NOEMBED_META = False
 CATCH_JS_ERRORS = False
 ENABLE_TALKIFY = False    # NOTE:  talkify voices seemed better than the standard browser voices.
-FINISHER_METHOD_NAME = 'fin'   # see qiki.js
+ALLOW_ANONYMOUS_CONTRIBUTIONS = False   # False disables ALL word creation for anon users.
 INTERACT_VERBS = [
     'bot',      # |>  global play button
     'start',    # |>  individual media play
@@ -2250,7 +2250,7 @@ def unslumping_home(home_page_title):
         with html.header(home_page_title) as head:
             head.css_stamped(web_path_qiki_javascript('qoolbar.css'))
 
-            head.css_stamped(static_code_url('contribution.css'))
+            head.css_stamped(static_code_url('unslumping.css'))
             # EXAMPLE:  net::ERR_TOO_MANY_RETRIES on this file.
             #           Occasional (10%) of loads on LUnslumping
             # SEE:  Self-signed cert, https://stackoverflow.com/a/58689370/673991
@@ -2311,6 +2311,7 @@ def unslumping_home(home_page_title):
                     OEMBED_OTHER_ORIGIN=secure.credentials.Options.oembed_other_origin,
                     STATIC_IMAGE=static_url('image'),
                     WHAT_IS_THIS_THING=secure.credentials.Options.what_is_this_thing,
+                    ALLOW_ANONYMOUS_CONTRIBUTIONS=ALLOW_ANONYMOUS_CONTRIBUTIONS,
                 )
                 script.raw_text('var MONTY = {json};\n'.format(json=json_pretty(monty)))
                 if CATCH_JS_ERRORS:
@@ -2595,6 +2596,8 @@ def ajax():
             return valid_response('oembed', oembed_dict)
 
         elif action == 'create_word':
+            if not auth.flask_user.is_authenticated and not ALLOW_ANONYMOUS_CONTRIBUTIONS:
+                return invalid_response("anonymous contributions are not supported")
             vrb_name = auth.form('vrb_name')
             objs_by_name_json = auth.form('objs_by_name')   # nits that follow idn,whn,user,vrb
             obj_dict = json.loads(objs_by_name_json)

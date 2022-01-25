@@ -5,7 +5,7 @@
 //
 // TODO:  Move to qiki.js
 
-window.qiki = window.qiki || {};
+window.qiki ||= {};
 (function (qiki, $) {
 
     /**
@@ -30,6 +30,25 @@ window.qiki = window.qiki || {};
         /**
          * Instantiate a word in this lex.  Expect word_class to be Word or a derived class.
          */
+
+        expect_definitions(...names) {
+            var that = this;
+            looper(names, function (_, name) {
+                if ( ! has(that.idn_of, name)) {
+                    that.idn_of[name] = qiki.Lex.IDN_NOT_YET_DEFINED;
+                }
+            });
+        }
+        missing_definitions() {
+            var that = this;
+            var expected_but_undefined_names = [];
+            looper(that.idn_of, function(name, idn) {
+                if (idn === qiki.Lex.IDN_NOT_YET_DEFINED) {
+                    expected_but_undefined_names.push(name);
+                }
+            });
+            return expected_but_undefined_names;
+        }
 
         static is_equal_idn(idn1, idn2) {
             console.assert(qiki.Lex.is_idn_defined(idn1));
@@ -81,23 +100,17 @@ window.qiki = window.qiki || {};
         static is_idn_defined(idn) {
             return is_defined(idn) && idn !== qiki.Lex.IDN_NOT_YET_DEFINED;
         }
-        expect_definitions(...names) {
-            var that = this;
-            looper(names, function (_, name) {
-                if ( ! has(that.idn_of, name)) {
-                    that.idn_of[name] = qiki.Lex.IDN_NOT_YET_DEFINED;
-                }
-            });
-        }
-        missing_definitions() {
-            var that = this;
-            var expected_but_undefined_names = [];
-            looper(that.idn_of, function(name, idn) {
-                if (idn === qiki.Lex.IDN_NOT_YET_DEFINED) {
-                    expected_but_undefined_names.push(name);
-                }
-            });
-            return expected_but_undefined_names;
+        static presentable(string) {
+            if ( ! is_string(string)) {
+                string = JSON.stringify(string);
+            }
+            // noinspection RegExpRedundantEscape
+            string = string.replace(/[^\w\s\[\]\.\,\'\"]/g, '*');
+            string = string.trim();
+            if (string.length > 40) {
+                string = string.substring(0, 37) + "...";
+            }
+            return string;
         }
     }
     console.assert(true === qiki.Lex.is_equal_idn([11,"22"], [11,"22"]));
@@ -216,14 +229,40 @@ window.qiki = window.qiki || {};
         }
     }
 
+    // noinspection SpellCheckingInspection,JSUnusedLocalSymbols
+    const GHOST_ICON = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAGXR' +
+        'FWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAQ1JREFUeNqkk0sKwjAQhk2tiiiICO70BB7BlVdw3xs' +
+        'InqM7D+ItPIIL1yoigoivpj7jH/gDQ03dKHzk4eSbybRVxpjCP7/QTZRSbtoFQ9ADTXAAczAFSxsgkyq3oKAPxqA' +
+        'CHuANAlACKZiAmRQEopoOGIEyg2+ClPsjxnkFA14pATqHkHFeQYuHLVHmYMT9K+O+m2jbAC68e4Fzw323DsX6S5A' +
+        'KQcxsrokx/3PN9ApsiWfwJG8hsIeKokdegWYWKXBXKAqB/lWBFbyIrCAQkuRXD07M6BMEIi5XsOJjOoIauPMFsg1' +
+        'tgD2r8L4HO7AWouyoOe7yKlgwWx1sQRts+EHZdZXjXQrUv5/zR4ABAPsZavU4qlAlAAAAAElFTkSuQmCC';
+    // noinspection SpellCheckingInspection,JSUnusedLocalSymbols
+    const PORTRAIT_ICON = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAMAAABEpIrGAAAA' +
+        'BGdBTUEAAK/INwWK6QAAABl0RVh0U29mdHdhcmUAQWRvYmUgSW1hZ2VSZWFkeXHJZTwAAABXUExURWFaUf///wAA' +
+        'AO7u7WNcU2hiWc/NyqCcl3JrY7y5tbWxrWVeVYF7dLq3s46JgmpkW5eSjPDv72xmXYqFfoyHgOvq6Ozs656aldLQ' +
+        'zpOOiOfm5JWQiuXk4njm0WsAAAC1SURBVHjalNLXFoIwEEXRgZkk9KYUy/9/pxpcKWRi8DzCXtQLeSLIMxOWXUPU' +
+        'dCXaYw4YFcE3UmMINgFOYjuCFg61PpB0BCRdgD0E9egABUzKgoU4QIsBFbBVBlx4cDWg4EFhQM2D+jxI3iL5kMnX' +
+        'nPkPNZ//1BmK8LxA73eHQP43mPc1/MnJcLS42tGuyKx6nz1AdPZ8GuDA/oxiwB3cJ4g0PTV4QLSbBn0cCA3gRx+Q' +
+        '6CXAAPj+Bhc3Y6MSAAAAAElFTkSuQmCC';
+    // THANKS:  Image to data conversion, https://ezgif.com/image-to-datauri
+    const ICON_FOR_NO_ICON = GHOST_ICON;
+
     qiki.Agent = class Agent {
+        // TODO:  Maybe this should inherit from a more generic qiki.Word() that has idn and lex,
+        //        and qiki.Word() should be renamed qiki.Sentence() and derive from qiki.Word too.
+        //        Then we could encapsulate idn_presentable(), idn_json(), etc.
+        //        Maybe description too, aka name.  With long and short versions, or
+        //        with continual variation based on length of characters.
+        //        This could help in meta lex describe a contribution briefly by extracting text
+        //        or using its caption, or both.
+        //        Also, LexClient.agent_cache could be some kind of memory Lex.
+        //        Also, Bunch could be a Lex.  Maybe call it a LexCache.
         constructor(lex, idn) {
             var that = this;
             that.lex = lex;
             that.idn = idn;
             that.name = null;
-            // noinspection SpellCheckingInspection
-            that.icon = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAMAAABEpIrGAAAABGdBTUEAAK/INwWK6QAAABl0RVh0U29mdHdhcmUAQWRvYmUgSW1hZ2VSZWFkeXHJZTwAAABXUExURWFaUf///wAAAO7u7WNcU2hiWc/NyqCcl3JrY7y5tbWxrWVeVYF7dLq3s46JgmpkW5eSjPDv72xmXYqFfoyHgOvq6Ozs656aldLQzpOOiOfm5JWQiuXk4njm0WsAAAC1SURBVHjalNLXFoIwEEXRgZkk9KYUy/9/pxpcKWRi8DzCXtQLeSLIMxOWXUPUdCXaYw4YFcE3UmMINgFOYjuCFg61PpB0BCRdgD0E9egABUzKgoU4QIsBFbBVBlx4cDWg4EFhQM2D+jxI3iL5kMnXnPkPNZ//1BmK8LxA73eHQP43mPc1/MnJcLS42tGuyKx6nz1AdPZ8GuDA/oxiwB3cJ4g0PTV4QLSbBn0cCA3gRx+Q6CXAAPj+Bhc3Y6MSAAAAAElFTkSuQmCC";
+            that.icon = ICON_FOR_NO_ICON;
             that.is_admin = false;
         }
         is_anonymous() {
@@ -241,25 +280,13 @@ window.qiki = window.qiki || {};
         name_presentable() {
             var that = this;
             if (that.is_named()) {
-                return presentable(that.name);
+                return qiki.Lex.presentable(that.name);
             }
             return that.idn_presentable()
         };
         idn_presentable() {
-            return presentable(this.idn);
+            return qiki.Lex.presentable(this.idn);
         }
-    }
-    function presentable(string) {
-        if ( ! is_string(string)) {
-            string = JSON.stringify(string);
-        }
-        // noinspection RegExpRedundantEscape
-        string = string.replace(/[^\w\s\[\]\.\,\'\"]/g, '');
-        string = string.trim();
-        if (string.length > 40) {
-            string = string.substring(0, 37) + "...";
-        }
-        return string;
     }
 
     /**
@@ -282,7 +309,6 @@ window.qiki = window.qiki || {};
             that.event_handlers.done ||= function () {};
             that.event_handlers.fail ||= error_message => console.error(error_message);
             that.by_idn = {};
-            // that.from_user = {};
             that.agent_cache = {};
             that.agent_representing_lex_itself = null;
             that.error_message = null;
@@ -766,10 +792,14 @@ window.qiki = window.qiki || {};
 
         get agent() {
             return this.lex.agent_from_idn(this.sbj);
-            // NOTE:  This is optimized for less memory, more compute time.  But maybe
-            //        every word instance should have an agent property.
+            // NOTE:  This getter method, where every use of the agent "property" searches by idn,
+            //        is optimized for less memory, more compute time.  But maybe every word
+            //        instance should have an agent property.
         }
 
+        idn_presentable() {
+            return qiki.Lex.presentable(this.idn);
+        }
         parent_name() {
             return this.lex.by_idn[this.obj.parent].obj.name;
         }
