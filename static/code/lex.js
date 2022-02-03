@@ -27,9 +27,6 @@ window.qiki ||= {};
             that.idn_of = {};
             that.expect_definitions('lex', 'define');
         }
-        /**
-         * Instantiate a word in this lex.  Expect word_class to be Word or a derived class.
-         */
 
         expect_definitions(...names) {
             var that = this;
@@ -144,15 +141,19 @@ window.qiki ||= {};
         num_words() {
             return this._words.length;
         }
-        add_rightmost(word) {
+        add_rightmost(word, name=null) {
             var that = this;
             that._words.push(word);
-            that._remember_name_if_any(word, word.obj.name);
+            if (is_specified(name)) {
+                that.by_name[name] = word;
+            }
         }
-        add_leftmost(word) {
+        add_leftmost(word, name=null) {
             var that = this;
             that._words.unshift(word);
-            that._remember_name_if_any(word, word.obj.name);
+            if (is_specified(name)) {
+                that.by_name[name] = word;
+            }
         }
         add_left_of(word, idn_locus) {
             var that = this;
@@ -176,12 +177,6 @@ window.qiki ||= {};
                 return true;
             }
         }
-        _remember_name_if_any(word, name) {
-            var that = this;
-            if (is_specified(name)) {
-                that.by_name[name] = word;
-            }
-        }
         has(idn) {
             return this.get(idn) !== null;
         }
@@ -201,6 +196,9 @@ window.qiki ||= {};
         }
         get(idn) {
             return this._get_word_and_index(idn)[0];
+        }
+        get_by_index(index) {
+            return this._words[index];
         }
         replace(idn_old, word_new) {
             var that = this;
@@ -296,6 +294,11 @@ window.qiki ||= {};
      *        lex.reader(Reader(url))
      *        lex.writer(Writer(url))
      *
+     * All event_handlers that are called are called with `this` set to the lex instance.
+     *
+     * CAUTION:  This constructor must not directly call any of the event_handlers, to give a
+     *           derived constructor the chance to initialize members first.
+     *
      * @property LexClient.idn_of.admin
      * @property LexClient.idn_of.anonymous
      * @property LexClient.idn_of.google_user
@@ -307,13 +310,12 @@ window.qiki ||= {};
             that.url = url;
             that.event_handlers = event_handlers;
             that.event_handlers.done ||= function () {};
-            that.event_handlers.fail ||= error_message => console.error(error_message);
+            that.event_handlers.fail ||= function (e) { console.error(e); }
             that.by_idn = {};
             that.agent_cache = {};
             that.agent_representing_lex_itself = null;
             that.error_message = null;
-            that.line_number = 0;   // 0-based before each_json(), 1-based after it.
-            that.num_lines = null;
+            that.num_words = 0;   // 0-based line number before each_json() call, 1-based after it
             that.expect_definitions(
                 'iconify',
                 'name',
@@ -322,7 +324,15 @@ window.qiki ||= {};
                 'anonymous',
             );
 
-            var promise_jsonl = $.get({url: that.url, dataType:'text'});
+            var promise_jsonl = $.get({
+                url: that.url,
+                dataType: 'text',
+                xhrFields: {
+                    onprogress: function (e) {
+                        console.log("get progress event", e);
+                    }
+                }
+            });
             promise_jsonl.fail(function (jqxhr, settings, exception) {
                 console.error("Lex.scan, ajax get:", jqxhr, settings, exception);
                 that.event_handlers.fail("Failure to get lex for scan: " + jqxhr.responseText);
@@ -341,8 +351,6 @@ window.qiki ||= {};
                         // NOTE:  Terminate the scanning loop if any word has an error.
                     }
                 });
-                that.num_lines = that.line_number;
-                that.line_number = null;
 
                 if (is_specified(that.error_message)) {
                     that.event_handlers.fail(that.error_message);
@@ -356,55 +364,57 @@ window.qiki ||= {};
                     }
                 }
             });
+            const PI_MILLION = 'https://www.piday.org/million/';
+            // THANKS:  Billion pi, https://stuff.mit.edu/afs/sipb/contrib/pi/pi-billion.txt';
+            const PI_BILLION = '/meta/static/data/pi-billion.txt';
+            if (0) that.fetch_experiment(PI_MILLION);
+            if (0) that.fetch_experiment(PI_BILLION);
+            that.fetch_experiment(that.url + 'moo');
         }
-        word_event(word, ...event_names) {
-            var that = this;
-            type_should_be(word, qiki.Word);
-            should_be_array_like(event_names, String);
-            var leaf = that.event_handlers;   // event_handler;
-            var is_a_hit = true;
-            looper(event_names, function (level, event_name) {
-                if (/*is_associative_array(leaf) && */has(leaf, event_name)) {
-                    leaf = leaf[event_name];
+        fetch_experiment(url) {
+            var what_it_is = simplified_domain_from_url(url) + " " + extract_file_name(url);
+            var fetch_promise = fetch(url);
+            console.log("FETCH", what_it_is, "START");
+            fetch_promise.catch(function (error_message) {
+                console.warn("FETCH", what_it_is, "ERROR", error_message);
+            });
+            var num_lines = 0;
+            var last_line = null;
+            var liner = new LinesFromBytes(function (line) {
+                num_lines++;
+                last_line = line;
+            });
+            fetch_promise.then(function (response) {
+                console.log("FETCH", what_it_is, "RESPONSE", response.status, response.type);
+                if (response.ok) {
+                    var total = 0;
+                    var reader = response.body.getReader();
+                    return reader.read().then(incremental_download);
+
+                    function incremental_download(result) {
+                        if (result.done) {
+                            console.log("FETCH", what_it_is, "DONE", total, "bytes", num_lines, "lines");
+                        } else {
+                            console.log("FETCH", what_it_is, "CHUNK", result.value.length, "bytes");
+                            total += result.value.length;
+                            liner.bytes_in(result.value);
+                            return reader.read().then(incremental_download);
+                        }
+                    }
                 } else {
-                    is_a_hit = false;
-                    return false;
+                    console.warn("FETCH", what_it_is, "NOT OK", response.status);
                 }
             });
-            if (is_a_hit) {
-                if (is_a(leaf, Function)) {
-                    // NOTE:  Supports future finer-grained events.
-                    //        Or does that confuse things, and even degrade security?
-                    //        If e.g. event_handler.vrb.contribute has a sub-event,
-                    //        event_tree.vrb.contribute.superseded.
-                    // TODO:  This is all fine and good if event names are created by trusted
-                    //        parties, both the triggering and the handling.  How might untrusted
-                    //        parties do either?
-                    leaf(word);
-                } else {
-                    console.warn("Event handler is not a function", ...event_names, leaf);
-                }
-            }
         }
+
         each_json(word_json) {
             var that = this;
-            that.line_number++;
+            that.num_words++;
             that.current_word_json = word_json;
             var word_to_return;
             try {
                 word_to_return = that.word_from_json(word_json);
                 that.each_word(word_to_return);
-                if (is_specified(that.num_lines) && that.line_number > that.num_lines) {
-                    that.num_lines = that.line_number;
-                    // NOTE:  This only happens if each_json() is called outside the scan() loop,
-                    //        because num_lines is null inside the scan() loop.
-                    //        That happens in the callback of create_word.
-                    //        We want to keep num_lines null during the scan loop because it's
-                    //        not yet know.  We want to increase it here and now because
-                    //        (since we got here) an additional line has been added to the lex.
-                    // TODO:  Er, maybe this increase should happen in create_word() and
-                    //        create_word() should be a LexClient member.
-                }
             } catch (e) {
                 if (e instanceof qiki.LexClient.ScanFail) {
                     // NOTE:  All calls to scan_fail() should end up here.
@@ -418,6 +428,15 @@ window.qiki ||= {};
             }
             return word_to_return;
         }
+        /**
+         * Decode a line of JSON.  Use the nits to instantiate a qiki.Word.
+         *
+         * Handle a line from a .lex.jsonl file.
+         * Handle the response from a .create_word() ajax call.
+         *
+         * @param word_json, e.g. "[220,1564505338118,[18,"103620384189003122864"], 80,214,183,31]"
+         * @returns {qiki.Word}
+         */
         word_from_json(word_json) {
             var that = this;
             try {
@@ -434,10 +453,65 @@ window.qiki ||= {};
             var word = that.word_factory(...word_array);
             return word;
         }
-        each_word(word) {   // callback for derived class
+        /**
+         * Similar to constructor of qiki.Word subclass.  But each_word() is after ALL subclassing.
+         *
+         * @param word
+         */
+        each_word(word) {
+            var that = this;
+            if (word.is_definition()) {
+                var parent = that.by_idn[word.obj.parent];
+                that.word_event(word, 'parent', parent.obj.name)
+                // TODO:  Wouldn't it be cool if this expression:
+                //            that.by_idn[word.obj.parent].obj.name
+                //        could be this:
+                //            word.parent.name
+                //        In other words:
+                //            named obj parts were word parts:  parent.name vs parent.obj.name
+                //            and word parts were (germinal) words:  parent vs that.by_idn[parent]
+            } else {
+                that.word_event(word, 'vrb', word.vrb_name());
+            }
+        }
+        word_event(word, ...event_names) {
+            var that = this;
+            type_should_be(word, qiki.Word);
+            should_be_array_like(event_names, String);
+            var leaf = that.event_handlers;
+            var is_a_hit = true;
+            looper(event_names, function (level, event_name) {
+                if (/* is_associative_array(leaf) && */ has(leaf, event_name)) {
+                    leaf = leaf[event_name];
+                } else {
+                    is_a_hit = false;
+                    // NOTE:  event_names must all match nested keys in event_handlers to get a hit.
+                    return false;
+                }
+            });
+            if (is_a_hit) {
+                if (is_a(leaf, Function)) {
+                    // NOTE:  Supports future finer-grained events.
+                    //        Or does that confuse things, and even degrade security?
+                    //        If e.g. event_handler.vrb.contribute has a sub-event,
+                    //        event_tree.vrb.contribute.superseded.
+                    // TODO:  This is all fine and good if event names are created by trusted
+                    //        parties, both the triggering and the handling.  How might untrusted
+                    //        parties do either?
+                    leaf(word);
+                } else {
+                    console.warn(
+                        "Event handler hit at", event_names.join(","),
+                        "- but that is no function:", leaf
+                    );
+                }
+            }
         }
         /**
-         * Allow a lex-subclass to give words a vrb-dependent word-subclass, e.g.
+         * What class should this word be?  Must be qiki.Word or a subclass.
+         *
+         * A subclass of LexClient may override this method, and return a subclass of Word
+         * that depends on the word's vrb or other contents.
          *
          * @param idn
          * @param whn
@@ -445,19 +519,21 @@ window.qiki ||= {};
          * @param vrb
          * @param obj_values
          * @returns {qiki.Word}
-         *
-         * TODO:  D.R.Y. - don't pass all this stuff to several different functions.
          */
+        // noinspection JSUnusedLocalSymbols
         word_class(idn, whn, sbj, vrb, ...obj_values) {
             return qiki.Word;
         }
+        /**
+         * Instantiate a word in this lex.  Expect word_class() to return Word or a subclass.
+         */
         word_factory(idn, whn, sbj, vrb, ...obj_values) {
             var that = this;
             var the_word_class = that.word_class(idn, whn, sbj, vrb, ...obj_values);
             var the_word_instance = new the_word_class(that, idn, whn, sbj, vrb, ...obj_values);
             return the_word_instance;
         }
-       is_early_in_the_scan() {
+        is_early_in_the_scan() {
             return (
                 ! this.have_we_processed_the_definition_of('lex') ||
                 ! this.have_we_processed_the_definition_of('define')
@@ -469,18 +545,18 @@ window.qiki ||= {};
             return qiki.Lex.is_idn_defined(that.idn_of[name]);
         }
 
-        // NOTE:  Hardwired fields for a definition word.
+        // NOTE:  Hardwired fields for a definition word:
         static I_DEFINITION_PARENT = 0;
         static I_DEFINITION_NAME   = 1;
-        static I_DEFINITION_FIELDS = 2;   // Definitions have a field called 'fields'
-        static N_DEFINITION        = 3;
+        static I_DEFINITION_FIELDS = 2;   // Definition-words have a field called 'fields'
+        static N_DEFINITION        = 3;   // Definition-words have 3 fields
         // TODO:  Specify these in the lex, and make the circularity not dumb.
 
         each_definition_word(word) {
             var that = this;
             word.obj = {};
             if (word.obj_values.length !== qiki.LexClient.N_DEFINITION) {
-                that.scan_fail("Definition should have 3 objs, not:", word.obj_values);
+                that.scan_fail("Definition should have 3 obj parts, not:", word.obj_values);
             }
             word.obj.parent = word.obj_values[qiki.LexClient.I_DEFINITION_PARENT];
             word.obj.name   = word.obj_values[qiki.LexClient.I_DEFINITION_NAME];
@@ -529,16 +605,6 @@ window.qiki ||= {};
             }
             that.idn_of[word.obj.name] = word.idn;
             that.by_idn[word.idn] = word;
-
-            var parent = that.by_idn[word.obj.parent];
-            that.word_event(word, 'parent', parent.obj.name)
-            // TODO:  Wouldn't it be cool if this expression:
-            //            that.by_idn[word.obj.parent].obj.name
-            //        could be this:
-            //            word.parent.name
-            //        In other words:
-            //            named obj parts were word parts:  parent.name vs parent.obj.name
-            //            and word parts were (germinal) words:  parent vs that.by_idn[parent]
         }
         each_reference_word(word) {
             var that = this;
@@ -572,7 +638,9 @@ window.qiki ||= {};
             word.obj_values = null;
 
             // TODO:  The three categories of words should maybe be more distinct:
-            //        lex-definition, lex-reference, user-reference.
+            //            lex-definition-word
+            //            lex-reference-word
+            //            user-reference-word
             //        Maybe one day there will be user-definition words (e.g. custom verbs)
             //        although probably not because we don't want internal code names
             //        and user verb names stepping on each others toes.  So probably there will
@@ -606,7 +674,6 @@ window.qiki ||= {};
                     break;
                 }
             }
-            that.word_event(word, 'vrb', vrb.obj.name);
         }
 
         agent_from_idn(agent_idn) {
@@ -626,15 +693,18 @@ window.qiki ||= {};
         // TODO:  Encapsulate in some kind of Agent container.
 
         /**
-         * Raise a ScanFail exception -- only called by each_word() or subordinates.
+         * Throw a ScanFail exception.  A failure to decode and interpret the json of a word.
+         *
+         * If called by word_from_json() or each_word() or subordinates, it will be
+         * caught by each_json(), and each_json() will return null.
          *
          * @param args - text and variables to be passed to console.error().
          */
         scan_fail(...args) {
             var that = this;
             var name_line = f("{name} line {line}", {
-                name:that.constructor.name,
-                line:that.line_number
+                name: that.constructor.name,
+                line: that.num_words
             });
             var more_args = [
                 ...args,
@@ -717,6 +787,40 @@ window.qiki ||= {};
         }
     }
 
+    /**
+     * Convert a series of chunks of bytes into text lines.
+     *
+     * Chunks are Uint8Array's of utf-8 encoded bytes.
+     * Chunks are input by calling the .bytes_in() method.
+     * Lines are output by the line_out() callback passed to the constructor.
+     *
+     * The line_out() callback may set .keep_going = false to stop further callbacks
+     * from the same .bytes_in() call.
+     */
+    class LinesFromBytes {
+        constructor(line_out) {
+            var that = this;
+            that.line_out = line_out;
+            that.remains = '';
+            that.keep_going = true;   // line_out callback can set to false to terminate
+            that.decoder = new TextDecoder('utf-8');
+        }
+        bytes_in(utf_8_uint8_bytes) {
+            var that = this;
+            var characters = that.decoder.decode(utf_8_uint8_bytes);
+            that.remains += characters;
+            var next_lines = that.remains.split('\n');
+            var always_an_incomplete_line = next_lines.pop();
+
+            looper(next_lines, function (_, line_that_might_end_in_cr) {
+                var line = line_that_might_end_in_cr.replace(/\r$/, '');
+                that.line_out(line);
+                return that.keep_going;
+            });
+            that.remains = always_an_incomplete_line;
+        }
+    }
+
     qiki.Word = class Word {
         static MILLISECONDS_PER_WHN = 1.0;   // whn is milliseconds since 1970
         static SECONDS_PER_WHN = 0.001;   // whn is milliseconds since 1970
@@ -732,7 +836,7 @@ window.qiki ||= {};
          * @param obj_values - unnamed values of the word's objects.
          *                     The verb definition leads to the names.
          *
-         * TODO:  Make lex a static property of the derived Word class.  That way each word
+         * TODO:  Make lex a static property of a qiki.Word subclass.  That way each word
          *        instance will know its lex instance but won't be burdened with storing it in
          *        every word instance.
          *        Could lead to an oppressively tall hierarchy of word classes, e.g.:
@@ -744,8 +848,10 @@ window.qiki ||= {};
          *                CaptionWord
          *                RearrangeWord
          *        Plus layers on top of that for
-         *            generic Contribution application innards versus
-         *            specific Unslumping implementation
+         *            ContributionWord - generic Contribution application innards versus
+         *            Contribution - specific Unslumping implementation
+         *        Except the extra layers are less bad since we started using composition in the
+         *        implementation (e.g. Contribution._word)
          */
         constructor(lex, idn, whn, sbj, vrb, ...obj_values) {
             var that = this;
@@ -757,9 +863,6 @@ window.qiki ||= {};
             that.obj = null;
             that.obj_values = obj_values;
 
-            // TODO:  Better as a getter property?  Then lex and inconsequential users can still
-            //        have an agent that's an object with methods.
-
             // NOTE:  word.obj_values is a numerically indexed array.  It was passed to constructor.
             //        word.obj        is a named associative array.  It will get populated below.
 
@@ -767,34 +870,29 @@ window.qiki ||= {};
             //            qiki.WordDefinition constructor absorb LexClient.each_definition_word()
             //            qiki.WordReference constructor  absorb LexClient.each_reference_word()
             //        A reason not to do that:  Someone smarter than me should break down the
-            //        difference between these.  A lex definition could just be like any other word,
-            //        with fields defined in the lex.  It's got extra powers for sure, but maybe
-            //        those can be safely associated with the .sbj property, not with the class.
-            if (that.lex.is_early_in_the_scan()) {
-                if (that.is_the_definition_of_lex_itself()) {
-                    that.lex.each_definition_word(that);
-                    that.lex.agent_remember(that.idn, 'name', 'lex');
-                } else if (that.is_the_definition_of_define_itself()) {
-                    that.lex.each_definition_word(that);
-                } else {
-                    throw that.lex.scan_fail(
-                        "The first words should define 'lex' and 'define' themselves."
-                    );
-                }
+            //        difference between these.  A lex-definition-word could be just like any other
+            //        word, with fields defined in the lex.  It's got extra powers for sure, but
+            //        maybe those can be safely associated with the .sbj being the lex definition,
+            //        not with a new dichotomy of word classes.
+
+            if (that.is_definition()) {
+                that.lex.each_definition_word(that);
             } else {
-                if (that.is_definition()) {
-                    that.lex.each_definition_word(that);
-                } else {
-                    that.lex.each_reference_word(that);
-                }
+                that.lex.each_reference_word(that);
             }
+            // NOTE:  Calling these here in the base-class qiki.Word constructor means that a
+            //        subclass constructor will get a fully resolved word, that has named .obj
+            //        properties (after it calls super() of course).  Unlike the .word_class()
+            //        method in a LexClient subclass, which must make do with the unnamed
+            //        .obj_values array elements.
         }
 
         get agent() {
             return this.lex.agent_from_idn(this.sbj);
-            // NOTE:  This getter method, where every use of the agent "property" searches by idn,
-            //        is optimized for less memory, more compute time.  But maybe every word
-            //        instance should have an agent property.
+            // NOTE:  This getter method, where every use of the agent "property" searches the
+            //        .lex.agent_cache by idn, is optimized for less memory, more compute time.  But
+            //        maybe every word instance should have an agent property, a reference to an
+            //        object in the .lex.agent_cache.
         }
 
         idn_presentable() {
@@ -804,7 +902,8 @@ window.qiki ||= {};
             return this.lex.by_idn[this.obj.parent].obj.name;
         }
         /**
-         * Get a printable name for this word's vrb.  Behave in all kinds of circumstances.
+         * Get a printable name for this word's vrb.  Strings for several hostile circumstances.
+         *
          * @returns {string}
          */
         vrb_name() {
@@ -843,10 +942,23 @@ window.qiki ||= {};
             }
         }
         is_definition() {
-            return (
-                this.sbj === this.lex.idn_of.lex &&
-                this.vrb === this.lex.idn_of.define
-            );
+            var that = this;
+            if (that.lex.is_early_in_the_scan()) {
+                if (that.is_the_definition_of_lex_itself()) {
+                    return true;
+                } else if (that.is_the_definition_of_define_itself()) {
+                    return true;
+                } else {
+                    throw that.lex.scan_fail(
+                        "The first words should define 'lex' and 'define' themselves."
+                    );
+                }
+            } else {
+                return (
+                    this.sbj === this.lex.idn_of.lex &&
+                    this.vrb === this.lex.idn_of.define
+                );
+            }
         }
         /**
          * Works on the 'lex' definition word before it has been processed, by slight trickery.

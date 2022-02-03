@@ -16,7 +16,7 @@
  *
  * @param expected - often a literal
  * @param actual - often a function call or other expression
- * @param {string=} context - more stuff to be displayed on the console if there's a problem
+ * @param {*=} context - more stuff to be displayed on the console if there's a problem
  * @return {boolean} - support chaining:  assert_foo(a) && assert_bar(a.b)
  */
 function assert_equal(expected, actual, ...context) {
@@ -315,10 +315,15 @@ assert_equal('no.domain', domain_from_url('https://e%ample.com/'));
 assert_equal('no.domain', domain_from_url('example.com'));
 assert_equal('no.domain', domain_from_url(''), JSON.stringify(domain_from_url('')));
 
+function extract_file_name(path_or_url) {
+    return path_or_url.split('/').pop().split('\\').pop().split('#')[0].split('?')[0];
+}
+assert_equal("foo.txt", extract_file_name('https://example.com/dir/foo.txt?q=p#anchor'));
+assert_equal("foo.txt", extract_file_name('C:\\program\\barrel\\foo.txt'));
+
 function $_from_class(class_) {
     return $(selector_from_class(class_));
 }
-
 function $_from_id(id) {
     return $(selector_from_id(id));
 }
@@ -333,8 +338,8 @@ function selector_from_class(class_) {
  * Get the value of a query-string parameter in the URL that loaded the page (not the .js)
  *
  * EXAMPLE:  If the page were https://example.com/foo.html?bar=baz, then 'baz' === query_get('bar')
- * @param name
- * @param default_value - value in case it was missing from the query string
+ * @param {string} name
+ * @param {*=} default_value - value in case it was missing from the query string
  * @returns {string|*}
  */
 function query_get(name, default_value) {
@@ -433,16 +438,6 @@ function equal_ish(value1, value2, tolerance) {
 console.assert(  equal_ish(42.0, 42.1, 0.11));
 console.assert(! equal_ish(42.0, 42.1, 0.09));
 
-if (!String.prototype.startsWith) {
-    String.prototype.startsWith = function (searchString, position) {
-      position = position || 0;
-      return this.substr(position, searchString.length) === searchString;
-  };
-}
-console.assert('string'.startsWith('str'));
-// THANKS:  .startsWith() polyfill,
-//          https://developer.mozilla.org/Web/JavaScript/Reference/Global_Objects/String/startsWith
-
 /**
  * Remove a prefix.  Or if it wasn't there, return the same string.
  */
@@ -485,7 +480,11 @@ function Timing() {
 }
 
 /**
- * @return {string}
+ * How much time between the moments?  Expect at least two moments.
+ *
+ * @param {string=} after_total
+ * @param {string=} between_times
+ * @returns {string}
  */
 Timing.prototype.report = function Timing_report(after_total, between_times) {
     if ( ! is_string(after_total)) after_total = ": ";
@@ -510,26 +509,6 @@ Timing.prototype.moment = function Timing_moment(what) {
     var that = this;
     that.log.push({what:what, ms:(new Date()).getTime()});
 };
-
-/**
- * Polyfill for window.URLSearchParams.get(), so it works in IE11
- *
- * THANKS:  https://stackoverflow.com/a/50756253/673991
- */
-(function (window) {
-    window.URLSearchParams = window.URLSearchParams || function (searchString) {
-        var self = this;
-        self.searchString = searchString;
-        self.get = function (name) {
-            var results = new RegExp('[\?&]' + name + '=([^&#]*)').exec(self.searchString);
-            if (results === null) {
-                return null;
-            } else {
-                return decodeURI(results[1]) || 0;
-            }
-        };
-    }
-})(window);
 
 /**
  * Are there any single newlines in this string?  They indicate "poetry" formatting.
@@ -1234,13 +1213,6 @@ function is_subclass_or_same(class_child, class_parent) {
     return is_strict_subclass(class_child, class_parent) || class_child === class_parent
 }
 
-function extract_file_name(path_or_url) {
-    return path_or_url.split('/').pop().split('\\').pop().split('#')[0].split('?')[0];
-}
-assert_equal("foo.txt", extract_file_name('https://example.com/dir/foo.txt?q=p#anchor'));
-assert_equal("foo.txt", extract_file_name('C:\\program\\barrel\\foo.txt'));
-
-
 (function (window) {   // Encapsulation of the delta_format() function and its internals.
 
     var MILLISECOND = 0.001;
@@ -1424,6 +1396,8 @@ function seconds_since_1970() {
  * @returns array - duplicates reported once, triplets reported twice, etc.
  */
 function find_duplicates(array) {
-    return array.filter((element, index) => array.indexOf(element) !== index);
+    return array.filter(function (element, index) {
+        return array.indexOf(element) !== index;
+    });
 }
 assert_equal("2,3,3", find_duplicates([1, 2,2, 3,3,3]).join(","))

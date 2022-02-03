@@ -14,7 +14,7 @@
             console.assert(that.description_short === "instagram");
             console.assert(that === cont.handler.media);   // Hint object organization could improve
             var pattern_match_object = cont.handler.match_object;
-            console.assert(pattern_match_object.length === 2, cont.obj.text, pattern_match_object);
+            console.assert(pattern_match_object.length === 2, cont.media_url, pattern_match_object);
             var media_id = pattern_match_object[1];
             if (is_valid_media_id(media_id)) {
                 var caption = cont.caption_text + " (" + that.description_short + ")";

@@ -2424,7 +2424,7 @@ def meta_lex():
         return auth.login_html()   # anonymous viewing not allowed, just show "login" link
 
     with FlikiHTML('html') as html:
-        with html.header(title="Lex") as head:
+        with html.header(title="lex" + secure.credentials.Options.home_page_title) as head:
             head.css_stamped(static_code_url('meta_lex.css'))
 
             head.css('//fonts.googleapis.com/css?family=Source+Sans+Pro&display=swap')
@@ -2470,13 +2470,13 @@ if secure.credentials.Options.oembed_server_prefix is not None:
         """
         # print("oembed_html", json.dumps(flask.request.full_path))
         # EXAMPLE:
-        #     oembed_html "/meta/oembed/?idn=1938&url=https%3A%2F%2Ftwitter.com
+        #     oembed_html "/meta/oembed/?id_attribute=1938&url=https%3A%2F%2Ftwitter.com
         #                  %2FICRC%2Fstatus%2F799571646331912192"
         url = flask.request.args.get('url')
-        idn = flask.request.args.get('idn', default="(idn unknown)")
+        id_attribute = flask.request.args.get('id_attribute', default="(idn unknown)")
         matched_groups = matcher_groups(url, NOEMBED_PATTERNS)
         if matched_groups is not None:
-            return noembed_render(url, idn, matched_groups)
+            return noembed_render(url, id_attribute, matched_groups)
         else:
             oembed_dict = noembed_get(url)
             if 'html' in oembed_dict:
@@ -2491,12 +2491,11 @@ if secure.credentials.Options.oembed_server_prefix is not None:
                     domain=repr_safe(domain_from_url(url)),
                     but_why=repr_safe(but_why),
                 ),
-                title=idn,
-                # TODO:  simplified domain - idn
+                title=id_attribute,
             )
 
 
-def noembed_render(url, idn, matched_groups):
+def noembed_render(url, id_attribute, matched_groups):
     """
     Render and wrangle noembed-supplied html.  For use by an iframe of embedded media.
 
@@ -2518,7 +2517,7 @@ def noembed_render(url, idn, matched_groups):
             THUMB_MAX_HEIGHT=THUMB_MAX_HEIGHT,
         )
         with html.head(newlines=True) as head:
-            head.title("{idn}".format(idn=idn))
+            head.title("{id_attribute}".format(id_attribute=id_attribute))
             # TODO:  Add caption.
             head.css_stamped(static_code_url('embed_content.css'))
             head.jquery(JQUERY_VERSION)

@@ -377,7 +377,7 @@ function embed_content_js(window, $, MONTY) {
                 break;
             default:
                 console.error(
-                    "Unknown action, parent ==> child",
+                    "Unknown action, parent --> child",
                     '"' + message.action + '"'
                 );
                 break;
@@ -461,10 +461,10 @@ function embed_content_js(window, $, MONTY) {
      * Expect we are popping up.
      *
      * NOTE:  PlayerState sequences:
-     *        cued=>unstarted=>buffering=>playing=>ended
-     *        5=>-1=>3=>    1=>0  --  usually
-     *        5=>-1=>3=>-1=>1=>0  --  once
-     *        2=>3=>1  --  clicking the timeline
+     *        cued->unstarted->buffering->playing->ended
+     *        5->-1->3->    1->0  --  usually
+     *        5->-1->3->-1->1->0  --  once
+     *        2->3->1  --  clicking the timeline
      *
      *        YouTube API state codes:
      *        -1 – unstarted
@@ -656,7 +656,7 @@ function embed_content_js(window, $, MONTY) {
         // NOTE:  Each of the following changes have a light touch.
         //        That is, they don't "change" a setting if it was already at that value.
         //        That's because applying some settings, even redundantly,
-        //        triggers JavaScript events, and maybe iFrameResizer resizings,
+        //        triggers JavaScript events, and maybe iFrameResizer resizing events,
         //        which cause visual churn and slowness.
 
         tag_width($child);
@@ -892,34 +892,16 @@ function embed_content_js(window, $, MONTY) {
 
 // noinspection JSUnusedGlobalSymbols
 /**
- * @property YT
- * @property YT.Player
+ * YouTube Player API on-load event.  Invoke the callback passed to youtube_iframe_api().
+ *
+ * SEE:  https://developers.google.com/youtube/iframe_api_reference#Requirements
+ *       "The API will call this function when the page has finished downloading the JavaScript
+ *       for the player API"
  */
 function onYouTubeIframeAPIReady() {
-    // SEE:  https://developers.google.com/youtube/iframe_api_reference#Requirements
     console.log("Outer YouTube api ready");
     embed_content_js.youtube_iframe_api_ready();
 }
-
-/**
- * Polyfill for window.URLSearchParams.get(), so it works in IE11
- *
- * THANKS:  https://stackoverflow.com/a/50756253/673991
- */
-(function (w) {
-    w.URLSearchParams = w.URLSearchParams || function (searchString) {
-        var self = this;
-        self.searchString = searchString;
-        self.get = function (name) {
-            var results = new RegExp('[\?&]' + name + '=([^&#]*)').exec(self.searchString);
-            if (results === null) {
-                return null;
-            } else {
-                return decodeURI(results[1]) || 0;
-            }
-        };
-    }
-})(window);
 
 /**
  * Is this page inside an iframe?

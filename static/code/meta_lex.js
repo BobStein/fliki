@@ -1,7 +1,7 @@
 // FALSE WARNING:  Unused function js_for_meta_lex
-//                 Because PyCharm doesn't see call to js_for_meta_lex() in fliki.py.
+//                 Because PyCharm doesn't see the call to js_for_meta_lex() in fliki.py.
 // FALSE WARNING:  'if' statement can be simplified
-//                 Because sometimes true and false should be more explicit.
+//                 Because sometimes true and false are better explicit.
 // noinspection JSUnusedGlobalSymbols,RedundantIfStatementJS
 
 // meta_lex.js
@@ -25,33 +25,33 @@ function js_for_meta_lex(window, $, MONTY) {
         $progress.append("Scanning ");
         window.setTimeout(function () {
             var lex = new LexMeta(MONTY.LEX_URL, {
-                done: function () {
-                    $progress.append(since() + " ... Rendering ");
+                done() {
+                    $progress.append(" " + since() + " ... Rendering ");
                     window.setTimeout(function () {
                         lex.show1();
-                        $progress.append(since() + " ... Showing ");
+                        $progress.append(" " + since() + " ... Showing ");
                         window.setTimeout(function () {
                             lex.show2();
-                            $progress.append(since() + " ... Delta ");
+                            $progress.append(" " + since() + " ... Delta ");
                             window.setTimeout(function () {
                                 lex.show3();
-                                $progress.append(since() + " ... Finishing ");
+                                $progress.append(" " + since() + " ... Finishing ");
                                 window.setTimeout(function () {
-                                    $progress.append(since());
+                                    $progress.append(" " + since());
                                     // $progress.text("");
                                     console.log(
                                         lex.constructor.name, "has",
-                                        lex.num_lines, "lines,",
-                                        lex.num_def, "definition-words,",
+                                        lex.num_words, "lines =",
+                                        lex.num_def, "definition-words +",
                                         lex.num_ref, "reference-words",
-                                        lex
                                     );
+                                    assert_equal(lex.num_words, lex.num_def + lex.num_ref);
                                 }, 100);
                             }, 100);
-                        }, 10);
+                        }, 100);
                     }, 100);
                 },
-                fail: function (error_message) {
+                fail(error_message) {
                     lex.show1();
                     lex.show2();
                     lex.show3();
@@ -59,7 +59,7 @@ function js_for_meta_lex(window, $, MONTY) {
                     $progress.append(" -- ", $error);
                 }
             });
-        }, 10);
+        }, 100);
     });
 
     var browse_time = seconds_since_1970();
@@ -68,7 +68,7 @@ function js_for_meta_lex(window, $, MONTY) {
         var now = seconds_since_1970();
         var since_seconds = now - since_last;
         since_last = now;
-        return " " + since_seconds.toFixed(1) + "sec ";
+        return since_seconds.toFixed(1) + "sec ";
     }
 
     class LexMeta extends qiki.LexClient {
@@ -88,42 +88,51 @@ function js_for_meta_lex(window, $, MONTY) {
         show2() {
             this.$ol.show();
         }
+        /**
+         * Draw the bottom triangle.  Time between latest word and browse.
+         */
         show3() {
             var that = this;
             if (is_specified(that.word_rendered_previously)) {
-                that.word_rendered_previously.render_whn_delta(null);   // draw the bottom triangle
+                that.word_rendered_previously.render_whn_delta(null);
             }
         }
         word_class(idn, whn, sbj, vrb, ...obj_values) {
             return WordMeta;
         }
-        each_word(word) {
-            var that = this;
-            super.each_word(word);
-            // TODO:  Move the following logic to the WordMeta constructor.
-            //        Then we can get rid of each_word() everywhere.
-            word.render(that.word_rendered_previously);
-            that.$ol.append(word.$li);
-            that.word_rendered_previously = word;
-        }
-        each_definition_word(word) {
-            var that = this;
-            super.each_definition_word(word);
-            that.num_def++;
-            // that.say(word.idn, word.obj.name.toUpperCase(), word.obj.fields.join(","));
-        }
-        // FALSE WARNING:  Unused method each_reference_word
-        //                 because PyCharm doesn't see qiki.Lex in lex.js
-        // noinspection JSUnusedGlobalSymbols
-        each_reference_word(word) {
-            var that = this;
-            super.each_reference_word(word);
-            that.num_ref++;
-            // that.say(word.idn, word.vrb_name(), JSON.stringify(word.obj));
-        }
+        // each_word(word) {
+        //     var that = this;
+        //     super.each_word(word);
+        //     // word.render(that.word_rendered_previously);
+        //     // that.$ol.append(word.$li);
+        //     // that.word_rendered_previously = word;
+        // }
+        // each_definition_word(word) {
+        //     var that = this;
+        //     super.each_definition_word(word);
+        //     that.num_def++;
+        // }
+        // each_reference_word(word) {
+        //     var that = this;
+        //     super.each_reference_word(word);
+        //     that.num_ref++;
+        // }
     }
 
     class WordMeta extends qiki.Word {
+
+        constructor(...args) {
+            super(...args)
+            var that = this;
+            that.render(that.lex.word_rendered_previously);
+            that.lex.$ol.append(that.$li);
+            that.lex.word_rendered_previously = that;
+            if (that.is_definition()) {
+                that.lex.num_def++;
+            } else {
+                that.lex.num_ref++;
+            }
+        }
 
         render(word_prev) {
             var that = this;
@@ -181,7 +190,8 @@ function js_for_meta_lex(window, $, MONTY) {
             that.render_whn($whn);
             if (is_specified(word_prev)) {
                 word_prev.render_whn_delta(that);
-                // NOTE:  render_whn_delta() deals with two words, but order is flipped.
+                // NOTE:  render_whn_delta() deals with the time between two words.
+                //        Notice the order is flipped:  previous_word.render_whn_delta(this_word).
                 //        This draws the triangle ABOVE the current word, below word_prev.
             }
         }
@@ -243,7 +253,7 @@ function js_for_meta_lex(window, $, MONTY) {
         }
         // render_whn_delta($li, $whn_delta, whn_seconds_previous) {
         /**
-         * Draw the triangle indicating time between words, to the left of and below this word.
+         * Draw the triangle indicating time between words.  Place below this word.
          *
          * Also draw a border between words separated by more than an hour.
          * The triangle is associated with the EARLIER word.
@@ -388,7 +398,7 @@ function js_for_meta_lex(window, $, MONTY) {
     console.assert("#ffffff" === gray_scale(255));
 
     function hex_2_digits(number) {
-        return ('00' + Math.round(number).toString(16)).substr(-2);
+        return ('00' + Math.round(number).toString(16)).slice(-2);
         // THANKS:  Hex with zero-pad, https://stackoverflow.com/a/9909166/673991
     }
     console.assert("01" === hex_2_digits(1));
