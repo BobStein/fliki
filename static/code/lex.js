@@ -369,7 +369,7 @@ window.qiki ||= {};
             const PI_BILLION = '/meta/static/data/pi-billion.txt';
             if (0) that.fetch_experiment(PI_MILLION);
             if (0) that.fetch_experiment(PI_BILLION);
-            that.fetch_experiment(that.url + 'moo');
+            that.fetch_experiment(that.url);
         }
         fetch_experiment(url) {
             var what_it_is = simplified_domain_from_url(url) + " " + extract_file_name(url);
