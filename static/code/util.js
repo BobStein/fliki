@@ -751,6 +751,24 @@ assert_equal(false, is_associative_array(undefined));
 assert_equal(false, is_associative_array(true));
 assert_equal(false, is_associative_array(function () {}));
 
+function arrays_equal(array1, array2) {
+    // THANKS:  Array compare, based on:  https://stackoverflow.com/a/7837725/673991
+    if (array1.length === array2.length) {
+        for (var i=0, n=array1.length ; i < n ; i++) {
+            if (array1[i] !== array2[i]) {
+                return false;
+            }
+        }
+        return true;
+    } else {
+        return false;
+    }
+}
+assert_equal( true, arrays_equal([1,2,3], [1,2,3]));
+assert_equal(false, arrays_equal([1,2,3], [1,2,"3"]));
+assert_equal(false, arrays_equal([1,2,3], [1,2,3,4]));
+assert_equal(false, arrays_equal([1,2,3], [1,2]));
+
 /**
  * Get a formal type name.  Legacy JavaScript class instances are all 'Object'.
  *
