@@ -140,16 +140,17 @@ error_expected(function () {
  *
  * SEE:  typeof vs instanceof, https://stackoverflow.com/a/6625960/673991
  *
- * CAUTION:  Don't use `Object` for the second parameter.  It doesn't mean much.
- *     true === is_a(function () {}, Object)   // use is_associative_array()
- *     true === is_a(undefined, Object)        // use is_defined()
- *     true === is_a(null, Object)             // use is_specified()
- *     true === is_a([], Object)               // use is_array_like() or is_array()
+ * CAUTION:  Don't use `Object` for the second parameter.  It might always be true:
+ *     true === is_a(function () {}, Object)   // use is_associative_array(z)
+ *     true === is_a(undefined, Object)        // use is_defined(z)
+ *     true === is_a(null, Object)             // use is_specified(z)
+ *     true === is_a([], Object)               // use is_array_like(z) or is_a(z, Array)
+ *     true === is_a("string", Object)         // use is_a(z, String)
  *
- * CAUTION:  Don't test for null or undefined, use is_specified() or is_defined().
+ * CAUTION:  Don't use is_a() to test for null or undefined, use is_specified() or is_defined().
  *
  * @param thing
- * @param expected_type - String, Number
+ * @param expected_type - e.g. String, Number
  * @return {boolean}
  */
 function is_a(thing, expected_type) {
@@ -160,12 +161,7 @@ assert_equal(true, is_a(42, Number));
 assert_equal(true, is_a("X", String));
 assert_equal(true, is_a([], Array));
 assert_equal(true, is_a(function () {}, Function));
-
-// CAUTION:  is_a(z, Object) doesn't mean much.
-assert_equal(true, is_a(function () {}, Object));
-assert_equal(true, is_a(undefined, Object));
-assert_equal(true, is_a(null, Object));
-assert_equal(true, is_a([], Object));
+assert_equal(true, is_a(new Date(), Date));
 
 /**
  * Console error if it doesn't quack like an array.
@@ -284,7 +280,7 @@ assert_equal('example', simplified_domain_from_url('https://www.example.com/foo'
  *                    MIGHT return 'no.domain' if url is invalid.
  */
 function domain_from_url(url) {
-    if (is_string(url) && url !== '') {
+    if (is_a(url, String) && url !== '') {
         var $a = $('<a>').prop('href', url);
         var href_back;
         try {
@@ -487,8 +483,8 @@ function Timing() {
  * @returns {string}
  */
 Timing.prototype.report = function Timing_report(after_total, between_times) {
-    if ( ! is_string(after_total)) after_total = ": ";
-    if ( ! is_string(between_times)) between_times = ", ";
+    if ( ! is_a(after_total, String)) after_total = ": ";
+    if ( ! is_a(between_times, String)) between_times = ", ";
     var that = this;
     if (that.log.length >= 2) {
         var report_pieces = [];
@@ -591,11 +587,11 @@ function is_defined(x) {
 assert_equal(false, is_defined(undefined));
 assert_equal( true, is_defined(0));
 
-function is_string(x) {
-    return is_a(x, String);
-}
-assert_equal( true, is_string(''));
-assert_equal(false, is_string(0));
+// function is_string(x) {
+//     return is_a(x, String);
+// }
+// assert_equal( true, is_string(''));
+// assert_equal(false, is_string(0));
 
 /**
  * Does an array, object, or string contain a thing?
@@ -610,11 +606,11 @@ function has(collection, thing) {
     if (collection === null || typeof collection === 'undefined') {
         // TODO:  Explain why this should not throw an exception.
         return false;
-    } else if (is_array(collection)) {
+    } else if (is_a(collection, Array)) {
         return $.inArray(thing, collection) !== -1;
     } else if (is_associative_array(collection)) {
         return collection.hasOwnProperty(thing);
-    } else if (is_string(collection)) {
+    } else if (is_a(collection, String)) {
         return collection.indexOf(thing) !== -1;
     } else {
         console.error("Don't understand has(", type_name(collection), ", )", collection, thing);

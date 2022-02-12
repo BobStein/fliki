@@ -1600,9 +1600,15 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
     class LexUnslumping {
         constructor(then) {
             var that = this;
-            that._lex_cont = new LexContribution(MONTY.LEX_URL, {   // composition over inheritance
+            that._lex_cont = new LexContribution({   // composition over inheritance
+                fetch_url: MONTY.LEX_URL,
                 me_idn: MONTY.me_idn,
-                done() {
+            });
+            that._lex_cont.do_track_superseding = true;
+            that._lex_cont.promise
+                .then(function (result) {
+                    console.log("LexUnslumping promise THEN", result);
+
                     that.idn_sequence = that._lex_cont.idn_of.sequence;
                     that.idn_rightmost = that._lex_cont.idn_of.rightmost;
 
@@ -1630,21 +1636,11 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                         that._lex_cont.report_edit_history_in_console(console.debug.bind(console));
                     }
                     then();
-                },
-                parent: {
-                    category(category_word) {
-                        var cat = new Category(category_word);
-                        that.cats.add_rightmost(cat, cat.name);
-                    }
-                },
-                vrb: {
-                    contribute(word) {},
-                    edit(word) {},
-                    caption(word) {},
-                    rearrange(word) {},
-                }
-            });
-            that._lex_cont.do_track_superseding = true;
+                })
+                .catch(function (error) {
+                    console.log("LexUnslumping promise CATCH", error);
+                })
+            ;
 
             console.debug("Lex", that);
             // NOTE:  Of course the lex instance is very unpopulated now, but the JavaScript console
@@ -1660,8 +1656,13 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
             }
 
             that.cats = new qiki.Bunch();
-            // NOTE: LexUnslumping.cats is a collection of Category instances, encapsulating
-            //       LexContribution.cat_words, a collection of CategoryWord instances.
+            // NOTE: LexUnslumping has .cats, a collection of Category instances, encapsulating
+            //       LexContribution which has .cat_words, a collection of CategoryWord instances.
+            that._lex_cont.on_category(function (category_word) {
+                console.log("CAT", category_word);
+                var cat = new Category(category_word);
+                that.cats.add_rightmost(cat, cat.name);
+            });
         }
 
         get me() { return this._lex_cont.me; }
@@ -1877,7 +1878,11 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
         /**
          * Return a Category instance given its idn.
          *
-         * CAUTION:  This (and much else) relies on all categories being rendered in the DOM.
+         * First find the inner .category element, because its id is the category's idn.
+         * From there, the outer .sup-category element has a .data('category-object')
+         * which is the Category instance.
+         *
+         * CAUTION:  This relies on the category being rendered in the DOM.
          */
         static from_idn(idn) {
             type_should_be(idn, Number);
@@ -2064,15 +2069,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
             var that = this;
             var cont = new Contribution(cont_word);
             cont.build_dom();
-            cont.rebuild_bars(function () {
-                if (is_specified(window.ResizeObserver)) {
-                    // SEE:  ResizeObserver, https://caniuse.com/#feat=resizeobserver
-                    cont.resize_observer = new ResizeObserver(function resized_cont_handler() {
-                        cont.fix_caption_width();
-                    });
-                    cont.resize_observer.observe(dom_from_$(cont.$cont));
-                }
-            });
+            cont.rebuild_bars();
             if (that.$unrendered.length === 0) {
                 that.$cat.append(cont.$sup);
             } else {
@@ -2116,7 +2113,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
             var that = this;
             var $container_entry = that.$cat.find('.container-entry');
             if ($container_entry.length > 0) {
-                // Insert after the entry form ('my' category)
+                // Insert after the entry form (only in the 'my' category, if at all)
                 $container_entry.last().after(cont.$sup);
             } else {
                 // Insert at the left end (any other category)
@@ -2153,15 +2150,26 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
          * What Category is this Contribution in?
          *
          * The encompassed ContributionWord already knows what CategoryWord it's in.
-         * Just translate that CategoryWord to a Category.
+         * Just translate that CategoryWord into a Category.
          *
          * @returns {Category|null}
          */
         get cat() {
             var that = this;
+
+            // NOTE:  (1) Get the Category instance from the composed CategoryWord instance,
+            //        which knows the category's idn:
             var cat = Category.from_idn(that._word.cat.idn);
-            if ( ! that.was_destroyed) {
-                var cat2 = Category.from_element(that.$sup.closest('.category'));
+
+            // NOTE:  (2) Get the Category instance another way, to verify it's the same,
+            //        via that.$sup (which is the .sup-contribution outer container).
+            //        But there are situations where we can't use that.$sup, (a) and (b) below:
+            if (that.was_destroyed) {
+                // (a) that.$sup is gone, it was temporarily rendered but has been removed from DOM.
+            } else if ( ! is_in_dom(that.$sup)) {
+                // (b) that.$sup is not yet in the DOM.  It's rendered but not yet inserted.
+            } else {
+                var cat2 = Category.from_element(that.$sup);
                 assert_equal(cat, cat2, that);
             }
             return cat;
@@ -2267,6 +2275,13 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
 
             that.$sup.toggleClass('was-submitted-anonymous', that.was_submitted_anonymous());
             // NOTE:  Only for words created when ALLOW_ANONYMOUS_CONTRIBUTIONS.
+
+            if (is_defined(window.ResizeObserver)) {
+                that.resize_observer = new ResizeObserver(function _resized_cont_handler() {
+                    that.fix_caption_width();
+                });
+                that.resize_observer.observe(dom_from_$(that.$cont));
+            }
         }
         dom_link($sup) {
             var that = this;
@@ -2537,6 +2552,10 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
             that.$sup.toggleClass('can-play', can);
             that.$sup.toggleClass('cant-play', ! can);
         }
+
+        /**
+         * Make the caption as wide as the rest of the contribution.
+         */
         fix_caption_width() {
             var that = this;
             // TODO:  Call this function more places where $caption_bar.width(is set to something)
@@ -4189,8 +4208,9 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
     }
 
     function scroll_into_view(element, options) {
+        var element_dom = dom_from_$($(element));
         ignore_exception(function () {
-            dom_from_$($(element)).scrollIntoView(options);
+            element_dom.scrollIntoView(options);
             // SEE:  Browser scrollIntoView, https://caniuse.com/#search=scrollIntoView
         });
     }
@@ -4937,7 +4957,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                             item.type === 'text/plain'
                         ) {
                             item.getAsString(function (might_be_url) {
-                                console.assert(is_string(might_be_url));
+                                console.assert(is_a(might_be_url, String));
                                 get_oembed(
                                     "drop",
                                     might_be_url,
@@ -5518,6 +5538,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
         function build_posted_contribution(cont_word) {
             var cont = new Contribution(cont_word);
             cont.build_dom();
+
             cont.cat.insert_left(cont);
             // NOTE:  This Contribution instance already knows it's in the 'my' category because
             //        the ContributeOriginalWord constructor called .starting_cat() and puts it

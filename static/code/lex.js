@@ -1,12 +1,11 @@
 // lex.js
 // ------
 // Parse a .lex.jsonl file into words.  Derive classes from Lex and Word to process the words.
-// Requires jQuery
 //
 // TODO:  Move to qiki.js
 
 window.qiki ||= {};
-(function (qiki, $) {
+(function (qiki) {
 
     /**
      * Lex - a collection of Words
@@ -39,7 +38,7 @@ window.qiki ||= {};
         missing_definitions() {
             var that = this;
             var expected_but_undefined_names = [];
-            looper(that.idn_of, function(name, idn) {
+            looper(that.idn_of, function _each_definition(name, idn) {
                 if (idn === qiki.Lex.IDN_NOT_YET_DEFINED) {
                     expected_but_undefined_names.push(name);
                 }
@@ -98,7 +97,7 @@ window.qiki ||= {};
             return is_defined(idn) && idn !== qiki.Lex.IDN_NOT_YET_DEFINED;
         }
         static presentable(string) {
-            if ( ! is_string(string)) {
+            if ( ! is_a(string, String)) {
                 string = JSON.stringify(string);
             }
             // noinspection RegExpRedundantEscape
@@ -304,18 +303,17 @@ window.qiki ||= {};
      * @property LexClient.idn_of.google_user
      */
     qiki.LexClient = class LexClient extends qiki.Lex {
-        constructor(url, event_handlers) {
+        constructor(options) {
             super()
             var that = this;
-            that.url = url;
-            that.event_handlers = event_handlers;
-            that.event_handlers.done ||= function () {};
-            that.event_handlers.fail ||= function (e) { console.error(e); }
+            that.options = options;
+            type_should_be(that.options.fetch_url, String);
             that.by_idn = {};
             that.agent_cache = {};
             that.agent_representing_lex_itself = null;
-            that.error_message = null;
+            // that.error_message = null;
             that.num_words = 0;   // 0-based line number before each_json() call, 1-based after it
+            that.any_progress_at_all = false;
             that.expect_definitions(
                 'iconify',
                 'name',
@@ -324,67 +322,73 @@ window.qiki ||= {};
                 'anonymous',
             );
 
-            var promise_jsonl = $.get({
-                url: that.url,
-                dataType: 'text',
-                xhrFields: {
-                    onprogress: function (e) {
-                        console.log("get progress event", e);
-                    }
-                }
+            // var abort_controller = new AbortController();
+            var liner = new LinesFromBytes(function _each_incoming_line(line) {
+                that.each_json(line);
+                // if (that.each_json(line) === null) {
+                //     liner.keep_going = false;
+                //     abort_controller.abort();
+                // }
             });
-            promise_jsonl.fail(function (jqxhr, settings, exception) {
-                console.error("Lex.scan, ajax get:", jqxhr, settings, exception);
-                that.event_handlers.fail("Failure to get lex for scan: " + jqxhr.responseText);
-                // THANKS:  responseText is the needle in the fail callback haystack,
-                //          https://stackoverflow.com/a/12116790/673991
-                // SEE:  jqXHR, https://api.jquery.com/jQuery.Ajax/#jqXHR
-            });
-            promise_jsonl.done(function (response_body) {
-                var response_lines = response_body.split('\n');
-                response_lines.pop();
-                // NOTE:  Remove trailing empty string, because the file ends in a newline.
+            that.promise = fetch(that.options.fetch_url)
+                .then(function _lex_fetch_resolution(response) {
+                    if (response.ok) {
+                        var reader = response.body.getReader();
+                        return reader.read().then(incremental_download);
 
-                looper(response_lines, function (_, word_json) {
-                    if (that.each_json(word_json) === null) {
-                        return false;
-                        // NOTE:  Terminate the scanning loop if any word has an error.
-                    }
-                });
+                        function incremental_download(result) {
+                            that.any_progress_at_all = true;
+                            if (result.done) {
+                                console.assert(
+                                    liner.remains === '',
+                                    "Last line of", that.options.fetch_url,
+                                    "expected to be empty, not:", liner.remains
+                                );
 
-                if (is_specified(that.error_message)) {
-                    that.event_handlers.fail(that.error_message);
-                } else {
-                    var no_idn_for = that.missing_definitions();
-                    if (no_idn_for.length === 0) {
-                        that.event_handlers.done();
+                                var no_defs = that.missing_definitions();
+                                if (no_defs.length === 0) {
+                                    console.log("LexClient fetch done");
+                                } else {
+                                    that.scan_fail("Missing definitions: " + no_defs.join(", "));
+                                }
+                            } else {
+                                var words_before = that.num_words;
+                                liner.bytes_in(result.value);
+                                var words_after = that.num_words;
+                                console.log(
+                                    "LexClient fetch chunk,",
+                                    result.value.length, "bytes,",
+                                    words_after - words_before, "words total"
+                                );
+                                return reader.read().then(incremental_download);
+                            }
+                        }
                     } else {
-                        that.error_message = "Missing definitions: " + no_idn_for.join(", ");
-                        that.event_handlers.fail(that.error_message);
+                        that.scan_fail(f("LexClient fetch not ok: {status} {text}", {
+                            status: response.status,
+                            text: response.statusText
+                        }));
                     }
-                }
-            });
+                })
+                .catch(function _lex_fetch_rejection(error) {
+                    if (is_a(error, LexClient.ScanFail)) {
+                        // .scan_fail() already displayed on console.error()
+                    } else {
+                        console.error("LexClient fetch failure:", error);
+                    }
+                    return Promise.reject(error.message);
+                })
+            ;
         }
+
 
         each_json(word_json) {
             var that = this;
             that.num_words++;
             that.current_word_json = word_json;
             var word_to_return;
-            try {
-                word_to_return = that.word_from_json(word_json);
-                that.each_word(word_to_return);
-            } catch (e) {
-                if (e instanceof qiki.LexClient.ScanFail) {
-                    // NOTE:  All calls to scan_fail() should end up here.
-                    that.error_message = String(e);
-                    word_to_return = null;
-                } else {
-                    // NOTE:  Something else went wrong, perhaps a data error that should have been
-                    //        detected and resulted in scan_fail().  Or perhaps an internal bug.
-                    throw e;
-                }
-            }
+            word_to_return = that.word_from_json(word_json);
+            that.each_word(word_to_return);
             return word_to_return;
         }
         /**
@@ -437,7 +441,7 @@ window.qiki ||= {};
             var that = this;
             type_should_be(word, qiki.Word);
             should_be_array_like(event_names, String);
-            var leaf = that.event_handlers;
+            var leaf = that.options;
             var is_a_hit = true;
             looper(event_names, function (level, event_name) {
                 if (/* is_associative_array(leaf) && */ has(leaf, event_name)) {
@@ -504,7 +508,7 @@ window.qiki ||= {};
             return qiki.Lex.is_idn_defined(that.idn_of[name]);
         }
 
-        // NOTE:  Hardwired fields for a definition word:
+        // NOTE:  Hardwired fields for each definition word:
         static I_DEFINITION_PARENT = 0;
         static I_DEFINITION_NAME   = 1;
         static I_DEFINITION_FIELDS = 2;   // Definition-words have a field called 'fields'
@@ -634,7 +638,6 @@ window.qiki ||= {};
                 }
             }
         }
-
         agent_from_idn(agent_idn) {
             var that = this;
             if ( ! has(that.agent_cache, agent_idn)) {
@@ -657,30 +660,27 @@ window.qiki ||= {};
          * If called by word_from_json() or each_word() or subordinates, it will be
          * caught by each_json(), and each_json() will return null.
          *
+         * The arguments passed to scan_fail() will be displayed on the console, along with the
+         * line number and word count.  A string concatenation of all that information will also get
+         * passed eventually to the .event_handlers.fail() callback.
+         *
          * @param args - text and variables to be passed to console.error().
          */
         scan_fail(...args) {
             var that = this;
-            var name_line = f("{name} line {line}", {
-                name: that.constructor.name,
-                line: that.num_words
-            });
-            var more_args = [
-                ...args,
-                "\nScan failed on " + name_line + ":\n" + that.current_word_json
-            ]
-
-            console.error.apply(null, more_args);
-            // THANKS:  Pass along arguments, https://stackoverflow.com/a/3914600/673991
-            // NOTE:  This console error provides the most relevant stack trace.
-            //        Good appearance:  console.error.apply(null, args)
-            //        Okay appearance:  console.error(args)
-            //        Poor appearance:  console.error(args.join(" "))
-
-            throw new qiki.LexClient.ScanFail(more_args.join(" "));
-            // NOTE:  This error message will get passed also to the scan() function fail()
-            //        callback.  But since that message is a string, it may be less informative than
-            //        what console.error() produced above.
+            var more_args;
+            if (that.any_progress_at_all) {
+                more_args = [
+                    ...args,
+                    "\nScan failed on", that.options.fetch_url, "line", that.num_words, "which is:" +
+                    "\n" + (that.current_word_json || "(A BLANK LINE)")
+                ]
+            } else {
+                more_args = args;
+            }
+            console.error(...more_args);
+            var failure_string = more_args.join(" ")
+            throw new qiki.LexClient.ScanFail(failure_string);
         }
         static ScanFail = class ScanFail extends Error {
             constructor(message) {
@@ -716,6 +716,8 @@ window.qiki ||= {};
             var that = this;
             done_callback = done_callback || function () {};
             fail_callback = fail_callback || function (message) { console.error(message); };
+            // TODO:  configure and use fetch(method POST), not qoolbar
+            //        So a separate URL is needed for the ajax call then.
             qoolbar.post(
                 'create_word',
                 {
@@ -758,6 +760,9 @@ window.qiki ||= {};
      *
      * The line_out() callback may set .keep_going = false to stop further callbacks
      * from the same .bytes_in() call.
+     *
+     * TODO:  Implement as a ReadableStream?
+     * TODO:  Understand ReadableStream
      */
     class LinesFromBytes {
         constructor(line_out) {
@@ -765,15 +770,15 @@ window.qiki ||= {};
             that.line_out = line_out;
             that.remains = '';
             that.keep_going = true;   // line_out callback can set to false to terminate
-            that.decoder = new TextDecoder('utf-8');
+            that.string_from_utf8 = new TextDecoder('utf-8');
         }
-        bytes_in(utf_8_uint8_bytes) {
+        bytes_in(chunk_of_utf8_bytes) {
             var that = this;
-            var characters = that.decoder.decode(utf_8_uint8_bytes);
+            var characters = that.string_from_utf8.decode(chunk_of_utf8_bytes);
             that.remains += characters;
             var next_lines = that.remains.split('\n');
             var always_an_incomplete_line = next_lines.pop();
-            looper(next_lines, function (_, line_that_might_end_in_cr) {
+            looper(next_lines, function _each_line_in_chunk(_, line_that_might_end_in_cr) {
                 var line = line_that_might_end_in_cr.replace(/\r$/, '');
                 that.line_out(line);
                 return that.keep_going;
@@ -781,12 +786,11 @@ window.qiki ||= {};
             that.remains = always_an_incomplete_line;
         }
     }
-    var demo_lfb = new LinesFromBytes(function (line) {
+    var demo_lines_from_bytes = new LinesFromBytes(function (line) {
         console.assert(line === 'ABC' || line === 'DEF');
     });
-    demo_lfb.bytes_in(new Uint8Array([65,66,67,13,10, 68,69,70,13,10]));
-
-    // NOTE:  There's a nuance to String.split() that's crucial for LinesFromBytes.bytes_in():
+    demo_lines_from_bytes.bytes_in(new Uint8Array([65,66,67, 13,10, 68,69,70, 13,10]));
+    // NOTE:  There's a nuance to String.split() that LinesFromBytes.bytes_in() depends on:
     //        When you split a string ending in \n you get an empty trailer.  So (1) there
     //        is always a last element output by split (it never outputs an empty array []),
     //        and (2) that last element is always an unterminated line.  For example:
@@ -824,6 +828,9 @@ window.qiki ||= {};
          *            Contribution - specific Unslumping implementation
          *        Except the extra layers are less bad since we started using composition in the
          *        implementation (e.g. Contribution._word)
+         *        A major drawback:  e.g. two LexContribution instances (connecting to two servers
+         *        like unslumping.org) would require two different sets of Word subclasses
+         *        (ContributionWord, CategoryWord, etc.)
          */
         constructor(lex, idn, whn, sbj, vrb, ...obj_values) {
             var that = this;
@@ -1015,7 +1022,7 @@ window.qiki ||= {};
         }
     }
 
-})(qiki, jQuery);
+})(qiki);
 // NOTE:  The last line used to be a little more explicit about window.qiki being a global variable:
-//            })(window.qiki = window.qiki || {}, jQuery);
+//            })(window.qiki = window.qiki || {});
 //        But that tripped up JetBrains into not seeing qiki.Word and other module classes.

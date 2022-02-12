@@ -14,12 +14,16 @@
  *
  * Contributions are categorized and ordered within their categories.
  *
- * @property LexContribution.idn_of.rightmost
  * @property LexContribution.cat_words.by_name.my
  * @property LexContribution.cat_words.by_name.their
  * @property LexContribution.cat_words.by_name.anon
  * @property LexContribution.cat_words.by_name.trash
  * @property LexContribution.cat_words.by_name.about
+ * @property LexContribution.idn_of.contribute
+ * @property LexContribution.idn_of.edit
+ * @property LexContribution.idn_of.caption
+ * @property LexContribution.idn_of.rearrange
+ * @property LexContribution.idn_of.rightmost
  */
 class LexContribution extends qiki.LexClient {
     constructor(...args) {
@@ -53,9 +57,11 @@ class LexContribution extends qiki.LexClient {
         that.do_track_superseding = false;
         // NOTE:  true - edit words remember words they superseded, can call .report_edit_history()
         //        false - save memory, must never call .report_edit_history()
+
+        that._category_handlers = [];
     }
 
-    get me() { return this.agent_from_idn(this.event_handlers.me_idn); }
+    get me() { return this.agent_from_idn(this.options.me_idn); }
 
     /**
      * Use different Word subclasses for different verbs.
@@ -89,6 +95,15 @@ class LexContribution extends qiki.LexClient {
             break;
         }
         return qiki.Word;
+    }
+    on_category(handler) {
+        this._category_handlers.push(handler);
+    }
+    trigger_category(category_word) {
+        var that = this;
+        looper(that._category_handlers, function (_, handler) {
+            handler(category_word);
+        });
     }
     /**
      * Should we let this reference-word affect our rendering?
@@ -201,8 +216,8 @@ class LexContribution extends qiki.LexClient {
         console.assert(
             (
                 is_specified(that.cat_words.by_name.my) &&
-                is_specified(that.cat_words.by_name.anon) &&
-                is_specified(that.cat_words.by_name.their)
+                is_specified(that.cat_words.by_name.their) &&
+                is_specified(that.cat_words.by_name.anon)
             ),
             "Categories not defined yet:",
             that.cat_words.by_name,
@@ -398,6 +413,7 @@ class CategoryWord extends qiki.Word {
         var that = this;
         that.cont_words = new qiki.Bunch();
         that.lex.cat_words.add_rightmost(that, that.obj.name);
+        that.lex.trigger_category(that);
     }
 }
 
