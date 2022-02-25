@@ -1087,10 +1087,14 @@
       settings[iframeId] = {
         firstRun: true,
         iframe: iframe,
-        remoteHost: iframe.src
+        // NOTE:  Following line fixes a Chrome bug slash air-quotes feature circa version 98, 2022.
+        //        Symptom was TypeError: Cannot read properties of undefined (reading 'split')
+        // remoteHost: iframe.src   // <-- original line
+        remoteHost: iframe.contentWindow.location.href
           .split('/')
           .slice(0, 3)
           .join('/')
+        // THANKS:  Get iframe url on same domain, https://stackoverflow.com/a/938195/673991
       }
 
       checkOptions(options)

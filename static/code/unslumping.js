@@ -2873,6 +2873,21 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                 on_init();
             } else {
                 setTimeout(function () {
+
+                    if (
+                        is_a(that.$iframe.attr('src'), String) &&
+                        ! is_defined(dom_from_$(that.$iframe).src)
+                    ) {
+                        console.error("MFING CHROME BUG -- cannot read iframe.src property");
+                    }
+
+                    // NOTE:  The following .iFrameResize() generates a TypeError without replacing
+                    //        a line in iframeResizer.js function processOptions:
+                    //        old:  remoteHost: iframe.src
+                    //        new:  remoteHost: iframe.contentWindow.location.href
+                    //        Symptom:  TypeError: Cannot read properties of undefined (reading 'split')
+                    // THANKS:  Get iframe url on same domain, https://stackoverflow.com/a/938195/673991
+
                     // noinspection JSUnusedGlobalSymbols
                     that.$iframe.iFrameResize({
                         log: false,

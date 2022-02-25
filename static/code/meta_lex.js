@@ -24,8 +24,12 @@ function js_for_meta_lex(window, $, MONTY) {
         $(window.document.body).append($progress);
         $progress.append("Scanning ");
         window.setTimeout(function () {
-            var lex = new LexMeta(MONTY.LEX_URL, {
-                done() {
+            var lex = new LexMeta({
+                fetch_url: MONTY.LEX_URL,
+            });
+            lex.promise
+                .then(function (result) {
+                    console.log("LexMeta promise THEN", result);
                     $progress.append(" " + since() + " ... Rendering ");
                     window.setTimeout(function () {
                         lex.show1();
@@ -50,15 +54,15 @@ function js_for_meta_lex(window, $, MONTY) {
                             }, 100);
                         }, 100);
                     }, 100);
-                },
-                fail(error_message) {
+                })
+                .catch(function (error_message) {
                     lex.show1();
                     lex.show2();
                     lex.show3();
                     var $error = $('<span>', {class: 'scan-fail'}).text(error_message);
                     $progress.append(" -- ", $error);
-                }
-            });
+                })
+            ;
         }, 100);
     });
 
