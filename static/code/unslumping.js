@@ -1034,7 +1034,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
             index_play_bot = 0;
             that.media_beginning();
             that.state = S.PREP_CONTRIBUTION;
-            interact_new.bot({
+            interact.bot({
                 category: cat_idn_for_playlist(),
                 sequence: sequence_nit(list_play_bot)
             });
@@ -1142,14 +1142,14 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                     S.MEDIA_STARTED,          // e.g. youtube videos deleted or restricted
                     S.MEDIA_TIMING,           // e.g. skipping an instagram image-not-found
                 ]);
-                interact_new.error({contribute: popped_cont.idn, text: data.message});
+                interact.error({contribute: popped_cont.idn, text: data.message});
                 that.end_one_begin_another(SECONDS_ERROR_MESSAGE, true);
             });
             ON(E.MEDIA_STATIC, function (data) {
                 if (that.transit([S.MEDIA_READY], S.MEDIA_TIMING)) {
                     // NOTE:  This if-check prevents the double START interact of 13-Apr-20.
                     //        Because Contribution.zero_iframe_recover() reloaded the iframe.
-                    interact_new.start({
+                    interact.start({
                         contribute: data.idn,
                         progress: ms_round(data.current_time)
                     });
@@ -1283,7 +1283,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
             break;
         case S.END_AUTO:
             that.media_ending();
-            interact_new.unbot({category: cat_idn_for_playlist()});
+            interact.unbot({category: cat_idn_for_playlist()});
             that.state = S.MANUAL;
             break;
         default:
@@ -1471,7 +1471,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
             that._pause_ends();
         } else if (is_popup() && ! popped_cont.is_noembed_error) {
             console.log("Resume static media.  Or dynamic media's breather after it completed.");
-            interact_new.resume({
+            interact.resume({
                 contribute: popped_cont.idn,
                 progress: ms_round(bot.ticks_this_state)
             });   // static resume
@@ -2878,7 +2878,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                         is_a(that.$iframe.attr('src'), String) &&
                         ! is_defined(dom_from_$(that.$iframe).src)
                     ) {
-                        console.error("MFING CHROME BUG -- cannot read iframe.src property");
+                        console.warn("MFING CHROME -- iframe.src is needed by iframeResizer");
                     }
 
                     // NOTE:  The following .iFrameResize() generates a TypeError without replacing
@@ -3081,12 +3081,12 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                 that.trigger_event(that.Event.MEDIA_ENDED);
                 // NOTE:  MEDIA_ENDED event means e.g. a video ended,
                 //        so next it's time for a breather.
-                interact_new.end({contribute: idn, progress: ms_round(message.current_time)});
+                interact.end({contribute: idn, progress: ms_round(message.current_time)});
                 break;
             case 'auto-play-end-static':
                 console.log("Static media ended", that.id_attribute, message.id_attribute);
                 // NOTE:  Static media timed-out, no breather necessary.
-                interact_new.end({contribute: idn, progress: ms_round(message.current_time)});
+                interact.end({contribute: idn, progress: ms_round(message.current_time)});
                 break;
             case 'auto-play-error':
                 // Later error, youtube finds
@@ -3106,7 +3106,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                 );
                 that.trigger_event(that.Event.MEDIA_PAUSED);
                 if ( ! that.is_noembed_error) {
-                    interact_new.pause({contribute: idn, progress: ms_round(message.current_time)});
+                    interact.pause({contribute: idn, progress: ms_round(message.current_time)});
                     // NOTE:  This could happen a while after the pause button is clicked,
                     //        after a cascade of consequences.  But it should accurately
                     //        record the actual position of the pause in the video.
@@ -3126,7 +3126,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                     that.id_attribute,
                     message.id_attribute
                 );
-                interact_new.quit({contribute: idn, progress: ms_round(message.current_time)});
+                interact.quit({contribute: idn, progress: ms_round(message.current_time)});
                 break;
             case 'auto-play-playing':
                 // TODO:  Get smarter about the work iframe_incoming() does, and the work
@@ -3148,7 +3148,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                         S.MEDIA_PAUSE_IN_FORCE   // dynamic resume, parent or embed, bot only
                     ]);
                     console.log("Media resuming", idn, message.current_time);
-                    interact_new.resume({contribute: idn, progress: ms_round(message.current_time)});   // dynamic resume
+                    interact.resume({contribute: idn, progress: ms_round(message.current_time)});   // dynamic resume
                     bot._pause_ends();
                 } else {
                     bot.assert_state_is([
@@ -3159,7 +3159,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                         S.END_AUTO,
                     ]);
                     console.log("Media started playing", idn, message.current_time);
-                    interact_new.start({contribute: idn, progress: ms_round(message.current_time)});
+                    interact.start({contribute: idn, progress: ms_round(message.current_time)});
                     // NOTE:  Don't think it's possible to get a double START on dynamic media
                     //        the way it was with static media.
                     //        We got here from an auto-play-playing message from the embed
@@ -3299,14 +3299,14 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
             var $svg = null;
             $(utter).on('start', function speech_boundary(evt) {
                 that.trigger_event(that.Event.SPEECH_START);
-                interact_new.start({contribute: that.idn, progress: evt.originalEvent.charIndex});
+                interact.start({contribute: that.idn, progress: evt.originalEvent.charIndex});
                 speech_progress = 0;
             });
             $(utter).on('pause', function speech_pause() {
-                interact_new.pause({contribute: that.idn, progress: speech_progress});
+                interact.pause({contribute: that.idn, progress: speech_progress});
             });
             $(utter).on('resume', function speech_resume() {
-                interact_new.resume({contribute: that.idn, progress: speech_progress});   // quote resume
+                interact.resume({contribute: that.idn, progress: speech_progress});   // quote resume
                 // NOTE:  Resume can be 2-4 words later than pause!
                 //        This is the "speechSynthesis pause delay" issue.
             });
@@ -3377,7 +3377,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                     //        Because a NEW bot play cycle might otherwise be
                     //        transitioned prematurely.
                     //        Did the $(utter).off() in pop_down_all() solve this issue?
-                    interact_new.quit({contribute: that.idn, progress: speech_progress});
+                    interact.quit({contribute: that.idn, progress: speech_progress});
                 } else {
                     console.log(
                         "Utterance",
@@ -3388,7 +3388,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                     // NOTE:  A bit lame, this happens whether manually popped up or
                     //        automatically played by the bot.  But it should have
                     //        no consequence manually anyway.
-                    interact_new.end({contribute: that.idn, progress: that.contribution_text.length});
+                    interact.end({contribute: that.idn, progress: that.contribution_text.length});
                 }
                 speech_progress = null;
                 // NOTE:  Setting speech_progress to null here prevents interact.quit() after
@@ -4062,14 +4062,14 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
      * @param interact_name - value from MONTY.INTERACT_VERBS array
      * @param obj - associative array of obj fields, e.g. {contribute=7444, progress=2072}
      */
-    function interact_new(interact_name, obj) {
+    function interact(interact_name, obj) {
        type_should_be(interact_name, String);
        type_should_be(obj, Object);
        lex.create_word(interact_name, obj);
     }
     looper(MONTY.INTERACT_VERBS, function for_each_interact(_, interact_name) {
-        interact_new[interact_name] = function curried_interact(obj) {
-            interact_new(interact_name, obj);
+        interact[interact_name] = function curried_interact(obj) {
+            interact(interact_name, obj);
         };
     });
 
@@ -4524,7 +4524,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
             //           Though it seems to have been fixed in Chrome.
             if (speech_progress !== null && is_popup()) {
                 // NOTE:  No manual QUIT after automated END.
-                interact_new.quit({contribute: popped_cont.idn, progress:speech_progress});
+                interact.quit({contribute: popped_cont.idn, progress:speech_progress});
             }
         }
         if (breather_timer !== null) {

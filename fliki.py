@@ -58,6 +58,13 @@ INTERACT_VERBS = [
     'error',    #     something went wrong, human-readable txt
     'unbot',    #     bot ended, naturally or artificially (but not crash)
 ]
+VERBS_USERS_MAY_USE = {
+    'contribute',
+    'caption',
+    'edit',
+    'rearrange',
+    'browse',
+}.union(INTERACT_VERBS)
 
 JSONL_EXTENSION = '.jsonl'
 MIME_TYPE_JSONL  = 'application/jsonl+json'
@@ -437,13 +444,6 @@ class FlikiWord(object):   # qiki.nit.Nit):   # pity, all that work in nit.py fo
 
     MINIMUM_JSONL_ELEMENTS = 4   # Each word contains at a minimum:  idn, whn, sbj, vrb
     MAXIMUM_JSONL_CHARACTERS = 10000   # No word's JSON string should be longer than this
-    VERBS_USERS_MAY_USE = {
-        'contribute',
-        'caption',
-        'edit',
-        'rearrange',
-        'browse',
-    }.union(INTERACT_VERBS)
 
     @classmethod
     def file_url(cls):
@@ -787,7 +787,7 @@ class FlikiWord(object):   # qiki.nit.Nit):   # pity, all that work in nit.py fo
         #        One difference is file-origin words come with unnamed obj fields (to save bytes)
         #        but browser-origin words have named obj fields (to detect parameter mismatches).
         #        So, different conversion and validation needs.
-        if vrb_name not in cls.VERBS_USERS_MAY_USE:
+        if vrb_name not in VERBS_USERS_MAY_USE:
             raise cls.CreateError("May not create a word with verb " + repr_safe(vrb_name))
         else:
             try:
@@ -2595,9 +2595,15 @@ def ajax():
             return valid_response('oembed', oembed_dict)
 
         elif action == 'create_word':
-            if not auth.flask_user.is_authenticated and not ALLOW_ANONYMOUS_CONTRIBUTIONS:
-                return invalid_response("anonymous contributions are not supported")
             vrb_name = auth.form('vrb_name')
+
+            if not auth.flask_user.is_authenticated and not ALLOW_ANONYMOUS_CONTRIBUTIONS:
+                if vrb_name not in INTERACT_VERBS:
+                    return invalid_response("anonymous contributions are not supported")
+                # NOTE:  Allowing anonymous interactions, to see if anyone is using the site,
+                #        But not remembering edits or rearranges, so unauthenticated users don't
+                #        affect other unauthenticated users.  (IP address is HARDLY sufficient.)
+
             objs_by_name_json = auth.form('objs_by_name')   # nits that follow idn,whn,user,vrb
             obj_dict = json.loads(objs_by_name_json)
             try:
