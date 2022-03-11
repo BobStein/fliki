@@ -1089,8 +1089,22 @@
         iframe: iframe,
         // NOTE:  Following line fixes a Chrome bug slash air-quotes feature circa version 98, 2022.
         //        Symptom was TypeError: Cannot read properties of undefined (reading 'split')
-        // remoteHost: iframe.src   // <-- original line
-        remoteHost: iframe.contentWindow.location.href
+        //            new line:  remoteHost: iframe.contentWindow.location.href
+        //            old line:  remoteHost: iframe.src
+        //        Oops!  No, it was the poperblocker.com Chrome extension that caused this to break.
+        //        Without that extension this modification is not needed.
+        //        It's possible this modification has some drawback.
+        //        It appears to work in the cross-domain, doubly-nested iframe:
+        //            https://unslumping.org/
+        //            https://fun.unslumping.org/meta/oembed/?id_attribute=29979&url=https%3A%2F%2Fwww.youtube.com%2Fwatch%3Fv%3DA8x73UW8Hjk%26ab_channel%3DProOmgHeadshot&is_pop_up=true&auto_play=true&width=1795&height=827&duration=500&easing=swing
+        //            https://www.youtube.com/embed/A8x73UW8Hjk?enablejsapi=1&rel=0&autoplay=0
+        //        But maybe that's not REALLY cross-domain, as the 2LDs are the same.
+        //        Although this table indicates that subdomains are cross-domain:
+        //            https://en.wikipedia.org/wiki/Same-origin_policy#Origin_determination_rules
+        //       So leaving in this modification for now.
+        //       Nope, changing it back to the way it was.  Because location.href was 'about:blank'
+        //       I think this example was not cross-domain.
+        remoteHost: iframe.src
           .split('/')
           .slice(0, 3)
           .join('/')

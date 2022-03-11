@@ -482,113 +482,124 @@ function embed_content_js(window, $, MONTY) {
         type_should_be(window.YT.Player, Function);
         // FALSE WARNING:  Unused property onStateChange
         // noinspection JSUnusedGlobalSymbols
-        yt_player = new window.YT.Player('youtube_iframe', {
-            events: {
-                onReady: function (/*yt_event*/) {
-                    is_yt_player_ready = true;
-                    if (is_auto_play) {
-                        t.moment("yt-play");
-                        type_should_be(yt_player.playVideo, Function);
-                        // NOTE:  This checks for a problem that was possibly caused by
-                        //        calling dynamic_player() twice.
-                        //        (From a botched fix for the ASS-OS bug.)
+        var yt_event_handlers = {
+            onReady: function (/*yt_event*/) {
+                is_yt_player_ready = true;
+                if (is_auto_play) {
+                    t.moment("yt-play");
+                    type_should_be(yt_player.playVideo, Function);
+                    // NOTE:  This checks for a problem that was possibly caused by
+                    //        calling dynamic_player() twice.
+                    //        (From a botched fix for the ASS-OS bug.)
 
-                        yt_player.playVideo();
+                    yt_player.playVideo();
 
-                        parent_message('auto-play-begun', {
-                            id_attribute: id_attribute
-                        });
-                        // NOTE:  Let contribution.js know that it's now
-                        //        okay to send a 'pause' message,
-                        //        which will cause yt_player.pauseVideo()
-
-                    }
-                    if (yt_player.getPlayerState() === window.YT.PlayerState.UNSTARTED) {
-                        console.warn("Unstarted", id_attribute, "-- Chrome blocked?");
-                    }
-                },
-                onStateChange: function (yt_event) {
-                    console.log(
-                        "YT API",
-                        id_attribute,
-                        name_from_code(previous_state),
-                        "->",
-                        name_from_code(yt_event.data)
-                    );
-                    if (first_state_change) {
-                        first_state_change = false;
-                        parent_message('auto-play-woke', {   // TODO:  Use or lose?
-                            id_attribute: id_attribute
-                        });
-                        t.moment("yt-state");
-
-                        console.log(id_attribute, domain_simple + ",", "lag", t.report());
-                        // EXAMPLE (busy):  popup_1990 youtube, lag 11.025:
-                        //     resizer 1.137, jquery 0.233, yt-code 0.834,
-                        //     pop 0.414, yt-play 7.017, yt-state 1.390
-                        // EXAMPLE (easy):  popup_1990 youtube, lag 1.125:
-                        //     resizer 0.063, jquery 0.019, yt-code 0.092,
-                        //     pop 0.466, yt-play 0.404, yt-state 0.081
-                    }
-                    // SEE:  yt_event.data, not yt_player.getPlayerState(), for new state,
-                    //       https://developers.google.com/youtube/iframe_api_reference#onStateChange
-                    switch (yt_event.data) {
-                    case window.YT.PlayerState.ENDED:
-                        parent_message('auto-play-end-dynamic', {
-                            id_attribute: id_attribute,
-                            current_time: yt_player.getCurrentTime()
-                        });
-                        break;
-                    case window.YT.PlayerState.PAUSED:
-                        parent_message('auto-play-paused', {
-                            id_attribute: id_attribute,
-                            current_time: yt_player.getCurrentTime()
-                        });
-                        // TODO:  getCurrentTime() is wrong when changing the play point on
-                        //        the time-line.  It shows the NEW video time, not the one
-                        //        left behind time.  Is that good??
-                        //        By the way, the sequence when that happens is:
-                        //            pause (2), buffering (3), playing (1)
-                        //        So the lex records interactions:
-                        //            pause, start
-                        //        Ala idns 3751, 3752.
-                        //        One way to fix this would be setInterval(sample getCurrentTime)
-                        //        But how soon does that change before the pause event??
-                        break;
-                    case window.YT.PlayerState.PLAYING:
-                        // if (previous_state === window.YT.PlayerState.PAUSED) {
-                        //     // TODO:  Is this reliable?  Could some state
-                        //     //        come after pause before play?
-                        //     console.log("EMBED RESUME", yt_player.getCurrentTime());
-                        //     parent_message('auto-play-resume', {
-                        //         id_attribute: id_attribute,
-                        //         current_time: yt_player.getCurrentTime()
-                        //     });
-                        // } else {
-                            console.log("EMBED PLAYING", yt_player.getCurrentTime());
-                            parent_message('auto-play-playing', {
-                                id_attribute: id_attribute,
-                                current_time: yt_player.getCurrentTime()
-                            });
-                        // }
-                        break;
-                    default:
-                        break;
-                    }
-                    previous_state = yt_event.data;
-                },
-                onError: function (yt_event) {
-                    console.warn("Player error", yt_event.data);
-                    parent_message('auto-play-error', {
-                        id_attribute: id_attribute,
-                        error_message: "YouTube Player error " + yt_event.data.toString()
+                    parent_message('auto-play-begun', {
+                        id_attribute: id_attribute
                     });
-                    // EXAMPLE:  "error 150" on Six Feet Under finale video axVxgCT3YD0
-                    // SEE:  error 150 causes, https://stackoverflow.com/a/5189003/673991
+                    // NOTE:  Let contribution.js know that it's now
+                    //        okay to send a 'pause' message,
+                    //        which will cause yt_player.pauseVideo()
+
                 }
+                if (yt_player.getPlayerState() === window.YT.PlayerState.UNSTARTED) {
+                    console.warn("Unstarted", id_attribute, "-- Chrome blocked?");
+                }
+            },
+            onStateChange: function (yt_event) {
+                console.log(
+                    "YT API",
+                    id_attribute,
+                    name_from_code(previous_state),
+                    "->",
+                    name_from_code(yt_event.data)
+                );
+                if (first_state_change) {
+                    first_state_change = false;
+                    parent_message('auto-play-woke', {   // TODO:  Use or lose?
+                        id_attribute: id_attribute
+                    });
+                    t.moment("yt-state");
+
+                    console.log(id_attribute, domain_simple + ",", "lag", t.report());
+                    // EXAMPLE (busy):  popup_1990 youtube, lag 11.025:
+                    //     resizer 1.137, jquery 0.233, yt-code 0.834,
+                    //     pop 0.414, yt-play 7.017, yt-state 1.390
+                    // EXAMPLE (easy):  popup_1990 youtube, lag 1.125:
+                    //     resizer 0.063, jquery 0.019, yt-code 0.092,
+                    //     pop 0.466, yt-play 0.404, yt-state 0.081
+                }
+                // SEE:  yt_event.data, not yt_player.getPlayerState(), for new state,
+                //       https://developers.google.com/youtube/iframe_api_reference#onStateChange
+                switch (yt_event.data) {
+                case window.YT.PlayerState.ENDED:
+                    parent_message('auto-play-end-dynamic', {
+                        id_attribute: id_attribute,
+                        current_time: yt_player.getCurrentTime()
+                    });
+                    break;
+                case window.YT.PlayerState.PAUSED:
+                    parent_message('auto-play-paused', {
+                        id_attribute: id_attribute,
+                        current_time: yt_player.getCurrentTime()
+                    });
+                    // TODO:  getCurrentTime() is wrong when changing the play point on
+                    //        the time-line.  It shows the NEW video time, not the one
+                    //        left behind time.  Is that good??
+                    //        By the way, the sequence when that happens is:
+                    //            pause (2), buffering (3), playing (1)
+                    //        So the lex records interactions:
+                    //            pause, start
+                    //        Ala idns 3751, 3752.
+                    //        One way to fix this would be setInterval(sample getCurrentTime)
+                    //        But how soon does that change before the pause event??
+                    break;
+                case window.YT.PlayerState.PLAYING:
+                    // if (previous_state === window.YT.PlayerState.PAUSED) {
+                    //     // TODO:  Is this reliable?  Could some state
+                    //     //        come after pause before play?
+                    //     console.log("EMBED RESUME", yt_player.getCurrentTime());
+                    //     parent_message('auto-play-resume', {
+                    //         id_attribute: id_attribute,
+                    //         current_time: yt_player.getCurrentTime()
+                    //     });
+                    // } else {
+                        console.log("EMBED PLAYING", yt_player.getCurrentTime());
+                        parent_message('auto-play-playing', {
+                            id_attribute: id_attribute,
+                            current_time: yt_player.getCurrentTime()
+                        });
+                    // }
+                    break;
+                default:
+                    break;
+                }
+                previous_state = yt_event.data;
+            },
+            onError: function (yt_event) {
+                console.warn("Player error", yt_event.data);
+                parent_message('auto-play-error', {
+                    id_attribute: id_attribute,
+                    error_message: "YouTube Player error " + yt_event.data.toString()
+                });
+                // EXAMPLE:  "error 150" on Six Feet Under finale video axVxgCT3YD0
+                // SEE:  error 150 causes, https://stackoverflow.com/a/5189003/673991
             }
-        });
-        console.log("You are here-ish", yt_player);
+        };
+        try {
+            yt_player = new window.YT.Player('youtube_iframe', { events: yt_event_handlers });
+        } catch (e) {
+            var error_message = e.toString();
+            console.error("YOUTUBE API INSTANTIATION FAILURE", e);
+            parent_message('auto-play-instantiation', {
+                id_attribute: id_attribute,
+                error_message: "YOUTUBE API INSTANTIATION FAILURE: " + error_message
+            });
+            // NOTE:  Pop Up Blocker for Chrome - poperblocker.com [sic] breaks instantiation:
+            //            TypeError: Cannot read properties of undefined (reading 'match')
+            //            at Mb (www-widgetapi.js:176:24) ...
+            //        Apparently an iframe.src becomes undefined when that extension is enabled.
+        }
     }
 
     /**

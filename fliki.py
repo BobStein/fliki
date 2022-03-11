@@ -425,7 +425,7 @@ class FlikiWord(object):   # qiki.nit.Nit):   # pity, all that work in nit.py fo
     So I fall back on my procedural roots.
     """
 
-    file_name = 'unslumping.lex.jsonl'
+    lex_file_name = 'unslumping.lex.jsonl'
     # NOTE:  This could kinda sorta be basis for the URL of the lex,
     #        which is also the bytes part of the lex's "root" nit.
     #        Inline with the notion that everything is a Nit.
@@ -446,12 +446,12 @@ class FlikiWord(object):   # qiki.nit.Nit):   # pity, all that work in nit.py fo
     MAXIMUM_JSONL_CHARACTERS = 10000   # No word's JSON string should be longer than this
 
     @classmethod
-    def file_url(cls):
-        return static_data_url(cls.file_name)
+    def lex_url(cls):
+        return static_data_url(cls.lex_file_name)
 
     @classmethod
-    def file_path(cls):
-        return os_path_data(cls.file_name)
+    def lex_path(cls):
+        return os_path_data(cls.lex_file_name)
 
     @classmethod
     def open_lex(cls):
@@ -552,13 +552,13 @@ class FlikiWord(object):   # qiki.nit.Nit):   # pity, all that work in nit.py fo
         except (ValueError, KeyError, AttributeError, TypeError, IndexError) as e:
             if word is None:
                 raise cls.OpenError("{file}\n    {e}".format(
-                    file=cls.file_name,
+                    file=cls.lex_file_name,
                     e=repr_safe(e),
                 )) from e
                 # THANKS:  Amend exception, Py3, https://stackoverflow.com/a/29442282/673991
             else:
                 raise cls.OpenError("{file} line {line_number}\n    {e}".format(
-                    file=cls.file_name,
+                    file=cls.lex_file_name,
                     line_number=word.line_number,
                     e=repr_safe(e),
                 )) from e
@@ -1001,11 +1001,11 @@ class FlikiWord(object):   # qiki.nit.Nit):   # pity, all that work in nit.py fo
                 raise self.StorageError("JSONL\n    {e}".format(e=repr_safe(e))) from e
             else:
                 try:
-                    with open(self.file_path(), 'a') as f:
+                    with open(self.lex_path(), 'a') as f:
                         f.write(word_jsonl + '\n')
                 except OSError as e:
                     raise self.StorageError("Open {file}\n    {e}".format(
-                        file=self.file_name,
+                        file=self.lex_file_name,
                         e=repr_safe(e),
                     )) from e
                 else:
@@ -1058,7 +1058,7 @@ class FlikiWord(object):   # qiki.nit.Nit):   # pity, all that work in nit.py fo
         line_number = None
         with cls.lock:
             try:
-                with open(cls.file_path(), newline=None) as f:
+                with open(cls.lex_path(), newline=None) as f:
                     line_number = 0
                     for word_json in f:
                         line_number += 1
@@ -1097,7 +1097,7 @@ class FlikiWord(object):   # qiki.nit.Nit):   # pity, all that work in nit.py fo
                                     )
             except OSError as e:
                 raise cls.ReadError("OS {file} line {line}\n    {e}".format(
-                    file=cls.file_name,
+                    file=cls.lex_file_name,
                     line=repr(line_number),   # may be None
                     e=repr_safe(e),
                 )) from e
@@ -2296,7 +2296,7 @@ def unslumping_home(home_page_title):
                 monty = dict(
                     AJAX_URL=AJAX_URL,
                     INTERACT_VERBS=INTERACT_VERBS,
-                    LEX_URL=FlikiWord.file_url(),
+                    LEX_GET_URL=FlikiWord.lex_url(),
                     login_html=auth.login_html(),
                     me_idn=auth.flask_user.idn,
                     MEDIA_HANDLERS=[
@@ -2442,7 +2442,7 @@ def meta_lex():
                 with foot.script() as script:
                     script.raw_text('\n')
                     monty = dict(
-                        LEX_URL=FlikiWord.file_url(),
+                        LEX_GET_URL=FlikiWord.lex_url(),
                         NOW=seconds_since_1970_utc(),
                     )
                     script.raw_text('js_for_meta_lex(window, window.$, {json});\n'.format(

@@ -14,7 +14,7 @@
  * @param window
  * @param $
  * @param MONTY
- * @param MONTY.LEX_URL
+ * @param MONTY.LEX_GET_URL
  * @param MONTY.NOW
  */
 function js_for_meta_lex(window, $, MONTY) {
@@ -25,7 +25,7 @@ function js_for_meta_lex(window, $, MONTY) {
         $progress.append("Scanning ");
         window.setTimeout(function () {
             var lex = new LexMeta({
-                fetch_url: MONTY.LEX_URL,
+                lex_get_url: MONTY.LEX_GET_URL,
             });
             lex.promise
                 .then(function (result) {

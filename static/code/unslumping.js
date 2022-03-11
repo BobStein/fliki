@@ -41,7 +41,7 @@
  * @param MONTY.AJAX_URL
  * @param MONTY.ALLOW_ANONYMOUS_CONTRIBUTIONS
  * @param MONTY.INTERACT_VERBS
- * @param MONTY.LEX_URL
+ * @param MONTY.LEX_GET_URL
  * @param MONTY.login_html
  * @param MONTY.me_idn
  * @param MONTY.MEDIA_HANDLERS
@@ -206,7 +206,9 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
     // NOTE:  Prevent zero-width iframe or other crazy situation from scrunching caption too narrow.
 
     var is_editing_some_contribution = false;
-    // TODO:  $(window.document.body).hasClass('edit-somewhere')
+    // TODO:  $(window.document.body).hasClass('something-being-edited-somewhere')
+    //        or $('.contribution-edit').length !== 0
+
     var $cont_editing = null;
     // TODO:  $('.contribution-edit').find('.contribution')
     //        Or maybe cont_editing refers to the Contribution object being edited.
@@ -221,7 +223,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
     //           .edit_end()
     //           .edit_cancel()
 
-    var list_play_bot;   // array of contribution idns
+    var list_play_bot;   // array of contribution idns currently being automatically played.
     var index_play_bot;   // index within list_play_bot[]
     // TODO:  These should be properties of the Bot instance, right??
 
@@ -275,9 +277,6 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
     var utter = null;
     var speech_progress = null;   // Character index (null means ended)
 
-    var voices = null;
-    var voice_weights;
-    var voice_default = {name:"(unknown)", lang: ""};
     const SECONDS_BREATHER_AT_MEDIA_END          = 2.0;
     const SECONDS_BREATHER_AT_SPEECH_SYNTHESIS_END = 4.0;   // using window.speechSynthesis
     const SECONDS_BREATHER_AFTER_ZERO_TIME         = 0.0;
@@ -346,7 +345,6 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
     }
 
     $(function document_ready() {
-        pop_speech_synthesis_init();
         qoolbar.ajax_url(MONTY.AJAX_URL);
 
         qiki.lex = lex = new LexUnslumping(function () {
@@ -1241,7 +1239,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                 }
 
                 window.speechSynthesis.cancel();
-                // NOTE:  This is a workaround for the text-not-speaking bug.
+                // NOTE:  This is a workaround for the text-not-speaking bug in Chrome.
 
                 window.speechSynthesis.speak(utter);
             }
@@ -1601,7 +1599,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
         constructor(then) {
             var that = this;
             that._lex_cont = new LexContribution({   // composition over inheritance
-                fetch_url: MONTY.LEX_URL,
+                lex_get_url: MONTY.LEX_GET_URL,
                 me_idn: MONTY.me_idn,
             });
             that._lex_cont.do_track_superseding = true;
@@ -1656,8 +1654,10 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
             }
 
             that.cats = new qiki.Bunch();
-            // NOTE: LexUnslumping has .cats, a collection of Category instances, encapsulating
-            //       LexContribution which has .cat_words, a collection of CategoryWord instances.
+            // NOTE:  LexUnslumping has .cats, a collection of Category instances.
+            //        LexUnslumping has ._lex_cont, a LexContribution which has .cat_words,
+            //        a collection of CategoryWord instances.
+
             that._lex_cont.on_category(function (category_word) {
                 console.log("CAT", category_word);
                 var cat = new Category(category_word);
@@ -2855,38 +2855,71 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
         resizer_init(on_init) {
             var that = this;
             type_should_be(on_init, Function);
-            var is_an_iframe = that.$iframe.length === 1;
+            console.assert(that.$iframe.length === 1, that.$iframe, that.$sup);
+            var /** @type {HTMLIFrameElement} */ iframe_dom = dom_from_$(that.$iframe);
+            console.assert(is_specified(iframe_dom), that.$iframe);
             // FALSE WARNING:  Unresolved variable iFrameResizer
             // noinspection JSUnresolvedVariable
-            var was_iframe_initialized = typeof dom_from_$(that.$iframe).iFrameResizer === 'object';
+            var was_iframe_initialized = typeof iframe_dom.iFrameResizer === 'object';
 
-            if (!is_an_iframe) {
-                console.error(
-                    "Missing iframe",
-                    that.idn,
-                    is_an_iframe,
-                    was_iframe_initialized,
-                    that
-                );
-            } else if (was_iframe_initialized) {
+            if (was_iframe_initialized) {
                 console.log("Already initialized iframe", that.idn);
                 on_init();
             } else {
                 setTimeout(function () {
 
-                    if (
-                        is_a(that.$iframe.attr('src'), String) &&
-                        ! is_defined(dom_from_$(that.$iframe).src)
-                    ) {
-                        console.warn("MFING CHROME -- iframe.src is needed by iframeResizer");
+                    // NOTE:  The following preempts dumb stuff with iframe.src
+                    if (is_a(that.$iframe.attr('src'), String)) {
+                        var iframe_attr_src = that.$iframe.attr('src');
+                        if ( ! is_specified(iframe_dom.src)) {
+                            // NOTE:  I used to think this was a bug in a Chrome update circa 98.
+                            //        Instead it appears to be a "feature" of poperblocker.com.
+                            console.error(
+                                "MFING Chrome extension poperblocker! -- " +
+                                "Disable ''Pop up blocker for Chrome''"
+                            );
+                        }
+                        if (is_specified(iframe_dom.src) && iframe_dom.src !== iframe_attr_src) {
+                            console.error(f(
+                                "Well this is freaky, iframe src discrepancy '{a}' versus '{d}'",
+                                {
+                                    a: iframe_attr_src,  // src via jQuery
+                                    d: iframe_dom.src    // src via DOM
+                                }
+                            ));
+                        }
+                        // if (
+                        //     ! is_specified(iframe_dom.contentWindow) ||
+                        //     ! is_specified(iframe_dom.contentWindow.location) ||
+                        //     ! is_specified(iframe_dom.contentWindow.location.href)
+                        //     // ||
+                        //     // iframe_dom.contentWindow.location.href !== iframe_attr_src
+                        // ) {
+                        //     // NOTE:  Not checking whether href === src because
+                        //     //        iframe_dom.contentWindow.location.href
+                        //     //        is at the moment:  'about:blank'
+                        //     console.error(
+                        //         "What I always feared, some kind of cross-domain hanky pinky.",
+                        //         "iframeResizer.js MODIFICATIONS MAY NOT WORK.",
+                        //         iframe_dom, "\n",
+                        //         "\t", iframe_dom.contentWindow.location.href, "\n",
+                        //         "\t", iframe_dom.src, "\n",
+                        //         "\t", iframe_attr_src, "\n",
+                        //     );
+                        // }
+                    } else {
+                        console.error("iframe with no src attribute", that.$iframe);
                     }
 
-                    // NOTE:  The following .iFrameResize() generates a TypeError without replacing
-                    //        a line in iframeResizer.js function processOptions:
-                    //        old:  remoteHost: iframe.src
-                    //        new:  remoteHost: iframe.contentWindow.location.href
-                    //        Symptom:  TypeError: Cannot read properties of undefined (reading 'split')
-                    // THANKS:  Get iframe url on same domain, https://stackoverflow.com/a/938195/673991
+                    // NOTE:  With the poperblocker.com Chrome extension, the following call to
+                    //        .iFrameResize() generates a TypeError.  That can be fixed by replacing
+                    //        a line in iframeResizer.js function processOptions():
+                    //            old:  remoteHost: iframe.src
+                    //            new:  remoteHost: iframe.contentWindow.location.href
+                    //        Symptom:
+                    //            TypeError: Cannot read properties of undefined (reading 'split')
+                    // THANKS:  Get iframe url on same domain,
+                    //          https://stackoverflow.com/a/938195/673991
 
                     // noinspection JSUnusedGlobalSymbols
                     that.$iframe.iFrameResize({
@@ -3088,6 +3121,10 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                 // NOTE:  Static media timed-out, no breather necessary.
                 interact.end({contribute: idn, progress: ms_round(message.current_time)});
                 break;
+            case 'auto-play-instantiation':
+                // Chrome extension may cause this.
+                that.media_error_clarion("auto-play-instantiation", message.error_message);
+                break;
             case 'auto-play-error':
                 // Later error, youtube finds
                 that.media_error_clarion("auto-play", message.error_message);
@@ -3207,50 +3244,16 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                 break;
             }
 
-            // utter.voice = chooseWeighted(voices, voice_weights);
-            // console.log("Voice", utter.voice.name, utter.voice.lang);
-            // NOTE:  (2019) Google voices don't report their word-boundary events.
-            //               Microsoft voices do, and they sound better too.
-            //        (2018) https://stackoverflow.com/a/48160824/673991
-            //        (2016) https://bugs.chromium.org/p/chromium/issues/detail?id=521666
-            //        Upshot is not to set voice at all.
-            //        Microsoft Anna is default in Chrome, Firefox, Opera, Edge.
-            //        Edge has many voices (9 English, 25 total).
-            //        Could instead multiplicatively weight Google voices 0, Microsoft 1.
-            //        Anyway, word boundaries are important because visual highlighting
-            //        of words seems more potent.  Combination visual and auditory.
+            window.speechSynthesis.cancel();   //
+            // NOTE:  This was another attempt to fix the text-not-speaking bug in Chrome.
+            //        This cancel appears to be the trick that fixed it.
+            // SEE:  My answer with this fix, https://stackoverflow.com/a/58775876/673991
 
-            var states_before = speech_states();
-
-            window.speechSynthesis.cancel();   // Another attempt to fix text-not-speaking bug.
-            // NOTE:  This cancel appears to be the trick that fixed it.
-
-            var states_between = speech_states();
             window.speechSynthesis.speak(utter);
             // NOTE:  Play audio even if not auto_play -- because there's no way
             //        to start the speech otherwise.  (SpeechSynthesis has no
             //        native control UX.)
             // EXAMPLE:  Silent for UC Browser, Opera Mobile, IE11
-
-            var states_after = speech_states();
-
-            console.log(
-                "Language",
-                voice_default.name,
-                voice_default.lang,
-                utter.voice,   // null in Chrome
-                typeof utter.lang, utter.lang,   // string '' in Chrome
-                states_before,
-                "->",
-                states_between,
-                "->",
-                states_after
-            );
-            // NOTE:  Probe droid for occasional lack of speaking popup.
-            // EXAMPLE:  Microsoft Anna - English (United States) en-US
-            // EXAMPLE:  (unknown) (UC Browser -- onvoiceschanged never called)
-            //           window.speechSynthesis.getVoices() returns []
-            //           https://caniuse.com/#feat=speech-synthesis
 
             $(utter).on('start end boundary error mark pause resume', function (evt) {
                 console.log(
@@ -3960,10 +3963,10 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                     popped_cont.resizer_init(function pop_media_init() {
                         console.debug("RESIZER 1", popped_cont.idn);
                         // NOTE:  Harmless warning:
-                        //        [iFrameSizer][Host page: iframe_popup_1990] Ignored iFrame, already setup.
-                        //        because the popup is CLONED from a contribution that already
-                        //        initialized its iFrameResizer.  Apparently it still needs to be
-                        //        initialized but it thinks it doesn't.
+                        //        [iFrameSizer][Host page: iframe_popup_1990]
+                        //        Ignored iFrame, already setup.
+                        // TODO:  The above warning comes from resizer_init() being called here,
+                        //        and via .live_media_iframe() above.  So remove one of them.
 
                         popped_cont.$sup.trigger(popped_cont.Event.MEDIA_INIT);
                         // NOTE:  Finally decided the best way to make the popup iframe big
@@ -4016,29 +4019,6 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
     };
 
 
-
-    function pop_speech_synthesis_init() {
-        if (window.speechSynthesis !== null) {
-            window.speechSynthesis.onvoiceschanged = function () {
-                // THANKS:  voices ready, https://stackoverflow.com/a/22978802/673991
-                voices = window.speechSynthesis.getVoices();
-                console.log("Voices loaded", voices);
-                voice_weights = Array(voices.length);
-                for (var i = 0; i < voices.length; i++) {
-                    if (/^en-GB/.test(voices[i].lang)) {
-                        voice_weights[i] = 10.0;
-                    } else if (/^en/.test(voices[i].lang)) {
-                        voice_weights[i] = 5.0;
-                    } else {
-                        voice_weights[i] = 0.0;
-                    }
-                    if (voices[i].default) {
-                        voice_default = voices[i];
-                    }
-                }
-            };
-        }
-    }
 
     function extract_user_type(user_idn) {
         var parts = String(user_idn).split(',');
@@ -4707,13 +4687,6 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
         return $(window).height() - TOP_SPACER_PX;
     }
 
-    function speech_states() {
-        return (
-            (window.speechSynthesis.speaking ? "s+" : "s-") +
-            (window.speechSynthesis.pending  ? "p+" : "p-")
-        );
-    }
-
     /**
      * Create a word in a lex, associated with a jQuery element.
      *
@@ -5073,7 +5046,7 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
     }
 
     /**
-     * Pasted or dropped contribution.
+     * Get the caption for a pasted or dropped contribution.
      *
      * @param what - 'paste' or 'drop' or 'thumb'
      * @param media_url - that was pasted or dropped - POSSIBLY a URL.
@@ -6177,16 +6150,6 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
             array[currentIndex] = array[randomIndex];
             array[randomIndex] = temporaryValue;
         }
-    }
-
-    // noinspection JSUnusedLocalSymbols
-    function chooseWeighted(items, chances) {
-        // THANKS:  Weighted random element, https://stackoverflow.com/a/55671924/673991
-        var sum = chances.reduce(function (acc, el) { return acc + el; }, 0);
-        var acc = 0;
-        chances = chances.map(function (el) { acc = el + acc; return acc; });
-        var rand = Math.random() * sum;
-        return items[chances.filter(function (el) { return el <= rand; }).length];
     }
 }
 

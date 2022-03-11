@@ -96,6 +96,10 @@ class LexContribution extends qiki.LexClient {
         }
         return qiki.Word;
     }
+
+    /**
+     * Handle the instantiation of a CategoryWord.
+     */
     on_category(handler) {
         this._category_handlers.push(handler);
     }

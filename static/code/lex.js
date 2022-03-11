@@ -287,7 +287,7 @@ window.qiki ||= {};
     }
 
     /**
-     * A lex stored on an internet server.
+     * Local interface for a lex stored on a remote internet server.
      *
      * TODO:  Give a Lex object ways to read or write words with composition instead of subclassing.
      *        lex.reader(Reader(url))
@@ -307,7 +307,7 @@ window.qiki ||= {};
             super()
             var that = this;
             that.options = options;
-            type_should_be(that.options.fetch_url, String);
+            type_should_be(that.options.lex_get_url, String);
             that.by_idn = {};
             that.agent_cache = {};
             that.agent_representing_lex_itself = null;
@@ -330,7 +330,7 @@ window.qiki ||= {};
                 //     abort_controller.abort();
                 // }
             });
-            that.promise = fetch(that.options.fetch_url)
+            that.promise = fetch(that.options.lex_get_url)
                 .then(function _lex_fetch_resolution(response) {
                     if (response.ok) {
                         var reader = response.body.getReader();
@@ -341,7 +341,7 @@ window.qiki ||= {};
                             if (result.done) {
                                 console.assert(
                                     liner.remains === '',
-                                    "Last line of", that.options.fetch_url,
+                                    "Last line of", that.options.lex_get_url,
                                     "expected to be empty, not:", liner.remains
                                 );
 
@@ -672,7 +672,7 @@ window.qiki ||= {};
             if (that.any_progress_at_all) {
                 more_args = [
                     ...args,
-                    "\nScan failed on", that.options.fetch_url, "line", that.num_words, "which is:" +
+                    "\nScan failed on", that.options.lex_get_url, "line", that.num_words, "which is:" +
                     "\n" + (that.current_word_json || "(A BLANK LINE)")
                 ]
             } else {
@@ -717,7 +717,8 @@ window.qiki ||= {};
             done_callback = done_callback || function () {};
             fail_callback = fail_callback || function (message) { console.error(message); };
             // TODO:  configure and use fetch(method POST), not qoolbar
-            //        So a separate URL is needed for the ajax call then.
+            //        So LexClient needs to know about  the URL for the ajax call.
+            //        That may be different from the url to GET the .lex.jsonl contents.
             qoolbar.post(
                 'create_word',
                 {
