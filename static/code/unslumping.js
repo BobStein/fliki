@@ -1931,6 +1931,18 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                 }
             });
         }
+        /**
+         * Find the first ContributionWord object that is not rendered.  Or null if all rendered.
+         */
+        first_unrendered_cont_word() {
+            var that = this;
+            var first_un_word = null;
+            that.unrendered_cont_word_loop(function (/** @type {ContributionWord} */ cont_word) {
+                first_un_word = cont_word;
+                return false;
+            })
+            return first_un_word;
+        }
         build_dom() {
             var that = this;
             that.$sup = $('<div>', {'class': 'sup-category'});
@@ -2101,11 +2113,12 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
         /**
          * Insert a contribution's newly built DOM into the left end of a category's DOM.
          *
-         * This doesn't touch the Bunch of ContributionWord in Category.conts.
-         * The caller should have done that via .each_json() in .contribute_word.
-         *
-         * This is called when (1) posting a new contribution, or (2) dropping into a Valve-
+         * This is called when (1) posting a new contribution, or (2) dragging and dropping into a
          * minimized category.
+         *
+         * This doesn't touch the Bunch of ContributionWord instances in CategoryWord.cont_words.
+         * That should have happened when the cont was constructed.  That was in (1) the
+         * ContributeOriginalWord constructor or (2) the RearrangeWord constructor.
          *
          * @param cont {Contribution}
          */
@@ -5196,12 +5209,22 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                         //        but the drop-hint would appear at the
                         //        left-most position among the contributions.
                         //        That's where it would go when dropping on a closed category.
+                        console.warn("Nope, you can't drop onto an open frou!");
                         return MOVE_CANCEL;
                     }
+                }
+                var $thing_left = $(target_candidate).prev();
+                if ($thing_left.is('.unrendered') && ! $thing_left.is('.zero')) {
+                    // NOTE:  All is okay if it IS .zero, because then it's empty and invisible and
+                    //        so it works the same whichever side we drop onto.
+                    console.assert($thing_left.is(':visible'), $thing_left);
+                    console.warn("Nope, you can't drop AFTER the unrendered indicator!");
+                    return MOVE_CANCEL;
                 }
                 if (cat === lex.cats.by_name.about) {
                     if ( ! lex.me.is_admin) {
                         // NOTE:  Only the admin will be able to move TO the about section.
+                        console.warn("Nope, you can't drop into the about category!");
                         return MOVE_CANCEL;
                     }
                 }
@@ -5210,7 +5233,6 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                     //        into a functional .category.  Just make it look like one with info.
                     //        Or go ahead and make it a Category object, but instantiate it
                     //        "with anon characteristics".
-                    // if ( ! lex.am_i_authenticated()) {
                     if ( ! lex.me.is_authenticated()) {
                         // NOTE:  Anonymous users can't interact with other anonymous content.
                         return MOVE_CANCEL;
@@ -5218,6 +5240,8 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
                 }
                 var $introductory_blurb = $('#introductory-blurb');
                 $('#top-right-blurb').empty().append($introductory_blurb);
+                // TODO:  Very inefficient to do this repreatedly WHILE DRAGGING.
+                //        Arrange to do it only once.
                 // TODO:  Be nice to animate this relocation of the blurb.  Not trivial:
                 //        https://stackoverflow.com/a/5212193/673991
                 //        Hint, animate a clone that's in neither place.
@@ -5242,67 +5266,111 @@ function js_for_unslumping(window, $, qoolbar, MONTY, talkify) {
 
                 if (is_in_frou(evt.to)) {   // drop into a closed category -- place all the way left
                     console.log(
-                        "Frou drop", to_cat.name,
-                        "where cont", dom_from_$($movee).id,
-                        "goes into cat", to_cat.idn
+                        "Frou drop into category", to_cat.name,
+                        "idn", to_cat.idn,
+                        "- contribution idn", dom_from_$($movee).id
                     );
                     to_cat.insert_left(movee_cont);
                 }
 
-                // NOTE:  buttee means the contribution shoved over to the right, if any
-                var $buttee = $movee.nextAll('.sup-contribution');
-                var buttee_idn;
-                var buttee_txt_excerpt;
-                if ($buttee.length === 0) {
-                    buttee_idn = lex.idn_rightmost;   // this means the empty place to the right of them all
-                    buttee_txt_excerpt = "[right edge]";
+                // NOTE:  The dragged contribution is dropped between $thing_left and $thing_right.
+                //        $thing_left should never be a nonempty .unrendered, but I guess it could.
+                //        $thing_right could be a .sup-contribution.
+                //        $thing_right could be the .unrendered.
+                //        $thing_right could be nothing.
+                var $thing_left = $movee.prev();
+                var $thing_right = $movee.next();
+                var rearrange_locus = null;
+                var description_right;
+                if ($thing_left.is('.unrendered') && ! $thing_left.is('.zero')) {
+                    console.error("Oops, failed to prevent dropping right of unrendered");
+                    // TODO:  Figure out why the MOVE_CANCEL returned in onMove handler didn't
+                    //        prevent us from getting here.  But in the meantime, revert_drag()
+                    //        will be called to undo this.
+                } else if ($thing_right.length === 0) {
+                    rearrange_locus = lex.idn_rightmost;
+                    description_right = "[right edge 1]";
+                } else if ($thing_right.is('.unrendered')) {
+                    var cont_word_right = to_cat.first_unrendered_cont_word();
+                    // NOTE:  We can't see it, but the first unrendered contribution will now be
+                    //        immediately to the right of the dropped target.  If there is one.
+                    if (cont_word_right === null) {
+                        console.assert($thing_right.is('.zero'), $thing_right);
+                        console.assert( ! $thing_right.is(':visible'), $thing_right);
+                        rearrange_locus = lex.idn_rightmost;
+                        description_right = "[right edge 2]";
+                        // NOTE:  This may never happen.  If .unrendered is .zero and so invisible,
+                        //        which side of it can we drop?  We get here if dropped to the left.
+                        //        That is, the cont dropped immediately to the left of .unrendered.
+                        //        But it appears to always drop to the right.  In other words,
+                        //        the invisible .unrendered element hugs the last rendered
+                        //        contribution.  On the other hand, we could totally get here if
+                        //        dropping into an empty category.
+                    } else {
+                        console.assert( ! $thing_right.is('.zero'), $thing_right);
+                        console.assert($thing_right.is(':visible'), $thing_right);
+                        rearrange_locus = cont_word_right.idn;
+                        description_right = cont_word_right.obj.text;
+                    }
+                } else if ($thing_right.is('.sup-contribution')) {
+                    var cont = Contribution.from_element($thing_right);
+                    console.assert(is_specified(cont), $thing_right);
+                    rearrange_locus = cont.idn;
+                    description_right = cont.contribution_text;
                 } else {
-                    // FALSE WARNING:  Argument type string is not assignable to parameter type
-                    //                 (this:void, value: any, index: number, obj: any[]) => boolean
-                    // noinspection JSCheckFunctionSignatures
-                    var $cont_buttee = $buttee.find('.contribution');
-                    buttee_idn = $cont_buttee.attr('id');
-                    buttee_txt_excerpt = $cont_buttee.text().substring(0, 20) + "...";
+                    console.error("Unexpected thing next to drop target:", $thing_right);
                 }
-                console.log(
-                    "rearranged contribution", movee_cont.idn,
-                    "from", from_cat.name + "#" + String(evt.oldDraggableIndex),
-                    "to", to_cat.name + "#" + String(evt.newDraggableIndex),
-                    "butting in before", buttee_idn, buttee_txt_excerpt
-                );
-                var is_same_category = from_cat.idn === to_cat.idn;
-                var is_same_contribution = evt.newDraggableIndex === evt.oldDraggableIndex;
-                if (is_same_category && is_same_contribution) {
-                    console.log("(put back where it came from)");
+                if (rearrange_locus === null) {
+                    revert_drag();
+                    lex.assert_consistent();
                 } else {
-                    lex.create_word('rearrange', {
-                        category: to_cat.idn,
-                        contribute: movee_cont.idn,
-                        locus: parseInt(buttee_idn)
-                    }, function rearrange_done(word) {
-                        console.debug("Rearrange word", word);
-                        // EXAMPLE:  Rearrange word {
-                        //     idn: 7510,
-                        //     whn: 1633523666800,
-                        //     user: Array(2) [167, '103620384189003122864'],
-                        //     vrb: 202,
-                        //     contribute: 4685,
-                        //     category: 1435,
-                        //     locus: 7126
-                        // }
-                        settle_down();
-                        lex.assert_consistent();
-                    }, function rearrange_fail(message) {
-                        console.error("Failed to rearrange -", message);
-                        revert_drag();
-                        lex.assert_consistent();
-                    });
+                    var buttee_txt_excerpt = description_right.substring(0, 20) + "...";
+                    console.log(
+                        "rearranged contribution", movee_cont.idn,
+                        "from", from_cat.name + "#" + String(evt.oldDraggableIndex),
+                        "to", to_cat.name + "#" + String(evt.newDraggableIndex),
+                        "butting in before", rearrange_locus, "=", buttee_txt_excerpt
+                    );
+                    var is_same_category = from_cat.idn === to_cat.idn;
+                    var is_same_contribution = evt.newDraggableIndex === evt.oldDraggableIndex;
+                    if (is_same_category && is_same_contribution) {
+                        console.log("(put back where it came from)");
+                    } else {
+                        lex.create_word('rearrange', {
+                            category: to_cat.idn,
+                            contribute: movee_cont.idn,
+                            locus: parseInt(rearrange_locus)
+                        }, function rearrange_done(word) {
+                            console.debug("Rearrange word", word);
+                            // EXAMPLE:  Rearrange word {
+                            //     idn: 7510,
+                            //     whn: 1633523666800,
+                            //     user: Array(2) [167, '103620384189003122864'],
+                            //     vrb: 202,
+                            //     contribute: 4685,
+                            //     category: 1435,
+                            //     locus: 7126
+                            // }
+                            settle_down();
+                            lex.assert_consistent();
+                        }, function rearrange_fail(message) {
+                            console.error("Failed to rearrange -", message);
+                            revert_drag();
+                            lex.assert_consistent();
+                        });
+                    }
                 }
 
+                /**
+                 * Undo the drag and drop.
+                 */
                 function revert_drag() {
                     var $from_cat = $(evt.from);
                     $movee.detach();   // so as to simplify the numbering for where to put it back.
-                    var $from_neighbor = $from_cat.find('.sup-contribution').eq(evt.oldDraggableIndex);
+                    var $from_neighbor = $from_cat
+                        .find('.sup-contribution')
+                        .eq(evt.oldDraggableIndex)
+                    ;
                     if ($from_neighbor.length === 1) {
                         console.warn("Revert to before", first_word($from_neighbor.text()));
                         $from_neighbor.before($movee);

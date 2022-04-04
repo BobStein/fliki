@@ -253,7 +253,8 @@ window.qiki ||= {};
         //        This could help in meta lex describe a contribution briefly by extracting text
         //        or using its caption, or both.
         //        Also, LexClient.agent_cache could be some kind of memory Lex.
-        //        Also, Bunch could be a Lex.  Maybe call it a LexCache.
+        //        Also, Bunch could be a Lex.  Maybe call it a LexCache, because it mimics some
+        //        of the contents of another lex.
         constructor(lex, idn) {
             var that = this;
             that.lex = lex;
@@ -381,27 +382,18 @@ window.qiki ||= {};
             ;
         }
 
-
+        /**
+         * Process the JSON form of each word.  From the lex.  Or newly added to the lex.
+         *
+         * This is the convergence of reading old words, and creating new words.
+         *
+         * @param word_json - e.g. '[882,1559479179156,[167,"103620384189003122864"], 808,"pithy"]'
+         * @returns {qiki.Word}
+         */
         each_json(word_json) {
             var that = this;
             that.num_words++;
             that.current_word_json = word_json;
-            var word_to_return;
-            word_to_return = that.word_from_json(word_json);
-            that.each_word(word_to_return);
-            return word_to_return;
-        }
-        /**
-         * Decode a line of JSON.  Use the nits to instantiate a qiki.Word.
-         *
-         * Handle a line from a .lex.jsonl file.
-         * Handle the response from a .create_word() ajax call.
-         *
-         * @param word_json, e.g. "[220,1564505338118,[18,"103620384189003122864"], 80,214,183,31]"
-         * @returns {qiki.Word}
-         */
-        word_from_json(word_json) {
-            var that = this;
             try {
                 var word_array = JSON.parse(word_json);
             } catch (e) {
@@ -414,15 +406,6 @@ window.qiki ||= {};
                 that.scan_fail("Word JSONL too few sub-nits", word_array, word_json);
             }
             var word = that.word_factory(...word_array);
-            return word;
-        }
-        /**
-         * Similar to constructor of qiki.Word subclass.  But each_word() is after ALL subclassing.
-         *
-         * @param word
-         */
-        each_word(word) {
-            var that = this;
             if (word.is_definition()) {
                 var parent = that.by_idn[word.obj.parent];
                 that.word_event(word, 'parent', parent.obj.name)
@@ -436,7 +419,73 @@ window.qiki ||= {};
             } else {
                 that.word_event(word, 'vrb', word.vrb_name());
             }
+            return word;
         }
+
+        //
+        // /**
+        //  * Process the JSON form of each word.  From the lex.  Or newly added to the lex.
+        //  *
+        //  * This is the convergence of reading old words, and creating new words.
+        //  *
+        //  * @param word_json - e.g. '[882,1559479179156,[167,"103620384189003122864"], 808,"pithy"]'
+        //  * @returns {qiki.Word}
+        //  */
+        // each_json(word_json) {
+        //     var that = this;
+        //     that.num_words++;
+        //     that.current_word_json = word_json;
+        //     var word_to_return;
+        //     word_to_return = that.word_from_json(word_json);
+        //     that.each_word(word_to_return);
+        //     return word_to_return;
+        // }
+        // /**
+        //  * Decode a line of JSON.  Use the nits to instantiate a qiki.Word.
+        //  *
+        //  * Handle a line from a .lex.jsonl file.
+        //  * Handle the response from a .create_word() ajax call.
+        //  *
+        //  * @param word_json, e.g. "[220,1564505338118,[18,"103620384189003122864"], 80,214,183,31]"
+        //  * @returns {qiki.Word}
+        //  */
+        // word_from_json(word_json) {
+        //     var that = this;
+        //     try {
+        //         var word_array = JSON.parse(word_json);
+        //     } catch (e) {
+        //         that.scan_fail("Word JSONL error", e, word_json);
+        //     }
+        //     if ( ! is_a(word_array, Array)) {
+        //         that.scan_fail("Word JSONL expecting array, not", word_array, word_json);
+        //     }
+        //     if (word_array.length < 4) {
+        //         that.scan_fail("Word JSONL too few sub-nits", word_array, word_json);
+        //     }
+        //     var word = that.word_factory(...word_array);
+        //     return word;
+        // }
+        // /**
+        //  * Similar to constructor of qiki.Word subclass.  But each_word() is after ALL subclassing.
+        //  *
+        //  * @param word
+        //  */
+        // each_word(word) {
+        //     var that = this;
+        //     if (word.is_definition()) {
+        //         var parent = that.by_idn[word.obj.parent];
+        //         that.word_event(word, 'parent', parent.obj.name)
+        //         // TODO:  Wouldn't it be cool if this expression:
+        //         //            that.by_idn[word.obj.parent].obj.name
+        //         //        could be this:
+        //         //            word.parent.name
+        //         //        In other words:
+        //         //            named obj parts were word parts:  parent.name vs parent.obj.name
+        //         //            and word parts were (germinal) words:  parent vs that.by_idn[parent]
+        //     } else {
+        //         that.word_event(word, 'vrb', word.vrb_name());
+        //     }
+        // }
         word_event(word, ...event_names) {
             var that = this;
             type_should_be(word, qiki.Word);
@@ -675,8 +724,12 @@ window.qiki ||= {};
                     "\nScan failed on", that.options.lex_get_url, "line", that.num_words, "which is:" +
                     "\n" + (that.current_word_json || "(A BLANK LINE)")
                 ]
+                // NOTE:  Report the current line in the stream, in case its contents caused the
+                //        failure.
             } else {
                 more_args = args;
+                // NOTE:  No bytes were fetched.  This happens if something crashed before any
+                //        streaming, so it makes no sense to report where we are in the stream.
             }
             console.error(...more_args);
             var failure_string = more_args.join(" ")

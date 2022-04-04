@@ -237,7 +237,7 @@ class LexContribution extends qiki.LexClient {
         }
     }
     /**
-     * Find a ContributionWord instance by its idn.  2D loop through all conts in all cats.
+     * Find a ContributionWord instance by its idn.  2D loop through all cont_words in all cats.
      *
      * @param cont_idn
      * @returns {ContributionWord|null} - null = there is no contribution with that idn.
