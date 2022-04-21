@@ -2817,7 +2817,47 @@ def invalid_response(error_message):
 
 
 class Git:
-    """GitHub glue."""
+    """
+    GitHub glue.
+
+    Things got messy with GitHub decided to bring down the hammer of a security requirement.
+        https://github.blog/2022-04-12-git-security-vulnerability-announced/
+
+    LOTS of different symptoms to this.  Here was the first one I found, website down:
+
+        [Thu Apr 21 08:12:12.513789 2022] [wsgi:error] [pid 1881011] [remote 66.249.66.2:64207]
+        File "/var/www/unslumping.org/fliki/fliki.py", line 2821, in version_report
+        sha_excerpt=git.Repo(SCRIPT_DIRECTORY).head.object.hexsha[0 : 7],   # first 7, ala GitHub
+        :
+        File "/usr/local/lib/python3.8/dist-packages/git/cmd.py", line 1197, in _parse_object_header
+        ValueError: SHA could not be resolved, git returned: b''
+
+    Googling did not lead to the real issue from this message.
+
+    An entirely different failure would have come from the next use of GitPython module:
+
+    Didn't realize it at the time but this was a different symptom of this problem:
+        bob@fun:...$ git rev-parse --verify HEAD
+        fatal: unsafe repository ('/var/www/unslumping.org/fliki' is owned by someone else)
+        To add an exception for this directory, call:
+
+                git config --global --add safe.directory /var/www/unslumping.org/fliki
+
+        Which I worked around by adding sudo, which introduced a problem with redirect
+        which I worked around by calling bash -c.
+
+    This question began to unravel the problem for me:
+        https://stackoverflow.com/questions/71849415/i-cannot-add-the-parent-directory-to-safe-directory-in-git
+
+    This seems related but weird.  Low votes.  Low-rep questioner and answerers.
+        https://stackoverflow.com/questions/71855882/how-to-add-directory-recursively-on-git-safe-directory
+
+    Also related, comes up googling "python unsafe repository is owned by someone else":
+        https://stackoverflow.com/questions/71901632/fatal-unsafe-repository-home-repon-is-owned-by-someone-else
+        An answer there with four alternatives might be the one to review.
+        I may be confused about who this error is questioning can be trusted.
+        Anyway, fliki should not be vulnerable to this dumb error.
+    """
 
     SHA_UNAVAILABLE = '(sha unavailable)'
     SHA_FILE_NAME = 'git_sha.txt'
@@ -2853,6 +2893,22 @@ class Git:
 
     @classmethod
     def sha_by_file(cls):
+        """
+        Latest sha from a file.
+
+        EXAMPLE command to create the file:
+            sudo bash -c "git rev-parse --verify HEAD >static/data/git_sha.txt"
+        EXAMPLE file contents:
+            bob@fun:/var/www/unslumping.org/fliki/static/data$ hd git_sha.txt
+            00000000  35 39 63 30 34 37 63 33  32 64 65 61 35 65 38 39  |59c047c32dea5e89|
+            00000010  65 63 34 38 34 31 32 33  34 39 38 64 36 66 65 61  |ec484123498d6fea|
+            00000020  32 64 34 34 63 65 31 30  0a                       |2d44ce10.|
+            00000029
+
+        THANKS:  Latest commit sha from command line, https://stackoverflow.com/a/949391/673991
+        THANKS:  sudo with redirect, https://askubuntu.com/a/230482/215820
+        THANKS:  hex dump with hd, https://stackoverflow.com/a/23418127/673991
+        """
         with open(os_path_data(cls.SHA_FILE_NAME)) as f:
             return f.read().strip()
 
