@@ -2816,10 +2816,55 @@ def invalid_response(error_message):
     ))
 
 
+class Git:
+    """GitHub glue."""
+
+    SHA_UNAVAILABLE = '(sha unavailable)'
+    SHA_FILE_NAME = 'git_sha.txt'
+
+    @classmethod
+    def sha(cls):
+        try:
+            return cls.sha_by_module()
+        except ValueError:
+            # EXAMPLE:
+            #    ValueError: SHA could not be resolved, git returned: b''
+            # SEE:  GitHub security oppression,
+            #    https://github.blog/2022-04-12-git-security-vulnerability-announced/
+            try:
+                return cls.sha_by_file()
+            except FileNotFoundError:
+                return cls.SHA_UNAVAILABLE
+
+    @classmethod
+    def sha_by_module(cls):
+        return git.Repo(SCRIPT_DIRECTORY).head.object.hexsha
+
+    @classmethod
+    def number_uncommitted_files(cls):
+        try:
+            return len(git.Repo(SCRIPT_DIRECTORY).index.diff(None))
+        except git.GitCommandError:
+            # EXAMPLE:
+            #     git.exc.GitCommandError: Cmd('git') failed due to: exit code(129)
+            # SEE:  GitHub security oppression,
+            #    https://github.blog/2022-04-12-git-security-vulnerability-announced/
+            return 0
+
+    @classmethod
+    def sha_by_file(cls):
+        with open(os_path_data(cls.SHA_FILE_NAME)) as f:
+            return f.read().strip()
+
+
 def version_report():
+    # git_stuff = dict(
+    #     sha_excerpt=git.Repo(SCRIPT_DIRECTORY).head.object.hexsha[0 : 7],   # first 7, ala GitHub
+    #     num_uncommitted=len(git.Repo(SCRIPT_DIRECTORY).index.diff(None)),
+    # )
     git_stuff = dict(
-        sha_excerpt=git.Repo(SCRIPT_DIRECTORY).head.object.hexsha[0 : 7],   # first 7, ala GitHub
-        num_uncommitted=len(git.Repo(SCRIPT_DIRECTORY).index.diff(None)),
+        sha_excerpt=Git.sha()[0 : 7],   # first 7 digits of the latest commit sha, ala GitHub
+        num_uncommitted=Git.number_uncommitted_files(),
     )
     if git_stuff['num_uncommitted'] == 0:
         git_report = "{sha_excerpt}".format(**git_stuff)
