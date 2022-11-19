@@ -2820,7 +2820,7 @@ class Git:
     """
     GitHub glue.
 
-    Things got messy with GitHub decided to bring down the hammer of a security requirement.
+    Things got messy when GitHub decided to bring down the hammer of a security requirement.
         https://github.blog/2022-04-12-git-security-vulnerability-announced/
 
     LOTS of different symptoms to this.  Here was the first one I found, website down:
@@ -2898,6 +2898,8 @@ class Git:
 
         EXAMPLE command to create the file:
             sudo bash -c "git rev-parse --verify HEAD >static/data/git_sha.txt"
+            This command is in /home/bob/.local/bin/gol (but not its brother gof)
+            which pulls the latest code for fliki and qiki-javascript from GitHub.
         EXAMPLE file contents:
             bob@fun:/var/www/unslumping.org/fliki/static/data$ hd git_sha.txt
             00000000  35 39 63 30 34 37 63 33  32 64 65 61 35 65 38 39  |59c047c32dea5e89|

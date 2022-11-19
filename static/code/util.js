@@ -730,7 +730,7 @@ assert_equal(true, is_array_like([undefined, undefined, undefined]));
  * @return {boolean}
  */
 function is_associative_array(z) {
-    return String(z) === '[object Object]';
+    return String(z) === '[object Object]' && ! (Object(z) instanceof String);
 }
 assert_equal( true, is_associative_array({a:1, b:2}));
 assert_equal( true, is_associative_array(new function Legacy_Class() {}));
@@ -742,6 +742,7 @@ assert_equal(false, is_associative_array([1,2,3]));
 assert_equal(false, is_associative_array(Array(1,2,3)));
 assert_equal(false, is_associative_array(42));
 assert_equal(false, is_associative_array("etc"));
+assert_equal(false, is_associative_array("[object Object]"));
 assert_equal(false, is_associative_array(null));
 assert_equal(false, is_associative_array(undefined));
 assert_equal(false, is_associative_array(true));
