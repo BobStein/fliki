@@ -67,7 +67,8 @@ class Probe(object):
             event name, e.g. "authorization"
             countables dictionary, e.g. dict(queries=3, records=333)
 
-        :param countables_initial: - a dictionary of name:count pairs, some measure other than time.
+        :param countables_initial: - a dictionary of name:count pairs,
+                                     some measure other than time.
         """
         self.t_initial = time.time()
         self.c_initial = countables_initial
@@ -82,9 +83,10 @@ class Probe(object):
 
             def countable_deltas():
                 for k, v in countables_late.items():
-                    # FALSE WARNING:  Cannot find reference 'get' in 'None'
-                    # noinspection PyUnresolvedReferences
-                    v_delta = v   if countables_early is None else   v - countables_early.get(k, 0)
+                    if countables_early is None:
+                        v_delta = v
+                    else:
+                        v_delta = v - countables_early.get(k, 0)
                     if v_delta != 0:
                         yield "{v_delta} {k}".format(k=k, v_delta=v_delta)
 

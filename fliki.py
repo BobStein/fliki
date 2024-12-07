@@ -68,12 +68,15 @@ VERBS_USERS_MAY_USE = {
 
 JSONL_EXTENSION = '.jsonl'
 MIME_TYPE_JSONL  = 'application/jsonl+json'
-# SEE:  (my comment) on using the +json suffix,
+# SEE:  jsonlines format, https://jsonlines.org/
+# SEE:  (my comment) +json suffix,
 #       https://stackoverflow.com/q/51690624/673991#comment122920211_67807011
 #       It is technically a lie, but it allows direct browsing in Chrome to display the file.
 #       With this MIME type on the other hand, Chrome just downloads the file:  application/jsonl
 #       Another possibility:  text/x.jsonl+json
-
+# SEE:  ndjson alternative, http://ndjson.org/
+#                           https://github.com/ndjson
+#                           https://pypi.org/project/ndjson/
 
 YOUTUBE_PATTERNS = [
     "https?://(?:[^\\.]+\\.)?youtube\\.com/watch/?\\?(?:.+&)?v=([^&]+)",
@@ -2416,12 +2419,14 @@ def meta_lex():
 
     Less geeky than directly browsing the .lex.jsonl file.
     """
-    p = Probe()
-    auth = AuthFliki()
-    p.at("auth")
 
-    if not auth.flask_user.is_authenticated:
-        return auth.login_html()   # anonymous viewing not allowed, just show "login" link
+    # NOTE:  The following code enforces authentication to see this page:
+    #            p = Probe()
+    #            auth = AuthFliki()
+    #            p.at("auth")
+    #
+    #            if not auth.flask_user.is_authenticated:
+    #                return auth.login_html()   # anonymous viewing not allowed, just show "login" link
 
     with FlikiHTML('html') as html:
         with html.header(title="lex" + secure.credentials.Options.home_page_title) as head:
