@@ -2420,8 +2420,8 @@ def meta_lex():
     Less geeky than directly browsing the .lex.jsonl file.
     """
 
+    p = Probe()
     # NOTE:  The following code enforces authentication to see this page:
-    #            p = Probe()
     #            auth = AuthFliki()
     #            p.at("auth")
     #
