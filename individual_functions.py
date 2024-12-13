@@ -115,7 +115,6 @@ class Probe(object):
 
 def json_encode(x, **kwargs):
     """ JSON encode a dict, including custom objects with a .to_json() method. """
-    # TODO:  Support encoding list, etc.  ((WTF does this mean?  This works:  json.dumps([1,2,3])))
     json_almost = json.dumps(
         x,
         cls=VersatileJsonEncoder,
